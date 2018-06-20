@@ -1,0 +1,353 @@
+#include "offsets.h"
+
+.text
+
+.balign 0x800
+.global vector_table_el2
+vector_table_el2:
+	/* sync_cur_sp0 */
+	b .
+
+.balign 0x80
+	/* irq_cur_sp0 */
+	b irq_current
+
+.balign 0x80
+	/* fiq_cur_sp0 */
+	b .
+
+.balign 0x80
+	/* serr_cur_sp0 */
+	b .
+
+.balign 0x80
+	/* sync_cur_spx */
+	mrs x0, esr_el2
+	mrs x1, elr_el2
+	b sync_current_exception
+
+.balign 0x80
+	/* irq_cur_spx */
+	b irq_current
+
+.balign 0x80
+	/* fiq_cur_spx */
+	b .
+
+.balign 0x80
+	/* serr_cur_spx */
+	b .
+
+.balign 0x80
+	/* sync_lower_64 */
+
+	/* Save x18 since we're about to clobber it. */
+	str x18, [sp, #-8]
+
+	/* Extract the exception class (EC) from exception syndrome register. */
+	mrs x18, esr_el2
+	lsr x18, x18, #26
+
+	/* Take the slow path if exception is not due to an HVC instruction. */
+	subs x18, x18, #0x16
+	b.ne slow_sync_lower_64
+
+	/* Save x29 and x30, then jump to HVC handler. */
+	stp x29, x30, [sp, #-16]!
+	bl hvc_handler
+	ldp x29, x30, [sp], #16
+	cbnz x1, sync_lower_64_switch
+
+	/* Zero out all volatile registers (except x0) and return. */
+	stp xzr, xzr, [sp, #-16]
+	ldp x1, x2, [sp, #-16]
+	ldp x3, x4, [sp, #-16]
+	ldp x5, x6, [sp, #-16]
+	ldp x7, x8, [sp, #-16]
+	ldp x9, x10, [sp, #-16]
+	ldp x11, x12, [sp, #-16]
+	ldp x13, x14, [sp, #-16]
+	ldp x15, x16, [sp, #-16]
+	ldp x17, x18, [sp, #-16]
+	eret
+
+.balign 0x80
+	/* irq_lower_64 */
+
+	/* Save x0 since we're about to clobber it. */
+	str x0, [sp, #-8]
+
+	/* Get the current vcpu. */
+	mrs x0, tpidr_el2
+	ldr x0, [x0, #CPU_CURRENT]
+
+	/* Save volatile registers. */
+	add x0, x0, #VCPU_REGS
+	stp x2, x3, [x0, #8 * 2]
+	stp x4, x5, [x0, #8 * 4]
+	stp x6, x7, [x0, #8 * 6]
+	stp x8, x9, [x0, #8 * 8]
+	stp x10, x11, [x0, #8 * 10]
+	stp x12, x13, [x0, #8 * 12]
+	stp x14, x15, [x0, #8 * 14]
+	stp x16, x17, [x0, #8 * 16]
+	str x18, [x0, #8 * 18]
+	stp x29, x30, [x0, #8 * 29]
+
+	ldr x2, [sp, #-8]
+	stp x2, x1, [x0, #8 * 0]
+
+	/* Save return address & mode. */
+	mrs x1, elr_el2
+	mrs x2, spsr_el2
+	stp x1, x2, [x0, #8 * 31]
+
+	/* Call C handler. */
+	bl irq_handle_lower
+	cbz x0, vcpu_return
+
+	/* Find a new vcpu to run. */
+	bl cpu_next_vcpu
+	cbz x0, vcpu_return
+	b vcpu_switch
+
+.balign 0x80
+	/* fiq_lower_64 */
+	b .
+
+.balign 0x80
+	/* serr_lower_64 */
+	b .
+
+.balign 0x80
+	/* sync_lower_32 */
+	b .
+
+.balign 0x80
+	/* irq_lower_32 */
+	b .
+
+.balign 0x80
+	/* fiq_lower_32 */
+	b .
+
+.balign 0x80
+	/* serr_lower_32 */
+	b .
+
+.balign 0x80
+
+vcpu_switch:
+	/* Save non-volatile registers. */
+	add x1, x1, #VCPU_REGS
+	stp x19, x20, [x1, #8 * 19]
+	stp x21, x22, [x1, #8 * 21]
+	stp x23, x24, [x1, #8 * 23]
+	stp x25, x26, [x1, #8 * 25]
+	stp x27, x28, [x1, #8 * 27]
+
+	/* Save lazy state. */
+	add x1, x1, #(VCPU_LAZY - VCPU_REGS)
+
+	mrs x24, vmpidr_el2
+	mrs x25, csselr_el1
+	stp x24, x25, [x1, #16 * 0]
+
+	mrs x2, sctlr_el1
+	mrs x3, actlr_el1
+	stp x2, x3, [x1, #16 * 1]
+
+	mrs x4, cpacr_el1
+	mrs x5, ttbr0_el1
+	stp x4, x5, [x1, #16 * 2]
+
+	mrs x6, ttbr1_el1
+	mrs x7, tcr_el1
+	stp x6, x7, [x1, #16 * 3]
+
+	mrs x8, esr_el1
+	mrs x9, afsr0_el1
+	stp x8, x9, [x1, #16 * 4]
+
+	mrs x10, afsr1_el1
+	mrs x11, far_el1
+	stp x10, x11, [x1, #16 * 5]
+
+	mrs x12, mair_el1
+	mrs x13, vbar_el1
+	stp x12, x13, [x1, #16 * 6]
+
+	mrs x14, contextidr_el1
+	mrs x15, tpidr_el0
+	stp x14, x15, [x1, #16 * 7]
+
+	mrs x16, tpidrro_el0
+	mrs x17, tpidr_el1
+	stp x16, x17, [x1, #16 * 8]
+
+	mrs x18, amair_el1
+	mrs x19, cntkctl_el1
+	stp x18, x19, [x1, #16 * 9]
+
+	mrs x20, sp_el0
+	mrs x21, sp_el1
+	stp x20, x21, [x1, #16 * 10]
+
+	mrs x22, par_el1
+	str x22, [x1, #16 * 11]
+
+.globl vcpu_enter_restore_all
+vcpu_enter_restore_all:
+	/* Get a pointer to the lazy registers. */
+	add x0, x0, #VCPU_LAZY
+
+	ldp x24, x25, [x0, #16 * 0]
+	msr vmpidr_el2, x24
+	msr csselr_el1, x25
+
+	ldp x2, x3, [x0, #16 * 1]
+	msr sctlr_el1, x2
+	msr actlr_el1, x3
+
+	ldp x4, x5, [x0, #16 * 2]
+	msr cpacr_el1, x4
+	msr ttbr0_el1, x5
+
+	ldp x6, x7, [x0, #16 * 3]
+	msr ttbr1_el1, x6
+	msr tcr_el1, x7
+
+	ldp x8, x9, [x0, #16 * 4]
+	msr esr_el1, x8
+	msr afsr0_el1, x9
+
+	ldp x10, x11, [x0, #16 * 5]
+	msr afsr1_el1, x10
+	msr far_el1, x11
+
+	ldp x12, x13, [x0, #16 * 6]
+	msr mair_el1, x12
+	msr vbar_el1, x13
+
+	ldp x14, x15, [x0, #16 * 7]
+	msr contextidr_el1, x14
+	msr tpidr_el0, x15
+
+	ldp x16, x17, [x0, #16 * 8]
+	msr tpidrro_el0, x16
+	msr tpidr_el1, x17
+
+	ldp x18, x19, [x0, #16 * 9]
+	msr amair_el1, x18
+	msr cntkctl_el1, x19
+
+	ldp x20, x21, [x0, #16 * 10]
+	msr sp_el0, x20
+	msr sp_el1, x21
+
+	ldp x22, x23, [x0, #16 * 11]
+	msr par_el1, x22
+	msr hcr_el2, x23
+
+	/* Restore non-volatile registers. */
+	add x0, x0, #(VCPU_REGS - VCPU_LAZY)
+
+	ldp x19, x20, [x0, #8 * 19]
+	ldp x21, x22, [x0, #8 * 21]
+	ldp x23, x24, [x0, #8 * 23]
+	ldp x25, x26, [x0, #8 * 25]
+	ldp x27, x28, [x0, #8 * 27]
+
+	/* Restore volatile registers and return. */
+	sub x0, x0, #VCPU_REGS
+
+vcpu_return:
+	/* Restore volatile registers. */
+	add x0, x0, #VCPU_REGS
+
+	ldp x4, x5, [x0, #8 * 4]
+	ldp x6, x7, [x0, #8 * 6]
+	ldp x8, x9, [x0, #8 * 8]
+	ldp x10, x11, [x0, #8 * 10]
+	ldp x12, x13, [x0, #8 * 12]
+	ldp x14, x15, [x0, #8 * 14]
+	ldp x16, x17, [x0, #8 * 16]
+	ldr x18, [x0, #8 * 18]
+	ldp x29, x30, [x0, #8 * 29]
+
+	/* Restore return address & mode. */
+	ldp x1, x2, [x0, #8 * 31]
+	msr elr_el2, x1
+	msr spsr_el2, x2
+
+	/* Restore x0..x3, which we have used as scratch before. */
+	ldp x2, x3, [x0, #8 * 2]
+	ldp x0, x1, [x0, #8 * 0]
+	eret
+
+slow_sync_lower_64:
+	/* Get the current vcpu. */
+	mrs x18, tpidr_el2
+	/* TODO: tpidr_el2 should store the vcpu pointer directly. */
+	ldr x18, [x18, #CPU_CURRENT]
+
+	/* Save volatile registers. */
+	add x18, x18, #VCPU_REGS
+	stp x0, x1, [x18, #8 * 0]
+	stp x2, x3, [x18, #8 * 2]
+	stp x4, x5, [x18, #8 * 4]
+	stp x6, x7, [x18, #8 * 6]
+	stp x8, x9, [x18, #8 * 8]
+	stp x10, x11, [x18, #8 * 10]
+	stp x12, x13, [x18, #8 * 12]
+	stp x14, x15, [x18, #8 * 14]
+	stp x16, x17, [x18, #8 * 16]
+	stp x29, x30, [x18, #8 * 29]
+
+	ldr x0, [sp, #-8]
+	str x0, [x18, #8 * 18]
+
+	/* Save return address & mode. */
+	mrs x1, elr_el2
+	mrs x2, spsr_el2
+	stp x1, x2, [x18, #8 * 31]
+
+	/* Read syndrome register and call C handler. */
+	mrs x0, esr_el2
+	bl sync_lower_exception
+	cbz x0, vcpu_return
+
+	/* Find a new vcpu to run. */
+	bl cpu_next_vcpu
+	cbz x0, vcpu_return
+	b vcpu_switch
+
+sync_lower_64_switch:
+	/* We'll have to reschedule, so store state before doing so. */
+	mrs x18, tpidr_el2
+	ldr x18, [x18, #CPU_CURRENT]
+
+	/* Store zeroes in volatile register storage, except x0. */
+	add x18, x18, #VCPU_REGS
+	stp x0, xzr, [x18, #8 * 0]
+	stp xzr, xzr, [x18, #8 * 2]
+	stp xzr, xzr, [x18, #8 * 4]
+	stp xzr, xzr, [x18, #8 * 6]
+	stp xzr, xzr, [x18, #8 * 8]
+	stp xzr, xzr, [x18, #8 * 10]
+	stp xzr, xzr, [x18, #8 * 12]
+	stp xzr, xzr, [x18, #8 * 14]
+	stp xzr, xzr, [x18, #8 * 16]
+	stp x29, x30, [x18, #8 * 29]
+
+	str xzr, [x18, #8 * 18]
+
+	/* Save return address & mode. */
+	mrs x1, elr_el2
+	mrs x2, spsr_el2
+	stp x1, x2, [x18, #8 * 31]
+
+	/* Find a new vcpu to run. */
+	bl cpu_next_vcpu
+	cbz x0, vcpu_return
+	b vcpu_switch
