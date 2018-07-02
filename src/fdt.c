@@ -244,6 +244,39 @@ bool fdt_read_property(const struct fdt_node *node, const char *name,
 	return false;
 }
 
+bool fdt_first_child(struct fdt_node *node, const char **child_name)
+{
+	struct fdt_tokenizer t;
+
+	fdt_tokenizer_init(&t, node->strs, node->begin, node->end);
+
+	fdt_skip_properties(&t);
+
+	if (!fdt_next_subnode(&t, child_name))
+		return false;
+
+	node->begin = t.cur;
+
+	return true;
+}
+
+bool fdt_next_sibling(struct fdt_node *node, const char **sibling_name)
+{
+	struct fdt_tokenizer t;
+
+	fdt_tokenizer_init(&t, node->strs, node->begin, node->end);
+
+	if (!fdt_skip_node(&t))
+		return false;
+
+	if (!fdt_next_subnode(&t, sibling_name))
+		return false;
+
+	node->begin = t.cur;
+
+	return true;
+}
+
 bool fdt_find_child(struct fdt_node *node, const char *child)
 {
 	struct fdt_tokenizer t;

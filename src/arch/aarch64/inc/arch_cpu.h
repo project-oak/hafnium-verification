@@ -2,6 +2,7 @@
 #define _ARCH_CPU_H
 
 #include <stdalign.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -63,7 +64,7 @@ static inline void arch_irq_enable(void)
 }
 
 static inline
-void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg)
+void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg, bool is_primary)
 {
 	/* TODO: Use constant here. */
 	r->spsr = 5 |         /* M bits, set to EL1h. */
@@ -71,10 +72,17 @@ void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg)
 	r->pc = pc;
 	r->r[0] = arg;
 	r->lazy.hcr_el2 = (1u << 31) |  /* RW bit. */
-//			  (7u << 3) |   /* AMO, IMO, FMO bits. */
-			  (3u << 13) |  /* TWI, TWE bits. */
 			  (1u << 2) |   /* PTW, Protected Table Walk. */
 			  (1u << 0);    /* VM: enable stage-2 translation. */
+
+	if (!is_primary)
+		r->lazy.hcr_el2 |= (7u << 3) |   /* AMO, IMO, FMO bits. */
+				   (3u << 13);   /* TWI, TWE bits. */
+}
+
+static inline void arch_regs_set_retval(struct arch_regs *r, size_t v)
+{
+	r->r[0] = v;
 }
 
 static inline void arch_regs_set_irq(struct arch_regs *r)

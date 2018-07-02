@@ -1,13 +1,12 @@
 #include "cpu.h"
 #include "dlog.h"
-#include "irq.h"
 #include "vm.h"
 
 #include "msr.h"
 
 struct hvc_handler_return {
-	size_t user_ret;
-	bool schedule;
+	long user_ret;
+	struct vcpu *new;
 };
 
 void irq_current(void)
@@ -22,13 +21,25 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
 	for (;;);
 }
 
-struct hvc_handler_return hvc_handler(size_t arg1)
+/* TODO: Define constants below according to spec. */
+#define HF_VCPU_RUN       0xff00
+#define HF_VM_GET_COUNT   0xff01
+#define HF_VCPU_GET_COUNT 0xff02
+
+/* TODO: Move these decl elsewhere. */
+extern struct vm secondary_vm[MAX_VMS];
+extern uint32_t secondary_vm_count;
+extern struct vm primary_vm;
+extern struct cpu cpus[];
+
+struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
+				      size_t arg3)
 {
 	struct hvc_handler_return ret;
 
-	ret.schedule = true;
+	ret.new = NULL;
 
-	switch (arg1) {
+	switch (arg0) {
 	case 0x84000000: /* PSCI_VERSION */
 		ret.user_ret = 2;
 		break;
@@ -37,19 +48,30 @@ struct hvc_handler_return hvc_handler(size_t arg1)
 		ret.user_ret = 2;
 		break;
 
-#if 0
-	TODO: Remove this.
-	case 1: /* TODO: Fix. */
-		{
-			extern struct vm vm0;
-			struct vcpu *vcpu = vm0.vcpus;
-			vcpu->interrupt = true;
-			vcpu_ready(vcpu);
-			dlog("Readying VCPU0 again\n");
-		}
-		ret.user_ret = 0;
+	case HF_VM_GET_COUNT:
+		ret.user_ret = secondary_vm_count;
 		break;
-#endif
+
+	case HF_VCPU_GET_COUNT:
+		if (arg1 >= secondary_vm_count)
+			ret.user_ret = -1;
+		else
+			ret.user_ret = secondary_vm[arg1].vcpu_count;
+		break;
+
+	case HF_VCPU_RUN:
+		/* TODO: Make sure we don't allow secondary VMs to make this
+		 * hvc call. */
+		ret.user_ret = 1; /* WFI */
+		if (arg1 < secondary_vm_count &&
+		    arg2 < secondary_vm[arg1].vcpu_count &&
+		    secondary_vm[arg1].vcpus[arg2].is_on) {
+			arch_set_vm_mm(&secondary_vm[arg1].page_table);
+			/* TODO: Update the virtual memory. */
+			ret.new = secondary_vm[arg1].vcpus + arg2;
+			ret.user_ret = 0;
+		}
+		break;
 
 	default:
 		ret.user_ret = -1;
@@ -58,18 +80,38 @@ struct hvc_handler_return hvc_handler(size_t arg1)
 	return ret;
 }
 
-bool sync_lower_exception(uint64_t esr)
+struct vcpu *irq_lower(void)
+{
+	/* TODO: Only switch if we know the interrupt was not for the secondary
+	 * VM. */
+
+	/* Switch back to primary VM, interrupts will be handled there. */
+	arch_set_vm_mm(&primary_vm.page_table);
+	return &primary_vm.vcpus[cpus - cpu()];
+}
+
+struct vcpu *sync_lower_exception(uint64_t esr)
 {
 	struct cpu *c = cpu();
 	struct vcpu *vcpu = c->current;
 
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
-		/* Check TI bit of ISS. */
+		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
 		if (esr & 1)
-			return true;
-		//vcpu_unready(vcpu);
-		return true;
+			return NULL;
+
+		/* Switch back to primary VM. */
+		arch_set_vm_mm(&primary_vm.page_table);
+		vcpu = &primary_vm.vcpus[cpus - cpu()];
+
+		dlog("Returning due to WFI\n");
+
+		/* TODO: Use constant. */
+		/* Set return value to 1, indicating to primary VM that this
+		 * vcpu blocked on a WFI. */
+		arch_regs_set_retval(&vcpu->regs, 1);
+		return vcpu;
 
 	case 0x24: /* EC = 100100, Data abort. */
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", vcpu->regs.pc, esr, esr >> 26);
@@ -86,6 +128,5 @@ bool sync_lower_exception(uint64_t esr)
 		for (;;);
 	}
 
-	/* TODO: For now we always reschedule. But we shoudln't. */
-	return true;
+	return NULL;
 }

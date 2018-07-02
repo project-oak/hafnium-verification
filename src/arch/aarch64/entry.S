@@ -97,9 +97,8 @@ cpu_entry:
 	/* Call into C code. */
 	bl cpu_main
 
-	/* Run the first vcpu. */
-	bl cpu_next_vcpu
-	b vcpu_enter_restore_all
+	/* Run the vcpu returned by cpu_main. */
+	b vcpu_restore_all_and_run
 
 	/* Loop forever waiting for interrupts. */
 5:	wfi

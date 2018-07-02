@@ -49,6 +49,7 @@ COPTS += -Wall -Wpedantic -Werror
 COPTS += -DDEBUG=$(DEBUG)
 COPTS += -MMD -MP -MF $$(patsubst %,%.d,$$@)
 COPTS += -DMAX_CPUS=8
+COPTS += -DMAX_VMS=16
 COPTS += -DSTACK_SIZE=4096
 COPTS += -I$(ROOT_DIR)inc
 COPTS += -I$(ROOT_DIR)src/arch/$(ARCH)/inc

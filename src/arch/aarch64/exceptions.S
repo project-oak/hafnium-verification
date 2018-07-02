@@ -52,7 +52,10 @@ vector_table_el2:
 	subs x18, x18, #0x16
 	b.ne slow_sync_lower_64
 
-	/* Save x29 and x30, then jump to HVC handler. */
+	/*
+	 * Save x29 and x30, which are not saved by the callee, then jump to
+	 * HVC handler.
+	 */
 	stp x29, x30, [sp, #-16]!
 	bl hvc_handler
 	ldp x29, x30, [sp], #16
@@ -103,13 +106,15 @@ vector_table_el2:
 	stp x1, x2, [x0, #8 * 31]
 
 	/* Call C handler. */
-	bl irq_handle_lower
-	cbz x0, vcpu_return
+	bl irq_lower
 
-	/* Find a new vcpu to run. */
-	bl cpu_next_vcpu
-	cbz x0, vcpu_return
-	b vcpu_switch
+	mrs x1, tpidr_el2
+	ldr x1, [x1, #CPU_CURRENT]
+	cbnz x0, vcpu_switch
+
+	/* vcpu is not changing. */
+	mov x0, x1
+	b vcpu_restore_volatile_and_run
 
 .balign 0x80
 	/* fiq_lower_64 */
@@ -137,6 +142,16 @@ vector_table_el2:
 
 .balign 0x80
 
+/**
+ * Switch to a new vcpu.
+ *
+ * All volatile registers from the old vcpu have already been saved. We need
+ * to save only non-volatile ones from the old vcpu, and restore all from the
+ * new one.
+ *
+ * x0 is a pointer to the new vcpu.
+ * x1 is a pointer to the old vcpu.
+ */
 vcpu_switch:
 	/* Save non-volatile registers. */
 	add x1, x1, #VCPU_REGS
@@ -196,8 +211,14 @@ vcpu_switch:
 	mrs x22, par_el1
 	str x22, [x1, #16 * 11]
 
-.globl vcpu_enter_restore_all
-vcpu_enter_restore_all:
+	/* Intentional fall through. */
+
+.globl vcpu_restore_all_and_run
+vcpu_restore_all_and_run:
+	/* Update cpu()->current. */
+	mrs x2, tpidr_el2
+	str x0, [x2, #CPU_CURRENT]
+
 	/* Get a pointer to the lazy registers. */
 	add x0, x0, #VCPU_LAZY
 
@@ -261,7 +282,12 @@ vcpu_enter_restore_all:
 	/* Restore volatile registers and return. */
 	sub x0, x0, #VCPU_REGS
 
-vcpu_return:
+/**
+ * x0 is a pointer to the vcpu.
+ *
+ * Restore volatile registers and run the given vcpu.
+ */
+vcpu_restore_volatile_and_run:
 	/* Restore volatile registers. */
 	add x0, x0, #VCPU_REGS
 
@@ -288,7 +314,6 @@ vcpu_return:
 slow_sync_lower_64:
 	/* Get the current vcpu. */
 	mrs x18, tpidr_el2
-	/* TODO: tpidr_el2 should store the vcpu pointer directly. */
 	ldr x18, [x18, #CPU_CURRENT]
 
 	/* Save volatile registers. */
@@ -315,15 +340,18 @@ slow_sync_lower_64:
 	/* Read syndrome register and call C handler. */
 	mrs x0, esr_el2
 	bl sync_lower_exception
-	cbz x0, vcpu_return
 
-	/* Find a new vcpu to run. */
-	bl cpu_next_vcpu
-	cbz x0, vcpu_return
-	b vcpu_switch
+	/* Switch to the vcpu returned by sync_lower_exception. */
+	mrs x1, tpidr_el2
+	ldr x1, [x1, #CPU_CURRENT]
+	cbnz x0, vcpu_switch
+
+	/* vcpu is not changing. */
+	mov x0, x1
+	b vcpu_restore_volatile_and_run
 
 sync_lower_64_switch:
-	/* We'll have to reschedule, so store state before doing so. */
+	/* We'll have to switch, so save volatile state before doing so. */
 	mrs x18, tpidr_el2
 	ldr x18, [x18, #CPU_CURRENT]
 
@@ -343,11 +371,11 @@ sync_lower_64_switch:
 	str xzr, [x18, #8 * 18]
 
 	/* Save return address & mode. */
-	mrs x1, elr_el2
-	mrs x2, spsr_el2
-	stp x1, x2, [x18, #8 * 31]
+	mrs x2, elr_el2
+	mrs x3, spsr_el2
+	stp x2, x3, [x18, #8 * 31]
 
-	/* Find a new vcpu to run. */
-	bl cpu_next_vcpu
-	cbz x0, vcpu_return
+	/* Save lazy state, then switch to new vcpu. */
+	mov x0, x1
+	sub x1, x18, #VCPU_REGS
 	b vcpu_switch

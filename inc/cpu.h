@@ -6,15 +6,12 @@
 #include <stdint.h>
 
 #include "arch_cpu.h"
-#include "list.h"
 #include "spinlock.h"
 
 struct vcpu {
-	struct list_entry links;
-	bool is_runnable;
-	bool interrupt;
+	struct spinlock lock;
+	bool is_on;
 	struct arch_regs regs;
-	struct cpu *cpu;
 	struct vm *vm;
 };
 
@@ -24,22 +21,14 @@ struct cpu {
 
 	struct vcpu *current;
 
-	struct list_entry ready_queue;
-
 	/*
 	 * Enabling/disabling irqs are counted per-cpu. They are enabled when
 	 * the count is zero, and disabled when it's non-zero.
 	 */
 	uint32_t irq_disable_count;
 
-	/*
-	 * The number of VMs that have turned this CPU on. CPUs are off when
-	 * this count is zero, and on when this count is ono-zero.
-	 */
-	uint32_t cpu_on_count;
-
-	bool (*timer_cb)(void *context);
-	void *timer_context;
+	/* Determines whether or not the cpu is currently on. */
+	bool is_on;
 
 	/* CPU identifier. Doesn't have to be contiguous. */
 	size_t id;
@@ -51,11 +40,11 @@ struct cpu {
 void cpu_init(struct cpu *c);
 void cpu_irq_enable(struct cpu *c);
 void cpu_irq_disable(struct cpu *c);
-void cpu_on(struct cpu *c);
+bool cpu_on(struct cpu *c);
 void cpu_off(struct cpu *c);
 
-void vcpu_init(struct vcpu *vcpu, struct cpu *cpu, struct vm *vm);
-void vcpu_ready(struct vcpu *v);
-void vcpu_unready(struct vcpu *v);
+void vcpu_init(struct vcpu *vcpu, struct vm *vm);
+void vcpu_on(struct vcpu *v);
+void vcpu_off(struct vcpu *v);
 
 #endif  /* _CPU_H */

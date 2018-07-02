@@ -1,13 +1,10 @@
 #include "arch_cpu.h"
-#include "dlog.h" /* TODO: Remove? */
 #include "msr.h"
 
 void arch_vptable_init(struct arch_page_table *table)
 {
 	uint64_t i;
 	uint64_t v;
-
-	dlog("ID_AA64MMFR0_EL1=0x%x\n", read_msr(ID_AA64MMFR0_EL1));
 
 	/* TODO: Check each bit. */
 	for (i = 0; i < 512; i++) {
