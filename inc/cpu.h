@@ -37,7 +37,10 @@ struct cpu {
 	void *stack_bottom;
 };
 
+void cpu_module_init(void);
+
 void cpu_init(struct cpu *c);
+size_t cpu_index(struct cpu *c);
 void cpu_irq_enable(struct cpu *c);
 void cpu_irq_disable(struct cpu *c);
 bool cpu_on(struct cpu *c);

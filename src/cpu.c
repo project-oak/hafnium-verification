@@ -5,6 +5,35 @@
 #include "std.h"
 #include "vm.h"
 
+/* The stack to be used by the CPUs. */
+alignas(2 * sizeof(size_t)) static char callstacks[STACK_SIZE * MAX_CPUS];
+
+/* State of all supported CPUs. The stack of the first one is initialized. */
+struct cpu cpus[MAX_CPUS] = {
+	{
+		.is_on = 1,
+		.stack_bottom = callstacks + STACK_SIZE,
+	},
+};
+
+void cpu_module_init(void)
+{
+	size_t i;
+
+	/* Initialize all CPUs. */
+	for (i = 0; i < MAX_CPUS; i++) {
+		struct cpu *c = cpus + i;
+		cpu_init(c);
+		c->id = i; /* TODO: Initialize ID. */
+		c->stack_bottom = callstacks + STACK_SIZE * (i + 1);
+	}
+}
+
+size_t cpu_index(struct cpu *c)
+{
+	return cpus - c;
+}
+
 void cpu_init(struct cpu *c)
 {
 	/* TODO: Assumes that c is zeroed out already. */

@@ -1,4 +1,5 @@
 SRCS += alloc.c
+SRCS += api.c
 SRCS += cpio.c
 SRCS += cpu.c
 SRCS += fdt.c

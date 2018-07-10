@@ -1,3 +1,5 @@
+#include "api.h"
+#include "arch_api.h"
 #include "cpu.h"
 #include "dlog.h"
 #include "vm.h"
@@ -21,17 +23,6 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
 	for (;;);
 }
 
-/* TODO: Define constants below according to spec. */
-#define HF_VCPU_RUN       0xff00
-#define HF_VM_GET_COUNT   0xff01
-#define HF_VCPU_GET_COUNT 0xff02
-
-/* TODO: Move these decl elsewhere. */
-extern struct vm secondary_vm[MAX_VMS];
-extern uint32_t secondary_vm_count;
-extern struct vm primary_vm;
-extern struct cpu cpus[];
-
 struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 				      size_t arg3)
 {
@@ -49,28 +40,15 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		break;
 
 	case HF_VM_GET_COUNT:
-		ret.user_ret = secondary_vm_count;
+		ret.user_ret = api_vm_get_count();
 		break;
 
 	case HF_VCPU_GET_COUNT:
-		if (arg1 >= secondary_vm_count)
-			ret.user_ret = -1;
-		else
-			ret.user_ret = secondary_vm[arg1].vcpu_count;
+		ret.user_ret = api_vcpu_get_count(arg1);
 		break;
 
 	case HF_VCPU_RUN:
-		/* TODO: Make sure we don't allow secondary VMs to make this
-		 * hvc call. */
-		ret.user_ret = 1; /* WFI */
-		if (arg1 < secondary_vm_count &&
-		    arg2 < secondary_vm[arg1].vcpu_count &&
-		    secondary_vm[arg1].vcpus[arg2].is_on) {
-			arch_set_vm_mm(&secondary_vm[arg1].page_table);
-			/* TODO: Update the virtual memory. */
-			ret.new = secondary_vm[arg1].vcpus + arg2;
-			ret.user_ret = 0;
-		}
+		ret.user_ret = api_vcpu_run(arg1, arg2, &ret.new);
 		break;
 
 	default:
@@ -87,7 +65,7 @@ struct vcpu *irq_lower(void)
 
 	/* Switch back to primary VM, interrupts will be handled there. */
 	arch_set_vm_mm(&primary_vm.page_table);
-	return &primary_vm.vcpus[cpus - cpu()];
+	return &primary_vm.vcpus[cpu_index(cpu())];
 }
 
 struct vcpu *sync_lower_exception(uint64_t esr)
@@ -100,18 +78,7 @@ struct vcpu *sync_lower_exception(uint64_t esr)
 		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
 		if (esr & 1)
 			return NULL;
-
-		/* Switch back to primary VM. */
-		arch_set_vm_mm(&primary_vm.page_table);
-		vcpu = &primary_vm.vcpus[cpus - cpu()];
-
-		dlog("Returning due to WFI\n");
-
-		/* TODO: Use constant. */
-		/* Set return value to 1, indicating to primary VM that this
-		 * vcpu blocked on a WFI. */
-		arch_regs_set_retval(&vcpu->regs, 1);
-		return vcpu;
+		return api_wait_for_interrupt();
 
 	case 0x24: /* EC = 100100, Data abort. */
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", vcpu->regs.pc, esr, esr >> 26);

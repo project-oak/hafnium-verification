@@ -11,17 +11,6 @@
 
 void *fdt;
 
-/* The stack to be used by the CPUs. */
-alignas(2 * sizeof(size_t)) char callstacks[STACK_SIZE * MAX_CPUS];
-
-/* State of all supported CPUs. The stack of the first one is initialized. */
-struct cpu cpus[MAX_CPUS] = {
-	{
-		.is_on = 1,
-		.stack_bottom = callstacks + STACK_SIZE,
-	},
-};
-
 bool fdt_find_node(struct fdt_node *node, const char *path)
 {
 	while (*path) {
@@ -411,17 +400,9 @@ static bool load_primary(struct cpio *c, struct fdt_node *chosen)
 
 static void one_time_init(void)
 {
-	size_t i;
-
 	dlog("Initializing hafnium\n");
 
-	/* Initialize all CPUs. */
-	for (i = 0; i < MAX_CPUS; i++) {
-		struct cpu *c = cpus + i;
-		cpu_init(c);
-		c->id = i; /* TODO: Initialize ID. */
-		c->stack_bottom = callstacks + STACK_SIZE * (i + 1);
-	}
+	cpu_module_init();
 
 	/* TODO: Code below this point should be removed from this function. */
 	/* TODO: Remove this. */
@@ -470,7 +451,7 @@ struct vcpu *cpu_main(void)
 	if (!atomic_flag_test_and_set_explicit(&inited, memory_order_acq_rel))
 		one_time_init();
 
-	dlog("Starting up cpu %d\n", c - cpus);
+	dlog("Starting up cpu %d\n", cpu_index(c));
 
-	return primary_vm.vcpus + (c - cpus);
+	return primary_vm.vcpus + cpu_index(c);
 }
