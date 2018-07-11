@@ -2,6 +2,7 @@
 #define _FDT_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 struct fdt_node {
@@ -12,6 +13,8 @@ struct fdt_node {
 	const char *strs;
 };
 
+size_t fdt_header_size(void);
+size_t fdt_total_size(struct fdt_header *hdr);
 void fdt_dump(struct fdt_header *hdr);
 void fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr);
 bool fdt_find_child(struct fdt_node *node, const char *child);

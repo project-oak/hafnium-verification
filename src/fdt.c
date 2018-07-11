@@ -358,3 +358,13 @@ void fdt_add_mem_reservation(struct fdt_header *hdr, size_t addr, size_t len)
 	e->address = htobe64(addr);
 	e->size = htobe64(len);
 }
+
+size_t fdt_header_size(void)
+{
+	return sizeof(struct fdt_header);
+}
+
+size_t fdt_total_size(struct fdt_header *hdr)
+{
+	return be32toh(hdr->totalsize);
+}

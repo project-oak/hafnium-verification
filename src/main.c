@@ -1,15 +1,19 @@
 #include <stdalign.h>
-#include <stdatomic.h>
 #include <stddef.h>
 
+#include "alloc.h"
+#include "api.h"
 #include "cpio.h"
 #include "cpu.h"
 #include "dlog.h"
 #include "fdt.h"
+#include "mm.h"
 #include "std.h"
 #include "vm.h"
 
 void *fdt;
+char ptable_buf[PAGE_SIZE * 20];
+struct mm_ptable ptable;
 
 bool fdt_find_node(struct fdt_node *node, const char *path)
 {
@@ -91,19 +95,32 @@ bool fdt_write_number(struct fdt_node *node, const char *name, uint64_t value)
 	return true;
 }
 
-static void relocate(const char *from, size_t size)
+/**
+ * Copies data to an unmapped location by mapping it for write, copying the
+ * data, then unmapping it.
+ */
+static bool copy_to_unmaped(paddr_t to, const void *from, size_t size)
 {
-	extern char bin_end[];
-	size_t tmp = (size_t)&bin_end[0];
-	char *dest = (char *)((tmp + 0x80000 - 1) & ~(0x80000 - 1));
-	dlog("bin_end is at %p, copying to %p\n", &bin_end[0], dest);
-	memcpy(dest, from, size);
+	if (!mm_ptable_map(&ptable, (vaddr_t)to, (vaddr_t)to + size, to,
+			   MM_MODE_W | MM_MODE_STAGE1))
+		return false;
+
+	memcpy((void *)to, from, size);
+
+	mm_ptable_unmap(&ptable, to, to + size, MM_MODE_STAGE1);
+
+	return true;
 }
 
-/* TODO: Remove this. */
-struct vm primary_vm;
-struct vm secondary_vm[MAX_VMS];
-uint32_t secondary_vm_count = 0;
+static bool relocate(const char *from, size_t size)
+{
+	/* TODO: This is a hack. We must read the alignment from the binary. */
+	extern char bin_end[];
+	size_t tmp = (size_t)&bin_end[0];
+	paddr_t dest = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
+	dlog("bin_end is at %p, copying to %p\n", &bin_end[0], dest);
+	return copy_to_unmaped(dest, from, size);
+}
 
 static void find_memory_range(const struct fdt_node *root,
 			      uint64_t *block_start, uint64_t *block_size)
@@ -341,8 +358,11 @@ static bool load_secondary(struct cpio *c,
 		}
 
 		*mem_size -= mem;
-		memcpy((void *)(mem_start + *mem_size), kernel.next,
-		       kernel.limit - kernel.next);
+		if (!copy_to_unmaped(mem_start + *mem_size, kernel.next,
+				     kernel.limit - kernel.next)) {
+			dlog("Unable to copy kernel for vm %u\n", count);
+			continue;
+		}
 
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     mem_start + *mem_size);
@@ -365,7 +385,10 @@ static bool load_primary(struct cpio *c, struct fdt_node *chosen)
 		return false;
 	}
 
-	relocate(it.next, it.limit - it.next);
+	if (!relocate(it.next, it.limit - it.next)) {
+		dlog("Unable to relocate kernel for primary vm.\n");
+		return false;
+	}
 
 	if (!find_file(c, "initrd.img", &it)) {
 		dlog("Unable to find initrd.img\n");
@@ -389,7 +412,6 @@ static bool load_primary(struct cpio *c, struct fdt_node *chosen)
 	{
 		size_t tmp = (size_t)&relocate;
 		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
-
 		fdt_add_mem_reservation(fdt, tmp & ~0xfffff, 0x80000);
 		vm_init(&primary_vm, MAX_CPUS);
 		vm_start_vcpu(&primary_vm, 0, tmp, (size_t)fdt, true);
@@ -398,24 +420,83 @@ static bool load_primary(struct cpio *c, struct fdt_node *chosen)
 	return true;
 }
 
+/**
+ * Performs one-time initialisation of the hypervisor.
+ */
 static void one_time_init(void)
 {
+	extern char text_begin[];
+	extern char text_end[];
+	extern char rodata_begin[];
+	extern char rodata_end[];
+	extern char data_begin[];
+	extern char data_end[];
+
 	dlog("Initializing hafnium\n");
 
 	cpu_module_init();
+	halloc_init((size_t)ptable_buf, sizeof(ptable_buf));
+
+	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
+		dlog("Unable to allocate memory for page table.\n");
+		for (;;);
+	}
+
+	dlog("text: 0x%x - 0x%x\n", text_begin, text_end);
+	dlog("rodata: 0x%x - 0x%x\n", rodata_begin, rodata_end);
+	dlog("data: 0x%x - 0x%x\n", data_begin, data_end);
+
+        /* Map page for uart. */
+        mm_ptable_map_page(&ptable, PL011_BASE, PL011_BASE,
+			   MM_MODE_R | MM_MODE_W | MM_MODE_D | MM_MODE_NOSYNC |
+			   MM_MODE_STAGE1);
+
+        /* Map each section. */
+        mm_ptable_map(&ptable, (vaddr_t)text_begin, (vaddr_t)text_end,
+		      (paddr_t)text_begin,
+		      MM_MODE_X | MM_MODE_NOSYNC | MM_MODE_STAGE1);
+
+        mm_ptable_map(&ptable, (vaddr_t)rodata_begin, (vaddr_t)rodata_end,
+		      (paddr_t)rodata_begin,
+		      MM_MODE_R | MM_MODE_NOSYNC | MM_MODE_STAGE1);
+
+        mm_ptable_map(&ptable, (vaddr_t)data_begin, (vaddr_t)data_end,
+		      (paddr_t)data_begin,
+		      MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC | MM_MODE_STAGE1);
+
+	arch_mm_init((paddr_t)ptable.table);
 
 	/* TODO: Code below this point should be removed from this function. */
-	/* TODO: Remove this. */
-
 	do {
 		struct fdt_node n;
 		uint64_t mem_start = 0;
 		uint64_t mem_size = 0;
+		uint64_t new_mem_size;
+
+		/* Map in the fdt header. */
+		if (!mm_ptable_map(&ptable, (vaddr_t)fdt,
+				   (vaddr_t)fdt + fdt_header_size(),
+				   (paddr_t)fdt,
+				   MM_MODE_R | MM_MODE_STAGE1)) {
+			dlog("Unable to map FDT header.\n");
+			break;
+		}
+
+		/*
+		 * Map the rest of the fdt plus an extra page for adding new
+		 * memory reservations.
+		 */
+		if (!mm_ptable_map(&ptable, (vaddr_t)fdt,
+				   (vaddr_t)fdt + fdt_total_size(fdt),
+				   (paddr_t)fdt,
+				   MM_MODE_R | MM_MODE_STAGE1)) {
+			dlog("Unable to map FDT.\n");
+			break;
+		}
 
 		fdt_root_node(&n, fdt);
 		fdt_find_child(&n, "");
 
-		/* TODO: Use this. */
 		find_memory_range(&n, &mem_start, &mem_size);
 		dlog("Memory range: 0x%x - 0x%x\n", mem_start,
 		     mem_start + mem_size - 1);
@@ -427,18 +508,44 @@ static void one_time_init(void)
 			break;
 
 		dlog("Ramdisk range: 0x%x - 0x%x\n", begin, end - 1);
+		mm_ptable_map(&ptable, begin, end, begin,
+			      MM_MODE_R | MM_MODE_STAGE1);
 
 		struct cpio c;
 		cpio_init(&c, (void *)begin, end - begin);
 
-		load_secondary(&c, mem_start, &mem_size);
+		/* Map the fdt in r/w mode in preparation for extending it. */
+		if (!mm_ptable_map(&ptable, (vaddr_t)fdt,
+				   (vaddr_t)fdt + fdt_total_size(fdt) +
+				   PAGE_SIZE,
+				   (paddr_t)fdt,
+				   MM_MODE_R | MM_MODE_W | MM_MODE_STAGE1)) {
+			dlog("Unable to map FDT in r/w mode.\n");
+			break;
+		}
+		new_mem_size = mem_size;
+		load_secondary(&c, mem_start, &new_mem_size);
 		load_primary(&c, &n);
+
+		/* Patch fdt to reserve memory for secondary VMs. */
+		fdt_add_mem_reservation(fdt, mem_start + new_mem_size,
+					mem_size - new_mem_size);
+
+		/* Unmap FDT. */
+		if (!mm_ptable_unmap(&ptable, (vaddr_t)fdt,
+				     (vaddr_t)fdt + fdt_total_size(fdt) +
+				     PAGE_SIZE, MM_MODE_STAGE1)) {
+			dlog("Unable to unmap the FDT.\n");
+			break;
+		}
 	} while (0);
+
+	mm_ptable_defrag(&ptable);
 
 	arch_set_vm_mm(&primary_vm.page_table);
 }
 
-/*
+/**
  * The entry point of CPUs when they are turned on. It is supposed to initialise
  * all state and return the first vCPU to run.
  */
@@ -446,10 +553,13 @@ struct vcpu *cpu_main(void)
 {
 	struct cpu *c = cpu();
 
-	/* Do global one-time initialization just once. */
-	static atomic_flag inited = ATOMIC_FLAG_INIT;
-	if (!atomic_flag_test_and_set_explicit(&inited, memory_order_acq_rel))
+	/* Do global one-time initialization just once. We avoid using atomics
+	 * by only touching the variable from cpu 0. */
+	static volatile bool inited = false;
+	if (cpu_index(c) == 0 && !inited) {
+		inited = true;
 		one_time_init();
+	}
 
 	dlog("Starting up cpu %d\n", cpu_index(c));
 

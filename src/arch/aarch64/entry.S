@@ -1,14 +1,11 @@
 #include "offsets.h"
 
-#define PECOFF_FILE_ALIGNMENT 0x200
-
 .section .init.entry, "ax"
 
 .global entry
 entry:
-
-	add x13, x18, #0x16
 	b 0f
+	.word 0
 	.quad 4096        /* text_offset */
 	.quad file_size   /* image_size */
 	.quad 0           /* flags */

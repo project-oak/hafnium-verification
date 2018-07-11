@@ -19,7 +19,21 @@ void irq_current(void)
 
 void sync_current_exception(uint64_t esr, uint64_t elr)
 {
-	dlog("Exception: esr=%#x, elr=%#x\n", esr, elr);
+	switch (esr >> 26) {
+	case 0x25: /* EC = 100101, Data abort. */
+		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", elr, esr, esr >> 26);
+		if (!(esr & (1u << 10))) /* Check FnV bit. */
+			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2), read_msr(hpfar_el2) << 8);
+		else
+			dlog(", far=invalid");
+
+		dlog("\n");
+		for (;;);
+
+	default:
+		dlog("Unknown sync exception pc=0x%x, esr=0x%x, ec=0x%x\n", elr, esr, esr >> 26);
+		for (;;);
+	}
 	for (;;);
 }
 

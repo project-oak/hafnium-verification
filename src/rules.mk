@@ -4,6 +4,7 @@ SRCS += cpio.c
 SRCS += cpu.c
 SRCS += fdt.c
 SRCS += main.c
+SRCS += mm.c
 SRCS += std.c
 SRCS += vm.c
 
