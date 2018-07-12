@@ -70,10 +70,6 @@ ifeq ($(PL011),1)
   COPTS += -DPL011_BASE=$(PL011_BASE)
 endif
 
-ifeq ($(DEBUG),1)
-  COPTS += -DDEBUG
-endif
-
 define build_c
   TGT := $(patsubst %.c,%.o,$(OUT)/$(patsubst src/%,%,$(1)))
   GLOBAL_OBJS += $$(TGT)
