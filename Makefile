@@ -33,7 +33,14 @@ GLOBAL_SRCS :=
 GLOBAL_OFFSET_SRCS :=
 $(foreach mod,$(MODULES),$(eval $(call include_module,$(mod))))
 
-CROSS_PREFIX := aarch64-linux-gnu-
+TARGET := aarch64-linux-gnu
+CROSS_PREFIX := $(TARGET)-
+
+ifeq ($(CLANG),1)
+  CC := clang -target $(TARGET)
+else
+  CC := $(CROSS_PREFIX)gcc
+endif
 
 #
 # Rules to build C files.
@@ -73,7 +80,7 @@ define build_c
   REMAIN_SRCS := $$(filter-out $(1),$$(REMAIN_SRCS))
 $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	$$(info CC $(ROOT_DIR)$1)
-	@$(CROSS_PREFIX)gcc $(COPTS) -c $(ROOT_DIR)$(1) -o $$@
+	@$(CC) $(COPTS) -c $(ROOT_DIR)$(1) -o $$@
 endef
 
 #
@@ -86,7 +93,7 @@ define gen_offsets
   GLOBAL_OFFSETS += $$(TGT)
 $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	$$(info GENOFFSET $(ROOT_DIR)$1)
-	@$(CROSS_PREFIX)gcc $(COPTS) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | grep DEFINE_OFFSET | sed 's/\tDEFINE_OFFSET/#define/g' > $$@
+	@$(CC) $(COPTS) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | grep DEFINE_OFFSET | sed 's/\tDEFINE_OFFSET/#define/g' > $$@
 endef
 
 #
@@ -98,7 +105,7 @@ define build_S
   REMAIN_SRCS := $$(filter-out $(1),$$(REMAIN_SRCS))
 $$(TGT): $(ROOT_DIR)$(1) $(GLOBAL_OFFSETS) | $$(dir $$(TGT))
 	$$(info AS $(ROOT_DIR)$1)
-	@$(CROSS_PREFIX)gcc $(COPTS) -c $(ROOT_DIR)$(1) -o $$@
+	@$(CC) $(COPTS) -c $(ROOT_DIR)$(1) -o $$@
 endef
 
 #
