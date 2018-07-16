@@ -12,12 +12,12 @@ int memcmp(const void *a, const void *b, size_t n);
 size_t strlen(const char *str);
 int strcmp(const char *a, const char *b);
 
-static inline uint16_t ntohs(uint16_t v)
+static inline uint16_t be16toh(uint16_t v)
 {
 	return v << 8 | v >> 8;
 }
 
-static inline uint32_t ntohl(uint32_t v)
+static inline uint32_t be32toh(uint32_t v)
 {
 	/* TODO: no conversion needed if native is big endian. */
 	return (v << 24) |
@@ -26,7 +26,7 @@ static inline uint32_t ntohl(uint32_t v)
 	       ((v & 0xff0000) >> 8);
 }
 
-static inline uint64_t ntohll(uint64_t v)
+static inline uint64_t be64toh(uint64_t v)
 {
 	/* TODO: no conversion needed if native is big endian. */
 	return (v << 56) |
@@ -39,14 +39,14 @@ static inline uint64_t ntohll(uint64_t v)
 	       ((v & 0xff00000000) >> 8);
 }
 
-static inline uint32_t htonl(uint32_t v)
+static inline uint32_t htobe32(uint32_t v)
 {
-	return ntohl(v);
+	return be32toh(v);
 }
 
-static inline uint64_t htonll(uint64_t v)
+static inline uint64_t htobe64(uint64_t v)
 {
-	return ntohll(v);
+	return be64toh(v);
 }
 
 #endif  /* STD_H */
