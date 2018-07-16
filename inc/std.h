@@ -12,41 +12,46 @@ int memcmp(const void *a, const void *b, size_t n);
 size_t strlen(const char *str);
 int strcmp(const char *a, const char *b);
 
-static inline uint16_t be16toh(uint16_t v)
-{
-	return v << 8 | v >> 8;
-}
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
-static inline uint32_t be32toh(uint32_t v)
-{
-	/* TODO: no conversion needed if native is big endian. */
-	return (v << 24) |
-	       (v >> 24) |
-	       ((v & 0xff00) << 8) |
-	       ((v & 0xff0000) >> 8);
-}
+#define be16toh(v) __builtin_bswap16(v)
+#define be32toh(v) __builtin_bswap32(v)
+#define be64toh(v) __builtin_bswap64(v)
 
-static inline uint64_t be64toh(uint64_t v)
-{
-	/* TODO: no conversion needed if native is big endian. */
-	return (v << 56) |
-	       (v >> 56) |
-	       ((v & 0xff00) << 40) |
-	       ((v & 0xff000000000000) >> 40) |
-	       ((v & 0xff0000) << 24) |
-	       ((v & 0xff0000000000) >> 24) |
-	       ((v & 0xff000000) << 8) |
-	       ((v & 0xff00000000) >> 8);
-}
+#define htobe16(v) __builtin_bswap16(v)
+#define htobe32(v) __builtin_bswap32(v)
+#define htobe64(v) __builtin_bswap64(v)
 
-static inline uint32_t htobe32(uint32_t v)
-{
-	return be32toh(v);
-}
+#define le16toh(v) (v)
+#define le32toh(v) (v)
+#define le64toh(v) (v)
 
-static inline uint64_t htobe64(uint64_t v)
-{
-	return be64toh(v);
-}
+#define htole16(v) (v)
+#define htole32(v) (v)
+#define htole64(v) (v)
+
+#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+
+#define be16toh(v) (v)
+#define be32toh(v) (v)
+#define be64toh(v) (v)
+
+#define htobe16(v) (v)
+#define htobe32(v) (v)
+#define htobe64(v) (v)
+
+#define le16toh(v) __builtin_bswap16(v)
+#define le32toh(v) __builtin_bswap32(v)
+#define le64toh(v) __builtin_bswap64(v)
+
+#define htole16(v) __builtin_bswap16(v)
+#define htole32(v) __builtin_bswap32(v)
+#define htole64(v) __builtin_bswap64(v)
+
+#else /* __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__ && __BYTE_ORDER__ != __ORDER_BIG_ENDIAN__ */
+
+#error "Unsupported byte order"
+
+#endif
 
 #endif  /* STD_H */
