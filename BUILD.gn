@@ -1,0 +1,23 @@
+import("//build/image/hypervisor.gni")
+
+group("host_tools") {
+  deps = [
+    ":hafnium($arch_toolchain)",
+  ]
+}
+
+executable("test") {
+  sources = [
+    "test.cpp",
+  ]
+}
+
+# Only build the image for the arch
+if (current_toolchain == arch_toolchain) {
+  hypervisor("hafnium") {
+    deps = [
+      "//src",
+      "//src/arch/${arch}",
+    ]
+  }
+}

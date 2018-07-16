@@ -1,0 +1,112 @@
+# Target toolchain specific build arguments.
+declare_args() {
+  # Build with a specific compiler version e.g. when building with clang, set
+  # to "3.9" to build with `clang-3.9`.
+  arch_cc_version = ""
+}
+
+# Template for target toolchains; there is no support for C++ or libraries.
+# Instead, use source_set to group source together.
+template("cc_toolchain") {
+  toolchain(target_name) {
+    assert(defined(invoker.cc), "cc_toolchain() must specify a \"cc\" value")
+    assert(defined(invoker.ld), "cc_toolchain() must specify a \"ld\" value")
+
+    # Combine compiler version and compiler specific flags for this toolchain.
+    cc = "${invoker.cc}"
+    if (arch_cc_version != "") {
+      cc += "-${arch_cc_version}"
+    }
+    if (defined(invoker.cflags)) {
+      cc += " ${invoker.cflags}"
+    }
+
+    tool("cc") {
+      depfile = "{{output}}.d"
+      command = "${cc} -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "CC {{output}}"
+      outputs = [
+        "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+      ]
+    }
+
+    tool("asm") {
+      depfile = "{{output}}.d"
+      command = "${cc} -MMD -MF $depfile {{defines}} {{include_dirs}} {{asmflags}} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "ASM {{output}}"
+      outputs = [
+        "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+      ]
+    }
+
+    tool("link") {
+      outfile = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
+      rspfile = "$outfile.rsp"
+      command = "${invoker.ld} {{ldflags}} -o $outfile --start-group @$rspfile --end-group"
+      description = "LINK $outfile"
+      default_output_dir = "{{root_out_dir}}"
+      rspfile_content = "{{inputs}}"
+      outputs = [
+        outfile,
+      ]
+    }
+
+    tool("stamp") {
+      command = "touch {{output}}"
+      description = "STAMP {{output}}"
+    }
+
+    tool("copy") {
+      command = "cp -af {{source}} {{output}}"
+      description = "COPY {{source}} {{output}}"
+    }
+
+    toolchain_args = {
+      forward_variables_from(invoker.toolchain_args, "*")
+    }
+  }
+}
+
+# Specialize for clang or gcc
+template("clang_toolchain") {
+  assert(defined(invoker.target), "clang_toolchain() must specify a \"target\" value")
+  assert(defined(invoker.arch_tool_prefix), "gcc_toolchain() must specify a \"arch_tool_prefix\" value")
+
+  cc_toolchain(target_name) {
+    cc = "clang"
+    cflags = "-target ${invoker.target}"
+    ld = "${invoker.arch_tool_prefix}ld"
+
+    toolchain_args = {
+      arch_tool_prefix = invoker.arch_tool_prefix
+    }
+  }
+}
+
+template("gcc_toolchain") {
+  assert(defined(invoker.arch_tool_prefix), "gcc_toolchain() must specify a \"arch_tool_prefix\" value")
+
+  cc_toolchain(target_name) {
+    cc = "${invoker.arch_tool_prefix}gcc"
+    ld = "${invoker.arch_tool_prefix}ld"
+
+    toolchain_args = {
+      arch_tool_prefix = invoker.arch_tool_prefix
+    }
+  }
+}
+
+# Specialize for different architectures
+
+clang_toolchain("clang_aarch64") {
+  target = "aarch64-none-eabi"
+  # TODO: below isn't right for bare metal code, but it works fine
+  arch_tool_prefix = "aarch64-linux-gnu-"
+}
+
+gcc_toolchain("gcc_aarch64") {
+  # TODO: below isn't right for bare metal code, but it works fine
+  arch_tool_prefix = "aarch64-linux-gnu-"
+}

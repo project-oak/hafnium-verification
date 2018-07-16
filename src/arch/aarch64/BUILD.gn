@@ -1,0 +1,29 @@
+import("//build/arch/${arch}/${arch_platform}.gni")
+import("//build/image/generate_offsets.gni")
+
+source_set("aarch64") {
+  sources = [
+    "entry.S",
+    "exceptions.S",
+    "handler.c",
+    "mm.c",
+    "offsets.c",
+    "params.c",
+  ]
+
+  if (use_pl011) {
+    sources += [
+      "pl011.c",
+    ]
+  }
+
+  deps = [
+    ":offsets",
+  ]
+}
+
+generate_offsets("offsets") {
+  sources = [
+    "offsets.c",
+  ]
+}

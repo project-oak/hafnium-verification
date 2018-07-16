@@ -1,0 +1,78 @@
+# Calculates offsets of fields in C structures for use in assembly.
+template("generate_offsets") {
+  # There are 3 targets involved:
+  #  1. have the compiler calculate the offsets
+  #  2. extract those offsets to a header file
+  #  3. include the offsets in the build for validation
+  obj_target = "${target_name}__obj"
+  header_target = "${target_name}__header"
+  validate_target = target_name
+
+  # Have the compiler calculate the offsets and store that information in the
+  # object file to extract later.
+  source_set(obj_target) {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "public_deps",
+                             "sources",
+                             "test_only",
+                           ])
+    defines = [ "GEN_OFFSETS" ]
+    visibility = [ ":${header_target}" ]
+  }
+
+  # Extract the offset information we've had the compiler emit into the object
+  # file.
+  action_foreach("${header_target}") {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "public_deps",
+                             "sources",
+                             "test_only",
+                           ])
+
+    script = "//build/image/extract_offsets.py"
+    deps = [
+      ":${obj_target}",
+    ]
+    args = [
+      "--tool_prefix",
+      arch_tool_prefix,
+      "--input",
+      rebase_path("${target_out_dir}/${obj_target}.{{source_name_part}}.o"),
+      "--output",
+      rebase_path("${root_gen_dir}/inc/{{source_name_part}}.h"),
+    ]
+    outputs = [
+      "${root_gen_dir}/inc/{{source_name_part}}.h",
+    ]
+    visibility = [ ":${validate_target}" ]
+  }
+
+  # Include the offset source file in the build so the extracted offsets can be
+  # validated.
+  source_set(validate_target) {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "public_deps",
+                             "sources",
+                             "test_only",
+                           ])
+
+    deps = [
+      ":${header_target}",
+    ]
+  }
+}

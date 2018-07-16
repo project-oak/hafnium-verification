@@ -1,0 +1,48 @@
+import("//build/arch/${arch}/${arch_platform}.gni")
+
+# Helper to build a hypervisor image
+template("hypervisor") {
+  # Link objects together
+  executable("${target_name}__elf") {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "public_deps",
+                             "sources",
+                             "test_only",
+                           ])
+    output_name = "${invoker.target_name}.elf"
+    ldflags = [
+      "-pie",
+      "-T",
+      rebase_path("//build/image/hypervisor.ld"),
+      "--defsym=PREFERRED_LOAD_ADDRESS=${hypervisor_load_address}",
+    ]
+    visibility = [ ":${invoker.target_name}" ]
+  }
+
+  action(target_name) {
+    file_root = rebase_path("${root_out_dir}/${target_name}")
+    elf_file = "${file_root}.elf"
+    bin_file = "${file_root}.bin"
+
+    script = "//build/image/convert_to_binary.py"
+    deps = [
+      ":${target_name}__elf",
+    ]
+    args = [
+      "--tool_prefix",
+      arch_tool_prefix,
+      "--input",
+      elf_file,
+      "--output",
+      bin_file,
+    ]
+    outputs = [
+      "${target_out_dir}/${target_name}.bin",
+    ]
+  }
+}

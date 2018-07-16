@@ -1,0 +1,67 @@
+import("//build/arch/${arch}/${arch_platform}.gni")
+
+config("compiler_defaults") {
+  cflags = [
+    "-g",
+    "-O2",
+    "-Wall",
+    #"-Wextra",
+    "-Wpedantic",
+    "-Werror",
+  ]
+
+  cflags_c = [
+    "-std=c11",
+  ]
+
+  cflags_cc = [
+    "-std=c++14",
+  ]
+
+  if (is_debug) {
+    defines = [
+      "DEBUG=1",
+    ]
+  } else {
+    defines = [
+      "DEBUG=0",
+    ]
+  }
+
+  # Configuration specific for the bare metal images
+  if (current_toolchain == arch_toolchain) {
+    include_dirs = [
+      "//inc",
+      "//src/arch/${arch}/inc",
+      "${root_gen_dir}/inc",
+    ]
+
+    cflags += [
+      "-mcpu=${arch_cpu}",
+      "-fno-stack-protector",
+      "-fno-builtin",
+      "-ffreestanding",
+      "-fpic",
+      "-Wno-extended-offsetof", # have clang give us some slack
+    ]
+
+    defines += [
+      "MAX_CPUS=8",
+      "MAX_VMS=16",
+      "STACK_SIZE=4096",
+    ]
+
+    # TODO: this should be arch specific but it is currenly used by the
+    # platform generic code to map the memory
+    if (use_pl011) {
+      defines += [
+        "PL011_BASE=${pl011_base_address}",
+      ]
+    }
+  }
+}
+
+config("executable_ldconfig") {
+  ldflags = [
+  ]
+}
