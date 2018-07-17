@@ -7,6 +7,7 @@ endif
 ARCH ?= aarch64
 PLAT ?= qemu
 DEBUG ?= 1
+CROSS_COMPILE ?= aarch64-linux-gnu-
 NAME := hafnium
 
 OUT := $(ROOT_DIR)out/$(ARCH)/$(PLAT)
@@ -33,13 +34,10 @@ GLOBAL_SRCS :=
 GLOBAL_OFFSET_SRCS :=
 $(foreach mod,$(MODULES),$(eval $(call include_module,$(mod))))
 
-TARGET := aarch64-linux-gnu
-CROSS_PREFIX := $(TARGET)-
-
 ifeq ($(CLANG),1)
-  CC := clang -target $(TARGET)
+  CC := clang -target $(patsubst %-,%,$(CROSS_COMPILE))
 else
-  CC := $(CROSS_PREFIX)gcc
+  CC := $(CROSS_COMPILE)gcc
 endif
 
 #
@@ -136,11 +134,11 @@ $(foreach name,$(sort $(dir $(GLOBAL_OFFSETS))),$(eval $(call create_dir,$(name)
 #
 $(OUT)/$(NAME): $(GLOBAL_OBJS) $(ROOT_DIR)src/$(NAME).ld
 	$(info LD $(ROOT_DIR)src/$(NAME).ld)
-	@$(CROSS_PREFIX)ld -g -pie $(GLOBAL_OBJS) -T$(ROOT_DIR)src/$(NAME).ld --defsym PREFERRED_LOAD_ADDRESS=$(LOAD_ADDRESS) -o $@
+	@$(CROSS_COMPILE)ld -g -pie $(GLOBAL_OBJS) -T$(ROOT_DIR)src/$(NAME).ld --defsym PREFERRED_LOAD_ADDRESS=$(LOAD_ADDRESS) -o $@
 
 $(OUT)/$(NAME).bin: $(OUT)/$(NAME)
 	$(info OBJCOPY $@)
-	@$(CROSS_PREFIX)objcopy -O binary $< $@
+	@$(CROSS_COMPILE)objcopy -O binary $< $@
 
 clean:
 	rm -rf $(ROOT_DIR)out
