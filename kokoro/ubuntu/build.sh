@@ -6,4 +6,4 @@ set -e
 set -x
 
 cd git/hafnium
-make
+CLANG="clang-3.9" make

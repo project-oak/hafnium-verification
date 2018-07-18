@@ -3,13 +3,29 @@ ifeq ($(ROOT_DIR),./)
   ROOT_DIR :=
 endif
 
+#
 # Defaults.
+#
 ARCH ?= aarch64
 PLAT ?= qemu
 DEBUG ?= 1
-CROSS_COMPILE ?= aarch64-linux-gnu-
 NAME := hafnium
 
+# Toolchain
+CROSS_COMPILE ?= aarch64-linux-gnu-
+
+ifeq ($(CLANG),1)
+  CLANG := clang
+endif
+GCC ?= gcc
+
+ifdef CLANG
+  CC := $(CLANG) -target $(patsubst %-,%,$(CROSS_COMPILE))
+else
+  CC := $(CROSS_COMPILE)$(GCC)
+endif
+
+# Output
 OUT := $(ROOT_DIR)out/$(ARCH)/$(PLAT)
 
 all: $(OUT)/$(NAME).bin
@@ -33,12 +49,6 @@ MODULES += src/arch/$(ARCH)
 GLOBAL_SRCS :=
 GLOBAL_OFFSET_SRCS :=
 $(foreach mod,$(MODULES),$(eval $(call include_module,$(mod))))
-
-ifeq ($(CLANG),1)
-  CC := clang -target $(patsubst %-,%,$(CROSS_COMPILE))
-else
-  CC := $(CROSS_COMPILE)gcc
-endif
 
 #
 # Rules to build C files.
