@@ -2,9 +2,9 @@
 #define _DECL_OFFSETS_H
 
 #define DECL(name, type, field) \
-	__asm("DEFINE_OFFSET " #name " %0" : : "n" (offsetof(type, field)))
+    const size_t DEFINE_OFFSET__##name = offsetof(type, field)
 
 #define DECL_SIZE(name, type) \
-	__asm("DEFINE_OFFSET " #name " %0" : : "n" (sizeof(type)))
+    const size_t DEFINE_OFFSET__name = sizeof(type)
 
 #endif  /* _DECL_OFFSETS_H */

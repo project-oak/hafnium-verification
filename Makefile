@@ -51,6 +51,7 @@ COPTS += -O2
 COPTS += -fpic
 COPTS += -std=c11
 COPTS += -Wall -Wpedantic -Werror
+COPTS += -Wno-extended-offsetof
 COPTS += -DDEBUG=$(DEBUG)
 COPTS += -MMD -MP -MF $$(patsubst %,%.d,$$@)
 COPTS += -DMAX_CPUS=8
@@ -87,7 +88,10 @@ define gen_offsets
   GLOBAL_OFFSETS += $$(TGT)
 $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	$$(info GENOFFSET $(ROOT_DIR)$1)
-	@$(CC) $(COPTS) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | grep DEFINE_OFFSET | sed 's/\tDEFINE_OFFSET/#define/g' > $$@
+	@$(CC) $(COPTS) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | \
+		grep ^DEFINE_OFFSET -A1 | \
+		grep -v ^--$ | \
+		sed 's/^DEFINE_OFFSET__\([^:]*\):/#define \1 \\/g' | sed 's/\.xword//g' > $$@
 endef
 
 #
