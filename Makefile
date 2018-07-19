@@ -103,8 +103,8 @@ $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	@$(CC) $(COPTS) $(DEP_GEN) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | \
 		grep ^DEFINE_OFFSET -A1 | \
 		grep -v ^--$ | \
-		sed 's/^DEFINE_OFFSET__\([^:]*\):/#define \1 \\/g' | \
-		sed 's/\.xword//g' > $$@
+		sed 's/^DEFINE_OFFSET__\([^:]*\):/#define \1 \\/' | \
+		sed 's/\.[^\t][^\t]*//' > $$@
 endef
 
 #
@@ -166,11 +166,11 @@ clean:
 
 # see .clang-format
 format:
-	find $(ROOT_DIR)src/ -name *.c -o -name *.h | xargs clang-format -style file -i
-	find $(ROOT_DIR)inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
+	@find $(ROOT_DIR)src/ -name *.c -o -name *.h | xargs clang-format -style file -i
+	@find $(ROOT_DIR)inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
 
 # see .clang-tidy
 tidy:
-	find $(ROOT_DIR)src/ -name *.c -exec clang-tidy {} -fix -- -target $(TARGET) $(COPTS) \;
+	@find $(ROOT_DIR)src/ -name *.c -exec clang-tidy {} -fix -- -target $(TARGET) $(COPTS) \;
 
 -include $(patsubst %,%.d,$(GLOBAL_OBJS),$(GLOBAL_OFFSETS))

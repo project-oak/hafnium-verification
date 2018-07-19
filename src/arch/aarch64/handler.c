@@ -52,6 +52,8 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
 struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 				      size_t arg3)
 {
+	(void)arg3;
+
 	struct hvc_handler_return ret;
 
 	ret.new = NULL;

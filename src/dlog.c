@@ -163,7 +163,7 @@ static const char *parse_flags(const char *p, int *flags)
 /*
  * Prints the given format string to the debug log.
  */
-void dlog(const char *str, ...)
+void dlog(const char *fmt, ...)
 {
 	static struct spinlock sl = SPINLOCK_INIT;
 	const char *p;
@@ -172,11 +172,11 @@ void dlog(const char *str, ...)
 	int flags;
 	char buf[2];
 
-	va_start(args, str);
+	va_start(args, fmt);
 
 	sl_lock(&sl);
 
-	for (p = str; *p; p++) {
+	for (p = fmt; *p; p++) {
 		switch (*p) {
 		default:
 			arch_putchar(*p);

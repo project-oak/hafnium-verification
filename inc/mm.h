@@ -34,7 +34,7 @@ struct mm_ptable {
 
 bool mm_ptable_init(struct mm_ptable *t, int mode);
 void mm_ptable_dump(struct mm_ptable *t);
-bool mm_ptable_map(struct mm_ptable *t, vaddr_t vaddr_begin, vaddr_t vaddr_end,
+bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 		   paddr_t paddr, int mode);
 bool mm_ptable_map_page(struct mm_ptable *t, vaddr_t va, paddr_t pa, int mode);
 bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode);

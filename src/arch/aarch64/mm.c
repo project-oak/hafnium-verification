@@ -43,7 +43,7 @@
 #define STAGE2_WRITETHROUGH 2ull
 #define STAGE2_WRITEBACK    3ull
 
-#define STAGE2_MEMATTR_NORMAL(outer, inner) ((outer << 2) | (inner))
+#define STAGE2_MEMATTR_NORMAL(outer, inner) (((outer) << 2) | (inner))
 
 /* The following stage-2 memory attributes for device memory. */
 #define STAGE2_MEMATTR_DEVICE_nGnRnE 0ull

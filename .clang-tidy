@@ -1,2 +1,2 @@
-Checks: 'readability-braces-around-statements'
+Checks: 'readability-*,portability-*,performance-*,misc-*,bugprone-*,modernize-*'
 HeaderFilterRegex: '.*'

@@ -105,6 +105,9 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
  */
 static void mm_free_page_pte(pte_t pte, int level, bool sync)
 {
+	(void)pte;
+	(void)level;
+	(void)sync;
 	/* TODO: Implement.
 	if (!arch_mm_pte_is_present(pte) || level < 1)
 		return;
@@ -309,6 +312,7 @@ void mm_ptable_dump(struct mm_ptable *t)
 void mm_ptable_defrag(struct mm_ptable *t)
 {
 	/* TODO: Implement. */
+	(void)t;
 }
 
 /**

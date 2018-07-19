@@ -280,7 +280,7 @@ static bool memiter_parse_uint(struct memiter *it, uint64_t *value)
 	}
 
 	/* Fail if it's not a number. */
-	if (*it->next < '0' && *it->next > '9') {
+	if (*it->next < '0' || *it->next > '9') {
 		return false;
 	}
 
