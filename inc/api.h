@@ -14,4 +14,4 @@ int32_t api_vcpu_get_count(uint32_t vm_idx);
 int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next);
 struct vcpu *api_wait_for_interrupt(void);
 
-#endif  /* _API_H */
+#endif /* _API_H */

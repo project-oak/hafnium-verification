@@ -45,7 +45,7 @@ static uint64_t convert_number(const char *data, uint32_t size)
 }
 
 static bool fdt_read_number(const struct fdt_node *node, const char *name,
-		     uint64_t *value)
+			    uint64_t *value)
 {
 	const char *data;
 	uint32_t size;
@@ -161,8 +161,8 @@ static void find_memory_range(const struct fdt_node *root,
 		/* Traverse all memory ranges within this node. */
 		while (size >= entry_size) {
 			uint64_t addr = convert_number(data, address_size);
-			uint64_t len = convert_number(data + address_size,
-						      size_size);
+			uint64_t len =
+				convert_number(data + address_size, size_size);
 
 			if (len > *block_size) {
 				/* Remember the largest range we've found. */
@@ -321,8 +321,8 @@ static bool find_file(struct cpio *c, const char *name, struct memiter *it)
 	return false;
 }
 
-static bool load_secondary(struct cpio *c,
-			   uint64_t mem_start, uint64_t *mem_size)
+static bool load_secondary(struct cpio *c, uint64_t mem_start,
+			   uint64_t *mem_size)
 {
 	struct memiter it;
 	struct memiter str;
@@ -335,10 +335,10 @@ static bool load_secondary(struct cpio *c,
 		return false;
 	}
 
-	for (count = 0; memiter_parse_uint(&it, &mem) &&
-	     memiter_parse_uint(&it, &cpu) &&
-	     memiter_parse_str(&it, &str) &&
-	     count < MAX_VMS; count++) {
+	for (count = 0;
+	     memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
+	     memiter_parse_str(&it, &str) && count < MAX_VMS;
+	     count++) {
 		struct memiter kernel;
 
 		if (!memiter_find_file(c, &str, &kernel)) {
@@ -353,7 +353,9 @@ static bool load_secondary(struct cpio *c,
 		}
 
 		if (mem < kernel.limit - kernel.next) {
-			dlog("Kernel is larger than available memory for vm %u\n", count);
+			dlog("Kernel is larger than available memory for vm "
+			     "%u\n",
+			     count);
 			continue;
 		}
 
@@ -367,8 +369,8 @@ static bool load_secondary(struct cpio *c,
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     mem_start + *mem_size);
 		vm_init(secondary_vm + count, cpu);
-		vm_start_vcpu(secondary_vm + count, 0,
-			      mem_start + *mem_size, 0, false);
+		vm_start_vcpu(secondary_vm + count, 0, mem_start + *mem_size, 0,
+			      false);
 	}
 
 	secondary_vm_count = count;
@@ -439,28 +441,29 @@ static void one_time_init(void)
 
 	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
 		dlog("Unable to allocate memory for page table.\n");
-		for (;;);
+		for (;;)
+			;
 	}
 
 	dlog("text: 0x%x - 0x%x\n", text_begin, text_end);
 	dlog("rodata: 0x%x - 0x%x\n", rodata_begin, rodata_end);
 	dlog("data: 0x%x - 0x%x\n", data_begin, data_end);
 
-        /* Map page for uart. */
-        mm_ptable_map_page(&ptable, PL011_BASE, PL011_BASE,
+	/* Map page for uart. */
+	mm_ptable_map_page(&ptable, PL011_BASE, PL011_BASE,
 			   MM_MODE_R | MM_MODE_W | MM_MODE_D | MM_MODE_NOSYNC |
-			   MM_MODE_STAGE1);
+				   MM_MODE_STAGE1);
 
-        /* Map each section. */
-        mm_ptable_map(&ptable, (vaddr_t)text_begin, (vaddr_t)text_end,
+	/* Map each section. */
+	mm_ptable_map(&ptable, (vaddr_t)text_begin, (vaddr_t)text_end,
 		      (paddr_t)text_begin,
 		      MM_MODE_X | MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
-        mm_ptable_map(&ptable, (vaddr_t)rodata_begin, (vaddr_t)rodata_end,
+	mm_ptable_map(&ptable, (vaddr_t)rodata_begin, (vaddr_t)rodata_end,
 		      (paddr_t)rodata_begin,
 		      MM_MODE_R | MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
-        mm_ptable_map(&ptable, (vaddr_t)data_begin, (vaddr_t)data_end,
+	mm_ptable_map(&ptable, (vaddr_t)data_begin, (vaddr_t)data_end,
 		      (paddr_t)data_begin,
 		      MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
@@ -476,8 +479,7 @@ static void one_time_init(void)
 		/* Map in the fdt header. */
 		if (!mm_ptable_map(&ptable, (vaddr_t)fdt,
 				   (vaddr_t)fdt + fdt_header_size(),
-				   (paddr_t)fdt,
-				   MM_MODE_R | MM_MODE_STAGE1)) {
+				   (paddr_t)fdt, MM_MODE_R | MM_MODE_STAGE1)) {
 			dlog("Unable to map FDT header.\n");
 			break;
 		}
@@ -488,8 +490,7 @@ static void one_time_init(void)
 		 */
 		if (!mm_ptable_map(&ptable, (vaddr_t)fdt,
 				   (vaddr_t)fdt + fdt_total_size(fdt),
-				   (paddr_t)fdt,
-				   MM_MODE_R | MM_MODE_STAGE1)) {
+				   (paddr_t)fdt, MM_MODE_R | MM_MODE_STAGE1)) {
 			dlog("Unable to map FDT.\n");
 			break;
 		}
@@ -515,11 +516,11 @@ static void one_time_init(void)
 		cpio_init(&c, (void *)begin, end - begin);
 
 		/* Map the fdt in r/w mode in preparation for extending it. */
-		if (!mm_ptable_map(&ptable, (vaddr_t)fdt,
-				   (vaddr_t)fdt + fdt_total_size(fdt) +
-				   PAGE_SIZE,
-				   (paddr_t)fdt,
-				   MM_MODE_R | MM_MODE_W | MM_MODE_STAGE1)) {
+		if (!mm_ptable_map(
+			    &ptable, (vaddr_t)fdt,
+			    (vaddr_t)fdt + fdt_total_size(fdt) + PAGE_SIZE,
+			    (paddr_t)fdt,
+			    MM_MODE_R | MM_MODE_W | MM_MODE_STAGE1)) {
 			dlog("Unable to map FDT in r/w mode.\n");
 			break;
 		}
@@ -532,9 +533,10 @@ static void one_time_init(void)
 					mem_size - new_mem_size);
 
 		/* Unmap FDT. */
-		if (!mm_ptable_unmap(&ptable, (vaddr_t)fdt,
-				     (vaddr_t)fdt + fdt_total_size(fdt) +
-				     PAGE_SIZE, MM_MODE_STAGE1)) {
+		if (!mm_ptable_unmap(
+			    &ptable, (vaddr_t)fdt,
+			    (vaddr_t)fdt + fdt_total_size(fdt) + PAGE_SIZE,
+			    MM_MODE_STAGE1)) {
 			dlog("Unable to unmap the FDT.\n");
 			break;
 		}

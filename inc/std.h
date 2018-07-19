@@ -48,10 +48,11 @@ int strcmp(const char *a, const char *b);
 #define htole32(v) __builtin_bswap32(v)
 #define htole64(v) __builtin_bswap64(v)
 
-#else /* __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__ && __BYTE_ORDER__ != __ORDER_BIG_ENDIAN__ */
+#else /* __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__ && \
+	 __BYTE_ORDER__ != __ORDER_BIG_ENDIAN__ */
 
 #error "Unsupported byte order"
 
 #endif
 
-#endif  /* STD_H */
+#endif /* STD_H */

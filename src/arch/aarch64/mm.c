@@ -1,6 +1,9 @@
-#include "arch_cpu.h"
 #include "mm.h"
+#include "arch_cpu.h"
 #include "msr.h"
+
+/* Keep macro alignment */
+/* clang-format off */
 
 #define NON_SHAREABLE   0ull
 #define OUTER_SHAREABLE 2ull
@@ -51,23 +54,25 @@
 #define STAGE2_ACCESS_READ  1ull
 #define STAGE2_ACCESS_WRITE 2ull
 
+/* clang-format on */
+
 void arch_vptable_init(struct arch_page_table *table)
 {
 	uint64_t i;
 
 	/* TODO: Check each bit. */
 	for (i = 0; i < 512; i++) {
-		table->entry0[i] = 1 |
-			(i << 30) | /* Address */
-			(1 << 10) | /* Access flag. */
-			(0 << 8) | /* sh: non-shareable. this preserves EL1. */
-			(3 << 6) | /* rw */
+		table->entry0[i] =
+			1 | (i << 30) | /* Address */
+			(1 << 10) |     /* Access flag. */
+			(0 << 8) |  /* sh: non-shareable. this preserves EL1. */
+			(3 << 6) |  /* rw */
 			(0xf << 2); /* normal mem; preserves EL0/1. */
-		table->entry1[i] = 1 |
-			((i+512) << 30) | /* Address */
-			(1 << 10) | /* Access flag. */
-			(0 << 8) | /* sh: non-shareable. this preserves EL1. */
-			(3 << 6) | /* rw */
+		table->entry1[i] =
+			1 | ((i + 512) << 30) | /* Address */
+			(1 << 10) |		/* Access flag. */
+			(0 << 8) |  /* sh: non-shareable. this preserves EL1. */
+			(3 << 6) |  /* rw */
 			(0xf << 2); /* normal mem; preserves EL0/1. */
 		table->first[i] = 0;
 	}
@@ -131,15 +136,14 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 
 void arch_mm_init(paddr_t table)
 {
-	uint64_t v =
-		(1u << 31) | /* RES1. */
-		(4 << 16) | /* PS: 44 bits. */
-		(0 << 14) | /* TG0: 4 KB granule. */
-		(3 << 12) | /* SH0: inner shareable. */
-		(1 << 10) | /* ORGN0: normal, cacheable ... */
-		(1 << 8) | /* IRGN0: normal, cacheable ... */
-		(2 << 6) | /* SL0: Start at level 0. */
-		(20 << 0); /* T0SZ: 44-bit input address size. */
+	uint64_t v = (1u << 31) | /* RES1. */
+		     (4 << 16) |  /* PS: 44 bits. */
+		     (0 << 14) |  /* TG0: 4 KB granule. */
+		     (3 << 12) |  /* SH0: inner shareable. */
+		     (1 << 10) |  /* ORGN0: normal, cacheable ... */
+		     (1 << 8) |   /* IRGN0: normal, cacheable ... */
+		     (2 << 6) |   /* SL0: Start at level 0. */
+		     (20 << 0);   /* T0SZ: 44-bit input address size. */
 	write_msr(vtcr_el2, v);
 
 	/*
@@ -147,40 +151,37 @@ void arch_mm_init(paddr_t table)
 	 * 0xff -> Normal memory, Inner/Outer Write-Back Non-transient,
 	 *         Write-Alloc, Read-Alloc.
 	 */
-	write_msr(mair_el2,
-		  (0 << (8 * STAGE1_DEVICEINDX)) |
-		  (0xff << (8 * STAGE1_NORMALINDX)));
+	write_msr(mair_el2, (0 << (8 * STAGE1_DEVICEINDX)) |
+				    (0xff << (8 * STAGE1_NORMALINDX)));
 
 	write_msr(ttbr0_el2, table);
 
 	/*
 	 * Configure tcr_el2.
 	 */
-	v =
-		(1 << 20) | /* TBI, top byte ignored. */
-		(2 << 16) | /* PS, Physical Address Size, 40 bits, 1TB. */
-		(0 << 14) | /* TG0, granule size, 4KB. */
-		(3 << 12) | /* SH0, inner shareable. */
-		(1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
-		(1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
-		(25 << 0) | /* T0SZ, input address is 2^39 bytes. */
-		0;
+	v = (1 << 20) | /* TBI, top byte ignored. */
+	    (2 << 16) | /* PS, Physical Address Size, 40 bits, 1TB. */
+	    (0 << 14) | /* TG0, granule size, 4KB. */
+	    (3 << 12) | /* SH0, inner shareable. */
+	    (1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
+	    (1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
+	    (25 << 0) | /* T0SZ, input address is 2^39 bytes. */
+	    0;
 	write_msr(tcr_el2, v);
 
-	v =
-		(1 << 0) | /* M, enable stage 1 EL2 MMU. */
-		(1 << 1) | /* A, enable alignment check faults. */
-		(1 << 2) | /* C, data cache enable. */
-		(1 << 3) | /* SA, enable stack alignment check. */
-		(3 << 4) | /* RES1 bits. */
-		(1 << 11) | /* RES1 bit. */
-		(1 << 12) | /* I, instruction cache enable. */
-		(1 << 16) | /* RES1 bit. */
-		(1 << 18) | /* RES1 bit. */
-		(1 << 19) | /* WXN bit, writable execute never . */
-		(3 << 22) | /* RES1 bits. */
-		(3 << 28) | /* RES1 bits. */
-		0;
+	v = (1 << 0) |  /* M, enable stage 1 EL2 MMU. */
+	    (1 << 1) |  /* A, enable alignment check faults. */
+	    (1 << 2) |  /* C, data cache enable. */
+	    (1 << 3) |  /* SA, enable stack alignment check. */
+	    (3 << 4) |  /* RES1 bits. */
+	    (1 << 11) | /* RES1 bit. */
+	    (1 << 12) | /* I, instruction cache enable. */
+	    (1 << 16) | /* RES1 bit. */
+	    (1 << 18) | /* RES1 bit. */
+	    (1 << 19) | /* WXN bit, writable execute never . */
+	    (3 << 22) | /* RES1 bits. */
+	    (3 << 28) | /* RES1 bits. */
+	    0;
 
 	__asm volatile("dsb sy");
 	__asm volatile("isb");

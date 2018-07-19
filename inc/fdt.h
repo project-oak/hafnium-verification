@@ -23,7 +23,7 @@ bool fdt_next_sibling(struct fdt_node *node, const char **sibling_name);
 bool fdt_read_property(const struct fdt_node *node, const char *name,
 		       const char **buf, uint32_t *size);
 
-void fdt_add_mem_reservation(struct fdt_header *hdr,
-			     uint64_t addr, uint64_t len);
+void fdt_add_mem_reservation(struct fdt_header *hdr, uint64_t addr,
+			     uint64_t len);
 
-#endif  /* _FDT_H */
+#endif /* _FDT_H */

@@ -16,4 +16,4 @@ static inline void isb(void)
 	__asm__ volatile("isb");
 }
 
-#endif  /* _ARCH_BARRIERS_H */
+#endif /* _ARCH_BARRIERS_H */

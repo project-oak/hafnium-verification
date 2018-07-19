@@ -157,4 +157,8 @@ $(OUT)/$(NAME).bin: $(OUT)/$(NAME)
 clean:
 	rm -rf $(ROOT_DIR)out
 
+format:
+	find $(ROOT_DIR)src/ -name *.c -o -name *.h | xargs clang-format -style file -i
+	find $(ROOT_DIR)inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
+
 -include $(patsubst %,%.d,$(GLOBAL_OBJS),$(GLOBAL_OFFSETS))

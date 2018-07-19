@@ -9,4 +9,4 @@ void dlog(const char *fmt, ...);
 
 void dlog_init(void (*pchar)(char));
 
-#endif  /* _DLOG_H */
+#endif /* _DLOG_H */

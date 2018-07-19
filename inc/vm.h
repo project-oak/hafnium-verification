@@ -13,4 +13,4 @@ void vm_init(struct vm *vm, uint32_t vcpu_count);
 void vm_start_vcpu(struct vm *vm, size_t index, size_t entry, size_t arg,
 		   bool is_primary);
 
-#endif  /* _VM_H */
+#endif /* _VM_H */

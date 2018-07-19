@@ -16,7 +16,7 @@ struct cpio_iter {
 
 void cpio_init(struct cpio *c, const void *buf, size_t size);
 void cpio_init_iter(struct cpio *c, struct cpio_iter *iter);
-bool cpio_next(struct cpio_iter *iter, const char **name,
-	       const void **contents, size_t *size);
+bool cpio_next(struct cpio_iter *iter, const char **name, const void **contents,
+	       size_t *size);
 
-#endif  /* _CPIO_H */
+#endif /* _CPIO_H */

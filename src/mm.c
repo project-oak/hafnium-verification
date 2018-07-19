@@ -6,8 +6,13 @@
 #include "alloc.h"
 #include "dlog.h"
 
+/* Keep macro alignment */
+/* clang-format off */
+
 #define MAP_FLAG_SYNC   0x01
 #define MAP_FLAG_COMMIT 0x02
+
+/* clang-format on */
 
 /**
  * Calculates the size of the address space represented by a page table entry at
@@ -58,7 +63,7 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 
 	/* Allocate a new table. */
 	ntable = (sync_alloc ? halloc_aligned : halloc_aligned_nosync)(
-			PAGE_SIZE, PAGE_SIZE);
+		PAGE_SIZE, PAGE_SIZE);
 	if (!ntable) {
 		dlog("Failed to allocate memory for page table\n");
 		return NULL;
@@ -142,12 +147,12 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 				mm_free_page_pte(pte, level, sync);
 			}
 		} else {
-			pte_t *nt = mm_populate_table_pte(table + i, level,
-							  sync);
+			pte_t *nt =
+				mm_populate_table_pte(table + i, level, sync);
 			if (!nt)
 				return false;
 
-			if (!mm_map_level(va, va_end, pa, attrs, nt, level-1,
+			if (!mm_map_level(va, va_end, pa, attrs, nt, level - 1,
 					  flags))
 				return false;
 		}

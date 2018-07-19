@@ -180,12 +180,13 @@ static inline void arch_mm_invalidate_stage2_range(vaddr_t begin, vaddr_t end)
 	for (it = begin; it < end; it += (1ull << (PAGE_BITS - 12)))
 		__asm__("tlbi ipas2e1, %0" : : "r"(it));
 
-	__asm__ volatile("dsb ish\n"
-			 "tlbi vmalle1is\n"
-			 "dsb ish\n");
+	__asm__ volatile(
+		"dsb ish\n"
+		"tlbi vmalle1is\n"
+		"dsb ish\n");
 }
 
 uint64_t arch_mm_mode_to_attrs(int mode);
 void arch_mm_init(paddr_t table);
 
-#endif  /* _ARCH_MM_H */
+#endif /* _ARCH_MM_H */

@@ -1,12 +1,15 @@
 #include "dlog.h"
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdarg.h>
 
 #include "arch.h"
 #include "spinlock.h"
 #include "std.h"
+
+/* Keep macro alignment */
+/* clang-format off */
 
 #define FLAG_SPACE 0x01
 #define FLAG_ZERO  0x02
@@ -15,6 +18,8 @@
 #define FLAG_ALT   0x10
 #define FLAG_UPPER 0x20
 #define FLAG_NEG   0x40
+
+/* clang-format on */
 
 /*
  * Prints a raw string to the debug log and returns its length.
@@ -200,27 +205,23 @@ void dlog(const char *str, ...)
 
 			/* Handle the format specifier. */
 			switch (p[1]) {
-			case 's':
-				{
-					char *str = va_arg(args, char *);
-					print_string(str, str, w, flags, ' ');
-				}
+			case 's': {
+				char *str = va_arg(args, char *);
+				print_string(str, str, w, flags, ' ');
 				p++;
-				break;
+			} break;
 
 			case 'd':
-			case 'i':
-				{
-					int v = va_arg(args, int);
-					if (v < 0) {
-						flags |= FLAG_NEG;
-						v = -v;
-					}
-
-					print_num((size_t)v, 10, w, flags);
+			case 'i': {
+				int v = va_arg(args, int);
+				if (v < 0) {
+					flags |= FLAG_NEG;
+					v = -v;
 				}
+
+				print_num((size_t)v, 10, w, flags);
 				p++;
-				break;
+			} break;
 
 			case 'X':
 				flags |= FLAG_UPPER;

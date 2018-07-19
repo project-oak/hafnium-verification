@@ -50,4 +50,4 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu *v);
 void vcpu_off(struct vcpu *v);
 
-#endif  /* _CPU_H */
+#endif /* _CPU_H */

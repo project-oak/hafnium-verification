@@ -31,4 +31,4 @@ static inline void io_write_mb(size_t addr, uint32_t v)
 	io_write(addr, v);
 }
 
-#endif  /* _IO_H */
+#endif /* _IO_H */

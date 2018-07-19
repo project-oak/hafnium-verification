@@ -78,8 +78,8 @@ static bool fdt_tokenizer_token(struct fdt_tokenizer *t, uint32_t *res)
 	return false;
 }
 
-static bool fdt_tokenizer_bytes(struct fdt_tokenizer *t,
-				const char **res, size_t size)
+static bool fdt_tokenizer_bytes(struct fdt_tokenizer *t, const char **res,
+				size_t size)
 {
 	const char *next = t->cur + size;
 	if (next > t->end)
@@ -197,7 +197,8 @@ static void fdt_skip_properties(struct fdt_tokenizer *t)
 	const char *name;
 	const char *buf;
 	uint32_t size;
-	while (fdt_next_property(t, &name, &buf, &size));
+	while (fdt_next_property(t, &name, &buf, &size))
+		;
 }
 
 static bool fdt_skip_node(struct fdt_tokenizer *t)
@@ -320,9 +321,11 @@ void fdt_dump(struct fdt_header *hdr)
 			depth++;
 			while (fdt_next_property(&t, &name, &buf, &size)) {
 				size_t i;
-				dlog("%*sproperty: \"%s\" (", 2 * depth, "", name);
+				dlog("%*sproperty: \"%s\" (", 2 * depth, "",
+				     name);
 				for (i = 0; i < size; i++)
-					dlog("%s%02x", i == 0 ? "" : " ", buf[i]);
+					dlog("%s%02x", i == 0 ? "" : " ",
+					     buf[i]);
 				dlog(")\n");
 			}
 		}
@@ -338,9 +341,12 @@ void fdt_dump(struct fdt_header *hdr)
 
 	dlog("fdt: off_mem_rsvmap=%u\n", be32toh(hdr->off_mem_rsvmap));
 	{
-		struct fdt_reserve_entry *e = (struct fdt_reserve_entry *)((size_t)hdr + be32toh(hdr->off_mem_rsvmap));
+		struct fdt_reserve_entry *e =
+			(struct fdt_reserve_entry
+				 *)((size_t)hdr + be32toh(hdr->off_mem_rsvmap));
 		while (e->address || e->size) {
-			dlog("Entry: %p (0x%x bytes)\n", be64toh(e->address), be64toh(e->size));
+			dlog("Entry: %p (0x%x bytes)\n", be64toh(e->address),
+			     be64toh(e->size));
 			e++;
 		}
 	}
@@ -351,10 +357,14 @@ void fdt_add_mem_reservation(struct fdt_header *hdr, size_t addr, size_t len)
 	/* TODO: Clean this up. */
 	char *begin = (char *)hdr + be32toh(hdr->off_mem_rsvmap);
 	struct fdt_reserve_entry *e = (struct fdt_reserve_entry *)begin;
-	hdr->totalsize = htobe32(be32toh(hdr->totalsize) + sizeof(struct fdt_reserve_entry));
-	hdr->off_dt_struct = htobe32(be32toh(hdr->off_dt_struct) + sizeof(struct fdt_reserve_entry));
-	hdr->off_dt_strings = htobe32(be32toh(hdr->off_dt_strings) + sizeof(struct fdt_reserve_entry));
-	memmove(begin + sizeof(struct fdt_reserve_entry), begin, be32toh(hdr->totalsize) - be32toh(hdr->off_mem_rsvmap));
+	hdr->totalsize = htobe32(be32toh(hdr->totalsize) +
+				 sizeof(struct fdt_reserve_entry));
+	hdr->off_dt_struct = htobe32(be32toh(hdr->off_dt_struct) +
+				     sizeof(struct fdt_reserve_entry));
+	hdr->off_dt_strings = htobe32(be32toh(hdr->off_dt_strings) +
+				      sizeof(struct fdt_reserve_entry));
+	memmove(begin + sizeof(struct fdt_reserve_entry), begin,
+		be32toh(hdr->totalsize) - be32toh(hdr->off_mem_rsvmap));
 	e->address = htobe64(addr);
 	e->size = htobe64(len);
 }

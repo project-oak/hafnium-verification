@@ -63,21 +63,21 @@ static inline void arch_irq_enable(void)
 	__asm volatile("msr DAIFClr, #0xf");
 }
 
-static inline
-void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg, bool is_primary)
+static inline void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg,
+				  bool is_primary)
 {
 	/* TODO: Use constant here. */
-	r->spsr = 5 |         /* M bits, set to EL1h. */
+	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */
 	r->pc = pc;
 	r->r[0] = arg;
-	r->lazy.hcr_el2 = (1u << 31) |  /* RW bit. */
-			  (1u << 2) |   /* PTW, Protected Table Walk. */
-			  (1u << 0);    /* VM: enable stage-2 translation. */
+	r->lazy.hcr_el2 = (1u << 31) | /* RW bit. */
+			  (1u << 2) |  /* PTW, Protected Table Walk. */
+			  (1u << 0);   /* VM: enable stage-2 translation. */
 
 	if (!is_primary)
-		r->lazy.hcr_el2 |= (7u << 3) |   /* AMO, IMO, FMO bits. */
-				   (3u << 13);   /* TWI, TWE bits. */
+		r->lazy.hcr_el2 |= (7u << 3) | /* AMO, IMO, FMO bits. */
+				   (3u << 13); /* TWI, TWE bits. */
 }
 
 static inline void arch_regs_set_retval(struct arch_regs *r, size_t v)
@@ -124,9 +124,9 @@ static inline void arch_cpu_off(void)
 
 static inline void arch_set_vm_mm(struct arch_page_table *table)
 {
-	__asm volatile("msr vttbr_el2, %0" : : "r" ((size_t)table));
+	__asm volatile("msr vttbr_el2, %0" : : "r"((size_t)table));
 }
 
 void arch_vptable_init(struct arch_page_table *table);
 
-#endif  /* _ARCH_CPU_H */
+#endif /* _ARCH_CPU_H */

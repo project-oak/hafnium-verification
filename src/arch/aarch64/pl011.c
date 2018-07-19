@@ -20,7 +20,8 @@ void arch_putchar(char c)
 		arch_putchar('\r');
 
 	/* Wait until there is room in the tx buffer. */
-	while (io_read(PL011_BASE + UARTFR) & UARTFR_TXFF);
+	while (io_read(PL011_BASE + UARTFR) & UARTFR_TXFF)
+		;
 
 	dmb();
 
@@ -30,5 +31,6 @@ void arch_putchar(char c)
 	dmb();
 
 	/* Wait until the UART is no longer busy. */
-	while (io_read_mb(PL011_BASE + UARTFR) & UARTFR_BUSY);
+	while (io_read_mb(PL011_BASE + UARTFR) & UARTFR_BUSY)
+		;
 }

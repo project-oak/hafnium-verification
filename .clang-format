@@ -1,0 +1,9 @@
+BasedOnStyle: Google
+IndentWidth: 8
+ContinuationIndentWidth: 8
+UseTab: Always
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: false

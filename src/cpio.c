@@ -32,8 +32,8 @@ void cpio_init_iter(struct cpio *c, struct cpio_iter *iter)
 	iter->size_left = c->total_size;
 }
 
-bool cpio_next(struct cpio_iter *iter, const char **name,
-	       const void **contents, size_t *size)
+bool cpio_next(struct cpio_iter *iter, const char **name, const void **contents,
+	       size_t *size)
 {
 	const struct cpio_header *h = iter->cur;
 	size_t size_left;
@@ -70,7 +70,8 @@ bool cpio_next(struct cpio_iter *iter, const char **name,
 	*size = filelen;
 
 	iter->cur = (struct cpio_header *)((char *)*contents + filelen);
-	iter->cur = (struct cpio_header *)(char *)(((size_t)iter->cur + 1) & ~1);
+	iter->cur =
+		(struct cpio_header *)(char *)(((size_t)iter->cur + 1) & ~1);
 	iter->size_left = size_left;
 
 	return true;

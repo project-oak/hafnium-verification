@@ -40,4 +40,4 @@ bool mm_ptable_map_page(struct mm_ptable *t, vaddr_t va, paddr_t pa, int mode);
 bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode);
 void mm_ptable_defrag(struct mm_ptable *t);
 
-#endif  /* _MM_H */
+#endif /* _MM_H */
