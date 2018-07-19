@@ -44,14 +44,16 @@ void cpu_init(struct cpu *c)
 void cpu_irq_enable(struct cpu *c)
 {
 	c->irq_disable_count--;
-	if (!c->irq_disable_count)
+	if (!c->irq_disable_count) {
 		arch_irq_enable();
+	}
 }
 
 void cpu_irq_disable(struct cpu *c)
 {
-	if (!c->irq_disable_count)
+	if (!c->irq_disable_count) {
 		arch_irq_disable();
+	}
 	c->irq_disable_count++;
 }
 

@@ -20,8 +20,9 @@ int32_t api_vm_get_count(void)
  */
 int32_t api_vcpu_get_count(uint32_t vm_idx)
 {
-	if (vm_idx >= secondary_vm_count)
+	if (vm_idx >= secondary_vm_count) {
 		return -1;
+	}
 
 	return secondary_vm[vm_idx].vcpu_count;
 }
@@ -35,15 +36,18 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
 	struct vcpu *vcpu;
 
 	/* Only the primary VM can switch vcpus. */
-	if (cpu()->current->vm != &primary_vm)
+	if (cpu()->current->vm != &primary_vm) {
 		return HF_VCPU_WAIT_FOR_INTERRUPT;
+	}
 
-	if (vm_idx >= secondary_vm_count)
+	if (vm_idx >= secondary_vm_count) {
 		return HF_VCPU_WAIT_FOR_INTERRUPT;
+	}
 
 	vcpu = vm->vcpus + vcpu_idx;
-	if (vcpu_idx >= vm->vcpu_count || !vcpu->is_on)
+	if (vcpu_idx >= vm->vcpu_count || !vcpu->is_on) {
 		return HF_VCPU_WAIT_FOR_INTERRUPT;
+	}
 
 	arch_set_vm_mm(&vm->page_table);
 	*next = vcpu;

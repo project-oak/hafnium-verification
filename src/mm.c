@@ -58,8 +58,9 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	size_t inc;
 
 	/* Just return pointer to table if it's already populated. */
-	if (arch_mm_pte_is_table(v))
+	if (arch_mm_pte_is_table(v)) {
 		return arch_mm_pte_to_table(v);
+	}
 
 	/* Allocate a new table. */
 	ntable = (sync_alloc ? halloc_aligned : halloc_aligned_nosync)(
@@ -75,10 +76,11 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 		new_pte = arch_mm_absent_pte();
 	} else {
 		inc = mm_entry_size(level - 1);
-		if (level == 1)
+		if (level == 1) {
 			new_pte = arch_mm_block_to_page_pte(v);
-		else
+		} else {
 			new_pte = v;
+		}
 	}
 
 	/* Initialise entries in the new table. */
@@ -128,14 +130,16 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 	bool sync = flags & MAP_FLAG_SYNC;
 
 	/* Cap va_end so that we don't go over the current level max. */
-	if (va_end > va_level_end)
+	if (va_end > va_level_end) {
 		va_end = va_level_end;
+	}
 
 	/* Fill each entry in the table. */
 	while (va < va_end) {
 		if (level == 0) {
-			if (commit)
+			if (commit) {
 				table[i] = arch_mm_pa_to_page_pte(pa, attrs);
+			}
 		} else if ((va_end - va) >= entry_size &&
 			   arch_mm_is_block_allowed(level) &&
 			   (va & (entry_size - 1)) == 0) {
@@ -149,12 +153,14 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 		} else {
 			pte_t *nt =
 				mm_populate_table_pte(table + i, level, sync);
-			if (!nt)
+			if (!nt) {
 				return false;
+			}
 
 			if (!mm_map_level(va, va_end, pa, attrs, nt, level - 1,
-					  flags))
+					  flags)) {
 				return false;
+			}
 		}
 
 		va = (va + entry_size) & ~(entry_size - 1);
@@ -170,10 +176,11 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
  */
 static void mm_invalidate_tlb(vaddr_t begin, vaddr_t end, bool stage1)
 {
-	if (stage1)
+	if (stage1) {
 		arch_mm_invalidate_stage1_range(begin, end);
-	else
+	} else {
 		arch_mm_invalidate_stage2_range(begin, end);
+	}
 }
 
 /**
@@ -197,8 +204,9 @@ bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 	 * state. In such a two-step implementation, the table may be left with
 	 * extra internal tables, but no different mapping on failure.
 	 */
-	if (!mm_map_level(begin, end, paddr, attrs, t->table, level, flags))
+	if (!mm_map_level(begin, end, paddr, attrs, t->table, level, flags)) {
 		return false;
+	}
 
 	mm_map_level(begin, end, paddr, attrs, t->table, level,
 		     flags | MAP_FLAG_COMMIT);
@@ -222,8 +230,9 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
 
 	/* Also do updates in two steps, similarly to mm_ptable_map. */
-	if (!mm_map_level(begin, end, begin, 0, t->table, level, flags))
+	if (!mm_map_level(begin, end, begin, 0, t->table, level, flags)) {
 		return false;
+	}
 
 	mm_map_level(begin, end, begin, 0, t->table, level,
 		     flags | MAP_FLAG_COMMIT);
@@ -250,8 +259,9 @@ bool mm_ptable_map_page(struct mm_ptable *t, vaddr_t va, paddr_t pa, int mode)
 
 	for (i = arch_mm_max_level(&t->arch); i > 0; i--) {
 		table = mm_populate_table_pte(table + mm_index(va, i), i, sync);
-		if (!table)
+		if (!table) {
 			return false;
+		}
 	}
 
 	i = mm_index(va, 0);
@@ -267,12 +277,14 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
 {
 	uint64_t i;
 	for (i = 0; i < PAGE_SIZE / sizeof(pte_t); i++) {
-		if (!arch_mm_pte_is_present(table[i]))
+		if (!arch_mm_pte_is_present(table[i])) {
 			continue;
+		}
 
 		dlog("%*s%x: %x\n", 4 * (max_level - level), "", i, table[i]);
-		if (!level)
+		if (!level) {
 			continue;
+		}
 
 		if (arch_mm_pte_is_table(table[i])) {
 			mm_dump_table_recursive(arch_mm_pte_to_table(table[i]),
@@ -307,16 +319,19 @@ bool mm_ptable_init(struct mm_ptable *t, int mode)
 	size_t i;
 	pte_t *table;
 
-	if (mode & MM_MODE_NOSYNC)
+	if (mode & MM_MODE_NOSYNC) {
 		table = halloc_aligned_nosync(PAGE_SIZE, PAGE_SIZE);
-	else
+	} else {
 		table = halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	}
 
-	if (!table)
+	if (!table) {
 		return false;
+	}
 
-	for (i = 0; i < PAGE_SIZE / sizeof(pte_t); i++)
+	for (i = 0; i < PAGE_SIZE / sizeof(pte_t); i++) {
 		table[i] = arch_mm_absent_pte();
+	}
 
 	t->table = table;
 	arch_mm_ptable_init(&t->arch);

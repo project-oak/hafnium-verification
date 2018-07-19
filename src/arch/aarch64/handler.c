@@ -14,8 +14,9 @@ struct hvc_handler_return {
 void irq_current(void)
 {
 	dlog("IRQ from current\n");
-	for (;;)
-		;
+	for (;;) {
+		/* do nothing */
+	}
 }
 
 void sync_current_exception(uint64_t esr, uint64_t elr)
@@ -24,24 +25,28 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
 	case 0x25: /* EC = 100101, Data abort. */
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", elr, esr,
 		     esr >> 26);
-		if (!(esr & (1u << 10))) /* Check FnV bit. */
+		if (!(esr & (1u << 10))) { /* Check FnV bit. */
 			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
 			     read_msr(hpfar_el2) << 8);
-		else
+		} else {
 			dlog(", far=invalid");
+		}
 
 		dlog("\n");
-		for (;;)
-			;
+		for (;;) {
+			/* do nothing */
+		}
 
 	default:
 		dlog("Unknown sync exception pc=0x%x, esr=0x%x, ec=0x%x\n", elr,
 		     esr, esr >> 26);
-		for (;;)
-			;
+		for (;;) {
+			/* do nothing */
+		}
 	}
-	for (;;)
-		;
+	for (;;) {
+		/* do nothing */
+	}
 }
 
 struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
@@ -97,28 +102,32 @@ struct vcpu *sync_lower_exception(uint64_t esr)
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
 		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
-		if (esr & 1)
+		if (esr & 1) {
 			return NULL;
+		}
 		return api_wait_for_interrupt();
 
 	case 0x24: /* EC = 100100, Data abort. */
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", vcpu->regs.pc,
 		     esr, esr >> 26);
-		if (!(esr & (1u << 10))) /* Check FnV bit. */
+		if (!(esr & (1u << 10))) { /* Check FnV bit. */
 			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
 			     read_msr(hpfar_el2) << 8);
-		else
+		} else {
 			dlog(", far=invalid");
+		}
 
 		dlog("\n");
-		for (;;)
-			;
+		for (;;) {
+			/* do nothing */
+		}
 
 	default:
 		dlog("Unknown sync exception pc=0x%x, esr=0x%x, ec=0x%x\n",
 		     vcpu->regs.pc, esr, esr >> 26);
-		for (;;)
-			;
+		for (;;) {
+			/* do nothing */
+		}
 	}
 
 	return NULL;

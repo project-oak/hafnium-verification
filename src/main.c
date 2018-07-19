@@ -18,8 +18,9 @@ struct mm_ptable ptable;
 bool fdt_find_node(struct fdt_node *node, const char *path)
 {
 	while (*path) {
-		if (!fdt_find_child(node, path))
+		if (!fdt_find_child(node, path)) {
 			return false;
+		}
 		path += strlen(path);
 	}
 
@@ -50,8 +51,9 @@ static bool fdt_read_number(const struct fdt_node *node, const char *name,
 	const char *data;
 	uint32_t size;
 
-	if (!fdt_read_property(node, name, &data, &size))
+	if (!fdt_read_property(node, name, &data, &size)) {
 		return false;
+	}
 
 	switch (size) {
 	case sizeof(uint32_t):
@@ -75,8 +77,9 @@ bool fdt_write_number(struct fdt_node *node, const char *name, uint64_t value)
 		char a[8];
 	} t;
 
-	if (!fdt_read_property(node, name, &data, &size))
+	if (!fdt_read_property(node, name, &data, &size)) {
 		return false;
+	}
 
 	switch (size) {
 	case sizeof(uint32_t):
@@ -102,8 +105,9 @@ bool fdt_write_number(struct fdt_node *node, const char *name, uint64_t value)
 static bool copy_to_unmaped(paddr_t to, const void *from, size_t size)
 {
 	if (!mm_ptable_map(&ptable, (vaddr_t)to, (vaddr_t)to + size, to,
-			   MM_MODE_W | MM_MODE_STAGE1))
+			   MM_MODE_W | MM_MODE_STAGE1)) {
 		return false;
+	}
 
 	memcpy((void *)to, from, size);
 
@@ -132,21 +136,24 @@ static void find_memory_range(const struct fdt_node *root,
 	uint64_t entry_size;
 
 	/* Get the sizes of memory range addresses and sizes. */
-	if (fdt_read_number(&n, "#address-cells", &address_size))
+	if (fdt_read_number(&n, "#address-cells", &address_size)) {
 		address_size *= sizeof(uint32_t);
-	else
+	} else {
 		address_size = sizeof(uint32_t);
+	}
 
-	if (fdt_read_number(&n, "#size-cells", &size_size))
+	if (fdt_read_number(&n, "#size-cells", &size_size)) {
 		size_size *= sizeof(uint32_t);
-	else
+	} else {
 		size_size = sizeof(uint32_t);
+	}
 
 	entry_size = address_size + size_size;
 
 	/* Look for nodes with the device_type set to "memory". */
-	if (!fdt_first_child(&n, &name))
+	if (!fdt_first_child(&n, &name)) {
 		return;
+	}
 
 	do {
 		const char *data;
@@ -228,15 +235,17 @@ static bool memiter_isspace(struct memiter *it)
 
 static void memiter_skip_space(struct memiter *it)
 {
-	while (it->next < it->limit && memiter_isspace(it))
+	while (it->next < it->limit && memiter_isspace(it)) {
 		it->next++;
+	}
 }
 
 static bool memiter_iseq(const struct memiter *it, const char *str)
 {
 	size_t len = strlen(str);
-	if (len != it->limit - it->next)
+	if (len != it->limit - it->next) {
 		return false;
+	}
 	return memcmp(it->next, str, len) == 0;
 }
 
@@ -244,14 +253,16 @@ static bool memiter_parse_str(struct memiter *it, struct memiter *str)
 {
 	/* Skip all white space and fail if we reach the end of the buffer. */
 	memiter_skip_space(it);
-	if (it->next >= it->limit)
+	if (it->next >= it->limit) {
 		return false;
+	}
 
 	str->next = it->next;
 
 	/* Find the end of the string. */
-	while (it->next < it->limit && !memiter_isspace(it))
+	while (it->next < it->limit && !memiter_isspace(it)) {
 		it->next++;
+	}
 
 	str->limit = it->next;
 
@@ -264,12 +275,14 @@ static bool memiter_parse_uint(struct memiter *it, uint64_t *value)
 
 	/* Skip all white space and fail if we reach the end of the buffer. */
 	memiter_skip_space(it);
-	if (it->next >= it->limit)
+	if (it->next >= it->limit) {
 		return false;
+	}
 
 	/* Fail if it's not a number. */
-	if (*it->next < '0' && *it->next > '9')
+	if (*it->next < '0' && *it->next > '9') {
 		return false;
+	}
 
 	/* Parse the number. */
 	do {
@@ -441,8 +454,9 @@ static void one_time_init(void)
 
 	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
 		dlog("Unable to allocate memory for page table.\n");
-		for (;;)
-			;
+		for (;;) {
+			/* do nothing */
+		}
 	}
 
 	dlog("text: 0x%x - 0x%x\n", text_begin, text_end);
@@ -505,8 +519,9 @@ static void one_time_init(void)
 		uint64_t begin;
 		uint64_t end;
 
-		if (!find_initrd(&n, &begin, &end))
+		if (!find_initrd(&n, &begin, &end)) {
 			break;
+		}
 
 		dlog("Ramdisk range: 0x%x - 0x%x\n", begin, end - 1);
 		mm_ptable_map(&ptable, begin, end, begin,

@@ -13,6 +13,7 @@ NAME := hafnium
 
 # Toolchain
 CROSS_COMPILE ?= aarch64-linux-gnu-
+TARGET := $(patsubst %-,%,$(CROSS_COMPILE))
 
 ifeq ($(CLANG),1)
   CLANG := clang
@@ -20,7 +21,7 @@ endif
 GCC ?= gcc
 
 ifdef CLANG
-  CC := $(CLANG) -target $(patsubst %-,%,$(CROSS_COMPILE))
+  CC := $(CLANG) -target $(TARGET)
 else
   CC := $(CROSS_COMPILE)$(GCC)
 endif
@@ -63,7 +64,6 @@ COPTS += -std=c11
 COPTS += -Wall -Wpedantic -Werror
 COPTS += -Wno-extended-offsetof
 COPTS += -DDEBUG=$(DEBUG)
-COPTS += -MMD -MP -MF $$(patsubst %,%.d,$$@)
 COPTS += -DMAX_CPUS=8
 COPTS += -DMAX_VMS=16
 COPTS += -DSTACK_SIZE=4096
@@ -79,13 +79,15 @@ ifeq ($(PL011),1)
   COPTS += -DPL011_BASE=$(PL011_BASE)
 endif
 
+DEP_GEN = -MMD -MP -MF $$(patsubst %,%.d,$$@)
+
 define build_c
   TGT := $(patsubst %.c,%.o,$(OUT)/$(patsubst src/%,%,$(1)))
   GLOBAL_OBJS += $$(TGT)
   REMAIN_SRCS := $$(filter-out $(1),$$(REMAIN_SRCS))
 $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	$$(info CC $(ROOT_DIR)$1)
-	@$(CC) $(COPTS) -c $(ROOT_DIR)$(1) -o $$@
+	@$(CC) $(COPTS) $(DEP_GEN) -c $(ROOT_DIR)$(1) -o $$@
 endef
 
 #
@@ -98,10 +100,11 @@ define gen_offsets
   GLOBAL_OFFSETS += $$(TGT)
 $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	$$(info GENOFFSET $(ROOT_DIR)$1)
-	@$(CC) $(COPTS) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | \
+	@$(CC) $(COPTS) $(DEP_GEN) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | \
 		grep ^DEFINE_OFFSET -A1 | \
 		grep -v ^--$ | \
-		sed 's/^DEFINE_OFFSET__\([^:]*\):/#define \1 \\/g' | sed 's/\.xword//g' > $$@
+		sed 's/^DEFINE_OFFSET__\([^:]*\):/#define \1 \\/g' | \
+		sed 's/\.xword//g' > $$@
 endef
 
 #
@@ -113,7 +116,7 @@ define build_S
   REMAIN_SRCS := $$(filter-out $(1),$$(REMAIN_SRCS))
 $$(TGT): $(ROOT_DIR)$(1) $(GLOBAL_OFFSETS) | $$(dir $$(TGT))
 	$$(info AS $(ROOT_DIR)$1)
-	@$(CC) $(COPTS) -c $(ROOT_DIR)$(1) -o $$@
+	@$(CC) $(COPTS) $(DEP_GEN) -c $(ROOT_DIR)$(1) -o $$@
 endef
 
 #
@@ -157,8 +160,17 @@ $(OUT)/$(NAME).bin: $(OUT)/$(NAME)
 clean:
 	rm -rf $(ROOT_DIR)out
 
+#
+# Rules for code health
+#
+
+# see .clang-format
 format:
 	find $(ROOT_DIR)src/ -name *.c -o -name *.h | xargs clang-format -style file -i
 	find $(ROOT_DIR)inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
+
+# see .clang-tidy
+tidy:
+	find $(ROOT_DIR)src/ -name *.c -exec clang-tidy {} -fix -- -target $(TARGET) $(COPTS) \;
 
 -include $(patsubst %,%.d,$(GLOBAL_OBJS),$(GLOBAL_OFFSETS))

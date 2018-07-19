@@ -41,27 +41,31 @@ bool cpio_next(struct cpio_iter *iter, const char **name, const void **contents,
 	size_t namelen;
 
 	size_left = iter->size_left;
-	if (size_left < sizeof(struct cpio_header))
+	if (size_left < sizeof(struct cpio_header)) {
 		return false;
+	}
 
 	/* TODO: Check magic. */
 
 	size_left -= sizeof(struct cpio_header);
 	namelen = (h->namesize + 1) & ~1;
-	if (size_left < namelen)
+	if (size_left < namelen) {
 		return false;
+	}
 
 	size_left -= namelen;
 	filelen = (size_t)h->filesize[0] << 16 | h->filesize[1];
-	if (size_left < filelen)
+	if (size_left < filelen) {
 		return false;
+	}
 
 	/* TODO: Check that string is null-terminated. */
 	/* TODO: Check that trailler is not returned. */
 
 	/* Stop enumerating files when we hit the end marker. */
-	if (!strcmp((const char *)(iter->cur + 1), "TRAILER!!!"))
+	if (!strcmp((const char *)(iter->cur + 1), "TRAILER!!!")) {
 		return false;
+	}
 
 	size_left -= filelen;
 

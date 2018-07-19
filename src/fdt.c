@@ -56,8 +56,9 @@ static void fdt_tokenizer_align(struct fdt_tokenizer *t)
 static bool fdt_tokenizer_uint32(struct fdt_tokenizer *t, uint32_t *res)
 {
 	const char *next = t->cur + sizeof(*res);
-	if (next > t->end)
+	if (next > t->end) {
 		return false;
+	}
 
 	*res = be32toh(*(uint32_t *)t->cur);
 	t->cur = next;
@@ -82,8 +83,9 @@ static bool fdt_tokenizer_bytes(struct fdt_tokenizer *t, const char **res,
 				size_t size)
 {
 	const char *next = t->cur + size;
-	if (next > t->end)
+	if (next > t->end) {
 		return false;
+	}
 
 	*res = t->cur;
 	t->cur = next;
@@ -118,14 +120,16 @@ void fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr)
 	memset(node, 0, sizeof(*node));
 
 	/* Check the magic number before anything else. */
-	if (hdr->magic != be32toh(FDT_MAGIC))
+	if (hdr->magic != be32toh(FDT_MAGIC)) {
 		return;
+	}
 
 	/* Check the version. */
 	max_ver = be32toh(hdr->version);
 	min_ver = be32toh(hdr->last_comp_version);
-	if (FDT_VERSION < min_ver || FDT_VERSION > max_ver)
+	if (FDT_VERSION < min_ver || FDT_VERSION > max_ver) {
 		return;
+	}
 
 	/* TODO: Verify that it is all within the fdt. */
 	node->begin = (const char *)hdr + begin;
@@ -141,8 +145,9 @@ static bool fdt_next_property(struct fdt_tokenizer *t, const char **name,
 	uint32_t token;
 	uint32_t nameoff;
 
-	if (!fdt_tokenizer_token(t, &token))
+	if (!fdt_tokenizer_token(t, &token)) {
 		return false;
+	}
 
 	if (token != FDT_PROP) {
 		/* Rewind so that caller will get the same token. */
@@ -171,8 +176,9 @@ static bool fdt_next_subnode(struct fdt_tokenizer *t, const char **name)
 {
 	uint32_t token;
 
-	if (!fdt_tokenizer_token(t, &token))
+	if (!fdt_tokenizer_token(t, &token)) {
 		return false;
+	}
 
 	if (token != FDT_BEGIN_NODE) {
 		/* Rewind so that caller will get the same token. */
@@ -197,8 +203,9 @@ static void fdt_skip_properties(struct fdt_tokenizer *t)
 	const char *name;
 	const char *buf;
 	uint32_t size;
-	while (fdt_next_property(t, &name, &buf, &size))
-		;
+	while (fdt_next_property(t, &name, &buf, &size)) {
+		/* do nothing */
+	}
 }
 
 static bool fdt_skip_node(struct fdt_tokenizer *t)
@@ -215,8 +222,9 @@ static bool fdt_skip_node(struct fdt_tokenizer *t)
 			pending++;
 		}
 
-		if (!fdt_tokenizer_token(t, &token))
+		if (!fdt_tokenizer_token(t, &token)) {
 			return false;
+		}
 
 		if (token != FDT_END_NODE) {
 			t->cur = t->end;
@@ -238,8 +246,9 @@ bool fdt_read_property(const struct fdt_node *node, const char *name,
 	fdt_tokenizer_init(&t, node->strs, node->begin, node->end);
 
 	while (fdt_next_property(&t, &prop_name, buf, size)) {
-		if (!strcmp(prop_name, name))
+		if (!strcmp(prop_name, name)) {
 			return true;
+		}
 	}
 
 	return false;
@@ -253,8 +262,9 @@ bool fdt_first_child(struct fdt_node *node, const char **child_name)
 
 	fdt_skip_properties(&t);
 
-	if (!fdt_next_subnode(&t, child_name))
+	if (!fdt_next_subnode(&t, child_name)) {
 		return false;
+	}
 
 	node->begin = t.cur;
 
@@ -267,11 +277,13 @@ bool fdt_next_sibling(struct fdt_node *node, const char **sibling_name)
 
 	fdt_tokenizer_init(&t, node->strs, node->begin, node->end);
 
-	if (!fdt_skip_node(&t))
+	if (!fdt_skip_node(&t)) {
 		return false;
+	}
 
-	if (!fdt_next_subnode(&t, sibling_name))
+	if (!fdt_next_subnode(&t, sibling_name)) {
 		return false;
+	}
 
 	node->begin = t.cur;
 
@@ -323,18 +335,21 @@ void fdt_dump(struct fdt_header *hdr)
 				size_t i;
 				dlog("%*sproperty: \"%s\" (", 2 * depth, "",
 				     name);
-				for (i = 0; i < size; i++)
+				for (i = 0; i < size; i++) {
 					dlog("%s%02x", i == 0 ? "" : " ",
 					     buf[i]);
+				}
 				dlog(")\n");
 			}
 		}
 
-		if (!fdt_tokenizer_token(&t, &token))
+		if (!fdt_tokenizer_token(&t, &token)) {
 			return;
+		}
 
-		if (token != FDT_END_NODE)
+		if (token != FDT_END_NODE) {
 			return;
+		}
 
 		depth--;
 	} while (depth);

@@ -89,46 +89,53 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 		attrs |= STAGE1_AF | STAGE1_SH(OUTER_SHAREABLE);
 
 		/* Define the execute bits. */
-		if (!(mode & MM_MODE_X))
+		if (!(mode & MM_MODE_X)) {
 			attrs |= STAGE1_XN;
+		}
 
 		/* Define the read/write bits. */
-		if (mode & MM_MODE_W)
+		if (mode & MM_MODE_W) {
 			attrs |= STAGE1_AP(STAGE1_READWRITE);
-		else
+		} else {
 			attrs |= STAGE1_AP(STAGE1_READONLY);
+		}
 
 		/* Define the memory attribute bits. */
-		if (mode & MM_MODE_D)
+		if (mode & MM_MODE_D) {
 			attrs |= STAGE1_ATTRINDX(STAGE1_DEVICEINDX);
-		else
+		} else {
 			attrs |= STAGE1_ATTRINDX(STAGE1_NORMALINDX);
+		}
 	} else {
 		uint64_t access = 0;
 
 		attrs |= STAGE2_AF | STAGE2_SH(OUTER_SHAREABLE);
 
 		/* Define the read/write bits. */
-		if (mode & MM_MODE_R)
+		if (mode & MM_MODE_R) {
 			access |= STAGE2_ACCESS_READ;
+		}
 
-		if (mode & MM_MODE_W)
+		if (mode & MM_MODE_W) {
 			access |= STAGE2_ACCESS_WRITE;
+		}
 
 		attrs |= STAGE2_S2AP(access);
 
 		/* Define the execute bits. */
-		if (mode & MM_MODE_X)
+		if (mode & MM_MODE_X) {
 			attrs |= STAGE2_XN(STAGE2_EXECUTE_ALL);
-		else
+		} else {
 			attrs |= STAGE2_XN(STAGE2_EXECUTE_NONE);
+		}
 
 		/* Define the memory attribute bits. */
-		if (mode & MM_MODE_D)
+		if (mode & MM_MODE_D) {
 			attrs |= STAGE2_MEMATTR_DEVICE_nGnRnE;
-		else
+		} else {
 			attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK,
 						       STAGE2_WRITEBACK);
+		}
 	}
 
 	return attrs;

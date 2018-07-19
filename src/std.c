@@ -3,8 +3,9 @@
 void *memset(void *s, int c, size_t n)
 {
 	char *p = (char *)s;
-	while (n--)
+	while (n--) {
 		*p++ = c;
+	}
 	return s;
 }
 
@@ -14,8 +15,9 @@ void *memset(void *s, int c, size_t n)
 size_t strlen(const char *str)
 {
 	const char *p = str;
-	while (*p)
+	while (*p) {
 		p++;
+	}
 	return p - str;
 }
 
@@ -38,8 +40,9 @@ void *memmove(void *dst, const void *src, size_t n)
 	char *x;
 	const char *y;
 
-	if (dst < src)
+	if (dst < src) {
 		return memcpy(dst, src, n);
+	}
 
 	x = (char *)dst + n - 1;
 	y = (const char *)src + n - 1;
@@ -59,8 +62,9 @@ int memcmp(const void *a, const void *b, size_t n)
 	const char *y = b;
 
 	while (n--) {
-		if (*x != *y)
+		if (*x != *y) {
 			return *x - *y;
+		}
 		x++;
 		y++;
 	}
@@ -74,8 +78,9 @@ int strcmp(const char *a, const char *b)
 	const char *y = b;
 
 	while (*x != 0 && *y != 0) {
-		if (*x != *y)
+		if (*x != *y) {
 			return *x - *y;
+		}
 		x++;
 		y++;
 	}

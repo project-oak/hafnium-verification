@@ -69,10 +69,11 @@ void *halloc_aligned_nosync(size_t size, size_t align)
 	end = begin + size;
 
 	/* Check for overflows, and that there is enough free mem. */
-	if (end > begin && begin >= alloc_base && end <= alloc_limit)
+	if (end > begin && begin >= alloc_base && end <= alloc_limit) {
 		alloc_base = end;
-	else
+	} else {
 		begin = 0;
+	}
 
 	return (void *)begin;
 }

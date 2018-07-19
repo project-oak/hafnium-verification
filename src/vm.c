@@ -9,8 +9,9 @@ void vm_init(struct vm *vm, uint32_t vcpu_count)
 	vm->vcpu_count = vcpu_count;
 
 	/* Do basic initialization of vcpus. */
-	for (i = 0; i < vcpu_count; i++)
+	for (i = 0; i < vcpu_count; i++) {
 		vcpu_init(vm->vcpus + i, vm);
+	}
 
 	arch_vptable_init(&vm->page_table);
 }

@@ -159,8 +159,9 @@ static inline void arch_mm_invalidate_stage1_range(vaddr_t begin, vaddr_t end)
 
 	__asm__ volatile("dsb ishst");
 
-	for (it = begin; it < end; it += (1ull << (PAGE_BITS - 12)))
+	for (it = begin; it < end; it += (1ull << (PAGE_BITS - 12))) {
 		__asm__("tlbi vae2is, %0" : : "r"(it));
+	}
 
 	__asm__ volatile("dsb ish");
 }
@@ -177,8 +178,9 @@ static inline void arch_mm_invalidate_stage2_range(vaddr_t begin, vaddr_t end)
 
 	__asm__ volatile("dsb ishst");
 
-	for (it = begin; it < end; it += (1ull << (PAGE_BITS - 12)))
+	for (it = begin; it < end; it += (1ull << (PAGE_BITS - 12))) {
 		__asm__("tlbi ipas2e1, %0" : : "r"(it));
+	}
 
 	__asm__ volatile(
 		"dsb ish\n"

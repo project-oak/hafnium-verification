@@ -27,8 +27,9 @@
 static size_t print_raw_string(const char *str)
 {
 	const char *c = str;
-	while (*c != '\0')
+	while (*c != '\0') {
 		arch_putchar(*c++);
+	}
 	return c - str;
 }
 
@@ -47,8 +48,9 @@ static void print_string(const char *str, const char *suffix, size_t width,
 	size_t len = suffix - str;
 
 	/* Print the string up to the beginning of the suffix. */
-	while (str != suffix)
+	while (str != suffix) {
 		arch_putchar(*str++);
+	}
 
 	if (flags & FLAG_MINUS) {
 		/* Left-aligned. Print suffix, then print padding if needed. */
@@ -110,17 +112,18 @@ static void print_num(size_t v, size_t base, size_t width, int flags)
 	}
 
 	/* Add sign if requested. */
-	if (flags & FLAG_NEG)
+	if (flags & FLAG_NEG) {
 		*--ptr = '-';
-	else if (flags & FLAG_PLUS)
+	} else if (flags & FLAG_PLUS) {
 		*--ptr = '+';
-	else if (flags & FLAG_SPACE)
+	} else if (flags & FLAG_SPACE) {
 		*--ptr = ' ';
-
-	if (flags & FLAG_ZERO)
+	}
+	if (flags & FLAG_ZERO) {
 		print_string(ptr, num, width, flags, '0');
-	else
+	} else {
 		print_string(ptr, ptr, width, flags, ' ');
+	}
 }
 
 /*
