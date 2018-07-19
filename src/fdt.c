@@ -110,7 +110,7 @@ static bool fdt_tokenizer_str(struct fdt_tokenizer *t, const char **res)
 	return false;
 }
 
-void fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr)
+bool fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr)
 {
 	uint32_t max_ver;
 	uint32_t min_ver;
@@ -121,14 +121,14 @@ void fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr)
 
 	/* Check the magic number before anything else. */
 	if (hdr->magic != be32toh(FDT_MAGIC)) {
-		return;
+		return false;
 	}
 
 	/* Check the version. */
 	max_ver = be32toh(hdr->version);
 	min_ver = be32toh(hdr->last_comp_version);
 	if (FDT_VERSION < min_ver || FDT_VERSION > max_ver) {
-		return;
+		return false;
 	}
 
 	/* TODO: Verify that it is all within the fdt. */
@@ -137,6 +137,8 @@ void fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr)
 
 	/* TODO: Verify strings as well. */
 	node->strs = (char *)hdr + be32toh(hdr->off_dt_strings);
+
+	return true;
 }
 
 static bool fdt_next_property(struct fdt_tokenizer *t, const char **name,

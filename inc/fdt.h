@@ -6,7 +6,6 @@
 #include <stdint.h>
 
 struct fdt_node {
-	/* TODO: What do we need here? */
 	const struct fdt_header *hdr;
 	const char *begin;
 	const char *end;
@@ -16,7 +15,7 @@ struct fdt_node {
 size_t fdt_header_size(void);
 size_t fdt_total_size(struct fdt_header *hdr);
 void fdt_dump(struct fdt_header *hdr);
-void fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr);
+bool fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr);
 bool fdt_find_child(struct fdt_node *node, const char *child);
 bool fdt_first_child(struct fdt_node *node, const char **child_name);
 bool fdt_next_sibling(struct fdt_node *node, const char **sibling_name);

@@ -17,10 +17,10 @@ struct vcpu {
 
 /* TODO: Update alignment such that cpus are in different cache lines. */
 struct cpu {
-	struct vcpu *current;
-
 	/* CPU identifier. Doesn't have to be contiguous. */
 	size_t id;
+
+	struct vcpu *current;
 
 	/* Pointer to bottom of the stack. */
 	void *stack_bottom;

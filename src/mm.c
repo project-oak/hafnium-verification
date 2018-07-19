@@ -14,6 +14,8 @@
 
 /* clang-format on */
 
+static struct mm_ptable ptable;
+
 /**
  * Calculates the size of the address space represented by a page table entry at
  * the given level.
@@ -309,10 +311,11 @@ void mm_ptable_dump(struct mm_ptable *t)
  * Defragments the given page table by converting page table references to
  * blocks whenever possible.
  */
-void mm_ptable_defrag(struct mm_ptable *t)
+void mm_ptable_defrag(struct mm_ptable *t, int mode)
 {
 	/* TODO: Implement. */
 	(void)t;
+	(void)mode;
 }
 
 /**
@@ -341,4 +344,73 @@ bool mm_ptable_init(struct mm_ptable *t, int mode)
 	arch_mm_ptable_init(&t->arch);
 
 	return true;
+}
+
+/**
+ * Updates the hypervisor page table such that the given virtual address range
+ * is mapped to the given physical address range in the architecture-agnostic
+ * mode provided.
+ */
+bool mm_map(vaddr_t begin, vaddr_t end, paddr_t paddr, int mode)
+{
+	return mm_ptable_map(&ptable, begin, end, paddr, mode | MM_MODE_STAGE1);
+}
+
+/**
+ * Updates the hypervisor table such that the given virtual address range is not
+ * mapped to any physical address.
+ */
+bool mm_unmap(vaddr_t begin, vaddr_t end, int mode)
+{
+	return mm_ptable_unmap(&ptable, begin, end, mode | MM_MODE_STAGE1);
+}
+
+/**
+ * Initialises memory management for the hypervisor itself.
+ */
+bool mm_init(void)
+{
+	extern char text_begin[];
+	extern char text_end[];
+	extern char rodata_begin[];
+	extern char rodata_end[];
+	extern char data_begin[];
+	extern char data_end[];
+
+	dlog("text: 0x%x - 0x%x\n", text_begin, text_end);
+	dlog("rodata: 0x%x - 0x%x\n", rodata_begin, rodata_end);
+	dlog("data: 0x%x - 0x%x\n", data_begin, data_end);
+
+	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
+		dlog("Unable to allocate memory for page table.\n");
+		return false;
+	}
+
+	/* Map page for uart. */
+	/* TODO: We may not want to map this. */
+	mm_ptable_map_page(&ptable, PL011_BASE, PL011_BASE,
+			   MM_MODE_R | MM_MODE_W | MM_MODE_D | MM_MODE_NOSYNC |
+				   MM_MODE_STAGE1);
+
+	/* Map each section. */
+	mm_map((vaddr_t)text_begin, (vaddr_t)text_end, (paddr_t)text_begin,
+	       MM_MODE_X | MM_MODE_NOSYNC);
+
+	mm_map((vaddr_t)rodata_begin, (vaddr_t)rodata_end,
+	       (paddr_t)rodata_begin, MM_MODE_R | MM_MODE_NOSYNC);
+
+	mm_map((vaddr_t)data_begin, (vaddr_t)data_end, (paddr_t)data_begin,
+	       MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
+
+	arch_mm_init((paddr_t)ptable.table);
+
+	return true;
+}
+
+/**
+ * Defragments the hypervisor page table.
+ */
+void mm_defrag(void)
+{
+	mm_ptable_defrag(&ptable, MM_MODE_STAGE1);
 }

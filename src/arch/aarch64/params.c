@@ -1,0 +1,20 @@
+#include "boot_params.h"
+#include "fdt_handler.h"
+
+struct fdt_header *fdt;
+
+/*
+ * The following are declared weak so that they can overwritten by platform code
+ * if desired.
+ */
+#pragma weak plat_get_boot_params
+bool plat_get_boot_params(struct boot_params *p)
+{
+	return fdt_get_boot_params(fdt, p);
+}
+
+#pragma weak plat_update_boot_params
+bool plat_update_boot_params(struct boot_params_update *p)
+{
+	return fdt_patch(fdt, p);
+}

@@ -1,6 +1,5 @@
 #include "dlog.h"
 
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -21,7 +20,7 @@
 
 /* clang-format on */
 
-/*
+/**
  * Prints a raw string to the debug log and returns its length.
  */
 static size_t print_raw_string(const char *str)
@@ -33,7 +32,7 @@ static size_t print_raw_string(const char *str)
 	return c - str;
 }
 
-/*
+/**
  * Prints a formatted string to the debug log. The format includes a minimum
  * width, the fill character, and flags (whether to align to left or right).
  *
@@ -73,7 +72,7 @@ static void print_string(const char *str, const char *suffix, size_t width,
 	print_raw_string(suffix);
 }
 
-/*
+/**
  * Prints a number to the debug log. The caller specifies the base, its minimum
  * width and printf-style flags.
  */
@@ -126,7 +125,7 @@ static void print_num(size_t v, size_t base, size_t width, int flags)
 	}
 }
 
-/*
+/**
  * Parses the optional flags field of a printf-style format. It returns the spot
  * on the string where a non-flag character was found.
  */
@@ -160,19 +159,16 @@ static const char *parse_flags(const char *p, int *flags)
 	}
 }
 
-/*
- * Prints the given format string to the debug log.
+/**
+ * Same as "dlog", except that arguments are passed as a va_list.
  */
-void dlog(const char *fmt, ...)
+void vdlog(const char *fmt, va_list args)
 {
 	static struct spinlock sl = SPINLOCK_INIT;
 	const char *p;
-	va_list args;
 	size_t w;
 	int flags;
 	char buf[2];
-
-	va_start(args, fmt);
 
 	sl_lock(&sl);
 
@@ -271,6 +267,16 @@ void dlog(const char *fmt, ...)
 	}
 
 	sl_unlock(&sl);
+}
 
+/**
+ * Prints the given format string to the debug log.
+ */
+void dlog(const char *fmt, ...)
+{
+	va_list args;
+
+	va_start(args, fmt);
+	vdlog(fmt, args);
 	va_end(args);
 }
