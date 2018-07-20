@@ -2,6 +2,7 @@ SRCS += entry.S
 SRCS += exceptions.S
 SRCS += handler.c
 SRCS += mm.c
+SRCS += offsets.c
 SRCS += params.c
 
 OFFSET_SRCS += offsets.c

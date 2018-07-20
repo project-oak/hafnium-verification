@@ -1,3 +1,7 @@
+#ifndef GEN_OFFSETS
+#include "offsets.h"
+#endif /* GEN_OFFSETS */
+
 #include "cpu.h"
 #include "decl_offsets.h"
 

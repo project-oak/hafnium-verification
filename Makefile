@@ -85,7 +85,7 @@ define build_c
   TGT := $(patsubst %.c,%.o,$(OUT)/$(patsubst src/%,%,$(1)))
   GLOBAL_OBJS += $$(TGT)
   REMAIN_SRCS := $$(filter-out $(1),$$(REMAIN_SRCS))
-$$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
+$$(TGT): $(ROOT_DIR)$(1) $(GLOBAL_OFFSETS) | $$(dir $$(TGT))
 	$$(info CC $(ROOT_DIR)$1)
 	@$(CC) $(COPTS) $(DEP_GEN) -c $(ROOT_DIR)$(1) -o $$@
 endef
@@ -100,10 +100,11 @@ define gen_offsets
   GLOBAL_OFFSETS += $$(TGT)
 $$(TGT): $(ROOT_DIR)$(1) | $$(dir $$(TGT))
 	$$(info GENOFFSET $(ROOT_DIR)$1)
-	@$(CC) $(COPTS) $(DEP_GEN) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | \
+	@$(CC) -DGEN_OFFSETS $(COPTS) $(DEP_GEN) -MT $$@ -S -c $(ROOT_DIR)$(1) -o - | \
 		grep ^DEFINE_OFFSET -A1 | \
 		grep -v ^--$ | \
 		sed 's/^DEFINE_OFFSET__\([^:]*\):/#define \1 \\/' | \
+		sed 's/\.zero.*/0/' | \
 		sed 's/\.[^\t][^\t]*//' > $$@
 endef
 
@@ -170,7 +171,7 @@ format:
 	@find $(ROOT_DIR)inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
 
 # see .clang-tidy
-tidy:
+tidy: $(GLOBAL_OFFSETS)
 	@find $(ROOT_DIR)src/ -name *.c -exec clang-tidy {} -fix -- -target $(TARGET) $(COPTS) \;
 
 -include $(patsubst %,%.d,$(GLOBAL_OBJS),$(GLOBAL_OFFSETS))
