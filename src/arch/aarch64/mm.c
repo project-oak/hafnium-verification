@@ -1,5 +1,6 @@
 #include "mm.h"
 #include "arch_cpu.h"
+#include "dlog.h"
 #include "msr.h"
 
 /* Keep macro alignment */
@@ -43,43 +44,20 @@
 #define STAGE2_WRITETHROUGH 2ull
 #define STAGE2_WRITEBACK    3ull
 
-#define STAGE2_MEMATTR_NORMAL(outer, inner) (((outer) << 2) | (inner))
+#define STAGE2_MEMATTR_NORMAL(outer, inner) ((((outer) << 2) | (inner)) << 2)
 
 /* The following stage-2 memory attributes for device memory. */
-#define STAGE2_MEMATTR_DEVICE_nGnRnE 0ull
-#define STAGE2_MEMATTR_DEVICE_nGnRE  1ull
-#define STAGE2_MEMATTR_DEVICE_nGRE   2ull
-#define STAGE2_MEMATTR_DEVICE_GRE    3ull
+#define STAGE2_MEMATTR_DEVICE_nGnRnE (0ull << 2)
+#define STAGE2_MEMATTR_DEVICE_nGnRE  (1ull << 2)
+#define STAGE2_MEMATTR_DEVICE_nGRE   (2ull << 2)
+#define STAGE2_MEMATTR_DEVICE_GRE    (3ull << 2)
 
 #define STAGE2_ACCESS_READ  1ull
 #define STAGE2_ACCESS_WRITE 2ull
 
 /* clang-format on */
 
-void arch_vptable_init(struct arch_page_table *table)
-{
-	uint64_t i;
-
-	/* TODO: Check each bit. */
-	for (i = 0; i < 512; i++) {
-		table->entry0[i] =
-			1 | (i << 30) | /* Address */
-			(1 << 10) |     /* Access flag. */
-			(0 << 8) |  /* sh: non-shareable. this preserves EL1. */
-			(3 << 6) |  /* rw */
-			(0xf << 2); /* normal mem; preserves EL0/1. */
-		table->entry1[i] =
-			1 | ((i + 512) << 30) | /* Address */
-			(1 << 10) |		/* Access flag. */
-			(0 << 8) |  /* sh: non-shareable. this preserves EL1. */
-			(3 << 6) |  /* rw */
-			(0xf << 2); /* normal mem; preserves EL0/1. */
-		table->first[i] = 0;
-	}
-
-	table->first[0] = (uint64_t)&table->entry0[0] | 3;
-	table->first[1] = (uint64_t)&table->entry1[0] | 3;
-}
+static uint64_t mm_max_s2_level = 2;
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
@@ -109,7 +87,12 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 	} else {
 		uint64_t access = 0;
 
-		attrs |= STAGE2_AF | STAGE2_SH(OUTER_SHAREABLE);
+		/*
+		 * Non-shareable is the "neutral" share mode, i.e., the
+		 * shareability attribute of stage 1 will determine the actual
+		 * attribute.
+		 */
+		attrs |= STAGE2_AF | STAGE2_SH(NON_SHAREABLE);
 
 		/* Define the read/write bits. */
 		if (mode & MM_MODE_R) {
@@ -129,9 +112,12 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 			attrs |= STAGE2_XN(STAGE2_EXECUTE_NONE);
 		}
 
-		/* Define the memory attribute bits. */
+		/*
+		 * Define the memory attribute bits, using the "neutral" values
+		 * for either device or normal memory.
+		 */
 		if (mode & MM_MODE_D) {
-			attrs |= STAGE2_MEMATTR_DEVICE_nGnRnE;
+			attrs |= STAGE2_MEMATTR_DEVICE_GRE;
 		} else {
 			attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK,
 						       STAGE2_WRITEBACK);
@@ -141,16 +127,68 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 	return attrs;
 }
 
-void arch_mm_init(paddr_t table)
+/**
+ * Determines the maximum level supported by the given mode.
+ */
+int arch_mm_max_level(int mode)
 {
-	uint64_t v = (1u << 31) | /* RES1. */
-		     (4 << 16) |  /* PS: 44 bits. */
-		     (0 << 14) |  /* TG0: 4 KB granule. */
-		     (3 << 12) |  /* SH0: inner shareable. */
-		     (1 << 10) |  /* ORGN0: normal, cacheable ... */
-		     (1 << 8) |   /* IRGN0: normal, cacheable ... */
-		     (2 << 6) |   /* SL0: Start at level 0. */
-		     (20 << 0);   /* T0SZ: 44-bit input address size. */
+	if (mode & MM_MODE_STAGE1) {
+		/*
+		 * For stage 1 we hard-code this to 2 for now so that we can
+		 * save one page table level at the expense of limiting the
+		 * physical memory to 512GB.
+		 */
+		return 2;
+	}
+
+	return mm_max_s2_level;
+}
+
+bool arch_mm_init(paddr_t table)
+{
+	static const int pa_bits_table[16] = {32, 36, 40, 42, 44, 48};
+	uint64_t features = read_msr(id_aa64mmfr0_el1);
+	uint64_t v;
+	int pa_bits = pa_bits_table[features & 0xf];
+	int sl0;
+
+	/* Check that 4KB granules are supported. */
+	if ((features >> 28) & 0xf) {
+		dlog("4KB granules are not supported\n");
+		return false;
+	}
+
+	/* Check the physical address range. */
+	if (!pa_bits) {
+		dlog("Unsupportes value of id_aa64mmfr0_el1.PARange: %x\n",
+		     features & 0xf);
+		return false;
+	}
+
+	dlog("Supported bits in physical address: %d\n", pa_bits);
+
+	/*
+	 * Determine sl0 based on the number of bits. The maximum value is given
+	 * in D4-7 of the ARM arm.
+	 */
+	if (pa_bits >= 44) {
+		mm_max_s2_level = 3;
+		sl0 = 2;
+	} else {
+		mm_max_s2_level = 2;
+		sl0 = 1;
+	}
+
+	dlog("Number of page table levels: %d\n", mm_max_s2_level + 1);
+
+	v = (1u << 31) |	       /* RES1. */
+	    ((features & 0xf) << 16) | /* PS, matching features. */
+	    (0 << 14) |		       /* TG0: 4 KB granule. */
+	    (3 << 12) |		       /* SH0: inner shareable. */
+	    (1 << 10) |		       /* ORGN0: normal, cacheable ... */
+	    (1 << 8) |		       /* IRGN0: normal, cacheable ... */
+	    (sl0 << 6) |	       /* SL0. */
+	    ((64 - pa_bits) << 0);     /* T0SZ: dependent on PS. */
 	write_msr(vtcr_el2, v);
 
 	/*
@@ -166,10 +204,10 @@ void arch_mm_init(paddr_t table)
 	/*
 	 * Configure tcr_el2.
 	 */
-	v = (1 << 20) | /* TBI, top byte ignored. */
-	    (2 << 16) | /* PS, Physical Address Size, 40 bits, 1TB. */
-	    (0 << 14) | /* TG0, granule size, 4KB. */
-	    (3 << 12) | /* SH0, inner shareable. */
+	v = (1 << 20) |		       /* TBI, top byte ignored. */
+	    ((features & 0xf) << 16) | /* PS. */
+	    (0 << 14) |		       /* TG0, granule size, 4KB. */
+	    (3 << 12) |		       /* SH0, inner shareable. */
 	    (1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
 	    (1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
 	    (25 << 0) | /* T0SZ, input address is 2^39 bytes. */
@@ -185,7 +223,7 @@ void arch_mm_init(paddr_t table)
 	    (1 << 12) | /* I, instruction cache enable. */
 	    (1 << 16) | /* RES1 bit. */
 	    (1 << 18) | /* RES1 bit. */
-	    (1 << 19) | /* WXN bit, writable execute never . */
+	    (1 << 19) | /* WXN bit, writable execute never. */
 	    (3 << 22) | /* RES1 bits. */
 	    (3 << 28) | /* RES1 bits. */
 	    0;
@@ -194,4 +232,6 @@ void arch_mm_init(paddr_t table)
 	__asm volatile("isb");
 	write_msr(sctlr_el2, v);
 	__asm volatile("isb");
+
+	return true;
 }

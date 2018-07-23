@@ -40,12 +40,6 @@ struct arch_regs {
 	} lazy;
 };
 
-struct arch_page_table {
-	alignas(4096) uint64_t first[512];
-	alignas(4096) uint64_t entry0[512];
-	alignas(4096) uint64_t entry1[512];
-};
-
 static inline struct cpu *cpu(void)
 {
 	struct cpu *p;
@@ -122,12 +116,5 @@ static inline void arch_cpu_off(void)
 	/* CPU_OFF */
 	smc(0xC4000002, 0, 0, 0);
 }
-
-static inline void arch_set_vm_mm(struct arch_page_table *table)
-{
-	__asm volatile("msr vttbr_el2, %0" : : "r"((size_t)table));
-}
-
-void arch_vptable_init(struct arch_page_table *table);
 
 #endif /* _ARCH_CPU_H */

@@ -111,11 +111,31 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 	{
 		size_t tmp = (size_t)&load_primary;
 		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
-		vm_init(&primary_vm, MAX_CPUS);
+		if (!vm_init(&primary_vm, 0, MAX_CPUS)) {
+			dlog("Unable to initialise primary vm\n");
+			return false;
+		}
+
+		/* Map the 1TB of memory. */
+		/* TODO: We should do a whitelist rather than a blacklist. */
+		if (!mm_ptable_map(&primary_vm.ptable, 0,
+				   1024ull * 1024 * 1024 * 1024, 0,
+				   MM_MODE_R | MM_MODE_W | MM_MODE_X |
+					   MM_MODE_NOINVALIDATE)) {
+			dlog("Unable to initialise memory for primary vm\n");
+			return false;
+		}
+
+		if (!mm_ptable_unmap_hypervisor(&primary_vm.ptable,
+						MM_MODE_NOINVALIDATE)) {
+			dlog("Unable to unmap hypervisor from primary vm\n");
+			return false;
+		}
+
 		vm_start_vcpu(&primary_vm, 0, tmp, kernel_arg, true);
 	}
 
-	arch_set_vm_mm(&primary_vm.page_table);
+	vm_set_current(&primary_vm);
 
 	return true;
 }
@@ -139,6 +159,9 @@ bool load_secondary(const struct memiter *cpio, uint64_t mem_begin,
 		return true;
 	}
 
+	/* Round the last address down to the page size. */
+	*mem_end &= ~(PAGE_SIZE - 1);
+
 	for (count = 0;
 	     memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
 	     memiter_parse_str(&it, &str) && count < MAX_VMS;
@@ -150,6 +173,8 @@ bool load_secondary(const struct memiter *cpio, uint64_t mem_begin,
 			continue;
 		}
 
+		/* Round up to page size. */
+		mem = (mem + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 		if (mem > *mem_end - mem_begin) {
 			dlog("Not enough memory for vm %u (%u bytes)\n", count,
 			     mem);
@@ -170,11 +195,37 @@ bool load_secondary(const struct memiter *cpio, uint64_t mem_begin,
 			continue;
 		}
 
+		if (!vm_init(secondary_vm + count, count + 1, cpu)) {
+			dlog("Unable to initialise vm %u\n", count);
+			continue;
+		}
+
+		/* TODO: Remove this. */
+		/* Grant VM access to uart. */
+		mm_ptable_map_page(&secondary_vm[count].ptable, PL011_BASE,
+				   PL011_BASE,
+				   MM_MODE_R | MM_MODE_W | MM_MODE_D |
+					   MM_MODE_NOINVALIDATE);
+
+		/* Grant the VM access to the memory. */
+		if (!mm_ptable_map(&secondary_vm[count].ptable, *mem_end,
+				   *mem_end + mem, *mem_end,
+				   MM_MODE_R | MM_MODE_W | MM_MODE_X |
+					   MM_MODE_NOINVALIDATE)) {
+			dlog("Unable to initialise memory for vm %u\n", count);
+			continue;
+		}
+
+		/* Deny the primary VM access to this memory. */
+		if (!mm_ptable_unmap(&primary_vm.ptable, *mem_end,
+				     *mem_end + mem, MM_MODE_NOINVALIDATE)) {
+			dlog("Unable to unmap secondary VM from primary VM\n");
+			return false;
+		}
+
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     *mem_end);
 
-		/* TODO: Update page table to reflect the memory range. */
-		vm_init(secondary_vm + count, cpu);
 		vm_start_vcpu(secondary_vm + count, 0, *mem_end, 0, false);
 	}
 

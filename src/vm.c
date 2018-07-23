@@ -2,7 +2,7 @@
 
 #include "cpu.h"
 
-void vm_init(struct vm *vm, uint32_t vcpu_count)
+bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 {
 	uint32_t i;
 
@@ -13,7 +13,7 @@ void vm_init(struct vm *vm, uint32_t vcpu_count)
 		vcpu_init(vm->vcpus + i, vm);
 	}
 
-	arch_vptable_init(&vm->page_table);
+	return mm_ptable_init(&vm->ptable, id, 0);
 }
 
 /* TODO: Shall we use index or id here? */
@@ -25,4 +25,9 @@ void vm_start_vcpu(struct vm *vm, size_t index, size_t entry, size_t arg,
 		arch_regs_init(&vcpu->regs, entry, arg, is_primary);
 		vcpu_on(vcpu);
 	}
+}
+
+void vm_set_current(struct vm *vm)
+{
+	arch_mm_set_vm(vm->ptable.id, (paddr_t)vm->ptable.table);
 }

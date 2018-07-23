@@ -92,7 +92,7 @@ struct vcpu *irq_lower(void)
 	 * VM. */
 
 	/* Switch back to primary VM, interrupts will be handled there. */
-	arch_set_vm_mm(&primary_vm.page_table);
+	vm_set_current(&primary_vm);
 	return &primary_vm.vcpus[cpu_index(cpu())];
 }
 

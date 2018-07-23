@@ -49,7 +49,7 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
 		return HF_VCPU_WAIT_FOR_INTERRUPT;
 	}
 
-	arch_set_vm_mm(&vm->page_table);
+	vm_set_current(vm);
 	*next = vcpu;
 
 	return HF_VCPU_YIELD;
@@ -64,7 +64,7 @@ struct vcpu *api_wait_for_interrupt(void)
 	struct vcpu *vcpu = &primary_vm.vcpus[cpu_index(cpu())];
 
 	/* Switch back to primary VM. */
-	arch_set_vm_mm(&primary_vm.page_table);
+	vm_set_current(&primary_vm);
 
 	/*
 	 * Inidicate to primary VM that this vcpu blocked waiting for an

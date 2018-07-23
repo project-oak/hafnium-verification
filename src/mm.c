@@ -14,6 +14,12 @@
 
 /* clang-format on */
 
+extern char text_begin[];
+extern char text_end[];
+extern char rodata_begin[];
+extern char rodata_end[];
+extern char data_begin[];
+extern char data_end[];
 static struct mm_ptable ptable;
 
 /**
@@ -128,7 +134,7 @@ static void mm_free_page_pte(pte_t pte, int level, bool sync)
 static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 			 pte_t *table, int level, int flags)
 {
-	size_t i = mm_index(va, level);
+	pte_t *pte = table + mm_index(va, level);
 	vaddr_t va_level_end = mm_level_end(va, level);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
@@ -143,21 +149,20 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 	while (va < va_end) {
 		if (level == 0) {
 			if (commit) {
-				table[i] = arch_mm_pa_to_page_pte(pa, attrs);
+				*pte = arch_mm_pa_to_page_pte(pa, attrs);
 			}
 		} else if ((va_end - va) >= entry_size &&
 			   arch_mm_is_block_allowed(level) &&
 			   (va & (entry_size - 1)) == 0) {
 			if (commit) {
-				pte_t pte = table[i];
-				table[i] = arch_mm_pa_to_block_pte(pa, attrs);
+				pte_t v = *pte;
+				*pte = arch_mm_pa_to_block_pte(pa, attrs);
 				/* TODO: Add barrier. How do we ensure this
 				 * isn't in use by another CPU? Send IPI? */
-				mm_free_page_pte(pte, level, sync);
+				mm_free_page_pte(v, level, sync);
 			}
 		} else {
-			pte_t *nt =
-				mm_populate_table_pte(table + i, level, sync);
+			pte_t *nt = mm_populate_table_pte(pte, level, sync);
 			if (!nt) {
 				return false;
 			}
@@ -170,7 +175,7 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 
 		va = (va + entry_size) & ~(entry_size - 1);
 		pa = (pa + entry_size) & ~(entry_size - 1);
-		i++;
+		pte++;
 	}
 
 	return true;
@@ -198,7 +203,7 @@ bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 {
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
-	int level = arch_mm_max_level(&t->arch);
+	int level = arch_mm_max_level(mode);
 
 	begin = arch_mm_clear_va(begin);
 	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
@@ -217,7 +222,9 @@ bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
-	mm_invalidate_tlb(begin, end, (mode & MM_MODE_STAGE1) != 0);
+	if (!(mode & MM_MODE_NOINVALIDATE)) {
+		mm_invalidate_tlb(begin, end, (mode & MM_MODE_STAGE1) != 0);
+	}
 
 	return true;
 }
@@ -229,7 +236,7 @@ bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 {
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
-	int level = arch_mm_max_level(&t->arch);
+	int level = arch_mm_max_level(mode);
 
 	begin = arch_mm_clear_va(begin);
 	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
@@ -243,7 +250,9 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
-	mm_invalidate_tlb(begin, end, (mode & MM_MODE_STAGE1) != 0);
+	if (!(mode & MM_MODE_NOINVALIDATE)) {
+		mm_invalidate_tlb(begin, end, (mode & MM_MODE_STAGE1) != 0);
+	}
 
 	return true;
 }
@@ -262,7 +271,7 @@ bool mm_ptable_map_page(struct mm_ptable *t, vaddr_t va, paddr_t pa, int mode)
 	va = arch_mm_clear_va(va);
 	pa = arch_mm_clear_pa(pa);
 
-	for (i = arch_mm_max_level(&t->arch); i > 0; i--) {
+	for (i = arch_mm_max_level(mode); i > 0; i--) {
 		table = mm_populate_table_pte(table + mm_index(va, i), i, sync);
 		if (!table) {
 			return false;
@@ -301,9 +310,9 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
 /**
  * Write the given table to the debug log.
  */
-void mm_ptable_dump(struct mm_ptable *t)
+void mm_ptable_dump(struct mm_ptable *t, int mode)
 {
-	int max_level = arch_mm_max_level(&t->arch);
+	int max_level = arch_mm_max_level(mode);
 	mm_dump_table_recursive(t->table, max_level, max_level);
 }
 
@@ -319,9 +328,22 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 }
 
 /**
+ * Unmaps the hypervisor pages from the given page table.
+ */
+bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
+{
+	/* TODO: If we add pages dynamically, they must be included here too. */
+	return mm_ptable_unmap(t, (vaddr_t)text_begin, (vaddr_t)text_end,
+			       mode) &&
+	       mm_ptable_unmap(t, (vaddr_t)rodata_begin, (vaddr_t)rodata_end,
+			       mode) &&
+	       mm_ptable_unmap(t, (vaddr_t)data_begin, (vaddr_t)data_end, mode);
+}
+
+/**
  * Initialises the given page table.
  */
-bool mm_ptable_init(struct mm_ptable *t, int mode)
+bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
 {
 	size_t i;
 	pte_t *table;
@@ -341,7 +363,7 @@ bool mm_ptable_init(struct mm_ptable *t, int mode)
 	}
 
 	t->table = table;
-	arch_mm_ptable_init(&t->arch);
+	t->id = id;
 
 	return true;
 }
@@ -370,18 +392,11 @@ bool mm_unmap(vaddr_t begin, vaddr_t end, int mode)
  */
 bool mm_init(void)
 {
-	extern char text_begin[];
-	extern char text_end[];
-	extern char rodata_begin[];
-	extern char rodata_end[];
-	extern char data_begin[];
-	extern char data_end[];
-
 	dlog("text: 0x%x - 0x%x\n", text_begin, text_end);
 	dlog("rodata: 0x%x - 0x%x\n", rodata_begin, rodata_end);
 	dlog("data: 0x%x - 0x%x\n", data_begin, data_end);
 
-	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
+	if (!mm_ptable_init(&ptable, 0, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
 		dlog("Unable to allocate memory for page table.\n");
 		return false;
 	}
@@ -402,9 +417,7 @@ bool mm_init(void)
 	mm_map((vaddr_t)data_begin, (vaddr_t)data_end, (paddr_t)data_begin,
 	       MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
 
-	arch_mm_init((paddr_t)ptable.table);
-
-	return true;
+	return arch_mm_init((paddr_t)ptable.table);
 }
 
 /**

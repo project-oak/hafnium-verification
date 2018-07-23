@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* A phypiscal address. */
+/* A physical address. */
 typedef size_t paddr_t;
 
 /* A virtual address. */
@@ -16,26 +16,6 @@ typedef size_t pte_t;
 
 #define PAGE_LEVEL_BITS 9
 #define PAGE_BITS 12
-
-struct arch_mm_ptable {
-	int max_level;
-};
-
-/**
- * Initialises the architecture-dependents aspects of the page table.
- */
-static inline void arch_mm_ptable_init(struct arch_mm_ptable *t)
-{
-	t->max_level = 2;
-}
-
-/**
- * Determines the maximum level supported by the given page table.
- */
-static inline int arch_mm_max_level(struct arch_mm_ptable *t)
-{
-	return t->max_level;
-}
 
 /**
  * Converts a physical address to a table PTE.
@@ -173,6 +153,8 @@ static inline void arch_mm_invalidate_stage2_range(vaddr_t begin, vaddr_t end)
 {
 	vaddr_t it;
 
+	/* TODO: This only applies to the current VMID. */
+
 	begin >>= 12;
 	end >>= 12;
 
@@ -188,7 +170,13 @@ static inline void arch_mm_invalidate_stage2_range(vaddr_t begin, vaddr_t end)
 		"dsb ish\n");
 }
 
+static inline void arch_mm_set_vm(uint64_t vmid, paddr_t table)
+{
+	__asm__ volatile("msr vttbr_el2, %0" : : "r"(table | (vmid << 48)));
+}
+
 uint64_t arch_mm_mode_to_attrs(int mode);
-void arch_mm_init(paddr_t table);
+bool arch_mm_init(paddr_t table);
+int arch_mm_max_level(int mode);
 
 #endif /* _ARCH_MM_H */

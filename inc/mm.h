@@ -2,12 +2,13 @@
 #define _MM_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "arch_mm.h"
 
 struct mm_ptable {
-	struct arch_mm_ptable arch;
 	pte_t *table;
+	uint32_t id;
 };
 
 #define PAGE_SIZE (1 << PAGE_BITS)
@@ -32,13 +33,20 @@ struct mm_ptable {
  */
 #define MM_MODE_STAGE1 0x20
 
-bool mm_ptable_init(struct mm_ptable *t, int mode);
-void mm_ptable_dump(struct mm_ptable *t);
+/*
+ * This flag indicates that no TLB invalidations should be issued for the
+ * changes in the page table.
+ */
+#define MM_MODE_NOINVALIDATE 0x40
+
+bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode);
+void mm_ptable_dump(struct mm_ptable *t, int mode);
 bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 		   paddr_t paddr, int mode);
 bool mm_ptable_map_page(struct mm_ptable *t, vaddr_t va, paddr_t pa, int mode);
 bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode);
 void mm_ptable_defrag(struct mm_ptable *t, int mode);
+bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode);
 
 bool mm_init(void);
 bool mm_map(vaddr_t begin, vaddr_t end, paddr_t paddr, int mode);

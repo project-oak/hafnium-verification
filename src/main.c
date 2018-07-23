@@ -13,7 +13,7 @@
 #include "std.h"
 #include "vm.h"
 
-char ptable_buf[PAGE_SIZE * 20];
+char ptable_buf[PAGE_SIZE * 40];
 
 /**
  * Blocks the hypervisor.
@@ -78,9 +78,12 @@ static void one_time_init(void)
 
 	/* Load all VMs. */
 	new_mem_end = params.mem_end;
-	load_secondary(&cpio, params.mem_begin, &new_mem_end);
 	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd)) {
 		panic("unable to load primary VM");
+	}
+
+	if (!load_secondary(&cpio, params.mem_begin, &new_mem_end)) {
+		panic("unable to load secondary VMs");
 	}
 
 	/* Prepare to run by updating bootparams as seens by primary VM. */
