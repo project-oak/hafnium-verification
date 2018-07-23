@@ -1,0 +1,16 @@
+import("//build/image/image.gni")
+
+vm_kernel("test_vm") {
+  testonly = true
+
+  sources = [
+    "vm_entry.S",
+    "kmain.c",
+  ]
+
+  deps = [
+    "//src:common",
+    "//src:common_debug",
+    "//src/arch/${arch}:entry",
+  ]
+}

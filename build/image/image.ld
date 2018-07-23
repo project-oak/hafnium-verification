@@ -1,13 +1,13 @@
 ENTRY(entry)
 SECTIONS
 {
-	. = PREFERRED_LOAD_ADDRESS;
+	. = ORIGIN_ADDRESS;
 	_orig_base = ABSOLUTE(.);
 
 	text_begin = .;
 	.init : {
 		*(.init.entry)
-		*(.init)
+		*(.init.image)
 	}
 	.text : { *(.text) }
 	text_end = .;
@@ -28,7 +28,7 @@ SECTIONS
 
 	/* The entry point code assumes that bss is 16-byte aligned. */
 	.bss ALIGN(16) : {
-		file_size = ABSOLUTE(. - PREFERRED_LOAD_ADDRESS);
+		file_size = ABSOLUTE(. - ORIGIN_ADDRESS);
 		bss_begin = .;
 		*(.bss COMMON)
 		. = ALIGN(16);

@@ -1,3 +1,4 @@
+# Hypervisor specific code.
 source_set("src") {
   sources = [
     "alloc.c",
@@ -10,13 +11,35 @@ source_set("src") {
     "main.c",
     "memiter.c",
     "mm.c",
-    "std.c",
     "vm.c",
   ]
 
+  deps = [
+    ":common",
+  ]
+
   if (is_debug) {
-    sources += [
-      "dlog.c",
+    deps += [
+      ":common_debug",
     ]
   }
+}
+
+# Code that is not specific to a certain image so can be shared.
+source_set("common") {
+  sources = [
+    "std.c",
+  ]
+}
+
+# Debug code that is not specific to a certain image so can be shared.
+source_set("common_debug") {
+  sources = [
+    "dlog.c",
+  ]
+
+  deps = [
+    ":common",
+    "//src/arch/${arch}:putchar",
+  ]
 }

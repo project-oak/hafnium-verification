@@ -1,29 +1,45 @@
 import("//build/arch/aarch64.gni")
 import("//build/image/generate_offsets.gni")
 
+# Hypervisor specific code.
 source_set("aarch64") {
   sources = [
-    "entry.S",
     "exceptions.S",
+    "hypervisor_entry.S",
+  ]
+
+  sources += [
     "handler.c",
     "mm.c",
     "offsets.c",
     "params.c",
   ]
 
-  if (arch_aarch64_use_pl011) {
-    sources += [
-      "pl011.c",
-    ]
-  }
-
   deps = [
+    ":entry",
     ":offsets",
   ]
 }
 
+# Calculate struct field offsets for hypervisor_entry.S.
 generate_offsets("offsets") {
   sources = [
     "offsets.c",
   ]
+}
+
+# Entry code to prepare the loaded image to be run.
+source_set("entry") {
+  sources = [
+    "entry.S",
+  ]
+}
+
+# aarch64 implementation of putchar for debugging.
+source_set("putchar") {
+  if (arch_aarch64_use_pl011) {
+    sources = [
+      "pl011.c",
+    ]
+  }
 }

@@ -1,6 +1,15 @@
-import("//build/image/hypervisor.gni")
+import("//build/image/image.gni")
 
 group("arch_images") {
+  testonly = true
+
+  deps = [
+    ":hypervisor",
+    "//test/vm:test_vm($arch_toolchain)",
+  ]
+}
+
+group("hypervisor") {
   deps = [
     ":hafnium($arch_toolchain)",
   ]

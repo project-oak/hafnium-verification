@@ -2,11 +2,11 @@ declare_args() {
   # The specific CPU that runs the architecture.
   arch_cpu = ""
 
-  # The load address of the hypervisor
-  arch_hypervisor_load_address = ""
+  # The origin address of the hypervisor image
+  arch_hypervisor_origin_address = ""
 }
 
 assert(arch_cpu != "", "Must provide the CPU to build for as \"arch_cpu\".")
 assert(
-    arch_hypervisor_load_address != "",
-    "Must provide the load address of the hypervisor \"arch_hypervisor_load_address\".")
+    arch_hypervisor_origin_address != "",
+    "Must provide the origin address of the hypervisor image \"arch_hypervisor_origin_address\".")

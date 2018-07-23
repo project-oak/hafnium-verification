@@ -19,7 +19,7 @@ template("generate_offsets") {
                              "deps",
                              "public_deps",
                              "sources",
-                             "test_only",
+                             "testonly",
                            ])
     defines = [ "GEN_OFFSETS" ]
     visibility = [ ":${header_target}" ]
@@ -30,15 +30,9 @@ template("generate_offsets") {
   action_foreach("${header_target}") {
     forward_variables_from(invoker,
                            [
-                             "cflags",
-                             "cflags_c",
-                             "defines",
-                             "deps",
-                             "public_deps",
                              "sources",
-                             "test_only",
+                             "testonly",
                            ])
-
     script = "//build/image/extract_offsets.py"
     deps = [
       ":${obj_target}",
@@ -68,7 +62,7 @@ template("generate_offsets") {
                              "deps",
                              "public_deps",
                              "sources",
-                             "test_only",
+                             "testonly",
                            ])
 
     deps = [
