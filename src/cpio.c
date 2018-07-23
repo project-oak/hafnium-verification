@@ -20,63 +20,47 @@ struct cpio_header {
 };
 #pragma pack(pop)
 
-void cpio_init(struct cpio *c, const void *buf, size_t size)
-{
-	c->first = buf;
-	c->total_size = size;
-}
-
-void cpio_init_iter(struct cpio *c, struct cpio_iter *iter)
-{
-	iter->cur = c->first;
-	iter->size_left = c->total_size;
-}
-
-bool cpio_next(struct cpio_iter *iter, const char **name, const void **contents,
+/**
+ * Retrieves the next file stored in the cpio archive stored in the cpio, and
+ * advances the iterator such that another call to this function would return
+ * the following file.
+ */
+bool cpio_next(struct memiter *iter, const char **name, const void **contents,
 	       size_t *size)
 {
-	const struct cpio_header *h = iter->cur;
-	size_t size_left;
-	size_t filelen;
-	size_t namelen;
+	size_t len;
+	struct memiter lit = *iter;
+	const struct cpio_header *h = (const struct cpio_header *)lit.next;
 
-	size_left = iter->size_left;
-	if (size_left < sizeof(struct cpio_header)) {
+	if (!memiter_advance(&lit, sizeof(struct cpio_header))) {
 		return false;
 	}
+
+	*name = lit.next;
 
 	/* TODO: Check magic. */
 
-	size_left -= sizeof(struct cpio_header);
-	namelen = (h->namesize + 1) & ~1;
-	if (size_left < namelen) {
+	len = (h->namesize + 1) & ~1;
+	if (!memiter_advance(&lit, len)) {
 		return false;
 	}
 
-	size_left -= namelen;
-	filelen = (size_t)h->filesize[0] << 16 | h->filesize[1];
-	if (size_left < filelen) {
+	*contents = lit.next;
+
+	len = (size_t)h->filesize[0] << 16 | h->filesize[1];
+	if (!memiter_advance(&lit, (len + 1) & ~1)) {
 		return false;
 	}
 
 	/* TODO: Check that string is null-terminated. */
-	/* TODO: Check that trailler is not returned. */
 
 	/* Stop enumerating files when we hit the end marker. */
-	if (!strcmp((const char *)(iter->cur + 1), "TRAILER!!!")) {
+	if (!strcmp(*name, "TRAILER!!!")) {
 		return false;
 	}
 
-	size_left -= filelen;
-
-	*name = (const char *)(iter->cur + 1);
-	*contents = *name + namelen;
-	*size = filelen;
-
-	iter->cur = (struct cpio_header *)((char *)*contents + filelen);
-	iter->cur =
-		(struct cpio_header *)(char *)(((size_t)iter->cur + 1) & ~1);
-	iter->size_left = size_left;
+	*size = len;
+	*iter = lit;
 
 	return true;
 }

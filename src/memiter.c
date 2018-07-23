@@ -101,3 +101,18 @@ bool memiter_parse_uint(struct memiter *it, uint64_t *value)
 
 	return true;
 }
+
+/**
+ * Advances the iterator by the given number of bytes. Returns true if the
+ * iterator was advanced without going over its limit; returns false and leaves
+ * the iterator unmodified otherwise.
+ */
+bool memiter_advance(struct memiter *it, size_t v)
+{
+	const char *p = it->next + v;
+	if (p < it->next || p > it->limit) {
+		return false;
+	}
+	it->next = p;
+	return true;
+}

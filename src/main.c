@@ -47,7 +47,7 @@ static void one_time_init(void)
 	struct boot_params_update update;
 	uint64_t new_mem_end;
 	struct memiter primary_initrd;
-	struct cpio c;
+	struct memiter cpio;
 
 	dlog("Initialising hafnium\n");
 
@@ -73,13 +73,13 @@ static void one_time_init(void)
 		panic("unable to map initrd in");
 	}
 
-	cpio_init(&c, (void *)params.initrd_begin,
-		  params.initrd_end - params.initrd_begin);
+	memiter_init(&cpio, (void *)params.initrd_begin,
+		     params.initrd_end - params.initrd_begin);
 
 	/* Load all VMs. */
 	new_mem_end = params.mem_end;
-	load_secondary(&c, params.mem_begin, &new_mem_end);
-	if (!load_primary(&c, params.kernel_arg, &primary_initrd)) {
+	load_secondary(&cpio, params.mem_begin, &new_mem_end);
+	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd)) {
 		panic("unable to load primary VM");
 	}
 

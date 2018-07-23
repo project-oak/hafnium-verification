@@ -44,15 +44,14 @@ static bool relocate(const char *from, size_t size)
  * null-terminated, so we use a memory iterator to represent it. The file, if
  * found, is returned in the "it" argument.
  */
-static bool memiter_find_file(struct cpio *c, const struct memiter *filename,
+static bool memiter_find_file(const struct memiter *cpio,
+			      const struct memiter *filename,
 			      struct memiter *it)
 {
 	const char *fname;
 	const void *fcontents;
 	size_t fsize;
-	struct cpio_iter iter;
-
-	cpio_init_iter(c, &iter);
+	struct memiter iter = *cpio;
 
 	while (cpio_next(&iter, &fname, &fcontents, &fsize)) {
 		if (memiter_iseq(filename, fname)) {
@@ -68,14 +67,13 @@ static bool memiter_find_file(struct cpio *c, const struct memiter *filename,
  * Looks for a file in the given cpio archive. The file, if found, is returned
  * in the "it" argument.
  */
-static bool find_file(struct cpio *c, const char *name, struct memiter *it)
+static bool find_file(const struct memiter *cpio, const char *name,
+		      struct memiter *it)
 {
 	const char *fname;
 	const void *fcontents;
 	size_t fsize;
-	struct cpio_iter iter;
-
-	cpio_init_iter(c, &iter);
+	struct memiter iter = *cpio;
 
 	while (cpio_next(&iter, &fname, &fcontents, &fsize)) {
 		if (!strcmp(fname, name)) {
@@ -90,11 +88,12 @@ static bool find_file(struct cpio *c, const char *name, struct memiter *it)
 /**
  * Loads the primary VM.
  */
-bool load_primary(struct cpio *c, size_t kernel_arg, struct memiter *initrd)
+bool load_primary(const struct memiter *cpio, size_t kernel_arg,
+		  struct memiter *initrd)
 {
 	struct memiter it;
 
-	if (!find_file(c, "vmlinuz", &it)) {
+	if (!find_file(cpio, "vmlinuz", &it)) {
 		dlog("Unable to find vmlinuz\n");
 		return false;
 	}
@@ -104,7 +103,7 @@ bool load_primary(struct cpio *c, size_t kernel_arg, struct memiter *initrd)
 		return false;
 	}
 
-	if (!find_file(c, "initrd.img", initrd)) {
+	if (!find_file(cpio, "initrd.img", initrd)) {
 		dlog("Unable to find initrd.img\n");
 		return false;
 	}
@@ -126,7 +125,8 @@ bool load_primary(struct cpio *c, size_t kernel_arg, struct memiter *initrd)
  * reflect the fact that some of the memory isn't available to the primary VM
  * anymore.
  */
-bool load_secondary(struct cpio *c, uint64_t mem_begin, uint64_t *mem_end)
+bool load_secondary(const struct memiter *cpio, uint64_t mem_begin,
+		    uint64_t *mem_end)
 {
 	struct memiter it;
 	struct memiter str;
@@ -134,7 +134,7 @@ bool load_secondary(struct cpio *c, uint64_t mem_begin, uint64_t *mem_end)
 	uint64_t cpu;
 	uint32_t count;
 
-	if (!find_file(c, "vms.txt", &it)) {
+	if (!find_file(cpio, "vms.txt", &it)) {
 		dlog("vms.txt is missing\n");
 		return true;
 	}
@@ -145,7 +145,7 @@ bool load_secondary(struct cpio *c, uint64_t mem_begin, uint64_t *mem_end)
 	     count++) {
 		struct memiter kernel;
 
-		if (!memiter_find_file(c, &str, &kernel)) {
+		if (!memiter_find_file(cpio, &str, &kernel)) {
 			dlog("Unable to load kernel for vm %u\n", count);
 			continue;
 		}
