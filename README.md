@@ -2,7 +2,7 @@
 
 Hafnium is a hypervisor, initially supporting aarch64 (64-bit ARMv8 CPUs).
 
-Further details are available in the [design doc](go/hafnium-dd).
+Further details are available in the [design doc](https://goto.google.com/hafnium-dd).
 
 ## Getting the source code
 
