@@ -4,7 +4,23 @@
 #include "cpu.h"
 #include "mm.h"
 
+enum rpc_state {
+	rpc_state_idle,
+	rpc_state_pending,
+	rpc_state_inflight,
+};
+
+struct rpc {
+	enum rpc_state state;
+	int16_t recv_bytes;
+	void *recv;
+	const void *send;
+	struct vcpu *recv_waiter;
+};
+
 struct vm {
+	struct spinlock lock;
+	struct rpc rpc;
 	struct mm_ptable ptable;
 	uint32_t vcpu_count;
 	struct vcpu vcpus[MAX_CPUS];

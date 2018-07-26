@@ -94,19 +94,20 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 	memset(vcpu, 0, sizeof(*vcpu));
 	sl_init(&vcpu->lock);
 	vcpu->vm = vm;
+	vcpu->state = vcpu_state_off;
 	/* TODO: Initialize vmid register. */
 }
 
 void vcpu_on(struct vcpu *vcpu)
 {
 	sl_lock(&vcpu->lock);
-	vcpu->is_on = true;
+	vcpu->state = vcpu_state_ready;
 	sl_unlock(&vcpu->lock);
 }
 
 void vcpu_off(struct vcpu *vcpu)
 {
 	sl_lock(&vcpu->lock);
-	vcpu->is_on = false;
+	vcpu->state = vcpu_state_off;
 	sl_unlock(&vcpu->lock);
 }

@@ -38,8 +38,9 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
 		}
 
 	default:
-		dlog("Unknown sync exception pc=0x%x, esr=0x%x, ec=0x%x\n", elr,
-		     esr, esr >> 26);
+		dlog("Unknown current sync exception pc=0x%x, esr=0x%x, "
+		     "ec=0x%x\n",
+		     elr, esr, esr >> 26);
 		for (;;) {
 			/* do nothing */
 		}
@@ -79,6 +80,26 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		ret.user_ret = api_vcpu_run(arg1, arg2, &ret.new);
 		break;
 
+	case HF_VM_CONFIGURE:
+		ret.user_ret = api_vm_configure(arg1, arg2);
+		break;
+
+	case HF_RPC_REQUEST:
+		ret.user_ret = api_rpc_request(arg1, arg2);
+		break;
+
+	case HF_RPC_READ_REQUEST:
+		ret.user_ret = api_rpc_read_request(arg1, &ret.new);
+		break;
+
+	case HF_RPC_ACK:
+		ret.user_ret = api_rpc_ack();
+		break;
+
+	case HF_RPC_REPLY:
+		ret.user_ret = api_rpc_reply(arg1, arg2, &ret.new);
+		break;
+
 	default:
 		ret.user_ret = -1;
 	}
@@ -90,10 +111,8 @@ struct vcpu *irq_lower(void)
 {
 	/* TODO: Only switch if we know the interrupt was not for the secondary
 	 * VM. */
-
 	/* Switch back to primary VM, interrupts will be handled there. */
-	vm_set_current(&primary_vm);
-	return &primary_vm.vcpus[cpu_index(cpu())];
+	return api_switch_to_primary(HF_VCPU_YIELD, vcpu_state_ready);
 }
 
 struct vcpu *sync_lower_exception(uint64_t esr)
@@ -124,8 +143,25 @@ struct vcpu *sync_lower_exception(uint64_t esr)
 			/* do nothing */
 		}
 
+	case 0x20: /* EC = 100000, Instruction abort. */
+		dlog("Instruction abort: pc=0x%x, esr=0x%x, ec=0x%x",
+		     vcpu->regs.pc, esr, esr >> 26);
+		if (!(esr & (1u << 10))) { /* Check FnV bit. */
+			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
+			     read_msr(hpfar_el2) << 8);
+		} else {
+			dlog(", far=invalid");
+		}
+
+		dlog(", vttbr_el2=0x%x", read_msr(vttbr_el2));
+		dlog("\n");
+		for (;;) {
+			/* do nothing */
+		}
+
 	default:
-		dlog("Unknown sync exception pc=0x%x, esr=0x%x, ec=0x%x\n",
+		dlog("Unknown lower sync exception pc=0x%x, esr=0x%x, "
+		     "ec=0x%x\n",
 		     vcpu->regs.pc, esr, esr >> 26);
 		for (;;) {
 			/* do nothing */

@@ -341,6 +341,50 @@ bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
 }
 
 /**
+ * Determines if the given virtual address is mapped in the given page table
+ * by recursively traversing all levels of the page table.
+ */
+static bool mm_is_mapped_recursive(const pte_t *table, vaddr_t addr, int level)
+{
+	pte_t pte;
+	vaddr_t va_level_end = mm_level_end(addr, level);
+
+	/* It isn't mapped if it doesn't fit in the table. */
+	if (addr >= va_level_end) {
+		return false;
+	}
+
+	pte = table[mm_index(addr, level)];
+
+	if (level == 0) {
+		return arch_mm_pte_is_present(pte);
+	}
+
+	if (arch_mm_is_block_allowed(level) && arch_mm_pte_is_block(pte)) {
+		return true;
+	}
+
+	if (arch_mm_pte_is_table(pte)) {
+		return mm_is_mapped_recursive(arch_mm_pte_to_table(pte), addr,
+					      level - 1);
+	}
+
+	return false;
+}
+
+/**
+ * Determines if the given virtual address is mapped in the given page table.
+ */
+bool mm_ptable_is_mapped(struct mm_ptable *t, vaddr_t addr, int mode)
+{
+	int level = arch_mm_max_level(mode);
+
+	addr = arch_mm_clear_va(addr);
+
+	return mm_is_mapped_recursive(t->table, addr, level);
+}
+
+/**
  * Initialises the given page table.
  */
 bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)

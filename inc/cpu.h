@@ -8,11 +8,20 @@
 #include "arch_cpu.h"
 #include "spinlock.h"
 
+enum vcpu_state {
+	vcpu_state_off,
+	vcpu_state_ready,
+	vcpu_state_running,
+	vcpu_state_blocked_rpc,
+	vcpu_state_blocked_interrupt,
+};
+
 struct vcpu {
 	struct spinlock lock;
-	bool is_on;
-	struct arch_regs regs;
+	enum vcpu_state state;
 	struct vm *vm;
+	struct vcpu *rpc_next;
+	struct arch_regs regs;
 };
 
 /* TODO: Update alignment such that cpus are in different cache lines. */
