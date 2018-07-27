@@ -107,6 +107,20 @@ ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make -j24
 The compiled image is stored in `arch/arm64/boot/Image`. This should be copied
 to the Hafnium ramdisk's root as `vmlinuz`.
 
+### Kernel Module
+
+From the hafnium root directory, the following commands can be used to compile
+the kernel module, replacing `<kernel-path>` with the path to the kernel built
+in the previous section:
+
+``` shell
+cd hafnium/driver/linux/
+ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KERNEL_PATH=<kernel-path> make
+```
+
+The compiled module is called `hafnium.ko`, and should be copied into the
+ramdisk described in the next section.
+
 ### Busybox RAM disk
 
 An initial ramdisk for the primary VM containing busybox can be built with the
@@ -136,8 +150,15 @@ mount -t sysfs none /sys
 EOF
 chmod u+x etc/init.d/rcS
 grep -v tty ../examples/inittab > ./etc/inittab
+```
+
+At this point you can copy into the current directory additional files you may
+want in the ramdisk, for example, the kernel module built in the previous
+section. Then run the following commands:
+
+``` shell
 find . | cpio -o -H newc | gzip > ../initrd.img
-cd -
+cd ..
 ```
 
 The resulting file is `initrd.img`. It should be copied to the Hafnium ramdisk's
