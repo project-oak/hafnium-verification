@@ -1,0 +1,13 @@
+declare_args() {
+  # The specific CPU that runs the architecture.
+  arch_cpu = "cortex-a57+nofp"
+
+  # The load address of the hypervisor
+  hypervisor_load_address = "0x40001000"
+
+  # Whether to include the PrimeCell UART (PL011) driver.
+  use_pl011 = true
+
+  # The base address of the PrimeCell UART (PL011) device.
+  pl011_base_address = "0x09000000"
+}

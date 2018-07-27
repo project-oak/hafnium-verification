@@ -1,0 +1,22 @@
+source_set("src") {
+  sources = [
+    "alloc.c",
+    "api.c",
+    "cpio.c",
+    "cpu.c",
+    "fdt.c",
+    "fdt_handler.c",
+    "load.c",
+    "main.c",
+    "memiter.c",
+    "mm.c",
+    "std.c",
+    "vm.c",
+  ]
+
+  if (is_debug) {
+    sources += [
+      "dlog.c",
+    ]
+  }
+}
