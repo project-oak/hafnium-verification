@@ -65,13 +65,19 @@ static inline void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg,
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */
 	r->pc = pc;
 	r->r[0] = arg;
+	/* TODO: Determine if we need to set TSW. */
 	r->lazy.hcr_el2 = (1u << 31) | /* RW bit. */
+			  (1u << 21) | /* TACR, trap access to ACTRL_EL1. */
+			  (1u << 19) | /* TSC, trap SMC instructions. */
+			  (1u << 20) | /* TIDCP, trap impl-defined funct. */
 			  (1u << 2) |  /* PTW, Protected Table Walk. */
 			  (1u << 0);   /* VM: enable stage-2 translation. */
 
 	if (!is_primary) {
-		r->lazy.hcr_el2 |= (7u << 3) | /* AMO, IMO, FMO bits. */
-				   (3u << 13); /* TWI, TWE bits. */
+		r->lazy.hcr_el2 |= (7u << 3) |  /* AMO, IMO, FMO bits. */
+				   (1u << 9) |  /* FB bit. */
+				   (1u << 10) | /* BSU bits set to inner-sh. */
+				   (3u << 13);  /* TWI, TWE bits. */
 	}
 }
 
@@ -90,31 +96,6 @@ static inline void arch_regs_clear_irq(struct arch_regs *r)
 {
 	/* Clear the VI bit. */
 	r->lazy.hcr_el2 &= ~(1u << 7);
-}
-
-/* TODO: Figure out what to do with this. */
-int32_t smc(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
-
-static inline void arch_cpu_on(size_t id, void *ctx)
-{
-	void cpu_entry(void *ctx);
-	int32_t ret;
-
-	/*
-	 * There's a race when turning a CPU on when it's in the process of
-	 * turning off. We need to loop here while it is reported that the CPU
-	 * is on (because it's about to turn itself off).
-	 */
-	do {
-		/* CPU_ON */
-		ret = smc(0xC4000003, id, (size_t)&cpu_entry, (size_t)ctx);
-	} while (ret == -4); /* ALREADY_ON */
-}
-
-static inline void arch_cpu_off(void)
-{
-	/* CPU_OFF */
-	smc(0xC4000002, 0, 0, 0);
 }
 
 #endif /* _ARCH_CPU_H */

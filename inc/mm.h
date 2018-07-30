@@ -50,6 +50,7 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode);
 bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode);
 
 bool mm_init(void);
+bool mm_cpu_init(void);
 bool mm_map(vaddr_t begin, vaddr_t end, paddr_t paddr, int mode);
 bool mm_unmap(vaddr_t begin, vaddr_t end, int mode);
 void mm_defrag(void);

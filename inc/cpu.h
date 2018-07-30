@@ -52,8 +52,9 @@ void cpu_init(struct cpu *c);
 size_t cpu_index(struct cpu *c);
 void cpu_irq_enable(struct cpu *c);
 void cpu_irq_disable(struct cpu *c);
-bool cpu_on(struct cpu *c);
+bool cpu_on(struct cpu *c, size_t entry, size_t arg);
 void cpu_off(struct cpu *c);
+struct cpu *cpu_find(size_t id);
 
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu *vcpu);

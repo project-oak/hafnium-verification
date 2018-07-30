@@ -461,7 +461,12 @@ bool mm_init(void)
 	mm_map((vaddr_t)data_begin, (vaddr_t)data_end, (paddr_t)data_begin,
 	       MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
 
-	return arch_mm_init((paddr_t)ptable.table);
+	return arch_mm_init((paddr_t)ptable.table, true);
+}
+
+bool mm_cpu_init(void)
+{
+	return arch_mm_init((paddr_t)ptable.table, false);
 }
 
 /**

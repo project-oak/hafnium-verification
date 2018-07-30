@@ -94,7 +94,7 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
 }
 
 /**
- * Puts current vcpu in wait for interrupt mode, and returns to the primary
+ * Puts the current vcpu in wait for interrupt mode, and returns to the primary
  * vm.
  */
 struct vcpu *api_wait_for_interrupt(void)
@@ -132,7 +132,7 @@ int32_t api_vm_configure(paddr_t send, paddr_t recv)
 
 	/*
 	 * Check that both pages are acessible from the VM, i.e., ensure that
-	 * the caller isn't try to use another VM's memory.
+	 * the caller isn't trying to use another VM's memory.
 	 */
 	if (!mm_ptable_is_mapped(&vm->ptable, recv, 0) ||
 	    !mm_ptable_is_mapped(&vm->ptable, send, 0)) {

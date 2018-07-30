@@ -120,5 +120,11 @@ struct vcpu *cpu_main(void)
 
 	dlog("Starting up cpu %d\n", cpu_index(c));
 
+	if (!mm_cpu_init()) {
+		panic("mm_cpu_init failed");
+	}
+
+	vm_set_current(&primary_vm);
+
 	return primary_vm.vcpus + cpu_index(c);
 }

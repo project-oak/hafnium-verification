@@ -1,5 +1,6 @@
 #include "cpu.h"
 
+#include "api.h"
 #include "arch_cpu.h"
 #include "dlog.h"
 #include "std.h"
@@ -24,14 +25,14 @@ void cpu_module_init(void)
 	for (i = 0; i < MAX_CPUS; i++) {
 		struct cpu *c = cpus + i;
 		cpu_init(c);
-		c->id = i; /* TODO: Initialize ID. */
+		c->id = i; /* TODO: Initialize ID based on fdt. */
 		c->stack_bottom = callstacks + STACK_SIZE * (i + 1);
 	}
 }
 
 size_t cpu_index(struct cpu *c)
 {
-	return cpus - c;
+	return c - cpus;
 }
 
 void cpu_init(struct cpu *c)
@@ -60,7 +61,7 @@ void cpu_irq_disable(struct cpu *c)
 /**
  * Turns CPU on and returns the previous state.
  */
-bool cpu_on(struct cpu *c)
+bool cpu_on(struct cpu *c, size_t entry, size_t arg)
 {
 	bool prev;
 
@@ -70,23 +71,38 @@ bool cpu_on(struct cpu *c)
 	sl_unlock(&c->lock);
 
 	if (!prev) {
-		/* The CPU is currently off, we need to turn it on. */
-		arch_cpu_on(c->id, c);
+		struct vcpu *vcpu = primary_vm.vcpus + cpu_index(c);
+		arch_regs_init(&vcpu->regs, entry, arg, true);
+		vcpu_on(vcpu);
 	}
 
 	return prev;
 }
 
-/*
- * This must be called only from the same CPU.
+/**
+ * Prepares the CPU for turning itself off.
  */
 void cpu_off(struct cpu *c)
 {
 	sl_lock(&c->lock);
 	c->is_on = false;
 	sl_unlock(&c->lock);
+}
 
-	arch_cpu_off();
+/**
+ * Searches for a CPU based on its id.
+ */
+struct cpu *cpu_find(size_t id)
+{
+	size_t i;
+
+	for (i = 0; i < MAX_CPUS; i++) {
+		if (cpus[i].id == id) {
+			return cpus + i;
+		}
+	}
+
+	return NULL;
 }
 
 void vcpu_init(struct vcpu *vcpu, struct vm *vm)
@@ -95,7 +111,8 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 	sl_init(&vcpu->lock);
 	vcpu->vm = vm;
 	vcpu->state = vcpu_state_off;
-	/* TODO: Initialize vmid register. */
+	/* TODO: This needs to be moved to arch-dependent code. */
+	vcpu->regs.lazy.vmpidr_el2 = vcpu - vm->vcpus;
 }
 
 void vcpu_on(struct vcpu *vcpu)

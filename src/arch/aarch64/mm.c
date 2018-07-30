@@ -144,7 +144,7 @@ int arch_mm_max_level(int mode)
 	return mm_max_s2_level;
 }
 
-bool arch_mm_init(paddr_t table)
+bool arch_mm_init(paddr_t table, bool first)
 {
 	static const int pa_bits_table[16] = {32, 36, 40, 42, 44, 48};
 	uint64_t features = read_msr(id_aa64mmfr0_el1);
@@ -165,7 +165,9 @@ bool arch_mm_init(paddr_t table)
 		return false;
 	}
 
-	dlog("Supported bits in physical address: %d\n", pa_bits);
+	if (first) {
+		dlog("Supported bits in physical address: %d\n", pa_bits);
+	}
 
 	/*
 	 * Determine sl0 based on the number of bits. The maximum value is given
@@ -179,7 +181,9 @@ bool arch_mm_init(paddr_t table)
 		sl0 = 1;
 	}
 
-	dlog("Number of page table levels: %d\n", mm_max_s2_level + 1);
+	if (first) {
+		dlog("Number of page table levels: %d\n", mm_max_s2_level + 1);
+	}
 
 	v = (1u << 31) |	       /* RES1. */
 	    ((features & 0xf) << 16) | /* PS, matching features. */

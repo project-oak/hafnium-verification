@@ -135,8 +135,6 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 		vm_start_vcpu(&primary_vm, 0, tmp, kernel_arg, true);
 	}
 
-	vm_set_current(&primary_vm);
-
 	return true;
 }
 
