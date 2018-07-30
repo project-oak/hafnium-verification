@@ -167,8 +167,8 @@ bool fdt_get_boot_params(struct fdt_header *fdt, struct boot_params *p)
 	bool ret = false;
 
 	/* Map the fdt header in. */
-	if (!mm_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(),
-		    (paddr_t)fdt, MM_MODE_R)) {
+	if (!mm_identity_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(),
+			     MM_MODE_R)) {
 		dlog("Unable to map FDT header.\n");
 		goto err_unmap_fdt_header;
 	}
@@ -179,8 +179,8 @@ bool fdt_get_boot_params(struct fdt_header *fdt, struct boot_params *p)
 	}
 
 	/* Map the rest of the fdt in. */
-	if (!mm_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_total_size(fdt),
-		    (paddr_t)fdt, MM_MODE_R)) {
+	if (!mm_identity_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_total_size(fdt),
+			     MM_MODE_R)) {
 		dlog("Unable to map full FDT.\n");
 		goto err_unmap_fdt_header;
 	}
@@ -216,8 +216,8 @@ bool fdt_patch(struct fdt_header *fdt, struct boot_params_update *p)
 	bool ret = false;
 
 	/* Map the fdt header in. */
-	if (!mm_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(),
-		    (paddr_t)fdt, MM_MODE_R)) {
+	if (!mm_identity_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(),
+			     MM_MODE_R)) {
 		dlog("Unable to map FDT header.\n");
 		return false;
 	}
@@ -228,9 +228,9 @@ bool fdt_patch(struct fdt_header *fdt, struct boot_params_update *p)
 	}
 
 	/* Map the fdt (+ a page) in r/w mode in preparation for updating it. */
-	if (!mm_map((vaddr_t)fdt,
-		    (vaddr_t)fdt + fdt_total_size(fdt) + PAGE_SIZE,
-		    (paddr_t)fdt, MM_MODE_R | MM_MODE_W)) {
+	if (!mm_identity_map((vaddr_t)fdt,
+			     (vaddr_t)fdt + fdt_total_size(fdt) + PAGE_SIZE,
+			     MM_MODE_R | MM_MODE_W)) {
 		dlog("Unable to map FDT in r/w mode.\n");
 		goto err_unmap_fdt_header;
 	}

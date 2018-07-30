@@ -195,19 +195,19 @@ static void mm_invalidate_tlb(vaddr_t begin, vaddr_t end, bool stage1)
 
 /**
  * Updates the given table such that the given virtual address range is mapped
- * to the given physical address range in the architecture-agnostic mode
+ * to the corresponding physical address range in the architecture-agnostic mode
  * provided.
  */
-bool mm_ptable_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
-		   paddr_t paddr, int mode)
+bool mm_ptable_identity_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
+			    int mode)
 {
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
+	paddr_t paddr = arch_mm_clear_pa(begin);
 
 	begin = arch_mm_clear_va(begin);
 	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
-	paddr = arch_mm_clear_pa(paddr);
 
 	/*
 	 * Do it in two steps to prevent leaving the table in a halfway updated
@@ -241,7 +241,7 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 	begin = arch_mm_clear_va(begin);
 	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
 
-	/* Also do updates in two steps, similarly to mm_ptable_map. */
+	/* Also do updates in two steps, similarly to mm_ptable_identity_map. */
 	if (!mm_map_level(begin, end, begin, 0, t->table, level, flags)) {
 		return false;
 	}
@@ -258,18 +258,19 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 }
 
 /**
- * Updates the given table such that a single virtual address page is mapped
- * to a single physical address page in the provided architecture-agnostic mode.
+ * Updates the given table such that a single virtual address page is mapped to
+ * the corresponding physical address page in the provided architecture-agnostic
+ * mode.
  */
-bool mm_ptable_map_page(struct mm_ptable *t, vaddr_t va, paddr_t pa, int mode)
+bool mm_ptable_identity_map_page(struct mm_ptable *t, vaddr_t va, int mode)
 {
 	size_t i;
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	pte_t *table = t->table;
 	bool sync = !(mode & MM_MODE_NOSYNC);
+	paddr_t pa = arch_mm_clear_pa(va);
 
 	va = arch_mm_clear_va(va);
-	pa = arch_mm_clear_pa(pa);
 
 	for (i = arch_mm_max_level(mode); i > 0; i--) {
 		table = mm_populate_table_pte(table + mm_index(va, i), i, sync);
@@ -414,12 +415,13 @@ bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
 
 /**
  * Updates the hypervisor page table such that the given virtual address range
- * is mapped to the given physical address range in the architecture-agnostic
- * mode provided.
+ * is mapped to the corresponding physical address range in the
+ * architecture-agnostic mode provided.
  */
-bool mm_map(vaddr_t begin, vaddr_t end, paddr_t paddr, int mode)
+bool mm_identity_map(vaddr_t begin, vaddr_t end, int mode)
 {
-	return mm_ptable_map(&ptable, begin, end, paddr, mode | MM_MODE_STAGE1);
+	return mm_ptable_identity_map(&ptable, begin, end,
+				      mode | MM_MODE_STAGE1);
 }
 
 /**
@@ -447,19 +449,19 @@ bool mm_init(void)
 
 	/* Map page for uart. */
 	/* TODO: We may not want to map this. */
-	mm_ptable_map_page(&ptable, PL011_BASE, PL011_BASE,
-			   MM_MODE_R | MM_MODE_W | MM_MODE_D | MM_MODE_NOSYNC |
-				   MM_MODE_STAGE1);
+	mm_ptable_identity_map_page(&ptable, PL011_BASE,
+				    MM_MODE_R | MM_MODE_W | MM_MODE_D |
+					    MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
 	/* Map each section. */
-	mm_map((vaddr_t)text_begin, (vaddr_t)text_end, (paddr_t)text_begin,
-	       MM_MODE_X | MM_MODE_NOSYNC);
+	mm_identity_map((vaddr_t)text_begin, (vaddr_t)text_end,
+			MM_MODE_X | MM_MODE_NOSYNC);
 
-	mm_map((vaddr_t)rodata_begin, (vaddr_t)rodata_end,
-	       (paddr_t)rodata_begin, MM_MODE_R | MM_MODE_NOSYNC);
+	mm_identity_map((vaddr_t)rodata_begin, (vaddr_t)rodata_end,
+			MM_MODE_R | MM_MODE_NOSYNC);
 
-	mm_map((vaddr_t)data_begin, (vaddr_t)data_end, (paddr_t)data_begin,
-	       MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
+	mm_identity_map((vaddr_t)data_begin, (vaddr_t)data_end,
+			MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
 
 	return arch_mm_init((paddr_t)ptable.table, true);
 }

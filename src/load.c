@@ -15,7 +15,7 @@
  */
 static bool copy_to_unmaped(paddr_t to, const void *from, size_t size)
 {
-	if (!mm_map((vaddr_t)to, (vaddr_t)to + size, to, MM_MODE_W)) {
+	if (!mm_identity_map((vaddr_t)to, (vaddr_t)to + size, MM_MODE_W)) {
 		return false;
 	}
 
@@ -118,10 +118,10 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 
 		/* Map the 1TB of memory. */
 		/* TODO: We should do a whitelist rather than a blacklist. */
-		if (!mm_ptable_map(&primary_vm.ptable, 0,
-				   1024ull * 1024 * 1024 * 1024, 0,
-				   MM_MODE_R | MM_MODE_W | MM_MODE_X |
-					   MM_MODE_NOINVALIDATE)) {
+		if (!mm_ptable_identity_map(&primary_vm.ptable, 0,
+					    1024ull * 1024 * 1024 * 1024,
+					    MM_MODE_R | MM_MODE_W | MM_MODE_X |
+						    MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to initialise memory for primary vm\n");
 			return false;
 		}
@@ -200,16 +200,16 @@ bool load_secondary(const struct memiter *cpio, uint64_t mem_begin,
 
 		/* TODO: Remove this. */
 		/* Grant VM access to uart. */
-		mm_ptable_map_page(&secondary_vm[count].ptable, PL011_BASE,
-				   PL011_BASE,
-				   MM_MODE_R | MM_MODE_W | MM_MODE_D |
-					   MM_MODE_NOINVALIDATE);
+		mm_ptable_identity_map_page(&secondary_vm[count].ptable,
+					    PL011_BASE,
+					    MM_MODE_R | MM_MODE_W | MM_MODE_D |
+						    MM_MODE_NOINVALIDATE);
 
 		/* Grant the VM access to the memory. */
-		if (!mm_ptable_map(&secondary_vm[count].ptable, *mem_end,
-				   *mem_end + mem, *mem_end,
-				   MM_MODE_R | MM_MODE_W | MM_MODE_X |
-					   MM_MODE_NOINVALIDATE)) {
+		if (!mm_ptable_identity_map(&secondary_vm[count].ptable,
+					    *mem_end, *mem_end + mem,
+					    MM_MODE_R | MM_MODE_W | MM_MODE_X |
+						    MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to initialise memory for vm %u\n", count);
 			continue;
 		}

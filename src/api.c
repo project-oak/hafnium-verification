@@ -141,8 +141,8 @@ int32_t api_vm_configure(paddr_t send, paddr_t recv)
 	}
 
 	/* Map the send page as read-only in the hypervisor address space. */
-	if (!mm_map((vaddr_t)send, (vaddr_t)send + PAGE_SIZE, send,
-		    MM_MODE_R)) {
+	if (!mm_identity_map((vaddr_t)send, (vaddr_t)send + PAGE_SIZE,
+			     MM_MODE_R)) {
 		ret = -1;
 		goto exit;
 	}
@@ -151,8 +151,8 @@ int32_t api_vm_configure(paddr_t send, paddr_t recv)
 	 * Map the receive page as writable in the hypervisor address space. On
 	 * failure, unmap the send page before returning.
 	 */
-	if (!mm_map((vaddr_t)recv, (vaddr_t)recv + PAGE_SIZE, recv,
-		    MM_MODE_W)) {
+	if (!mm_identity_map((vaddr_t)recv, (vaddr_t)recv + PAGE_SIZE,
+			     MM_MODE_W)) {
 		mm_unmap((vaddr_t)send, (vaddr_t)send + PAGE_SIZE, 0);
 		ret = -1;
 		goto exit;

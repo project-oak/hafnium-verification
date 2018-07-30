@@ -68,8 +68,8 @@ static void one_time_init(void)
 	     params.initrd_end - 1);
 
 	/* Map initrd in, and initialise cpio parser. */
-	if (!mm_map(params.initrd_begin, params.initrd_end, params.initrd_begin,
-		    MM_MODE_R)) {
+	if (!mm_identity_map(params.initrd_begin, params.initrd_end,
+			     MM_MODE_R)) {
 		panic("unable to map initrd in");
 	}
 
