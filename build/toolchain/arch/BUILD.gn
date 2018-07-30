@@ -76,7 +76,7 @@ template("clang_toolchain") {
 
   cc_toolchain(target_name) {
     cc = "clang"
-    cflags = "-target ${invoker.target}"
+    cflags = "-target ${invoker.target} -fcolor-diagnostics"
     ld = "${invoker.arch_tool_prefix}ld"
 
     toolchain_args = {
@@ -90,6 +90,7 @@ template("gcc_toolchain") {
 
   cc_toolchain(target_name) {
     cc = "${invoker.arch_tool_prefix}gcc"
+    cflags = "-fdiagnostics-color=always"
     ld = "${invoker.arch_tool_prefix}ld"
 
     toolchain_args = {

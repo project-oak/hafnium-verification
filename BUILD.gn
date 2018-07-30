@@ -1,12 +1,13 @@
 import("//build/image/hypervisor.gni")
 
-group("host_tools") {
+group("arch_images") {
   deps = [
     ":hafnium($arch_toolchain)",
   ]
 }
 
 executable("test") {
+  testonly = true
   sources = [
     "test.cpp",
   ]
