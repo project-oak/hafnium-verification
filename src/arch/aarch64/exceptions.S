@@ -41,8 +41,11 @@ vector_table_el2:
 .balign 0x80
 	/* sync_lower_64 */
 
-	/* Save x18 since we're about to clobber it. */
-	str x18, [sp, #-8]
+	/*
+	 * Save x18 since we're about to clobber it. We subtract 16 instead of
+	 * 8 from the stack pointer to keep it 16-byte aligned.
+	 */
+	str x18, [sp, #-16]!
 
 	/* Extract the exception class (EC) from exception syndrome register. */
 	mrs x18, esr_el2
@@ -71,7 +74,7 @@ vector_table_el2:
 	ldp x11, x12, [sp, #-16]
 	ldp x13, x14, [sp, #-16]
 	ldp x15, x16, [sp, #-16]
-	ldp x17, x18, [sp, #-16]
+	mov x17, xzr
 	eret
 
 .balign 0x80
@@ -329,7 +332,8 @@ slow_sync_lower_64:
 	stp x16, x17, [x18, #8 * 16]
 	stp x29, x30, [x18, #8 * 29]
 
-	ldr x0, [sp, #-8]
+	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
+	ldr x0, [sp], #16
 	str x0, [x18, #8 * 18]
 
 	/* Save return address & mode. */
