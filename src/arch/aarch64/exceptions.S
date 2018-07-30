@@ -269,9 +269,8 @@ vcpu_restore_all_and_run:
 	msr sp_el0, x20
 	msr sp_el1, x21
 
-	ldp x22, x23, [x0, #16 * 11]
+	ldr x22, [x0, #16 * 11]
 	msr par_el1, x22
-	msr hcr_el2, x23
 
 	/* Restore non-volatile registers. */
 	add x0, x0, #(VCPU_REGS - VCPU_LAZY)
