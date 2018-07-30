@@ -6,5 +6,6 @@ declare_args() {
   arch_aarch64_pl011_base_address = ""
 }
 
-assert(!arch_aarch64_use_pl011 || arch_aarch64_pl011_base_address != "",
-       "Must provide the PL011 base address as \"arch_aarch64_pl011_base_address\".")
+assert(
+    !arch_aarch64_use_pl011 || arch_aarch64_pl011_base_address != "",
+    "Must provide the PL011 base address as \"arch_aarch64_pl011_base_address\".")

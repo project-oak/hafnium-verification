@@ -5,14 +5,64 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* A physical address. */
-typedef size_t paddr_t;
+/* Integer type large enough to hold a physical address. */
+typedef uintptr_t uintpaddr_t;
 
-/* A virtual address. */
-typedef size_t vaddr_t;
+/* Integer type large enough to hold a virtual address. */
+typedef uintptr_t uintvaddr_t;
 
 /* A page table entry. */
-typedef size_t pte_t;
+typedef uint64_t pte_t;
+
+/* An opaque type for a physical address. */
+typedef struct {
+	uintpaddr_t pa;
+} paddr_t;
+
+/* An opaque type for a virtual address. */
+typedef struct {
+	uintvaddr_t va;
+} vaddr_t;
+
+/**
+ * Initializes a physical address.
+ */
+static inline paddr_t pa_init(uintpaddr_t p)
+{
+	return (paddr_t){.pa = p};
+}
+
+/**
+ * Extracts the absolute physical address.
+ */
+static inline uintpaddr_t pa_addr(paddr_t pa)
+{
+	return pa.pa;
+}
+
+/**
+ * Initializes a virtual address.
+ */
+static inline vaddr_t va_init(uintvaddr_t v)
+{
+	return (vaddr_t){.va = v};
+}
+
+/**
+ * Extracts the absolute virtual address.
+ */
+static inline uintvaddr_t va_addr(vaddr_t va)
+{
+	return va.va;
+}
+
+/**
+ * Advances a virtual address.
+ */
+static inline vaddr_t va_add(vaddr_t va, size_t n)
+{
+	return va_init(va_addr(va) + n);
+}
 
 #define PAGE_LEVEL_BITS 9
 #define PAGE_BITS 12
@@ -25,7 +75,7 @@ typedef size_t pte_t;
  */
 static inline pte_t arch_mm_pa_to_table_pte(paddr_t pa)
 {
-	return pa | 0x3;
+	return pa_addr(pa) | 0x3;
 }
 
 /**
@@ -33,7 +83,7 @@ static inline pte_t arch_mm_pa_to_table_pte(paddr_t pa)
  */
 static inline pte_t arch_mm_pa_to_block_pte(paddr_t pa, uint64_t attrs)
 {
-	return pa | attrs;
+	return pa_addr(pa) | attrs;
 }
 
 /**
@@ -41,7 +91,7 @@ static inline pte_t arch_mm_pa_to_block_pte(paddr_t pa, uint64_t attrs)
  */
 static inline pte_t arch_mm_pa_to_page_pte(paddr_t pa, uint64_t attrs)
 {
-	return pa | attrs | ((attrs & 1) << 1);
+	return pa_addr(pa) | attrs | ((attrs & 1) << 1);
 }
 
 /**
@@ -93,22 +143,25 @@ static inline bool arch_mm_pte_is_block(pte_t pte)
 	return (pte & 3) == 1;
 }
 
+#define CLEAR_PTE_ATTRS(v) \
+	((v) & ~((1ull << PAGE_BITS) - 1) & ((1ull << 48) - 1))
+
 /**
  * Clears the given virtual address, i.e., sets the ignored bits (from a page
  * table perspective) to zero.
  */
-static inline vaddr_t arch_mm_clear_va(vaddr_t addr)
+static inline vaddr_t arch_mm_clear_va(vaddr_t va)
 {
-	return addr & ~((1ull << PAGE_BITS) - 1) & ((1ull << 48) - 1);
+	return va_init(CLEAR_PTE_ATTRS(va_addr(va)));
 }
 
 /**
  * Clears the given physical address, i.e., sets the ignored bits (from a page
  * table perspective) to zero.
  */
-static inline paddr_t arch_mm_clear_pa(paddr_t addr)
+static inline paddr_t arch_mm_clear_pa(paddr_t pa)
 {
-	return addr & ~((1ull << PAGE_BITS) - 1) & ((1ull << 48) - 1);
+	return pa_init(CLEAR_PTE_ATTRS(pa_addr(pa)));
 }
 
 /**
@@ -116,7 +169,7 @@ static inline paddr_t arch_mm_clear_pa(paddr_t addr)
  */
 static inline paddr_t arch_mm_pte_to_paddr(pte_t pte)
 {
-	return arch_mm_clear_pa(pte);
+	return pa_init(CLEAR_PTE_ATTRS(pte));
 }
 
 /**
@@ -124,15 +177,20 @@ static inline paddr_t arch_mm_pte_to_paddr(pte_t pte)
  */
 static inline pte_t *arch_mm_pte_to_table(pte_t pte)
 {
-	return (pte_t *)arch_mm_pte_to_paddr(pte);
+	return (pte_t *)CLEAR_PTE_ATTRS(pte);
 }
+
+#undef CLEAR_PTE_ATTRS
 
 /**
  * Invalidates stage-1 TLB entries referring to the given virtual address range.
  */
-static inline void arch_mm_invalidate_stage1_range(vaddr_t begin, vaddr_t end)
+static inline void arch_mm_invalidate_stage1_range(vaddr_t va_begin,
+						   vaddr_t va_end)
 {
-	vaddr_t it;
+	uintvaddr_t begin = va_addr(va_begin);
+	uintvaddr_t end = va_addr(va_end);
+	uintvaddr_t it;
 
 	begin >>= 12;
 	end >>= 12;
@@ -149,9 +207,12 @@ static inline void arch_mm_invalidate_stage1_range(vaddr_t begin, vaddr_t end)
 /**
  * Invalidates stage-2 TLB entries referring to the given virtual address range.
  */
-static inline void arch_mm_invalidate_stage2_range(vaddr_t begin, vaddr_t end)
+static inline void arch_mm_invalidate_stage2_range(vaddr_t va_begin,
+						   vaddr_t va_end)
 {
-	vaddr_t it;
+	uintvaddr_t begin = va_addr(va_begin);
+	uintvaddr_t end = va_addr(va_end);
+	uintvaddr_t it;
 
 	/* TODO: This only applies to the current VMID. */
 
@@ -172,7 +233,9 @@ static inline void arch_mm_invalidate_stage2_range(vaddr_t begin, vaddr_t end)
 
 static inline void arch_mm_set_vm(uint64_t vmid, paddr_t table)
 {
-	__asm__ volatile("msr vttbr_el2, %0" : : "r"(table | (vmid << 48)));
+	__asm__ volatile("msr vttbr_el2, %0"
+			 :
+			 : "r"(pa_addr(table) | (vmid << 48)));
 }
 
 uint64_t arch_mm_mode_to_attrs(int mode);

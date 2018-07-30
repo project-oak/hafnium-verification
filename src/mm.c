@@ -14,12 +14,13 @@
 
 /* clang-format on */
 
-extern char text_begin[];
-extern char text_end[];
-extern char rodata_begin[];
-extern char rodata_end[];
-extern char data_begin[];
-extern char data_end[];
+extern uint8_t text_begin[];
+extern uint8_t text_end[];
+extern uint8_t rodata_begin[];
+extern uint8_t rodata_end[];
+extern uint8_t data_begin[];
+extern uint8_t data_end[];
+
 static struct mm_ptable ptable;
 
 /**
@@ -38,7 +39,7 @@ static inline size_t mm_entry_size(int level)
 static inline vaddr_t mm_level_end(vaddr_t va, int level)
 {
 	size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS;
-	return ((va >> offset) + 1) << offset;
+	return va_init(((va_addr(va) >> offset) + 1) << offset);
 }
 
 /**
@@ -47,7 +48,7 @@ static inline vaddr_t mm_level_end(vaddr_t va, int level)
  */
 static inline size_t mm_index(vaddr_t va, int level)
 {
-	vaddr_t v = va >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
+	uintvaddr_t v = va_addr(va) >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
 	return v & ((1ull << PAGE_LEVEL_BITS) - 1);
 }
 
@@ -102,7 +103,7 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	 * update it.
 	 */
 	atomic_thread_fence(memory_order_release);
-	*pte = arch_mm_pa_to_table_pte((paddr_t)ntable);
+	*pte = arch_mm_pa_to_table_pte(pa_init((uintpaddr_t)ntable));
 
 	return ntable;
 }
@@ -131,29 +132,31 @@ static void mm_free_page_pte(pte_t pte, int level, bool sync)
  * levels, but the recursion is bound by the maximum number of levels in a page
  * table.
  */
-static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
-			 pte_t *table, int level, int flags)
+static bool mm_map_level(vaddr_t va_begin, vaddr_t va_end, paddr_t pa,
+			 uint64_t attrs, pte_t *table, int level, int flags)
 {
-	pte_t *pte = table + mm_index(va, level);
-	vaddr_t va_level_end = mm_level_end(va, level);
+	pte_t *pte = table + mm_index(va_begin, level);
+	uintvaddr_t level_end = va_addr(mm_level_end(va_begin, level));
+	uintvaddr_t begin = va_addr(va_begin);
+	uintvaddr_t end = va_addr(va_end);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
 	bool sync = flags & MAP_FLAG_SYNC;
 
-	/* Cap va_end so that we don't go over the current level max. */
-	if (va_end > va_level_end) {
-		va_end = va_level_end;
+	/* Cap end so that we don't go over the current level max. */
+	if (end > level_end) {
+		end = level_end;
 	}
 
 	/* Fill each entry in the table. */
-	while (va < va_end) {
+	while (begin < end) {
 		if (level == 0) {
 			if (commit) {
 				*pte = arch_mm_pa_to_page_pte(pa, attrs);
 			}
-		} else if ((va_end - va) >= entry_size &&
+		} else if ((end - begin) >= entry_size &&
 			   arch_mm_is_block_allowed(level) &&
-			   (va & (entry_size - 1)) == 0) {
+			   (begin & (entry_size - 1)) == 0) {
 			if (commit) {
 				pte_t v = *pte;
 				*pte = arch_mm_pa_to_block_pte(pa, attrs);
@@ -167,14 +170,14 @@ static bool mm_map_level(vaddr_t va, vaddr_t va_end, paddr_t pa, uint64_t attrs,
 				return false;
 			}
 
-			if (!mm_map_level(va, va_end, pa, attrs, nt, level - 1,
-					  flags)) {
+			if (!mm_map_level(va_begin, va_end, pa, attrs, nt,
+					  level - 1, flags)) {
 				return false;
 			}
 		}
 
-		va = (va + entry_size) & ~(entry_size - 1);
-		pa = (pa + entry_size) & ~(entry_size - 1);
+		begin = (begin + entry_size) & ~(entry_size - 1);
+		pa = pa_init((pa_addr(pa) + entry_size) & ~(entry_size - 1));
 		pte++;
 	}
 
@@ -204,21 +207,22 @@ bool mm_ptable_identity_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
-	paddr_t paddr = arch_mm_clear_pa(begin);
+	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
+	paddr_t paddr = arch_mm_clear_pa(mm_pa_from_va(begin));
 
 	begin = arch_mm_clear_va(begin);
-	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
+	end = arch_mm_clear_va(va_add(end, PAGE_SIZE - 1));
 
 	/*
 	 * Do it in two steps to prevent leaving the table in a halfway updated
 	 * state. In such a two-step implementation, the table may be left with
 	 * extra internal tables, but no different mapping on failure.
 	 */
-	if (!mm_map_level(begin, end, paddr, attrs, t->table, level, flags)) {
+	if (!mm_map_level(begin, end, paddr, attrs, table, level, flags)) {
 		return false;
 	}
 
-	mm_map_level(begin, end, paddr, attrs, t->table, level,
+	mm_map_level(begin, end, paddr, attrs, table, level,
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
@@ -237,16 +241,18 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 {
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
+	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
 
 	begin = arch_mm_clear_va(begin);
-	end = arch_mm_clear_va(end + PAGE_SIZE - 1);
+	end = arch_mm_clear_va(va_add(end, PAGE_SIZE - 1));
 
 	/* Also do updates in two steps, similarly to mm_ptable_identity_map. */
-	if (!mm_map_level(begin, end, begin, 0, t->table, level, flags)) {
+	if (!mm_map_level(begin, end, mm_pa_from_va(begin), 0, table, level,
+			  flags)) {
 		return false;
 	}
 
-	mm_map_level(begin, end, begin, 0, t->table, level,
+	mm_map_level(begin, end, mm_pa_from_va(begin), 0, table, level,
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
@@ -266,9 +272,9 @@ bool mm_ptable_identity_map_page(struct mm_ptable *t, vaddr_t va, int mode)
 {
 	size_t i;
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	pte_t *table = t->table;
+	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
 	bool sync = !(mode & MM_MODE_NOSYNC);
-	paddr_t pa = arch_mm_clear_pa(va);
+	paddr_t pa = arch_mm_clear_pa(mm_pa_from_va(va));
 
 	va = arch_mm_clear_va(va);
 
@@ -313,8 +319,9 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
  */
 void mm_ptable_dump(struct mm_ptable *t, int mode)
 {
+	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
 	int max_level = arch_mm_max_level(mode);
-	mm_dump_table_recursive(t->table, max_level, max_level);
+	mm_dump_table_recursive(table, max_level, max_level);
 }
 
 /**
@@ -334,11 +341,12 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
 {
 	/* TODO: If we add pages dynamically, they must be included here too. */
-	return mm_ptable_unmap(t, (vaddr_t)text_begin, (vaddr_t)text_end,
-			       mode) &&
-	       mm_ptable_unmap(t, (vaddr_t)rodata_begin, (vaddr_t)rodata_end,
-			       mode) &&
-	       mm_ptable_unmap(t, (vaddr_t)data_begin, (vaddr_t)data_end, mode);
+	return mm_ptable_unmap(t, va_init((uintvaddr_t)text_begin),
+			       va_init((uintvaddr_t)text_end), mode) &&
+	       mm_ptable_unmap(t, va_init((uintvaddr_t)rodata_begin),
+			       va_init((uintvaddr_t)rodata_end), mode) &&
+	       mm_ptable_unmap(t, va_init((uintvaddr_t)data_begin),
+			       va_init((uintvaddr_t)data_end), mode);
 }
 
 /**
@@ -348,10 +356,10 @@ bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
 static bool mm_is_mapped_recursive(const pte_t *table, vaddr_t addr, int level)
 {
 	pte_t pte;
-	vaddr_t va_level_end = mm_level_end(addr, level);
+	uintvaddr_t va_level_end = va_addr(mm_level_end(addr, level));
 
 	/* It isn't mapped if it doesn't fit in the table. */
-	if (addr >= va_level_end) {
+	if (va_addr(addr) >= va_level_end) {
 		return false;
 	}
 
@@ -378,11 +386,12 @@ static bool mm_is_mapped_recursive(const pte_t *table, vaddr_t addr, int level)
  */
 bool mm_ptable_is_mapped(struct mm_ptable *t, vaddr_t addr, int mode)
 {
+	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
 	int level = arch_mm_max_level(mode);
 
 	addr = arch_mm_clear_va(addr);
 
-	return mm_is_mapped_recursive(t->table, addr, level);
+	return mm_is_mapped_recursive(table, addr, level);
 }
 
 /**
@@ -407,7 +416,9 @@ bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
 		table[i] = arch_mm_absent_pte();
 	}
 
-	t->table = table;
+	/* TODO: halloc could return a virtual or physical address if mm not
+	 * enabled? */
+	t->table = pa_init((uintpaddr_t)table);
 	t->id = id;
 
 	return true;
@@ -449,26 +460,29 @@ bool mm_init(void)
 
 	/* Map page for uart. */
 	/* TODO: We may not want to map this. */
-	mm_ptable_identity_map_page(&ptable, PL011_BASE,
+	mm_ptable_identity_map_page(&ptable, va_init(PL011_BASE),
 				    MM_MODE_R | MM_MODE_W | MM_MODE_D |
 					    MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
 	/* Map each section. */
-	mm_identity_map((vaddr_t)text_begin, (vaddr_t)text_end,
+	mm_identity_map(va_init((uintvaddr_t)text_begin),
+			va_init((uintvaddr_t)text_end),
 			MM_MODE_X | MM_MODE_NOSYNC);
 
-	mm_identity_map((vaddr_t)rodata_begin, (vaddr_t)rodata_end,
+	mm_identity_map(va_init((uintvaddr_t)rodata_begin),
+			va_init((uintvaddr_t)rodata_end),
 			MM_MODE_R | MM_MODE_NOSYNC);
 
-	mm_identity_map((vaddr_t)data_begin, (vaddr_t)data_end,
+	mm_identity_map(va_init((uintvaddr_t)data_begin),
+			va_init((uintvaddr_t)data_end),
 			MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
 
-	return arch_mm_init((paddr_t)ptable.table, true);
+	return arch_mm_init(ptable.table, true);
 }
 
 bool mm_cpu_init(void)
 {
-	return arch_mm_init((paddr_t)ptable.table, false);
+	return arch_mm_init(ptable.table, false);
 }
 
 /**

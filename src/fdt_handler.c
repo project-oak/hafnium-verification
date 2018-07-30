@@ -84,20 +84,26 @@ static bool fdt_write_number(struct fdt_node *node, const char *name,
  */
 static bool find_initrd(struct fdt_node *n, struct boot_params *p)
 {
+	uint64_t begin;
+	uint64_t end;
+
 	if (!fdt_find_child(n, "chosen")) {
 		dlog("Unable to find 'chosen'\n");
 		return false;
 	}
 
-	if (!fdt_read_number(n, "linux,initrd-start", &p->initrd_begin)) {
+	if (!fdt_read_number(n, "linux,initrd-start", &begin)) {
 		dlog("Unable to read linux,initrd-start\n");
 		return false;
 	}
 
-	if (!fdt_read_number(n, "linux,initrd-end", &p->initrd_end)) {
+	if (!fdt_read_number(n, "linux,initrd-end", &end)) {
 		dlog("Unable to read linux,initrd-end\n");
 		return false;
 	}
+
+	p->initrd_begin = pa_init(begin);
+	p->initrd_end = pa_init(end);
 
 	return true;
 }
@@ -143,14 +149,14 @@ static void find_memory_range(const struct fdt_node *root,
 
 		/* Traverse all memory ranges within this node. */
 		while (size >= entry_size) {
-			uint64_t addr = convert_number(data, address_size);
-			uint64_t len =
+			uintpaddr_t addr = convert_number(data, address_size);
+			size_t len =
 				convert_number(data + address_size, size_size);
 
-			if (len > p->mem_end - p->mem_begin) {
+			if (len > pa_addr(p->mem_end) - pa_addr(p->mem_begin)) {
 				/* Remember the largest range we've found. */
-				p->mem_begin = addr;
-				p->mem_end = addr + len;
+				p->mem_begin = pa_init(addr);
+				p->mem_end = pa_init(addr + len);
 			}
 
 			size -= entry_size;
@@ -161,17 +167,21 @@ static void find_memory_range(const struct fdt_node *root,
 	/* TODO: Check for "reserved-memory" nodes. */
 }
 
-bool fdt_get_boot_params(struct fdt_header *fdt, struct boot_params *p)
+bool fdt_get_boot_params(paddr_t fdt_addr, struct boot_params *p)
 {
+	struct fdt_header *fdt;
 	struct fdt_node n;
 	bool ret = false;
 
 	/* Map the fdt header in. */
-	if (!mm_identity_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(),
+	if (!mm_identity_map(mm_va_from_pa(fdt_addr),
+			     va_init(pa_addr(fdt_addr) + fdt_header_size()),
 			     MM_MODE_R)) {
 		dlog("Unable to map FDT header.\n");
 		goto err_unmap_fdt_header;
 	}
+
+	fdt = mm_ptr_from_va(mm_va_from_pa(fdt_addr));
 
 	if (!fdt_root_node(&n, fdt)) {
 		dlog("FDT failed validation.\n");
@@ -179,7 +189,8 @@ bool fdt_get_boot_params(struct fdt_header *fdt, struct boot_params *p)
 	}
 
 	/* Map the rest of the fdt in. */
-	if (!mm_identity_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_total_size(fdt),
+	if (!mm_identity_map(mm_va_from_pa(fdt_addr),
+			     va_init(pa_addr(fdt_addr) + fdt_total_size(fdt)),
 			     MM_MODE_R)) {
 		dlog("Unable to map full FDT.\n");
 		goto err_unmap_fdt_header;
@@ -190,8 +201,8 @@ bool fdt_get_boot_params(struct fdt_header *fdt, struct boot_params *p)
 		goto out_unmap_fdt;
 	}
 
-	p->mem_begin = 0;
-	p->mem_end = 0;
+	p->mem_begin = pa_init(0);
+	p->mem_end = pa_init(0);
 	find_memory_range(&n, p);
 
 	if (!find_initrd(&n, p)) {
@@ -202,25 +213,31 @@ bool fdt_get_boot_params(struct fdt_header *fdt, struct boot_params *p)
 	ret = true;
 
 out_unmap_fdt:
-	mm_unmap((vaddr_t)fdt, (vaddr_t)fdt + fdt_total_size(fdt), 0);
+	mm_unmap(mm_va_from_pa(fdt_addr),
+		 va_init(pa_addr(fdt_addr) + fdt_total_size(fdt)), 0);
 	return ret;
 
 err_unmap_fdt_header:
-	mm_unmap((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(), 0);
+	mm_unmap(mm_va_from_pa(fdt_addr),
+		 va_init(pa_addr(fdt_addr) + fdt_header_size()), 0);
 	return false;
 }
 
-bool fdt_patch(struct fdt_header *fdt, struct boot_params_update *p)
+bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 {
+	struct fdt_header *fdt;
 	struct fdt_node n;
 	bool ret = false;
 
 	/* Map the fdt header in. */
-	if (!mm_identity_map((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(),
+	if (!mm_identity_map(mm_va_from_pa(fdt_addr),
+			     va_init(pa_addr(fdt_addr) + fdt_header_size()),
 			     MM_MODE_R)) {
 		dlog("Unable to map FDT header.\n");
 		return false;
 	}
+
+	fdt = mm_ptr_from_va(mm_va_from_pa(fdt_addr));
 
 	if (!fdt_root_node(&n, fdt)) {
 		dlog("FDT failed validation.\n");
@@ -228,8 +245,9 @@ bool fdt_patch(struct fdt_header *fdt, struct boot_params_update *p)
 	}
 
 	/* Map the fdt (+ a page) in r/w mode in preparation for updating it. */
-	if (!mm_identity_map((vaddr_t)fdt,
-			     (vaddr_t)fdt + fdt_total_size(fdt) + PAGE_SIZE,
+	if (!mm_identity_map(mm_va_from_pa(fdt_addr),
+			     va_init(pa_addr(fdt_addr) + fdt_total_size(fdt) +
+				     PAGE_SIZE),
 			     MM_MODE_R | MM_MODE_W)) {
 		dlog("Unable to map FDT in r/w mode.\n");
 		goto err_unmap_fdt_header;
@@ -246,12 +264,13 @@ bool fdt_patch(struct fdt_header *fdt, struct boot_params_update *p)
 	}
 
 	/* Patch FDT to point to new ramdisk. */
-	if (!fdt_write_number(&n, "linux,initrd-start", p->initrd_begin)) {
+	if (!fdt_write_number(&n, "linux,initrd-start",
+			      pa_addr(p->initrd_begin))) {
 		dlog("Unable to write linux,initrd-start\n");
 		goto out_unmap_fdt;
 	}
 
-	if (!fdt_write_number(&n, "linux,initrd-end", p->initrd_end)) {
+	if (!fdt_write_number(&n, "linux,initrd-end", pa_addr(p->initrd_end))) {
 		dlog("Unable to write linux,initrd-end\n");
 		goto out_unmap_fdt;
 	}
@@ -264,21 +283,25 @@ bool fdt_patch(struct fdt_header *fdt, struct boot_params_update *p)
 	}
 
 	/* Patch fdt to reserve memory for secondary VMs. */
-	fdt_add_mem_reservation(fdt, p->reserved_begin,
-				p->reserved_end - p->reserved_begin);
+	fdt_add_mem_reservation(
+		fdt, pa_addr(p->reserved_begin),
+		pa_addr(p->reserved_end) - pa_addr(p->reserved_begin));
 
 	ret = true;
 
 out_unmap_fdt:
 	/* Unmap FDT. */
-	if (!mm_unmap((vaddr_t)fdt,
-		      (vaddr_t)fdt + fdt_total_size(fdt) + PAGE_SIZE, 0)) {
+	if (!mm_unmap(mm_va_from_pa(fdt_addr),
+		      va_init(pa_addr(fdt_addr) + fdt_total_size(fdt) +
+			      PAGE_SIZE),
+		      0)) {
 		dlog("Unable to unmap writable FDT.\n");
 		return false;
 	}
 	return ret;
 
 err_unmap_fdt_header:
-	mm_unmap((vaddr_t)fdt, (vaddr_t)fdt + fdt_header_size(), 0);
+	mm_unmap(mm_va_from_pa(fdt_addr),
+		 va_init(pa_addr(fdt_addr) + fdt_header_size()), 0);
 	return false;
 }

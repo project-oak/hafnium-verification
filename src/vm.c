@@ -35,5 +35,5 @@ void vm_start_vcpu(struct vm *vm, size_t index, size_t entry, size_t arg,
 void vm_set_current(struct vm *vm)
 {
 	arch_cpu_update(vm == &primary_vm);
-	arch_mm_set_vm(vm->ptable.id, (paddr_t)vm->ptable.table);
+	arch_mm_set_vm(vm->ptable.id, vm->ptable.table);
 }

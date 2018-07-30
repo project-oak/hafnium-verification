@@ -182,7 +182,7 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		break;
 
 	case HF_VM_CONFIGURE:
-		ret.user_ret = api_vm_configure(arg1, arg2);
+		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2));
 		break;
 
 	case HF_RPC_REQUEST:

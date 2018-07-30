@@ -203,7 +203,7 @@ bool arch_mm_init(paddr_t table, bool first)
 	write_msr(mair_el2, (0 << (8 * STAGE1_DEVICEINDX)) |
 				    (0xff << (8 * STAGE1_NORMALINDX)));
 
-	write_msr(ttbr0_el2, table);
+	write_msr(ttbr0_el2, pa_addr(table));
 
 	/*
 	 * Configure tcr_el2.

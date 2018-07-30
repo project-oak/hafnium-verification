@@ -107,20 +107,27 @@ struct vcpu *api_wait_for_interrupt(void)
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
  */
-int32_t api_vm_configure(paddr_t send, paddr_t recv)
+int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 {
 	struct vm *vm = cpu()->current->vm;
+	paddr_t pa_send;
+	paddr_t pa_recv;
+	vaddr_t send_begin;
+	vaddr_t send_end;
+	vaddr_t recv_begin;
+	vaddr_t recv_end;
 	int32_t ret;
 
 	/* Fail if addresses are not page-aligned. */
-	if ((recv & (PAGE_SIZE - 1)) || (send & (PAGE_SIZE - 1))) {
+	if ((ipa_addr(send) & (PAGE_SIZE - 1)) ||
+	    (ipa_addr(recv) & (PAGE_SIZE - 1))) {
 		return -1;
 	}
 
 	sl_lock(&vm->lock);
 
 	/* We only allow these to be setup once. */
-	if (vm->rpc.recv || vm->rpc.send) {
+	if (vm->rpc.send || vm->rpc.recv) {
 		ret = -1;
 		goto exit;
 	}
@@ -131,18 +138,23 @@ int32_t api_vm_configure(paddr_t send, paddr_t recv)
 	 */
 
 	/*
-	 * Check that both pages are acessible from the VM, i.e., ensure that
-	 * the caller isn't trying to use another VM's memory.
+	 * Convert the intermediate physical addresses to physical address
+	 * provided the address was acessible from the VM which ensures that the
+	 * caller isn't trying to use another VM's memory.
 	 */
-	if (!mm_ptable_is_mapped(&vm->ptable, recv, 0) ||
-	    !mm_ptable_is_mapped(&vm->ptable, send, 0)) {
+	if (!mm_pa_from_ipa(&vm->ptable, send, &pa_send) ||
+	    !mm_pa_from_ipa(&vm->ptable, recv, &pa_recv)) {
 		ret = -1;
 		goto exit;
 	}
 
+	send_begin = mm_va_from_pa(pa_send);
+	send_end = va_add(send_begin, PAGE_SIZE);
+	recv_begin = mm_va_from_pa(pa_recv);
+	recv_end = va_add(recv_begin, PAGE_SIZE);
+
 	/* Map the send page as read-only in the hypervisor address space. */
-	if (!mm_identity_map((vaddr_t)send, (vaddr_t)send + PAGE_SIZE,
-			     MM_MODE_R)) {
+	if (!mm_identity_map(send_begin, send_end, MM_MODE_R)) {
 		ret = -1;
 		goto exit;
 	}
@@ -151,16 +163,15 @@ int32_t api_vm_configure(paddr_t send, paddr_t recv)
 	 * Map the receive page as writable in the hypervisor address space. On
 	 * failure, unmap the send page before returning.
 	 */
-	if (!mm_identity_map((vaddr_t)recv, (vaddr_t)recv + PAGE_SIZE,
-			     MM_MODE_W)) {
-		mm_unmap((vaddr_t)send, (vaddr_t)send + PAGE_SIZE, 0);
+	if (!mm_identity_map(recv_begin, recv_end, MM_MODE_W)) {
+		mm_unmap(send_begin, send_end, 0);
 		ret = -1;
 		goto exit;
 	}
 
 	/* Save pointers to the pages. */
-	vm->rpc.send = (const void *)(vaddr_t)send;
-	vm->rpc.recv = (void *)(vaddr_t)recv;
+	vm->rpc.send = mm_ptr_from_va(send_begin);
+	vm->rpc.recv = mm_ptr_from_va(recv_begin);
 
 	/* TODO: Notify any waiters. */
 

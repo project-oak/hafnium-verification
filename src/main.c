@@ -45,7 +45,7 @@ static void one_time_init(void)
 {
 	struct boot_params params;
 	struct boot_params_update update;
-	uint64_t new_mem_end;
+	paddr_t new_mem_end;
 	struct memiter primary_initrd;
 	struct memiter cpio;
 
@@ -62,19 +62,19 @@ static void one_time_init(void)
 		panic("unable to retrieve boot params");
 	}
 
-	dlog("Memory range:  0x%x - 0x%x\n", params.mem_begin,
-	     params.mem_end - 1);
-	dlog("Ramdisk range: 0x%x - 0x%x\n", params.initrd_begin,
-	     params.initrd_end - 1);
+	dlog("Memory range:  0x%x - 0x%x\n", pa_addr(params.mem_begin),
+	     pa_addr(params.mem_end) - 1);
+	dlog("Ramdisk range: 0x%x - 0x%x\n", pa_addr(params.initrd_begin),
+	     pa_addr(params.initrd_end) - 1);
 
 	/* Map initrd in, and initialise cpio parser. */
-	if (!mm_identity_map(params.initrd_begin, params.initrd_end,
-			     MM_MODE_R)) {
+	if (!mm_identity_map(mm_va_from_pa(params.initrd_begin),
+			     mm_va_from_pa(params.initrd_end), MM_MODE_R)) {
 		panic("unable to map initrd in");
 	}
 
-	memiter_init(&cpio, (void *)params.initrd_begin,
-		     params.initrd_end - params.initrd_begin);
+	memiter_init(&cpio, mm_ptr_from_va(mm_va_from_pa(params.initrd_begin)),
+		     pa_addr(params.initrd_end) - pa_addr(params.initrd_begin));
 
 	/* Load all VMs. */
 	new_mem_end = params.mem_end;
@@ -87,10 +87,13 @@ static void one_time_init(void)
 	}
 
 	/* Prepare to run by updating bootparams as seens by primary VM. */
-	update.initrd_begin = (paddr_t)primary_initrd.next;
-	update.initrd_end = (paddr_t)primary_initrd.limit;
+	update.initrd_begin =
+		mm_pa_from_va(va_init((uintvaddr_t)primary_initrd.next));
+	update.initrd_end =
+		mm_pa_from_va(va_init((uintvaddr_t)primary_initrd.limit));
 	update.reserved_begin = new_mem_end;
-	update.reserved_end = params.mem_end - new_mem_end;
+	update.reserved_end =
+		pa_init(pa_addr(params.mem_end) - pa_addr(new_mem_end));
 	if (!plat_update_boot_params(&update)) {
 		panic("plat_update_boot_params failed");
 	}

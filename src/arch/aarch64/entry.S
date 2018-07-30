@@ -62,8 +62,8 @@ entry:
 	b 3b
 
 4:	/* Save the FDT to a global variable. */
-	adrp x30, fdt
-	add x30, x30, :lo12:fdt
+	adrp x30, fdt_addr
+	add x30, x30, :lo12:fdt_addr
 	str x0, [x30]
 
 	/* Get pointer to first cpu. */
