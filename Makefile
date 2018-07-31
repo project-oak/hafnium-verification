@@ -3,11 +3,26 @@ OUT ?= out
 GN ?= ../gn/out/gn
 NINJA ?= ninja
 
+# Configure the build arguments
+GCC ?= false
+ARCH ?= aarch64
+PLATFORM ?= qemu
+
 all: $(OUT)/build.ninja
 	@$(NINJA) -C $(OUT)
 
-out/build.ninja: $(GN)
+$(OUT)/build.ninja: $(GN) $(OUT)/args.gn
 	@$(GN) gen $(OUT)
+
+# Configure the build by loading the configuration arguments for the
+# architecture and platform
+$(OUT)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
+	@echo Copying config for $(ARCH) on $(PLATFORM)
+	@mkdir -p $(OUT)
+	@echo "arch = \"$(ARCH)\"" >> $@
+	@echo "use_gcc = $(GCC)" >> $@
+	@echo >> $@
+	@cat $< >> $@
 
 $(GN):
 	git clone https://gn.googlesource.com/gn ../gn

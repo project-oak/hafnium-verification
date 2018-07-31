@@ -21,10 +21,7 @@ declare_args() {
   use_gcc = false
 
   # The architecture to build the bare metal images for.
-  arch = "aarch64"
-
-  # The platform to build the bare metal images for.
-  arch_platform = "qemu"
+  arch = ""
 
   # Set by arch toolchain. Prefix for binutils tools.
   arch_tool_prefix = ""

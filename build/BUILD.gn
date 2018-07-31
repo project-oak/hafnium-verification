@@ -1,4 +1,5 @@
-import("//build/arch/${arch}/${arch_platform}.gni")
+import("//build/arch/common.gni")
+import("//build/arch/aarch64.gni") # TODO: remove when no dependency on arch_aarch64_pl011_base_address
 
 config("compiler_defaults") {
   cflags = [
@@ -53,9 +54,9 @@ config("compiler_defaults") {
 
     # TODO: this should be arch specific but it is currenly used by the
     # platform generic code to map the memory
-    if (use_pl011) {
+    if (arch_aarch64_use_pl011) {
       defines += [
-        "PL011_BASE=${pl011_base_address}",
+        "PL011_BASE=${arch_aarch64_pl011_base_address}",
       ]
     }
   }

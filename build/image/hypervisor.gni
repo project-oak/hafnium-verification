@@ -1,4 +1,4 @@
-import("//build/arch/${arch}/${arch_platform}.gni")
+import("//build/arch/common.gni")
 
 # Helper to build a hypervisor image
 template("hypervisor") {
@@ -19,7 +19,7 @@ template("hypervisor") {
       "-pie",
       "-T",
       rebase_path("//build/image/hypervisor.ld"),
-      "--defsym=PREFERRED_LOAD_ADDRESS=${hypervisor_load_address}",
+      "--defsym=PREFERRED_LOAD_ADDRESS=${arch_hypervisor_load_address}",
     ]
     visibility = [ ":${invoker.target_name}" ]
   }

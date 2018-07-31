@@ -1,4 +1,4 @@
-import("//build/arch/${arch}/${arch_platform}.gni")
+import("//build/arch/aarch64.gni")
 import("//build/image/generate_offsets.gni")
 
 source_set("aarch64") {
@@ -11,7 +11,7 @@ source_set("aarch64") {
     "params.c",
   ]
 
-  if (use_pl011) {
+  if (arch_aarch64_use_pl011) {
     sources += [
       "pl011.c",
     ]
