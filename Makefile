@@ -1,7 +1,10 @@
 OUT ?= out
 
-GN ?= ../gn/out/gn
-NINJA ?= ninja
+# Set path to prebuilts
+UNNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
+PREBUILTS := prebuilts/$(UNNAME_S)-x64
+GN ?= $(PREBUILTS)/gn/gn
+NINJA ?= $(PREBUILTS)/ninja/ninja
 
 # Configure the build arguments
 GCC ?= false
@@ -11,7 +14,7 @@ PLATFORM ?= qemu
 all: $(OUT)/build.ninja
 	@$(NINJA) -C $(OUT)
 
-$(OUT)/build.ninja: $(GN) $(OUT)/args.gn
+$(OUT)/build.ninja: $(OUT)/args.gn
 	@$(GN) gen $(OUT)
 
 # Configure the build by loading the configuration arguments for the
@@ -23,11 +26,6 @@ $(OUT)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
 	@echo "use_gcc = $(GCC)" >> $@
 	@echo >> $@
 	@cat $< >> $@
-
-$(GN):
-	git clone https://gn.googlesource.com/gn ../gn
-	cd ../gn && python build/gen.py
-	ninja -C ../gn/out
 
 clean:
 	@$(NINJA) -C $(OUT) -t clean

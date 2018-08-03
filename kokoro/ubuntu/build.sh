@@ -11,16 +11,18 @@ if [ -v KOKORO_JOB_NAME ]
 then
 	# Server
 	cd git/hafnium
-	mkdir out
-	echo "arch_cc_version = \"3.9\"" > out/args.gn
+	make out/args.gn
+	echo "arch_cc_version = \"3.9\"" >> out/args.gn
+	echo "host_cc_version = \"3.9\"" >> out/args.gn
 else
 	# Local
 	echo "Testing kokoro build locally..."
+	make out/args.gn
 fi
 
 # TODO: Kokoro is missing ninja, gcc-4.9 or above and qemu
 # Check the build works
-# make
+make
 
 # # Check to code looks healthy, failing if any changes were made
 # make format

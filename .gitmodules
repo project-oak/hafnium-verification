@@ -1,0 +1,3 @@
+[submodule "prebuilts"]
+	path = prebuilts
+	url = sso://hafnium/hafnium/prebuilts
