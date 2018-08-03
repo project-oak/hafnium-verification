@@ -7,37 +7,40 @@ Further details are available in the [design doc](https://goto.google.com/hafniu
 ## Getting the source code
 
 ``` shell
-mkdir hafnium
-cd hafnium
-repo init -u sso://hafnium/manifest
-repo sync -j4
+git clone --recurse-submodules sso://hafnium/hafnium && (cd hafnium && f=`git rev-parse --git-dir`/hooks/commit-msg ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f)
 ```
+
+To upload a change for review:
+
+``` shell
+git push origin HEAD:refs/for/master
+```
+
 
 ## Building
 
-### One-time setup
-You will need a cross-compilation toolchain, for example, `aarch64-linux-gnu`,
-which can be installed with `apt` using the following command-line:
+### Compiling the hypervisor
+
+By default, the hypervisor is built for an aarch64 QEMU target by running:
+
+``` shell
+make
+```
+
+To build for the HiKey board, change the target platform:
+
+``` shell
+PLATFORM=hikey make
+```
+
+To build using gcc instead of clang, the aarch64 variant must be installed:
 
 ``` shell
 sudo apt install gcc-aarch64-linux-gnu
+GCC=true make
 ```
 
-Makefiles use the `CROSS_COMPILE` variable to specify the prefix of the tools;
-in the case above it is `aarch64-linux-gnu-` (note the trailing dash). In the
-examples that follow, we will assume that this toolchain is installed and
-available for use.
-
-### Compiling the hypervisor
-
-The hypervisor proper is in the `hafnium` subdirectory. It can be built for QEMU
-using the following command:
-
-``` shell
-CROSS_COMPILE=aarch64-linux-gnu- make
-```
-
-The compiled binary is stored in `out/aarch64/qemu/hafnium.bin`.
+The compiled binary is stored in `out/{clang,gcc}_aarch64/hafnium.bin`.
 
 ## Running on QEMU
 

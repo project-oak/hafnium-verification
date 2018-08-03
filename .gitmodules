@@ -1,3 +1,6 @@
 [submodule "prebuilts"]
 	path = prebuilts
 	url = sso://hafnium/hafnium/prebuilts
+[submodule "driver/linux"]
+	path = driver/linux
+	url = sso://hafnium/hafnium/driver/linux
