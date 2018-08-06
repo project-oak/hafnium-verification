@@ -192,8 +192,8 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 			continue;
 		}
 
-		secondary_mem_begin = ipa_from_pa(*mem_end);
 		*mem_end = pa_init(pa_addr(*mem_end) - mem);
+		secondary_mem_begin = ipa_from_pa(*mem_end);
 		if (!copy_to_unmaped(*mem_end, kernel.next,
 				     kernel.limit - kernel.next)) {
 			dlog("Unable to copy kernel for vm %u\n", count);
