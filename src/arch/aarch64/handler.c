@@ -1,9 +1,9 @@
 #include "api.h"
-#include "arch_api.h"
 #include "cpu.h"
 #include "dlog.h"
 #include "psci.h"
 #include "vm.h"
+#include "vmapi/hf/hvc.h"
 
 #include "msr.h"
 

@@ -1,8 +1,8 @@
 #include "api.h"
 
-#include "arch_api.h"
 #include "std.h"
 #include "vm.h"
+#include "vmapi/hf/hvc.h"
 
 struct vm secondary_vm[MAX_VMS];
 uint32_t secondary_vm_count;

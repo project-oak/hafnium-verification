@@ -1,5 +1,5 @@
-#ifndef _ARCH_API_H
-#define _ARCH_API_H
+#ifndef _VMAPI_HF_HVC_H
+#define _VMAPI_HF_HVC_H
 
 /* Keep macro alignment */
 /* clang-format off */
@@ -22,4 +22,4 @@
 
 /* clang-format on */
 
-#endif /* _ARCH_API_H */
+#endif /* _VMAPI_HF_HVC_H */
