@@ -22,7 +22,7 @@ bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 }
 
 /* TODO: Shall we use index or id here? */
-void vm_start_vcpu(struct vm *vm, size_t index, size_t entry, size_t arg,
+void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg,
 		   bool is_primary)
 {
 	struct vcpu *vcpu = vm->vcpus + index;

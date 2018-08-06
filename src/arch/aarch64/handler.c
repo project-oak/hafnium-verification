@@ -124,7 +124,7 @@ static bool psci_handler(uint32_t func, size_t arg0, size_t arg1, size_t arg2,
 			break;
 		}
 
-		if (cpu_on(c, arg1, arg2)) {
+		if (cpu_on(c, ipa_init(arg1), arg2)) {
 			*ret = PSCI_RETURN_ALREADY_ON;
 			break;
 		}

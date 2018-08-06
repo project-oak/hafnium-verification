@@ -113,7 +113,7 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 	}
 
 	{
-		size_t tmp = (size_t)&load_primary;
+		uintpaddr_t tmp = (uintpaddr_t)&load_primary;
 		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
 		if (!vm_init(&primary_vm, 0, MAX_CPUS)) {
 			dlog("Unable to initialise primary vm\n");
@@ -137,7 +137,7 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 			return false;
 		}
 
-		vm_start_vcpu(&primary_vm, 0, tmp, kernel_arg, true);
+		vm_start_vcpu(&primary_vm, 0, ipa_init(tmp), kernel_arg, true);
 	}
 
 	return true;
@@ -170,6 +170,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 	     memiter_parse_str(&it, &str) && count < MAX_VMS;
 	     count++) {
 		struct memiter kernel;
+		ipaddr_t secondary_mem_begin;
 
 		if (!memiter_find_file(cpio, &str, &kernel)) {
 			dlog("Unable to load kernel for vm %u\n", count);
@@ -191,6 +192,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 			continue;
 		}
 
+		secondary_mem_begin = ipa_from_pa(*mem_end);
 		*mem_end = pa_init(pa_addr(*mem_end) - mem);
 		if (!copy_to_unmaped(*mem_end, kernel.next,
 				     kernel.limit - kernel.next)) {
@@ -231,9 +233,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     pa_addr(*mem_end));
 
-		// TODO: entry is a size_t which seems to be wrong, what should
-		// it be?
-		vm_start_vcpu(secondary_vm + count, 0, pa_addr(*mem_end), 0,
+		vm_start_vcpu(secondary_vm + count, 0, secondary_mem_begin, 0,
 			      false);
 	}
 

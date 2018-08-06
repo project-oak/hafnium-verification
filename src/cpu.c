@@ -61,7 +61,7 @@ void cpu_irq_disable(struct cpu *c)
 /**
  * Turns CPU on and returns the previous state.
  */
-bool cpu_on(struct cpu *c, size_t entry, size_t arg)
+bool cpu_on(struct cpu *c, ipaddr_t entry, size_t arg)
 {
 	bool prev;
 

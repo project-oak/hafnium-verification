@@ -6,6 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "addr.h"
+
 struct arch_regs {
 	/* General purpose registers. */
 	uint64_t r[31];
@@ -91,13 +93,13 @@ static inline void arch_cpu_update(bool is_primary)
 	__asm__ volatile("msr cnthctl_el2, %0" ::"r"(cnthctl));
 }
 
-static inline void arch_regs_init(struct arch_regs *r, size_t pc, size_t arg,
+static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc, size_t arg,
 				  bool is_primary)
 {
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */
-	r->pc = pc;
+	r->pc = ipa_addr(pc);
 	r->r[0] = arg;
 }
 
