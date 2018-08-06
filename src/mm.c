@@ -1,10 +1,23 @@
 #include "mm.h"
 
+#include <assert.h>
 #include <stdatomic.h>
 #include <stdint.h>
 
 #include "alloc.h"
 #include "dlog.h"
+
+/* The type of addresses stored in the page table. */
+typedef uintvaddr_t ptable_addr_t;
+
+/* For stage 2, the input is an intermediate physical addresses rather than a
+ * virtual address so: */
+static_assert(
+	sizeof(ptable_addr_t) == sizeof(uintpaddr_t),
+	"Currently, the same code manages the stage 1 and stage 2 page tables "
+	"which only works if the virtual and intermediate physical addresses "
+	"are the same size. It looks like that assumption might not be holding "
+	"so we need to check that everything is going to be ok.");
 
 /* Keep macro alignment */
 /* clang-format off */
@@ -24,6 +37,22 @@ extern uint8_t data_end[];
 static struct mm_ptable ptable;
 
 /**
+ * Rounds an address down to a page boundary.
+ */
+static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr)
+{
+	return addr & ~((ptable_addr_t)(PAGE_SIZE - 1));
+}
+
+/**
+ * Rounds an address up to a page boundary.
+ */
+static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
+{
+	return mm_round_down_to_page(addr + PAGE_SIZE - 1);
+}
+
+/**
  * Calculates the size of the address space represented by a page table entry at
  * the given level.
  */
@@ -33,22 +62,22 @@ static inline size_t mm_entry_size(int level)
 }
 
 /**
- * For a given virtual address, calculates the maximum (plus one) address that
- * can be represented by the same table at the given level.
+ * For a given address, calculates the maximum (plus one) address that can be
+ * represented by the same table at the given level.
  */
-static inline vaddr_t mm_level_end(vaddr_t va, int level)
+static inline ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
 {
 	size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS;
-	return va_init(((va_addr(va) >> offset) + 1) << offset);
+	return ((addr >> offset) + 1) << offset;
 }
 
 /**
- * For a given virtual address, calculates the index at which its entry is
- * stored in a table at the given level.
+ * For a given address, calculates the index at which its entry is stored in a
+ * table at the given level.
  */
-static inline size_t mm_index(vaddr_t va, int level)
+static inline size_t mm_index(ptable_addr_t addr, int level)
 {
-	uintvaddr_t v = va_addr(va) >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
+	ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
 	return v & ((1ull << PAGE_LEVEL_BITS) - 1);
 }
 
@@ -68,7 +97,7 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 
 	/* Just return pointer to table if it's already populated. */
 	if (arch_mm_pte_is_table(v)) {
-		return arch_mm_pte_to_table(v);
+		return ptr_from_va(va_from_pa(arch_mm_pte_to_table(v)));
 	}
 
 	/* Allocate a new table. */
@@ -124,21 +153,18 @@ static void mm_free_page_pte(pte_t pte, int level, bool sync)
 }
 
 /**
- * Updates the page table at the given level to map the given virtual address
- * range to a physical range using the provided (architecture-specific)
- * attributes.
+ * Updates the page table at the given level to map the given address range to a
+ * physical range using the provided (architecture-specific) attributes.
  *
  * This function calls itself recursively if it needs to update additional
  * levels, but the recursion is bound by the maximum number of levels in a page
  * table.
  */
-static bool mm_map_level(vaddr_t va_begin, vaddr_t va_end, paddr_t pa,
+static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 uint64_t attrs, pte_t *table, int level, int flags)
 {
-	pte_t *pte = table + mm_index(va_begin, level);
-	uintvaddr_t level_end = va_addr(mm_level_end(va_begin, level));
-	uintvaddr_t begin = va_addr(va_begin);
-	uintvaddr_t end = va_addr(va_end);
+	pte_t *pte = table + mm_index(begin, level);
+	ptable_addr_t level_end = mm_level_end(begin, level);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
 	bool sync = flags & MAP_FLAG_SYNC;
@@ -170,8 +196,8 @@ static bool mm_map_level(vaddr_t va_begin, vaddr_t va_end, paddr_t pa,
 				return false;
 			}
 
-			if (!mm_map_level(va_begin, va_end, pa, attrs, nt,
-					  level - 1, flags)) {
+			if (!mm_map_level(begin, end, pa, attrs, nt, level - 1,
+					  flags)) {
 				return false;
 			}
 		}
@@ -185,44 +211,47 @@ static bool mm_map_level(vaddr_t va_begin, vaddr_t va_end, paddr_t pa,
 }
 
 /**
- * Invalidates the TLB for the given virtual address range.
+ * Invalidates the TLB for the given address range.
  */
-static void mm_invalidate_tlb(vaddr_t begin, vaddr_t end, bool stage1)
+static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end,
+			      bool stage1)
 {
 	if (stage1) {
-		arch_mm_invalidate_stage1_range(begin, end);
+		arch_mm_invalidate_stage1_range(va_init(begin), va_init(end));
 	} else {
-		arch_mm_invalidate_stage2_range(begin, end);
+		arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
 	}
 }
 
 /**
- * Updates the given table such that the given virtual address range is mapped
- * to the corresponding physical address range in the architecture-agnostic mode
- * provided.
+ * Updates the given table such that the given physical address range is mapped
+ * into the address space with the corresponding address range in the
+ * architecture-agnostic mode provided.
  */
-bool mm_ptable_identity_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
-			    int mode)
+static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
+				   paddr_t pa_end, int mode)
 {
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
 	pte_t *table = ptr_from_va(va_from_pa(t->table));
-	paddr_t paddr = arch_mm_clear_pa(pa_from_va(begin));
+	ptable_addr_t begin;
+	ptable_addr_t end;
 
-	begin = arch_mm_clear_va(begin);
-	end = arch_mm_clear_va(va_add(end, PAGE_SIZE - 1));
+	pa_begin = arch_mm_clear_pa(pa_begin);
+	begin = pa_addr(pa_begin);
+	end = mm_round_up_to_page(pa_addr(pa_end));
 
 	/*
 	 * Do it in two steps to prevent leaving the table in a halfway updated
 	 * state. In such a two-step implementation, the table may be left with
 	 * extra internal tables, but no different mapping on failure.
 	 */
-	if (!mm_map_level(begin, end, paddr, attrs, table, level, flags)) {
+	if (!mm_map_level(begin, end, pa_begin, attrs, table, level, flags)) {
 		return false;
 	}
 
-	mm_map_level(begin, end, paddr, attrs, table, level,
+	mm_map_level(begin, end, pa_begin, attrs, table, level,
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
@@ -234,25 +263,28 @@ bool mm_ptable_identity_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 }
 
 /**
- * Updates the given table such that the given virtual address range is not
- * mapped to any physical address.
+ * Updates the given table such that the given physical address range is not
+ * mapped into the address space.
  */
-bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
+static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
+			    paddr_t pa_end, int mode)
 {
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
 	pte_t *table = ptr_from_va(va_from_pa(t->table));
+	ptable_addr_t begin;
+	ptable_addr_t end;
 
-	begin = arch_mm_clear_va(begin);
-	end = arch_mm_clear_va(va_add(end, PAGE_SIZE - 1));
+	pa_begin = arch_mm_clear_pa(pa_begin);
+	begin = pa_addr(pa_begin);
+	end = mm_round_up_to_page(pa_addr(pa_end));
 
 	/* Also do updates in two steps, similarly to mm_ptable_identity_map. */
-	if (!mm_map_level(begin, end, pa_from_va(begin), 0, table, level,
-			  flags)) {
+	if (!mm_map_level(begin, end, pa_begin, 0, table, level, flags)) {
 		return false;
 	}
 
-	mm_map_level(begin, end, pa_from_va(begin), 0, table, level,
+	mm_map_level(begin, end, pa_begin, 0, table, level,
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
@@ -264,28 +296,31 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 }
 
 /**
- * Updates the given table such that a single virtual address page is mapped to
- * the corresponding physical address page in the provided architecture-agnostic
- * mode.
+ * Updates the given table such that a single physical address page is mapped
+ * into the address space with the corresponding address page in the provided
+ * architecture-agnostic mode.
  */
-bool mm_ptable_identity_map_page(struct mm_ptable *t, vaddr_t va, int mode)
+static bool mm_ptable_identity_map_page(struct mm_ptable *t, paddr_t pa,
+					int mode)
 {
 	size_t i;
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	pte_t *table = ptr_from_va(va_from_pa(t->table));
 	bool sync = !(mode & MM_MODE_NOSYNC);
-	paddr_t pa = arch_mm_clear_pa(pa_from_va(va));
+	ptable_addr_t addr;
 
-	va = arch_mm_clear_va(va);
+	pa = arch_mm_clear_pa(pa);
+	addr = pa_addr(pa);
 
 	for (i = arch_mm_max_level(mode); i > 0; i--) {
-		table = mm_populate_table_pte(table + mm_index(va, i), i, sync);
+		table = mm_populate_table_pte(table + mm_index(addr, i), i,
+					      sync);
 		if (!table) {
 			return false;
 		}
 	}
 
-	i = mm_index(va, 0);
+	i = mm_index(addr, 0);
 	table[i] = arch_mm_pa_to_page_pte(pa, attrs);
 	return true;
 }
@@ -308,8 +343,10 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
 		}
 
 		if (arch_mm_pte_is_table(table[i])) {
-			mm_dump_table_recursive(arch_mm_pte_to_table(table[i]),
-						level - 1, max_level);
+			mm_dump_table_recursive(
+				ptr_from_va(va_from_pa(
+					arch_mm_pte_to_table(table[i]))),
+				level - 1, max_level);
 		}
 	}
 }
@@ -341,25 +378,26 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
 {
 	/* TODO: If we add pages dynamically, they must be included here too. */
-	return mm_ptable_unmap(t, va_init((uintvaddr_t)text_begin),
-			       va_init((uintvaddr_t)text_end), mode) &&
-	       mm_ptable_unmap(t, va_init((uintvaddr_t)rodata_begin),
-			       va_init((uintvaddr_t)rodata_end), mode) &&
-	       mm_ptable_unmap(t, va_init((uintvaddr_t)data_begin),
-			       va_init((uintvaddr_t)data_end), mode);
+	return mm_ptable_unmap(t, pa_init((uintpaddr_t)text_begin),
+			       pa_init((uintpaddr_t)text_end), mode) &&
+	       mm_ptable_unmap(t, pa_init((uintpaddr_t)rodata_begin),
+			       pa_init((uintpaddr_t)rodata_end), mode) &&
+	       mm_ptable_unmap(t, pa_init((uintpaddr_t)data_begin),
+			       pa_init((uintpaddr_t)data_end), mode);
 }
 
 /**
- * Determines if the given virtual address is mapped in the given page table
- * by recursively traversing all levels of the page table.
+ * Determines if the given address is mapped in the given page table by
+ * recursively traversing all levels of the page table.
  */
-static bool mm_is_mapped_recursive(const pte_t *table, vaddr_t addr, int level)
+static bool mm_is_mapped_recursive(const pte_t *table, ptable_addr_t addr,
+				   int level)
 {
 	pte_t pte;
-	uintvaddr_t va_level_end = va_addr(mm_level_end(addr, level));
+	ptable_addr_t va_level_end = mm_level_end(addr, level);
 
 	/* It isn't mapped if it doesn't fit in the table. */
-	if (va_addr(addr) >= va_level_end) {
+	if (addr >= va_level_end) {
 		return false;
 	}
 
@@ -374,22 +412,24 @@ static bool mm_is_mapped_recursive(const pte_t *table, vaddr_t addr, int level)
 	}
 
 	if (arch_mm_pte_is_table(pte)) {
-		return mm_is_mapped_recursive(arch_mm_pte_to_table(pte), addr,
-					      level - 1);
+		return mm_is_mapped_recursive(
+			ptr_from_va(va_from_pa(arch_mm_pte_to_table(pte))),
+			addr, level - 1);
 	}
 
 	return false;
 }
 
 /**
- * Determines if the given virtual address is mapped in the given page table.
+ * Determines if the given address is mapped in the given page table.
  */
-bool mm_ptable_is_mapped(struct mm_ptable *t, vaddr_t addr, int mode)
+static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
+				int mode)
 {
 	pte_t *table = ptr_from_va(va_from_pa(t->table));
 	int level = arch_mm_max_level(mode);
 
-	addr = arch_mm_clear_va(addr);
+	addr = mm_round_down_to_page(addr);
 
 	return mm_is_mapped_recursive(table, addr, level);
 }
@@ -425,21 +465,95 @@ bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
 }
 
 /**
- * Updates the hypervisor page table such that the given virtual address range
- * is mapped to the corresponding physical address range in the
+ * Updates a VM's page table such that the given physical address range is
+ * mapped in the address space at the corresponding address range in the
  * architecture-agnostic mode provided.
  */
-bool mm_identity_map(vaddr_t begin, vaddr_t end, int mode)
+bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
+			int mode, ipaddr_t *ipa)
 {
-	return mm_ptable_identity_map(&ptable, begin, end,
-				      mode | MM_MODE_STAGE1);
+	bool success =
+		mm_ptable_identity_map(t, begin, end, mode & ~MM_MODE_STAGE1);
+
+	if (success && ipa != NULL) {
+		*ipa = ipa_from_pa(begin);
+	}
+
+	return success;
 }
 
 /**
- * Updates the hypervisor table such that the given virtual address range is not
- * mapped to any physical address.
+ * Updates a VM's page table such that the given physical address page is
+ * mapped in the address space at the corresponding address page in the
+ * architecture-agnostic mode provided.
  */
-bool mm_unmap(vaddr_t begin, vaddr_t end, int mode)
+bool mm_vm_identity_map_page(struct mm_ptable *t, paddr_t begin, int mode,
+			     ipaddr_t *ipa)
+{
+	bool success =
+		mm_ptable_identity_map_page(t, begin, mode & ~MM_MODE_STAGE1);
+
+	if (success && ipa != NULL) {
+		*ipa = ipa_from_pa(begin);
+	}
+
+	return success;
+}
+
+/**
+ * Updates the VM's table such that the given physical address range is not
+ * mapped in the address space.
+ */
+bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode)
+{
+	return mm_ptable_unmap(t, begin, end, mode & ~MM_MODE_STAGE1);
+}
+
+/**
+ * Checks whether the given intermediate physical addess is mapped in the given
+ * page table of a VM.
+ */
+bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode)
+{
+	return mm_ptable_is_mapped(t, ipa_addr(ipa), mode & ~MM_MODE_STAGE1);
+}
+
+/**
+ * Translates an intermediate physical address to a physical address. Addresses
+ * are currently identity mapped so this is a simple type convertion. Returns
+ * true if the address was mapped in the table and the address was converted.
+ */
+bool mm_vm_translate(struct mm_ptable *t, ipaddr_t ipa, paddr_t *pa)
+{
+	bool mapped = mm_vm_is_mapped(t, ipa, 0);
+
+	if (mapped) {
+		*pa = pa_init(ipa_addr(ipa));
+	}
+
+	return mapped;
+}
+
+/**
+ * Updates the hypervisor page table such that the given physical address range
+ * is mapped into the address space at the corresponding address range in the
+ * architecture-agnostic mode provided.
+ */
+void *mm_identity_map(paddr_t begin, paddr_t end, int mode)
+{
+	if (mm_ptable_identity_map(&ptable, begin, end,
+				   mode | MM_MODE_STAGE1)) {
+		return ptr_from_va(va_from_pa(begin));
+	}
+
+	return NULL;
+}
+
+/**
+ * Updates the hypervisor table such that the given physical address range is
+ * not mapped in the address space.
+ */
+bool mm_unmap(paddr_t begin, paddr_t end, int mode)
 {
 	return mm_ptable_unmap(&ptable, begin, end, mode | MM_MODE_STAGE1);
 }
@@ -460,21 +574,21 @@ bool mm_init(void)
 
 	/* Map page for uart. */
 	/* TODO: We may not want to map this. */
-	mm_ptable_identity_map_page(&ptable, va_init(PL011_BASE),
+	mm_ptable_identity_map_page(&ptable, pa_init(PL011_BASE),
 				    MM_MODE_R | MM_MODE_W | MM_MODE_D |
 					    MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
 	/* Map each section. */
-	mm_identity_map(va_init((uintvaddr_t)text_begin),
-			va_init((uintvaddr_t)text_end),
+	mm_identity_map(pa_init((uintpaddr_t)text_begin),
+			pa_init((uintpaddr_t)text_end),
 			MM_MODE_X | MM_MODE_NOSYNC);
 
-	mm_identity_map(va_init((uintvaddr_t)rodata_begin),
-			va_init((uintvaddr_t)rodata_end),
+	mm_identity_map(pa_init((uintpaddr_t)rodata_begin),
+			pa_init((uintpaddr_t)rodata_end),
 			MM_MODE_R | MM_MODE_NOSYNC);
 
-	mm_identity_map(va_init((uintvaddr_t)data_begin),
-			va_init((uintvaddr_t)data_end),
+	mm_identity_map(pa_init((uintpaddr_t)data_begin),
+			pa_init((uintpaddr_t)data_end),
 			MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
 
 	return arch_mm_init(ptable.table, true);

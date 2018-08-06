@@ -39,6 +39,7 @@ clobber:
 # see .clang-format
 .PHONY: format
 format:
+	@echo "Formatting..."
 	@find src/ -name *.c -o -name *.h | xargs clang-format -style file -i
 	@find inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
 	@find test/ -name *.c -o -name *.h | xargs clang-format -style file -i

@@ -110,12 +110,10 @@ struct vcpu *api_wait_for_interrupt(void)
 int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 {
 	struct vm *vm = cpu()->current->vm;
-	paddr_t pa_send;
-	paddr_t pa_recv;
-	vaddr_t send_begin;
-	vaddr_t send_end;
-	vaddr_t recv_begin;
-	vaddr_t recv_end;
+	paddr_t pa_send_begin;
+	paddr_t pa_send_end;
+	paddr_t pa_recv_begin;
+	paddr_t pa_recv_end;
 	int32_t ret;
 
 	/* Fail if addresses are not page-aligned. */
@@ -142,19 +140,18 @@ int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	 * provided the address was acessible from the VM which ensures that the
 	 * caller isn't trying to use another VM's memory.
 	 */
-	if (!mm_ptable_translate_ipa(&vm->ptable, send, &pa_send) ||
-	    !mm_ptable_translate_ipa(&vm->ptable, recv, &pa_recv)) {
+	if (!mm_vm_translate(&vm->ptable, send, &pa_send_begin) ||
+	    !mm_vm_translate(&vm->ptable, recv, &pa_recv_begin)) {
 		ret = -1;
 		goto exit;
 	}
 
-	send_begin = va_from_pa(pa_send);
-	send_end = va_add(send_begin, PAGE_SIZE);
-	recv_begin = va_from_pa(pa_recv);
-	recv_end = va_add(recv_begin, PAGE_SIZE);
+	pa_send_end = pa_add(pa_send_begin, PAGE_SIZE);
+	pa_recv_end = pa_add(pa_recv_begin, PAGE_SIZE);
 
 	/* Map the send page as read-only in the hypervisor address space. */
-	if (!mm_identity_map(send_begin, send_end, MM_MODE_R)) {
+	vm->rpc.send = mm_identity_map(pa_send_begin, pa_send_end, MM_MODE_R);
+	if (!vm->rpc.send) {
 		ret = -1;
 		goto exit;
 	}
@@ -163,15 +160,13 @@ int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	 * Map the receive page as writable in the hypervisor address space. On
 	 * failure, unmap the send page before returning.
 	 */
-	if (!mm_identity_map(recv_begin, recv_end, MM_MODE_W)) {
-		mm_unmap(send_begin, send_end, 0);
+	vm->rpc.recv = mm_identity_map(pa_recv_begin, pa_recv_end, MM_MODE_W);
+	if (!vm->rpc.recv) {
+		vm->rpc.send = NULL;
+		mm_unmap(pa_send_begin, pa_send_end, 0);
 		ret = -1;
 		goto exit;
 	}
-
-	/* Save pointers to the pages. */
-	vm->rpc.send = ptr_from_va(send_begin);
-	vm->rpc.recv = ptr_from_va(recv_begin);
 
 	/* TODO: Notify any waiters. */
 

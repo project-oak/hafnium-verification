@@ -15,16 +15,17 @@
  */
 static bool copy_to_unmaped(paddr_t to, const void *from, size_t size)
 {
-	vaddr_t begin = va_from_pa(to);
-	vaddr_t end = va_add(begin, size);
+	paddr_t to_end = pa_add(to, size);
+	void *ptr;
 
-	if (!mm_identity_map(begin, end, MM_MODE_W)) {
+	ptr = mm_identity_map(to, to_end, MM_MODE_W);
+	if (!ptr) {
 		return false;
 	}
 
-	memcpy(ptr_from_va(begin), from, size);
+	memcpy(ptr, from, size);
 
-	mm_unmap(begin, end, 0);
+	mm_unmap(to, to_end, 0);
 
 	return true;
 }
@@ -122,11 +123,11 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 
 		/* Map the 1TB of memory. */
 		/* TODO: We should do a whitelist rather than a blacklist. */
-		if (!mm_ptable_identity_map(
-			    &primary_vm.ptable, va_init(0),
-			    va_init(1024ull * 1024 * 1024 * 1024),
-			    MM_MODE_R | MM_MODE_W | MM_MODE_X |
-				    MM_MODE_NOINVALIDATE)) {
+		if (!mm_vm_identity_map(&primary_vm.ptable, pa_init(0),
+					pa_init(1024ull * 1024 * 1024 * 1024),
+					MM_MODE_R | MM_MODE_W | MM_MODE_X |
+						MM_MODE_NOINVALIDATE,
+					NULL)) {
 			dlog("Unable to initialise memory for primary vm\n");
 			return false;
 		}
@@ -170,7 +171,9 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 	     memiter_parse_str(&it, &str) && count < MAX_VMS;
 	     count++) {
 		struct memiter kernel;
-		ipaddr_t secondary_mem_begin;
+		paddr_t secondary_mem_begin;
+		paddr_t secondary_mem_end;
+		ipaddr_t secondary_entry;
 
 		if (!memiter_find_file(cpio, &str, &kernel)) {
 			dlog("Unable to load kernel for vm %u\n", count);
@@ -192,8 +195,10 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 			continue;
 		}
 
+		secondary_mem_end = *mem_end;
 		*mem_end = pa_init(pa_addr(*mem_end) - mem);
-		secondary_mem_begin = ipa_from_pa(*mem_end);
+		secondary_mem_begin = *mem_end;
+
 		if (!copy_to_unmaped(*mem_end, kernel.next,
 				     kernel.limit - kernel.next)) {
 			dlog("Unable to copy kernel for vm %u\n", count);
@@ -207,25 +212,25 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 
 		/* TODO: Remove this. */
 		/* Grant VM access to uart. */
-		mm_ptable_identity_map_page(&secondary_vm[count].ptable,
-					    va_init(PL011_BASE),
-					    MM_MODE_R | MM_MODE_W | MM_MODE_D |
-						    MM_MODE_NOINVALIDATE);
+		mm_vm_identity_map_page(&secondary_vm[count].ptable,
+					pa_init(PL011_BASE),
+					MM_MODE_R | MM_MODE_W | MM_MODE_D |
+						MM_MODE_NOINVALIDATE,
+					NULL);
 
 		/* Grant the VM access to the memory. */
-		if (!mm_ptable_identity_map(&secondary_vm[count].ptable,
-					    va_from_pa(*mem_end),
-					    va_add(va_from_pa(*mem_end), mem),
-					    MM_MODE_R | MM_MODE_W | MM_MODE_X |
-						    MM_MODE_NOINVALIDATE)) {
+		if (!mm_vm_identity_map(&secondary_vm[count].ptable,
+					secondary_mem_begin, secondary_mem_end,
+					MM_MODE_R | MM_MODE_W | MM_MODE_X |
+						MM_MODE_NOINVALIDATE,
+					&secondary_entry)) {
 			dlog("Unable to initialise memory for vm %u\n", count);
 			continue;
 		}
 
 		/* Deny the primary VM access to this memory. */
-		if (!mm_ptable_unmap(&primary_vm.ptable, va_from_pa(*mem_end),
-				     va_add(va_from_pa(*mem_end), mem),
-				     MM_MODE_NOINVALIDATE)) {
+		if (!mm_vm_unmap(&primary_vm.ptable, secondary_mem_begin,
+				 secondary_mem_end, MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to unmap secondary VM from primary VM\n");
 			return false;
 		}
@@ -233,7 +238,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     pa_addr(*mem_end));
 
-		vm_start_vcpu(secondary_vm + count, 0, secondary_mem_begin, 0);
+		vm_start_vcpu(secondary_vm + count, 0, secondary_entry, 0);
 	}
 
 	secondary_vm_count = count;

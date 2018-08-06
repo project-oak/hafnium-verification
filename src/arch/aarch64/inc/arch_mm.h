@@ -6,6 +6,11 @@
 
 #include "addr.h"
 
+/* A page table entry. */
+typedef uint64_t pte_t;
+
+#define PAGE_LEVEL_BITS 9
+
 /**
  * Converts a physical address to a table PTE.
  *
@@ -86,15 +91,6 @@ static inline bool arch_mm_pte_is_block(pte_t pte)
 	((v) & ~((1ull << PAGE_BITS) - 1) & ((1ull << 48) - 1))
 
 /**
- * Clears the given virtual address, i.e., sets the ignored bits (from a page
- * table perspective) to zero.
- */
-static inline vaddr_t arch_mm_clear_va(vaddr_t va)
-{
-	return va_init(CLEAR_PTE_ATTRS(va_addr(va)));
-}
-
-/**
  * Clears the given physical address, i.e., sets the ignored bits (from a page
  * table perspective) to zero.
  */
@@ -112,11 +108,12 @@ static inline paddr_t arch_mm_pte_to_paddr(pte_t pte)
 }
 
 /**
- * Extracts a page table pointer from the given page table entry.
+ * Extracts the physical address of the page table referred to by the given page
+ * table entry.
  */
-static inline pte_t *arch_mm_pte_to_table(pte_t pte)
+static inline paddr_t arch_mm_pte_to_table(pte_t pte)
 {
-	return (pte_t *)CLEAR_PTE_ATTRS(pte);
+	return pa_init(CLEAR_PTE_ATTRS(pte));
 }
 
 #undef CLEAR_PTE_ATTRS
@@ -144,14 +141,15 @@ static inline void arch_mm_invalidate_stage1_range(vaddr_t va_begin,
 }
 
 /**
- * Invalidates stage-2 TLB entries referring to the given virtual address range.
+ * Invalidates stage-2 TLB entries referring to the given intermediate physical
+ * address range.
  */
-static inline void arch_mm_invalidate_stage2_range(vaddr_t va_begin,
-						   vaddr_t va_end)
+static inline void arch_mm_invalidate_stage2_range(ipaddr_t va_begin,
+						   ipaddr_t va_end)
 {
-	uintvaddr_t begin = va_addr(va_begin);
-	uintvaddr_t end = va_addr(va_end);
-	uintvaddr_t it;
+	uintpaddr_t begin = ipa_addr(va_begin);
+	uintpaddr_t end = ipa_addr(va_end);
+	uintpaddr_t it;
 
 	/* TODO: This only applies to the current VMID. */
 

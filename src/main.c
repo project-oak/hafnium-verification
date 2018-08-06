@@ -48,6 +48,7 @@ static void one_time_init(void)
 	paddr_t new_mem_end;
 	struct memiter primary_initrd;
 	struct memiter cpio;
+	void *initrd;
 
 	dlog("Initialising hafnium\n");
 
@@ -68,12 +69,13 @@ static void one_time_init(void)
 	     pa_addr(params.initrd_end) - 1);
 
 	/* Map initrd in, and initialise cpio parser. */
-	if (!mm_identity_map(va_from_pa(params.initrd_begin),
-			     va_from_pa(params.initrd_end), MM_MODE_R)) {
+	initrd = mm_identity_map(params.initrd_begin, params.initrd_end,
+				 MM_MODE_R);
+	if (!initrd) {
 		panic("unable to map initrd in");
 	}
 
-	memiter_init(&cpio, ptr_from_va(va_from_pa(params.initrd_begin)),
+	memiter_init(&cpio, initrd,
 		     pa_addr(params.initrd_end) - pa_addr(params.initrd_begin));
 
 	/* Load all VMs. */

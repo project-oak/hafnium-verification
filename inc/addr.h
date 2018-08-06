@@ -70,11 +70,11 @@ static inline uintvaddr_t va_addr(vaddr_t va)
 }
 
 /**
- * Advances a virtual address.
+ * Advances a physical address.
  */
-static inline vaddr_t va_add(vaddr_t va, size_t n)
+static inline paddr_t pa_add(paddr_t pa, size_t n)
 {
-	return va_init(va_addr(va) + n);
+	return pa_init(pa_addr(pa) + n);
 }
 
 /**
