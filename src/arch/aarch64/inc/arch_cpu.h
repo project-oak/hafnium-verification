@@ -93,8 +93,7 @@ static inline void arch_cpu_update(bool is_primary)
 	__asm__ volatile("msr cnthctl_el2, %0" ::"r"(cnthctl));
 }
 
-static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc, size_t arg,
-				  bool is_primary)
+static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc, size_t arg)
 {
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */

@@ -72,7 +72,7 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, size_t arg)
 
 	if (!prev) {
 		struct vcpu *vcpu = primary_vm.vcpus + cpu_index(c);
-		arch_regs_init(&vcpu->regs, entry, arg, true);
+		arch_regs_init(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}
 

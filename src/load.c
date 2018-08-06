@@ -137,7 +137,7 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 			return false;
 		}
 
-		vm_start_vcpu(&primary_vm, 0, ipa_init(tmp), kernel_arg, true);
+		vm_start_vcpu(&primary_vm, 0, ipa_init(tmp), kernel_arg);
 	}
 
 	return true;
@@ -233,8 +233,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     pa_addr(*mem_end));
 
-		vm_start_vcpu(secondary_vm + count, 0, secondary_mem_begin, 0,
-			      false);
+		vm_start_vcpu(secondary_vm + count, 0, secondary_mem_begin, 0);
 	}
 
 	secondary_vm_count = count;

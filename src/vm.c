@@ -22,12 +22,11 @@ bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 }
 
 /* TODO: Shall we use index or id here? */
-void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg,
-		   bool is_primary)
+void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg)
 {
 	struct vcpu *vcpu = vm->vcpus + index;
 	if (index < vm->vcpu_count) {
-		arch_regs_init(&vcpu->regs, entry, arg, is_primary);
+		arch_regs_init(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}
 }

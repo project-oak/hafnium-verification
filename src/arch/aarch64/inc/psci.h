@@ -30,15 +30,15 @@
 
 /* The following are return codes for PSCI. */
 #define PSCI_RETURN_SUCCESS            0
-#define PSCI_RETURN_NOT_SUPPORTED      -1
-#define PSCI_RETURN_INVALID_PARAMETERS -2
-#define PSCI_RETURN_DENIED             -3
-#define PSCI_RETURN_ALREADY_ON         -4
-#define PSCI_RETURN_ON_PENDING         -5
-#define PSCI_RETURN_INTERNAL_FAILURE   -6
-#define PSCI_NOT_PRESENT               -7
-#define PSCI_DISABLE                   -8
-#define PSCI_INVALID_ADDRESS           -9
+#define PSCI_RETURN_NOT_SUPPORTED      (-1)
+#define PSCI_RETURN_INVALID_PARAMETERS (-2)
+#define PSCI_RETURN_DENIED             (-3)
+#define PSCI_RETURN_ALREADY_ON         (-4)
+#define PSCI_RETURN_ON_PENDING         (-5)
+#define PSCI_RETURN_INTERNAL_FAILURE   (-6)
+#define PSCI_NOT_PRESENT               (-7)
+#define PSCI_DISABLE                   (-8)
+#define PSCI_INVALID_ADDRESS           (-9)
 
 /* clang-format on */
 
