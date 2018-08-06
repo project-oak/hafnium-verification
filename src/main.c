@@ -68,12 +68,12 @@ static void one_time_init(void)
 	     pa_addr(params.initrd_end) - 1);
 
 	/* Map initrd in, and initialise cpio parser. */
-	if (!mm_identity_map(mm_va_from_pa(params.initrd_begin),
-			     mm_va_from_pa(params.initrd_end), MM_MODE_R)) {
+	if (!mm_identity_map(va_from_pa(params.initrd_begin),
+			     va_from_pa(params.initrd_end), MM_MODE_R)) {
 		panic("unable to map initrd in");
 	}
 
-	memiter_init(&cpio, mm_ptr_from_va(mm_va_from_pa(params.initrd_begin)),
+	memiter_init(&cpio, ptr_from_va(va_from_pa(params.initrd_begin)),
 		     pa_addr(params.initrd_end) - pa_addr(params.initrd_begin));
 
 	/* Load all VMs. */
@@ -87,10 +87,8 @@ static void one_time_init(void)
 	}
 
 	/* Prepare to run by updating bootparams as seens by primary VM. */
-	update.initrd_begin =
-		mm_pa_from_va(va_init((uintvaddr_t)primary_initrd.next));
-	update.initrd_end =
-		mm_pa_from_va(va_init((uintvaddr_t)primary_initrd.limit));
+	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
+	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
 	update.reserved_begin = new_mem_end;
 	update.reserved_end =
 		pa_init(pa_addr(params.mem_end) - pa_addr(new_mem_end));

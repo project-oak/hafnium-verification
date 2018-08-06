@@ -142,15 +142,15 @@ int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	 * provided the address was acessible from the VM which ensures that the
 	 * caller isn't trying to use another VM's memory.
 	 */
-	if (!mm_pa_from_ipa(&vm->ptable, send, &pa_send) ||
-	    !mm_pa_from_ipa(&vm->ptable, recv, &pa_recv)) {
+	if (!mm_ptable_translate_ipa(&vm->ptable, send, &pa_send) ||
+	    !mm_ptable_translate_ipa(&vm->ptable, recv, &pa_recv)) {
 		ret = -1;
 		goto exit;
 	}
 
-	send_begin = mm_va_from_pa(pa_send);
+	send_begin = va_from_pa(pa_send);
 	send_end = va_add(send_begin, PAGE_SIZE);
-	recv_begin = mm_va_from_pa(pa_recv);
+	recv_begin = va_from_pa(pa_recv);
 	recv_end = va_add(recv_begin, PAGE_SIZE);
 
 	/* Map the send page as read-only in the hypervisor address space. */
@@ -170,8 +170,8 @@ int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	}
 
 	/* Save pointers to the pages. */
-	vm->rpc.send = mm_ptr_from_va(send_begin);
-	vm->rpc.recv = mm_ptr_from_va(recv_begin);
+	vm->rpc.send = ptr_from_va(send_begin);
+	vm->rpc.recv = ptr_from_va(recv_begin);
 
 	/* TODO: Notify any waiters. */
 

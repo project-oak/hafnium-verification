@@ -207,8 +207,8 @@ bool mm_ptable_identity_map(struct mm_ptable *t, vaddr_t begin, vaddr_t end,
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
-	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
-	paddr_t paddr = arch_mm_clear_pa(mm_pa_from_va(begin));
+	pte_t *table = ptr_from_va(va_from_pa(t->table));
+	paddr_t paddr = arch_mm_clear_pa(pa_from_va(begin));
 
 	begin = arch_mm_clear_va(begin);
 	end = arch_mm_clear_va(va_add(end, PAGE_SIZE - 1));
@@ -241,18 +241,18 @@ bool mm_ptable_unmap(struct mm_ptable *t, vaddr_t begin, vaddr_t end, int mode)
 {
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
-	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
+	pte_t *table = ptr_from_va(va_from_pa(t->table));
 
 	begin = arch_mm_clear_va(begin);
 	end = arch_mm_clear_va(va_add(end, PAGE_SIZE - 1));
 
 	/* Also do updates in two steps, similarly to mm_ptable_identity_map. */
-	if (!mm_map_level(begin, end, mm_pa_from_va(begin), 0, table, level,
+	if (!mm_map_level(begin, end, pa_from_va(begin), 0, table, level,
 			  flags)) {
 		return false;
 	}
 
-	mm_map_level(begin, end, mm_pa_from_va(begin), 0, table, level,
+	mm_map_level(begin, end, pa_from_va(begin), 0, table, level,
 		     flags | MAP_FLAG_COMMIT);
 
 	/* Invalidate the tlb. */
@@ -272,9 +272,9 @@ bool mm_ptable_identity_map_page(struct mm_ptable *t, vaddr_t va, int mode)
 {
 	size_t i;
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
+	pte_t *table = ptr_from_va(va_from_pa(t->table));
 	bool sync = !(mode & MM_MODE_NOSYNC);
-	paddr_t pa = arch_mm_clear_pa(mm_pa_from_va(va));
+	paddr_t pa = arch_mm_clear_pa(pa_from_va(va));
 
 	va = arch_mm_clear_va(va);
 
@@ -319,7 +319,7 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
  */
 void mm_ptable_dump(struct mm_ptable *t, int mode)
 {
-	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
+	pte_t *table = ptr_from_va(va_from_pa(t->table));
 	int max_level = arch_mm_max_level(mode);
 	mm_dump_table_recursive(table, max_level, max_level);
 }
@@ -386,7 +386,7 @@ static bool mm_is_mapped_recursive(const pte_t *table, vaddr_t addr, int level)
  */
 bool mm_ptable_is_mapped(struct mm_ptable *t, vaddr_t addr, int mode)
 {
-	pte_t *table = mm_ptr_from_va(mm_va_from_pa(t->table));
+	pte_t *table = ptr_from_va(va_from_pa(t->table));
 	int level = arch_mm_max_level(mode);
 
 	addr = arch_mm_clear_va(addr);

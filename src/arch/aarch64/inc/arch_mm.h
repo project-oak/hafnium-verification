@@ -3,69 +3,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdint.h>
 
-/* Integer type large enough to hold a physical address. */
-typedef uintptr_t uintpaddr_t;
-
-/* Integer type large enough to hold a virtual address. */
-typedef uintptr_t uintvaddr_t;
-
-/* A page table entry. */
-typedef uint64_t pte_t;
-
-/* An opaque type for a physical address. */
-typedef struct {
-	uintpaddr_t pa;
-} paddr_t;
-
-/* An opaque type for a virtual address. */
-typedef struct {
-	uintvaddr_t va;
-} vaddr_t;
-
-/**
- * Initializes a physical address.
- */
-static inline paddr_t pa_init(uintpaddr_t p)
-{
-	return (paddr_t){.pa = p};
-}
-
-/**
- * Extracts the absolute physical address.
- */
-static inline uintpaddr_t pa_addr(paddr_t pa)
-{
-	return pa.pa;
-}
-
-/**
- * Initializes a virtual address.
- */
-static inline vaddr_t va_init(uintvaddr_t v)
-{
-	return (vaddr_t){.va = v};
-}
-
-/**
- * Extracts the absolute virtual address.
- */
-static inline uintvaddr_t va_addr(vaddr_t va)
-{
-	return va.va;
-}
-
-/**
- * Advances a virtual address.
- */
-static inline vaddr_t va_add(vaddr_t va, size_t n)
-{
-	return va_init(va_addr(va) + n);
-}
-
-#define PAGE_LEVEL_BITS 9
-#define PAGE_BITS 12
+#include "addr.h"
 
 /**
  * Converts a physical address to a table PTE.

@@ -15,14 +15,14 @@
  */
 static bool copy_to_unmaped(paddr_t to, const void *from, size_t size)
 {
-	vaddr_t begin = mm_va_from_pa(to);
+	vaddr_t begin = va_from_pa(to);
 	vaddr_t end = va_add(begin, size);
 
 	if (!mm_identity_map(begin, end, MM_MODE_W)) {
 		return false;
 	}
 
-	memcpy(mm_ptr_from_va(begin), from, size);
+	memcpy(ptr_from_va(begin), from, size);
 
 	mm_unmap(begin, end, 0);
 
@@ -211,20 +211,18 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 						    MM_MODE_NOINVALIDATE);
 
 		/* Grant the VM access to the memory. */
-		if (!mm_ptable_identity_map(
-			    &secondary_vm[count].ptable,
-			    mm_va_from_pa(*mem_end),
-			    va_add(mm_va_from_pa(*mem_end), mem),
-			    MM_MODE_R | MM_MODE_W | MM_MODE_X |
-				    MM_MODE_NOINVALIDATE)) {
+		if (!mm_ptable_identity_map(&secondary_vm[count].ptable,
+					    va_from_pa(*mem_end),
+					    va_add(va_from_pa(*mem_end), mem),
+					    MM_MODE_R | MM_MODE_W | MM_MODE_X |
+						    MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to initialise memory for vm %u\n", count);
 			continue;
 		}
 
 		/* Deny the primary VM access to this memory. */
-		if (!mm_ptable_unmap(&primary_vm.ptable,
-				     mm_va_from_pa(*mem_end),
-				     va_add(mm_va_from_pa(*mem_end), mem),
+		if (!mm_ptable_unmap(&primary_vm.ptable, va_from_pa(*mem_end),
+				     va_add(va_from_pa(*mem_end), mem),
 				     MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to unmap secondary VM from primary VM\n");
 			return false;

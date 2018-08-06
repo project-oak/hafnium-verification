@@ -4,17 +4,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "addr.h"
 #include "arch_mm.h"
 
 struct mm_ptable {
 	paddr_t table;
 	uint32_t id;
 };
-
-/* An opaque type for an intermediate physical address from a VM. */
-typedef struct {
-	uintpaddr_t ipa;
-} ipaddr_t;
 
 #define PAGE_SIZE (1 << PAGE_BITS)
 
@@ -61,46 +57,12 @@ bool mm_unmap(vaddr_t begin, vaddr_t end, int mode);
 void mm_defrag(void);
 
 /**
- * Initializes an intermeditate physical address.
- */
-static inline ipaddr_t ipa_init(uintvaddr_t v)
-{
-	return (ipaddr_t){.ipa = v};
-}
-
-/**
- * Extracts the absolute intermediate physical address.
- */
-static inline uintpaddr_t ipa_addr(ipaddr_t ipa)
-{
-	return ipa.ipa;
-}
-
-/**
- * Converts a physical address to a virtual address. Addresses are currently
- * identity mapped so this is a simple type convertion.
- */
-static inline vaddr_t mm_va_from_pa(paddr_t pa)
-{
-	return va_init(pa_addr(pa));
-}
-
-/**
- * Converts a virtual address to a physical address. Addresses are currently
- * identity mapped so this is a simple type convertion.
- */
-static inline paddr_t mm_pa_from_va(vaddr_t va)
-{
-	return pa_init(va_addr(va));
-}
-
-/**
  * Converts an intermediate physical address to a physical address. Addresses
  * are currently identity mapped so this is a simple type convertion. Returns
  * true if the address was mapped in the table and the address was converted.
  */
-static inline bool mm_pa_from_ipa(struct mm_ptable *t, ipaddr_t ipa,
-				  paddr_t *pa)
+static inline bool mm_ptable_translate_ipa(struct mm_ptable *t, ipaddr_t ipa,
+					   paddr_t *pa)
 {
 	/* TODO: the ptable functions map physical to virtual addresses but they
 	 * should really be mapping to intermediate physical addresses.
@@ -113,15 +75,6 @@ static inline bool mm_pa_from_ipa(struct mm_ptable *t, ipaddr_t ipa,
 		return true;
 	}
 	return false;
-}
-
-/**
- * Converts a virtual address to a pointer. Only use when the virtual address
- * is mapped for the calling context.
- */
-static inline void *mm_ptr_from_va(vaddr_t va)
-{
-	return (void *)va_addr(va);
 }
 
 #endif /* _MM_H */
