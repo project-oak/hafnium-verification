@@ -2,7 +2,7 @@
 
 #include "std.h"
 #include "vm.h"
-#include "vmapi/hf/hvc.h"
+#include "vmapi/hf/call.h"
 
 struct vm secondary_vm[MAX_VMS];
 uint32_t secondary_vm_count;

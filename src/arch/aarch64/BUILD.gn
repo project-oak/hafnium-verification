@@ -6,6 +6,7 @@ source_set("aarch64") {
   sources = [
     "exceptions.S",
     "hypervisor_entry.S",
+    "smc.S",
   ]
 
   sources += [

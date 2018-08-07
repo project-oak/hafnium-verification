@@ -138,19 +138,19 @@ template("initrd") {
     # TODO: is there a less hacky way to do this?
     if (defined(invoker.secondary_vms)) {
       foreach(vm, invoker.secondary_vms) {
-        args += ["--secondary_vm"]
+        args += [ "--secondary_vm" ]
 
         # This is a hack to find the field which names the build target for the
         # VM so it can be added to the dependencies and the image path be
         # passed to the script. The target will be a path or have a semicolon
         # so getting the label name will yield a diferent value. The other
         # fields are simple text so won't change.
-        foreach (field, vm) {
+        foreach(field, vm) {
           if (get_label_info(field, "name") != field) {
-            deps += [field]
-            args += [vm_dir + get_label_info(field, "name") + ".bin"]
+            deps += [ field ]
+            args += [ vm_dir + get_label_info(field, "name") + ".bin" ]
           } else {
-            args += [field]
+            args += [ field ]
           }
         }
       }

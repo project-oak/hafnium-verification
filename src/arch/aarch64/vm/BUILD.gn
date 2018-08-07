@@ -1,0 +1,19 @@
+# These components are only used by VMs for aarch64 specific actions.
+
+# Make a call to the hypervisor from a VM.
+source_set("hf_call") {
+  sources = [
+    "hf_call.S",
+  ]
+}
+
+# Shutdown the system or exit emulation.
+source_set("shutdown") {
+  sources = [
+    "shutdown.c",
+  ]
+
+  deps = [
+    ":hf_call",
+  ]
+}

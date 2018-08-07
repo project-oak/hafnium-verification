@@ -1,0 +1,18 @@
+import("//build/image/image.gni")
+
+vm_kernel("primary_only_test_vm") {
+  testonly = true
+
+  sources = [
+    "primary.c",
+  ]
+
+  deps = [
+    "//test/vm:hf_test_vm",
+  ]
+}
+
+initrd("primary_only_test") {
+  testonly = true
+  primary_vm = ":primary_only_test_vm"
+}

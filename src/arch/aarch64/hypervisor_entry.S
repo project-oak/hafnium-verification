@@ -37,14 +37,8 @@ cpu_entry:
 	bl cpu_main
 
 	/* Run the vcpu returned by cpu_main. */
-	b vcpu_restore_all_and_run
+	bl vcpu_restore_all_and_run
 
 	/* Loop forever waiting for interrupts. */
-5:	wfi
-	b 5b
-
-/* TODO: Move this elsewhere. */
-.globl smc
-smc:
-	SMC #0
-	ret
+0:	wfi
+	b 0b

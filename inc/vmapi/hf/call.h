@@ -1,6 +1,8 @@
 #ifndef _VMAPI_HF_HVC_H
 #define _VMAPI_HF_HVC_H
 
+#include <stddef.h>
+
 /* Keep macro alignment */
 /* clang-format off */
 
@@ -21,5 +23,27 @@
 #define HF_RPC_REPLY        0xff07
 
 /* clang-format on */
+
+/*
+ * This function must be implemented to trigger the architecture specific call
+ * to the hypervisor.
+ */
+long hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
+
+/*
+ * Returns the number of secondary VMs.
+ */
+static inline long hf_vm_get_count(void)
+{
+	return hf_call(HF_VM_GET_COUNT, 0, 0, 0);
+}
+
+/*
+ * Returns the number of VCPUs configured in the given secondary VM.
+ */
+static inline long hf_vcpu_get_count(size_t vm_idx)
+{
+	return hf_call(HF_VCPU_GET_COUNT, vm_idx, 0, 0);
+}
 
 #endif /* _VMAPI_HF_HVC_H */

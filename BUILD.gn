@@ -5,7 +5,8 @@ group("arch_images") {
 
   deps = [
     ":hypervisor",
-    "//test/vm:test_vm_initrd($arch_toolchain)",
+    "//test/vm/primary_only:primary_only_test($arch_toolchain)",
+    "//test/vm/primary_with_secondary:primary_with_secondary_test($arch_toolchain)",
   ]
 }
 

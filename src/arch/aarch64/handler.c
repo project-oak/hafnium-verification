@@ -3,7 +3,7 @@
 #include "dlog.h"
 #include "psci.h"
 #include "vm.h"
-#include "vmapi/hf/hvc.h"
+#include "vmapi/hf/call.h"
 
 #include "msr.h"
 

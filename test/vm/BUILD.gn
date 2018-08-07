@@ -1,21 +1,15 @@
 import("//build/image/image.gni")
 
-vm_kernel("test_vm") {
-  testonly = true
-
+source_set("hf_test_vm") {
   sources = [
     "vm_entry.S",
-    "kmain.c",
   ]
 
   deps = [
     "//src:common",
     "//src:common_debug",
     "//src/arch/${arch}:entry",
+    "//src/arch/${arch}/vm:hf_call",
+    "//src/arch/${arch}/vm:shutdown",
   ]
-}
-
-initrd("test_vm_initrd") {
-  testonly = true
-  primary_vm = ":test_vm"
 }
