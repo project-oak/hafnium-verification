@@ -13,6 +13,7 @@ config("compiler_defaults") {
 
   cflags_c = [
     "-std=c11",
+    "-Wdeclaration-after-statement",
   ]
 
   cflags_cc = [
@@ -43,10 +44,16 @@ config("compiler_defaults") {
       "-fno-builtin",
       "-ffreestanding",
       "-fpic",
-      "-Wno-extended-offsetof", # have clang give us some slack
     ]
 
+    if (!use_gcc) {
+      cflags += [
+        "-Wno-extended-offsetof", # have clang give us some slack
+      ]
+    }
+
     defines += [
+      # TODO: move these build args for the platforms
       "MAX_CPUS=8",
       "MAX_VMS=16",
       "STACK_SIZE=4096",

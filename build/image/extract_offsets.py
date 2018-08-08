@@ -8,7 +8,6 @@ and stores them in a header file for the assembly to include and use.
 """
 
 import argparse
-import os
 import re
 import subprocess
 import sys

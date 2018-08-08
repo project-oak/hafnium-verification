@@ -6,7 +6,6 @@ Calls objcopy to convert a file into raw binary format.
 """
 
 import argparse
-import os
 import subprocess
 import sys
 
@@ -16,7 +15,7 @@ def Main():
   parser.add_argument("--input", required=True)
   parser.add_argument("--output", required=True)
   args = parser.parse_args()
-  raw = subprocess.check_output([
+  subprocess.check_call([
       "{}objcopy".format(args.tool_prefix),
       "-O",
       "binary",

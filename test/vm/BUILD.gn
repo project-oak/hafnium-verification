@@ -14,3 +14,8 @@ vm_kernel("test_vm") {
     "//src/arch/${arch}:entry",
   ]
 }
+
+initrd("test_vm_initrd") {
+  testonly = true
+  primary_vm = ":test_vm"
+}
