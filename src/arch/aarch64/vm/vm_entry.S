@@ -1,5 +1,4 @@
-.section .init.image, "ax"
-
+.section .init.image_entry, "ax"
 .global image_entry
 image_entry:
 	/* Prepare the stack. */

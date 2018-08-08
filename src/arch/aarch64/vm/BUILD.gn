@@ -1,5 +1,12 @@
 # These components are only used by VMs for aarch64 specific actions.
 
+# Implements image_entry for a simple VM kernel.
+source_set("vm_entry") {
+  sources = [
+    "vm_entry.S",
+  ]
+}
+
 # Make a call to the hypervisor from a VM.
 source_set("hf_call") {
   sources = [

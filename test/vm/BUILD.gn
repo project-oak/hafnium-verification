@@ -2,7 +2,7 @@ import("//build/image/image.gni")
 
 source_set("hf_test_vm") {
   sources = [
-    "vm_entry.S",
+    "hf_test.h",
   ]
 
   deps = [
@@ -11,5 +11,6 @@ source_set("hf_test_vm") {
     "//src/arch/${arch}:entry",
     "//src/arch/${arch}/vm:hf_call",
     "//src/arch/${arch}/vm:shutdown",
+    "//src/arch/${arch}/vm:vm_entry",
   ]
 }

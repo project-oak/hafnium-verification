@@ -1,5 +1,4 @@
-.text
-
+.section .text.smc, "ax"
 .globl smc
 smc:
 	smc #0

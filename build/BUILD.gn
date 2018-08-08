@@ -44,6 +44,7 @@ config("compiler_defaults") {
       "-fno-builtin",
       "-ffreestanding",
       "-fpic",
+      "-ffunction-sections",
     ]
 
     if (!use_gcc) {
@@ -70,6 +71,9 @@ config("compiler_defaults") {
 }
 
 config("executable_ldconfig") {
-  ldflags = [
-  ]
+  if (current_toolchain == arch_toolchain) {
+    ldflags = [
+      "--gc-sections"
+    ]
+  }
 }

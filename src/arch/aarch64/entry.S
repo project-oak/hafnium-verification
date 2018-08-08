@@ -1,10 +1,9 @@
-.section .init.entry, "ax"
-
 /**
  * This is a generic entry point for an image. It carries out the operations
  * required to prepare the loaded image to be run. Specifically, it performs
  * relocations and zeroing of the bss section using registers x25 and above.
  */
+.section .init.entry, "ax"
 .global entry
 entry:
 	b 0f

@@ -5,6 +5,7 @@ import("//build/image/generate_offsets.gni")
 source_set("aarch64") {
   sources = [
     "exceptions.S",
+    "cpu_entry.S",
     "hypervisor_entry.S",
     "smc.S",
   ]

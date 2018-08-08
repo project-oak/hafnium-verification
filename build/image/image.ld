@@ -7,14 +7,18 @@ SECTIONS
 	text_begin = .;
 	.init : {
 		*(.init.entry)
-		*(.init.image)
+		*(.init.*)
 	}
-	.text : { *(.text) }
+	.text : {
+		*(.text.*)
+	}
 	text_end = .;
 
 	. = ALIGN(4096);
 	rodata_begin = .;
-	.rodata : { *(.rodata) }
+	.rodata : {
+		*(.rodata.*)
+	}
 	.rela : ALIGN(8) {
 		rela_begin = .;
 		*(.rela .rela*)
@@ -24,7 +28,9 @@ SECTIONS
 
 	. = ALIGN(4096);
 	data_begin = .;
-	.data : { *(.data) }
+	.data : {
+		*(.data)
+	}
 
 	/* The entry point code assumes that bss is 16-byte aligned. */
 	.bss ALIGN(16) : {
