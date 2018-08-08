@@ -46,12 +46,6 @@ config("compiler_defaults") {
       "-ffunction-sections",
     ]
 
-    if (!use_gcc) {
-      cflags += [
-        "-Wno-extended-offsetof", # have clang give us some slack
-      ]
-    }
-
     defines += [
       # TODO: move these build args for the platforms
       "MAX_CPUS=8",

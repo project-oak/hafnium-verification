@@ -77,7 +77,7 @@ template("clang_toolchain") {
   cc_toolchain(target_name) {
     cc = "clang"
     cflags = "-target ${invoker.target} -fcolor-diagnostics"
-    ld = "${invoker.arch_tool_prefix}ld"
+    ld = "ld.lld"
 
     toolchain_args = {
       arch_tool_prefix = invoker.arch_tool_prefix

@@ -12,23 +12,36 @@ then
 	# Server
 	cd git/hafnium
 	make out/args.gn
-	echo "arch_cc_version = \"3.9\"" >> out/args.gn
-	echo "host_cc_version = \"3.9\"" >> out/args.gn
 else
 	# Local
 	echo "Testing kokoro build locally..."
 	make out/args.gn
 fi
 
-# TODO: Kokoro is missing ninja, gcc-4.9 or above and qemu
-# Check the build works
-make
-
-# # Check to code looks healthy, failing if any changes were made
-# make format
-# make tidy
 #
-# if [[ `git status --porcelain` ]]
-# then
-# 	exit 1
-# fi
+# Step 1: make sure it builds.
+#
+
+# TODO: add a gcc-4.9 or above prebuilt to check the gcc build too?
+# Check the build works.
+make
+#TODO: static analysis with make check
+
+#
+# Step 2: make sure it works.
+#
+
+./kokoro/ubuntu/test.sh
+
+#
+# Step 3: make sure the code looks good.
+#
+
+make format
+make tidy
+
+if [[ `git status --porcelain` ]]
+then
+	echo "Run `make format` and `make tidy` locally to fix this."
+	exit 1
+fi

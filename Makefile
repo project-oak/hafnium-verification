@@ -1,12 +1,13 @@
 OUT ?= out
 
-# Set path to prebuilts
+# Set path to prebuilts used in the build.
 UNNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
-PREBUILTS := prebuilts/$(UNNAME_S)-x64
+PREBUILTS := $(PWD)/prebuilts/$(UNNAME_S)-x64
 GN ?= $(PREBUILTS)/gn/gn
 NINJA ?= $(PREBUILTS)/ninja/ninja
+export PATH := $(PREBUILTS)/clang/bin:$(PATH)
 
-# Configure the build arguments
+# Configure the build arguments.
 GCC ?= false
 ARCH ?= aarch64
 PLATFORM ?= qemu
@@ -19,7 +20,7 @@ $(OUT)/build.ninja: $(OUT)/args.gn
 	@$(GN) --export-compile-commands gen $(OUT)
 
 # Configure the build by loading the configuration arguments for the
-# architecture and platform
+# architecture and platform.
 $(OUT)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
 	@echo Copying config for $(ARCH) on $(PLATFORM)
 	@mkdir -p $(OUT)
@@ -36,7 +37,7 @@ clean:
 clobber:
 	rm -rf $(OUT)
 
-# see .clang-format
+# see .clang-format.
 .PHONY: format
 format:
 	@echo "Formatting..."
@@ -45,7 +46,7 @@ format:
 	@find test/ -name *.c -o -name *.h | xargs clang-format -style file -i
 	@find . -name *.gn -o -name *.gni -exec $(GN) format {} \;
 
-# see .clang-tidy
+# see .clang-tidy.
 .PHONY: tidy
 tidy: $(OUT)/build.ninja
 	@$(NINJA) -C $(OUT)
