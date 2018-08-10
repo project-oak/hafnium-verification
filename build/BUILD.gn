@@ -13,7 +13,6 @@ config("compiler_defaults") {
 
   cflags_c = [
     "-std=c11",
-    "-Wdeclaration-after-statement",
   ]
 
   cflags_cc = [

@@ -16,13 +16,6 @@ group("hypervisor") {
   ]
 }
 
-executable("test") {
-  testonly = true
-  sources = [
-    "test.cpp",
-  ]
-}
-
 # Only build the image for the arch
 if (current_toolchain == arch_toolchain) {
   hypervisor("hafnium") {
