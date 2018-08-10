@@ -311,6 +311,7 @@ int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
 	struct vm *from = cpu()->current->vm;
 	struct vm *to;
 	const void *from_buf;
+
 	/* Basic argument validation. */
 	if (size > PAGE_SIZE) {
 		return -1;
