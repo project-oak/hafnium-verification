@@ -52,3 +52,10 @@ tidy: $(OUT)/build.ninja
 	@echo "Tidying..."
 	@find src/ -name *.c -exec clang-tidy -p $(OUT) -fix {} \;
 	@find test/ -name *.c -exec clang-tidy -p $(OUT) -fix {} \;
+
+.PHONY: check
+check: $(OUT)/build.ninja
+	@$(NINJA) -C $(OUT)
+	@echo "Checking..."
+	@find src/ -name *.c -exec clang-check -p $(OUT) -analyze {} \;
+	@find test/ -name *.c -exec clang-check -p $(OUT) -analyze {} \;
