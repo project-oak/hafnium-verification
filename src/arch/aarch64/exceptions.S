@@ -74,6 +74,9 @@ vector_table_el2:
 	ldp x13, x14, [sp, #-16]
 	ldp x15, x16, [sp, #-16]
 	mov x17, xzr
+
+	/* Restore x18, which was saved on the stack. */
+	ldr x18, [sp], #16
 	eret
 
 .balign 0x80
@@ -370,7 +373,9 @@ sync_lower_64_switch:
 	stp xzr, xzr, [x18, #8 * 16]
 	stp x29, x30, [x18, #8 * 29]
 
-	str xzr, [x18, #8 * 18]
+	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
+	ldr x2, [sp], #16
+	str x2, [x18, #8 * 18]
 
 	/* Save return address & mode. */
 	mrs x2, elr_el2
