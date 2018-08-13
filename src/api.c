@@ -146,6 +146,12 @@ int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 		goto exit;
 	}
 
+	/* Fail if the same page is used for the send and receive pages. */
+	if (pa_addr(pa_send_begin) == pa_addr(pa_recv_begin)) {
+		ret = -1;
+		goto exit;
+	}
+
 	pa_send_end = pa_add(pa_send_begin, PAGE_SIZE);
 	pa_recv_end = pa_add(pa_recv_begin, PAGE_SIZE);
 
