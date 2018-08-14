@@ -6,10 +6,11 @@
 .section .init.entry, "ax"
 .global entry
 entry:
+	/* Linux aarch64 image header. */
 	b 0f
 	.word 0
-	.quad 4096        /* text_offset */
-	.quad file_size   /* image_size */
+	.quad 0x1000      /* text_offset */
+	.quad image_size  /* image_size */
 	.quad 0           /* flags */
 	.quad 0           /* res2 */
 	.quad 0           /* res3 */
@@ -24,7 +25,7 @@ entry:
 0:	adrp x25, entry
 	add x25, x25, :lo12:entry
 
-	ldr w29, =_orig_base
+	ldr w29, =ORIGIN_ADDRESS
 
 	sub x25, x25, x29
 
