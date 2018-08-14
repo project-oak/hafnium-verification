@@ -5,17 +5,17 @@ source_set("src") {
     "api.c",
     "cpio.c",
     "cpu.c",
-    "fdt.c",
     "fdt_handler.c",
     "load.c",
     "main.c",
-    "memiter.c",
     "mm.c",
     "vm.c",
   ]
 
   deps = [
     ":common",
+    ":fdt",
+    ":memiter",
   ]
 
   if (is_debug) {
@@ -39,5 +39,17 @@ source_set("common_debug") {
   deps = [
     ":common",
     "//src/arch/${arch}:putchar",
+  ]
+}
+
+source_set("fdt") {
+  sources = [
+    "fdt.c",
+  ]
+}
+
+source_set("memiter") {
+  sources = [
+    "memiter.c",
   ]
 }

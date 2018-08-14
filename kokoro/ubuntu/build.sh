@@ -43,6 +43,6 @@ make tidy
 
 if [[ `git status --porcelain` ]]
 then
-	echo "Run `make format` and `make tidy` locally to fix this."
+	echo "Run \`make format\' and \`make tidy\` locally to fix this."
 	exit 1
 fi

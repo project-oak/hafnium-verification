@@ -2,8 +2,8 @@
 .global image_entry
 image_entry:
 	/* Prepare the stack. */
-	adr x0, kstack + 4096
-	mov sp, x0
+	adr x30, kstack + 4096
+	mov sp, x30
 
 	/* Call into C code. */
 	bl kmain

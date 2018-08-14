@@ -8,7 +8,7 @@ vm_kernel("primary_with_secondary_test_primary_vm") {
   ]
 
   deps = [
-    "//test/vm:hf_test_vm",
+    "//test/vm:hftest_vm",
   ]
 }
 
@@ -20,7 +20,7 @@ vm_kernel("primary_with_secondary_test_secondary_vm") {
   ]
 
   deps = [
-    "//test/vm:hf_test_vm",
+    "//test/vm:other_vm",
   ]
 }
 

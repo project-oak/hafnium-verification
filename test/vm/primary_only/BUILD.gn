@@ -8,7 +8,7 @@ vm_kernel("primary_only_test_vm") {
   ]
 
   deps = [
-    "//test/vm:hf_test_vm",
+    "//test/vm:hftest_vm",
   ]
 }
 

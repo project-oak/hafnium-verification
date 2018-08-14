@@ -1,10 +1,25 @@
 import("//build/image/image.gni")
 
-source_set("hf_test_vm") {
+source_set("hftest_vm") {
   sources = [
-    "hf_test.h",
+    "hftest.c",
+    "hftest.h",
   ]
 
+  deps = [
+    "//src:common",
+    "//src:common_debug",
+    "//src:fdt",
+    "//src:memiter",
+    "//src/arch/${arch}:entry",
+    "//src/arch/${arch}/vm:hf_call",
+    "//src/arch/${arch}/vm:shutdown",
+    "//src/arch/${arch}/vm:vm_entry",
+  ]
+}
+
+# TODO: work out what to run in the secondary VMs
+source_set("other_vm") {
   deps = [
     "//src:common",
     "//src:common_debug",

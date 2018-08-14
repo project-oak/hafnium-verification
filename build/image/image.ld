@@ -52,6 +52,21 @@ SECTIONS
 		*(.rela.*)
 	}
 	rela_end = .;
+	/* The hftest framework adds test descriptors in the .hftest section
+	 * which is examined at runtime to discover the available tests. The
+	 * input sections are named after the test they include so sorting here
+	 * means they are stored sorted by the name of the test suite and then
+	 * by test case names. To ensure tests aren't accidentally included in
+	 * images that are not meant to have them, the assertion checks for a
+	 * marker to signal tests are allowed. */
+	. = ALIGN(8);
+	hftest_begin = .;
+	.hftest : {
+		KEEP(*(SORT(.hftest.*)))
+	}
+	hftest_end = .;
+	ASSERT((SIZEOF(.hftest) == (DEFINED(hftest_enable) ? SIZEOF(.hftest) : 0)),
+	       "Error: Image includes .hftest section but not HFTEST_ENABLE().")
 	rodata_end = .;
 
 	/*
