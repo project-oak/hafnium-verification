@@ -1,5 +1,3 @@
-OUT ?= out
-
 # Set path to prebuilts used in the build.
 UNNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 PREBUILTS := $(PWD)/prebuilts/$(UNNAME_S)-x64
@@ -8,22 +6,27 @@ NINJA ?= $(PREBUILTS)/ninja/ninja
 export PATH := $(PREBUILTS)/clang/bin:$(PATH)
 
 # Configure the build arguments.
-GCC ?= false
 ARCH ?= aarch64
 PLATFORM ?= qemu
+GCC ?= false
+
+# Place builds for different architectures and platforms in different
+# directories.
+OUT ?= out
+OUT_DIR = out/$(ARCH)/$(PLATFORM)
 
 .PHONY: all
-all: $(OUT)/build.ninja
-	@$(NINJA) -C $(OUT)
+all: $(OUT_DIR)/build.ninja
+	@$(NINJA) -C $(OUT_DIR)
 
-$(OUT)/build.ninja: $(OUT)/args.gn
-	@$(GN) --export-compile-commands gen $(OUT)
+$(OUT_DIR)/build.ninja: $(OUT_DIR)/args.gn
+	@$(GN) --export-compile-commands gen $(OUT_DIR)
 
 # Configure the build by loading the configuration arguments for the
 # architecture and platform.
-$(OUT)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
+$(OUT_DIR)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
 	@echo Copying config for $(ARCH) on $(PLATFORM)
-	@mkdir -p $(OUT)
+	@mkdir -p $(OUT_DIR)
 	@echo "arch = \"$(ARCH)\"" >> $@
 	@echo "use_gcc = $(GCC)" >> $@
 	@echo >> $@
@@ -31,8 +34,8 @@ $(OUT)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
 
 .PHONY: clean
 clean:
-	@$(NINJA) -C $(OUT) -t clean
-	rm -f $(OUT)/args.gn
+	@$(NINJA) -C $(OUT_DIR) -t clean
+	rm -f $(OUT_DIR)/args.gn
 
 .PHONY: clobber
 clobber:
@@ -49,15 +52,15 @@ format:
 
 # see .clang-tidy.
 .PHONY: tidy
-tidy: $(OUT)/build.ninja
-	@$(NINJA) -C $(OUT)
+tidy: $(OUT_DIR)/build.ninja
+	@$(NINJA) -C $(OUT_DIR)
 	@echo "Tidying..."
-	@find src/ -name *.c -exec clang-tidy -p $(OUT) -fix {} \;
-	@find test/ -name *.c -exec clang-tidy -p $(OUT) -fix {} \;
+	@find src/ -name *.c -exec clang-tidy -p $(OUT_DIR) -fix {} \;
+	@find test/ -name *.c -exec clang-tidy -p $(OUT_DIR) -fix {} \;
 
 .PHONY: check
-check: $(OUT)/build.ninja
-	@$(NINJA) -C $(OUT)
+check: $(OUT_DIR)/build.ninja
+	@$(NINJA) -C $(OUT_DIR)
 	@echo "Checking..."
-	@find src/ -name *.c -exec clang-check -p $(OUT) -analyze {} \;
-	@find test/ -name *.c -exec clang-check -p $(OUT) -analyze {} \;
+	@find src/ -name *.c -exec clang-check -p $(OUT_DIR) -analyze {} \;
+	@find test/ -name *.c -exec clang-check -p $(OUT_DIR) -analyze {} \;

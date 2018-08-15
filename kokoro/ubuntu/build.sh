@@ -11,16 +11,17 @@ if [ -v KOKORO_JOB_NAME ]
 then
 	# Server
 	cd git/hafnium
-	make out/args.gn
 else
 	# Local
 	echo "Testing kokoro build locally..."
-	make out/args.gn
 fi
 
 #
 # Step 1: make sure it builds.
 #
+
+export ARCH=aarch64
+export PLATFORM=qemu
 
 # TODO: add a gcc-4.9 or above prebuilt to check the gcc build too?
 # Check the build works.
