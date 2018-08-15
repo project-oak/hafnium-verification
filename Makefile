@@ -32,6 +32,7 @@ $(OUT)/args.gn: build/arch/$(ARCH)/$(PLATFORM).args
 .PHONY: clean
 clean:
 	@$(NINJA) -C $(OUT) -t clean
+	rm -f $(OUT)/args.gn
 
 .PHONY: clobber
 clobber:
