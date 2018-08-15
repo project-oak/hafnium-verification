@@ -48,7 +48,7 @@ format:
 	@find src/ -name *.c -o -name *.h | xargs clang-format -style file -i
 	@find inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
 	@find test/ -name *.c -o -name *.h | xargs clang-format -style file -i
-	@find . -name *.gn -o -name *.gni -exec $(GN) format {} \;
+	@find . \( -name *.gn -o -name *.gni \) -exec $(GN) format {} \;
 
 # see .clang-tidy.
 .PHONY: tidy

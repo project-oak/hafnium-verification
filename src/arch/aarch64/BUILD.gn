@@ -4,8 +4,8 @@ import("//build/image/generate_offsets.gni")
 # Hypervisor specific code.
 source_set("aarch64") {
   sources = [
-    "exceptions.S",
     "cpu_entry.S",
+    "exceptions.S",
     "hypervisor_entry.S",
     "smc.S",
   ]

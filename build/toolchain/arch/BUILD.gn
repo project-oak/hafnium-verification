@@ -71,13 +71,15 @@ template("cc_toolchain") {
 
 # Specialize for clang or gcc
 template("clang_toolchain") {
-  assert(defined(invoker.target), "clang_toolchain() must specify a \"target\" value")
-  assert(defined(invoker.arch_tool_prefix), "gcc_toolchain() must specify a \"arch_tool_prefix\" value")
+  assert(defined(invoker.target),
+         "clang_toolchain() must specify a \"target\" value")
+  assert(defined(invoker.arch_tool_prefix),
+         "gcc_toolchain() must specify a \"arch_tool_prefix\" value")
 
   cc_toolchain(target_name) {
     cc = "clang"
     cflags = "-target ${invoker.target} -fcolor-diagnostics"
-    ld = "ld.lld --color-diagnostics"
+    ld = "ld.lld --color-diagnostics -O2 -lto-O2 --icf=all --fatal-warnings"
 
     toolchain_args = {
       arch_tool_prefix = invoker.arch_tool_prefix
@@ -86,7 +88,8 @@ template("clang_toolchain") {
 }
 
 template("gcc_toolchain") {
-  assert(defined(invoker.arch_tool_prefix), "gcc_toolchain() must specify a \"arch_tool_prefix\" value")
+  assert(defined(invoker.arch_tool_prefix),
+         "gcc_toolchain() must specify a \"arch_tool_prefix\" value")
 
   cc_toolchain(target_name) {
     cc = "${invoker.arch_tool_prefix}gcc"
@@ -103,6 +106,7 @@ template("gcc_toolchain") {
 
 clang_toolchain("clang_aarch64") {
   target = "aarch64-none-eabi"
+
   # TODO: below isn't right for bare metal code, but it works fine
   arch_tool_prefix = "aarch64-linux-gnu-"
 }

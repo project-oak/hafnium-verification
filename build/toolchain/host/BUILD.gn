@@ -60,7 +60,8 @@ template("cc_toolchain") {
       sofile = "{{output_dir}}/$soname"
       rspfile = soname + ".rsp"
 
-      command = "${cxx} -shared {{ldflags}} -o $sofile -Wl,-soname=$soname @$rspfile"
+      command =
+          "${cxx} -shared {{ldflags}} -o $sofile -Wl,-soname=$soname @$rspfile"
       rspfile_content = "-Wl,--whole-archive {{inputs}} {{solibs}} -Wl,--no-whole-archive {{libs}}"
 
       description = "SOLINK $soname"

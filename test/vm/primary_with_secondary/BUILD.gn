@@ -27,7 +27,10 @@ vm_kernel("primary_with_secondary_test_secondary_vm") {
 initrd("primary_with_secondary_test") {
   testonly = true
   primary_vm = ":primary_with_secondary_test_primary_vm"
-  secondary_vms = [
-    ["1048576", "1", "secondary", ":primary_with_secondary_test_secondary_vm"],
-  ]
+  secondary_vms = [ [
+        "1048576",
+        "1",
+        "secondary",
+        ":primary_with_secondary_test_secondary_vm",
+      ] ]
 }

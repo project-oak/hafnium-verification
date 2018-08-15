@@ -1,32 +1,25 @@
 import("//build/arch/common.gni")
-import("//build/arch/aarch64.gni") # TODO: remove when no dependency on arch_aarch64_pl011_base_address
+import("//build/arch/aarch64.gni")  # TODO: remove when no dependency on arch_aarch64_pl011_base_address
 
 config("compiler_defaults") {
   cflags = [
     "-g",
     "-O2",
     "-Wall",
+
     #"-Wextra",
     "-Wpedantic",
     "-Werror",
   ]
 
-  cflags_c = [
-    "-std=c11",
-  ]
+  cflags_c = [ "-std=c11" ]
 
-  cflags_cc = [
-    "-std=c++14",
-  ]
+  cflags_cc = [ "-std=c++14" ]
 
   if (is_debug) {
-    defines = [
-      "DEBUG=1",
-    ]
+    defines = [ "DEBUG=1" ]
   } else {
-    defines = [
-      "DEBUG=0",
-    ]
+    defines = [ "DEBUG=0" ]
   }
 
   # Configuration specific for the bare metal images
@@ -56,17 +49,17 @@ config("compiler_defaults") {
     # TODO: this should be arch specific but it is currenly used by the
     # platform generic code to map the memory
     if (arch_aarch64_use_pl011) {
-      defines += [
-        "PL011_BASE=${arch_aarch64_pl011_base_address}",
-      ]
+      defines += [ "PL011_BASE=${arch_aarch64_pl011_base_address}" ]
     }
   }
 }
 
 config("executable_ldconfig") {
   if (current_toolchain == arch_toolchain) {
-    ldflags = [
-      "--gc-sections"
-    ]
+    ldflags = [ "--gc-sections" ]
   }
+}
+
+config("lto") {
+  cflags = [ "-flto" ]
 }

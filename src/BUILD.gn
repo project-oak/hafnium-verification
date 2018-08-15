@@ -19,9 +19,7 @@ source_set("src") {
   ]
 
   if (is_debug) {
-    deps += [
-      ":common_debug",
-    ]
+    deps += [ ":common_debug" ]
   }
 }
 

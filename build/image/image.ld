@@ -64,6 +64,11 @@ SECTIONS
 	.data : {
 		*(.data)
 	}
+	/* Global offset table used for relocations. This is where relocation
+	 * fix-ups are applied. */
+	.got : {
+		*(.got.*)
+	}
 	/* The entry point code assumes that .bss is 16-byte aligned. */
 	. = ALIGN(16);
 	bss_begin = .;
@@ -74,6 +79,21 @@ SECTIONS
 	. = ALIGN(16);
 	bss_end = .;
 	data_end = .;
+
+	/*
+	 * Remove unused sections from the image.
+	 */
+	/DISCARD/ : {
+		/* The image loads itself so doesn't need these sections. */
+		/* ld.lld doesn't allow these to be discarded.
+		*(.dynsym)
+		*(.dynstr)
+		*(.dynamic)
+		*/
+		*(.gnu.hash)
+		*(.hash)
+		*(.interp)
+	}
 
 	/*
 	 * Make note of some useful values.
