@@ -2,16 +2,16 @@
 #include <stddef.h>
 #include <stdnoreturn.h>
 
-#include "alloc.h"
-#include "api.h"
-#include "boot_params.h"
-#include "cpio.h"
-#include "cpu.h"
-#include "dlog.h"
-#include "load.h"
-#include "mm.h"
-#include "std.h"
-#include "vm.h"
+#include "hf/alloc.h"
+#include "hf/api.h"
+#include "hf/boot_params.h"
+#include "hf/cpio.h"
+#include "hf/cpu.h"
+#include "hf/dlog.h"
+#include "hf/load.h"
+#include "hf/mm.h"
+#include "hf/std.h"
+#include "hf/vm.h"
 
 char ptable_buf[PAGE_SIZE * 40];
 

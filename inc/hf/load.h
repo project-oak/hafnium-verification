@@ -4,9 +4,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "cpio.h"
-#include "memiter.h"
-#include "mm.h"
+#include "hf/cpio.h"
+#include "hf/memiter.h"
+#include "hf/mm.h"
 
 bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 		  struct memiter *initrd);

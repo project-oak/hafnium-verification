@@ -5,9 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "addr.h"
-#include "arch_cpu.h"
-#include "spinlock.h"
+#include "hf/arch/cpu.h"
+
+#include "hf/addr.h"
+#include "hf/spinlock.h"
 
 enum vcpu_state {
 	vcpu_state_off,

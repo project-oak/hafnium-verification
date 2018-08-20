@@ -4,8 +4,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "addr.h"
-#include "arch_mm.h"
+#include "hf/arch/mm.h"
+
+#include "hf/addr.h"
 
 struct mm_ptable {
 	paddr_t table;

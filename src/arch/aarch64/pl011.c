@@ -1,4 +1,5 @@
-#include "dlog.h"
+#include "hf/dlog.h"
+
 #include "io.h"
 
 /* UART Data Register. */

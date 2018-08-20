@@ -1,10 +1,10 @@
-#include "fdt_handler.h"
+#include "hf/fdt_handler.h"
 
-#include "boot_params.h"
-#include "dlog.h"
-#include "fdt.h"
-#include "mm.h"
-#include "std.h"
+#include "hf/boot_params.h"
+#include "hf/dlog.h"
+#include "hf/fdt.h"
+#include "hf/mm.h"
+#include "hf/std.h"
 
 static uint64_t convert_number(const char *data, uint32_t size)
 {

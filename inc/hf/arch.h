@@ -1,7 +1,7 @@
 #ifndef _ARCH_H
 #define _ARCH_H
 
-#include "cpu.h"
+#include "hf/cpu.h"
 
 void arch_putchar(char c);
 

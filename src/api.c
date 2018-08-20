@@ -1,7 +1,8 @@
-#include "api.h"
+#include "hf/api.h"
 
-#include "std.h"
-#include "vm.h"
+#include "hf/std.h"
+#include "hf/vm.h"
+
 #include "vmapi/hf/call.h"
 
 struct vm secondary_vm[MAX_VMS];

@@ -1,9 +1,9 @@
-#include "fdt.h"
+#include "hf/fdt.h"
 
 #include <stdint.h>
 
-#include "dlog.h"
-#include "std.h"
+#include "hf/dlog.h"
+#include "hf/std.h"
 
 struct fdt_header {
 	uint32_t magic;

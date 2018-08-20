@@ -1,5 +1,5 @@
-#include "boot_params.h"
-#include "fdt_handler.h"
+#include "hf/boot_params.h"
+#include "hf/fdt_handler.h"
 
 /* This is set by entry.S. */
 uintpaddr_t fdt_addr;

@@ -2,9 +2,11 @@
 #include <stdalign.h>
 #include <stdint.h>
 
-#include "../hf_test.h"
-#include "mm.h"
+#include "hf/mm.h"
+
 #include "vmapi/hf/call.h"
+
+#include "../hf_test.h"
 
 alignas(4096) uint8_t kstack[4096];
 

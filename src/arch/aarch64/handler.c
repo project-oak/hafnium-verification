@@ -1,11 +1,12 @@
-#include "api.h"
-#include "cpu.h"
-#include "dlog.h"
-#include "psci.h"
-#include "vm.h"
+#include "hf/api.h"
+#include "hf/cpu.h"
+#include "hf/dlog.h"
+#include "hf/vm.h"
+
 #include "vmapi/hf/call.h"
 
 #include "msr.h"
+#include "psci.h"
 
 struct hvc_handler_return {
 	long user_ret;

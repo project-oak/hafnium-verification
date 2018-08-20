@@ -1,10 +1,11 @@
-#include "cpu.h"
+#include "hf/cpu.h"
 
-#include "api.h"
-#include "arch_cpu.h"
-#include "dlog.h"
-#include "std.h"
-#include "vm.h"
+#include "hf/arch/cpu.h"
+
+#include "hf/api.h"
+#include "hf/dlog.h"
+#include "hf/std.h"
+#include "hf/vm.h"
 
 /* The stack to be used by the CPUs. */
 alignas(2 * sizeof(size_t)) static char callstacks[STACK_SIZE * MAX_CPUS];

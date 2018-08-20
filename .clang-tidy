@@ -1,2 +1,3 @@
 Checks: 'readability-*,portability-*,performance-*,misc-*,bugprone-*,modernize-*'
 HeaderFilterRegex: '.*'
+FormatStyle: file

@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#include "mm.h"
+#include "hf/mm.h"
 
 struct boot_params {
 	paddr_t mem_begin;

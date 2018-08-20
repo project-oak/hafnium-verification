@@ -1,7 +1,8 @@
-#include "vm/shutdown.h"
+#include "hf/arch/vm/shutdown.h"
 
-#include "psci.h"
 #include "vmapi/hf/call.h"
+
+#include "../psci.h"
 
 /*
  * Shutdown the system or exit emulation.

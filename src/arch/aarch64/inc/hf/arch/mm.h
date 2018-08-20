@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "addr.h"
+#include "hf/addr.h"
 
 /* A page table entry. */
 typedef uint64_t pte_t;

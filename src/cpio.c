@@ -1,8 +1,8 @@
-#include "cpio.h"
+#include "hf/cpio.h"
 
 #include <stdint.h>
 
-#include "std.h"
+#include "hf/std.h"
 
 #pragma pack(push, 1)
 struct cpio_header {

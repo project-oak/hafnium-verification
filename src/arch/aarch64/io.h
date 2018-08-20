@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "arch_barriers.h"
+#include "hf/arch/barriers.h"
 
 static inline uint32_t io_read(size_t addr)
 {

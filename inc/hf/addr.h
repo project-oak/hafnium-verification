@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "arch_addr.h"
+#include "hf/arch/addr.h"
 
 /* An opaque type for a physical address. */
 typedef struct {

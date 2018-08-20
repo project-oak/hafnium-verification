@@ -1,11 +1,11 @@
-#include "mm.h"
+#include "hf/mm.h"
 
 #include <assert.h>
 #include <stdatomic.h>
 #include <stdint.h>
 
-#include "alloc.h"
-#include "dlog.h"
+#include "hf/alloc.h"
+#include "hf/dlog.h"
 
 /* The type of addresses stored in the page table. */
 typedef uintvaddr_t ptable_addr_t;

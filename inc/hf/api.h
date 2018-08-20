@@ -1,8 +1,8 @@
 #ifndef _API_H
 #define _API_H
 
-#include "cpu.h"
-#include "vm.h"
+#include "hf/cpu.h"
+#include "hf/vm.h"
 
 /* TODO: Can we hide these? */
 extern struct vm secondary_vm[MAX_VMS];

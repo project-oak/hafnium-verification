@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "dlog.h"
+#include "hf/dlog.h"
 
 /*
  * Prefixed to log lines from tests for easy filtering in the console.

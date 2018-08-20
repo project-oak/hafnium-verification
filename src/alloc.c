@@ -1,7 +1,7 @@
-#include "alloc.h"
+#include "hf/alloc.h"
 
-#include "dlog.h"
-#include "spinlock.h"
+#include "hf/dlog.h"
+#include "hf/spinlock.h"
 
 static size_t alloc_base;
 static size_t alloc_limit;

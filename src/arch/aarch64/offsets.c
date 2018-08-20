@@ -2,8 +2,8 @@
 #include "offsets.h"
 #endif /* GEN_OFFSETS */
 
-#include "cpu.h"
-#include "decl_offsets.h"
+#include "hf/cpu.h"
+#include "hf/decl_offsets.h"
 
 DECL(CPU_CURRENT, struct cpu, current);
 DECL(CPU_STACK_BOTTOM, struct cpu, stack_bottom);

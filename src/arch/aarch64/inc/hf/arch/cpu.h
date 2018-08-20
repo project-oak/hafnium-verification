@@ -6,7 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "addr.h"
+#include "hf/addr.h"
 
 struct arch_regs {
 	/* General purpose registers. */

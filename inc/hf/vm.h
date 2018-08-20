@@ -1,8 +1,8 @@
 #ifndef _VM_H
 #define _VM_H
 
-#include "cpu.h"
-#include "mm.h"
+#include "hf/cpu.h"
+#include "hf/mm.h"
 
 enum rpc_state {
 	rpc_state_idle,

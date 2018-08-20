@@ -1,8 +1,8 @@
-#include "vm.h"
+#include "hf/vm.h"
 
-#include "api.h"
-#include "cpu.h"
-#include "std.h"
+#include "hf/api.h"
+#include "hf/cpu.h"
+#include "hf/std.h"
 
 bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 {

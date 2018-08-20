@@ -1,6 +1,9 @@
-#include "mm.h"
-#include "arch_cpu.h"
-#include "dlog.h"
+#include "hf/mm.h"
+
+#include "hf/arch/cpu.h"
+
+#include "hf/dlog.h"
+
 #include "msr.h"
 
 /* Keep macro alignment */

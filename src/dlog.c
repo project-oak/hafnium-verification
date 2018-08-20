@@ -1,11 +1,11 @@
-#include "dlog.h"
+#include "hf/dlog.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "arch.h"
-#include "spinlock.h"
-#include "std.h"
+#include "hf/arch.h"
+#include "hf/spinlock.h"
+#include "hf/std.h"
 
 /* Keep macro alignment */
 /* clang-format off */
