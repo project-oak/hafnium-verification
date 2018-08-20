@@ -1,5 +1,4 @@
-#ifndef _MEMITER_H
-#define _MEMITER_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -15,5 +14,3 @@ bool memiter_parse_uint(struct memiter *it, uint64_t *value);
 bool memiter_parse_str(struct memiter *it, struct memiter *str);
 bool memiter_iseq(const struct memiter *it, const char *str);
 bool memiter_advance(struct memiter *it, size_t v);
-
-#endif /* _MEMITER_H */

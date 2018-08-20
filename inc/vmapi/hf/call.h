@@ -1,5 +1,4 @@
-#ifndef _VMAPI_HF_HVC_H
-#define _VMAPI_HF_HVC_H
+#pragma once
 
 #if defined(__linux__) && defined(__KERNEL__)
 
@@ -120,5 +119,3 @@ static inline int32_t hf_rpc_reply(size_t size, bool ack)
 {
 	return hf_call(HF_RPC_REPLY, size, ack, 0);
 }
-
-#endif /* _VMAPI_HF_HVC_H */

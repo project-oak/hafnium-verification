@@ -1,5 +1,4 @@
-#ifndef _CPIO_H
-#define _CPIO_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -8,5 +7,3 @@
 
 bool cpio_next(struct memiter *iter, const char **name, const void **contents,
 	       size_t *size);
-
-#endif /* _CPIO_H */

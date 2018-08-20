@@ -1,5 +1,4 @@
-#ifndef _ADDR_H
-#define _ADDR_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -118,5 +117,3 @@ static inline void *ptr_from_va(vaddr_t va)
 {
 	return (void *)va_addr(va);
 }
-
-#endif /* _ADDR_H */

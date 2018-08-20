@@ -1,5 +1,4 @@
-#ifndef _ARCH_BARRIERS_H
-#define _ARCH_BARRIERS_H
+#pragma once
 
 static inline void dmb(void)
 {
@@ -15,5 +14,3 @@ static inline void isb(void)
 {
 	__asm__ volatile("isb");
 }
-
-#endif /* _ARCH_BARRIERS_H */

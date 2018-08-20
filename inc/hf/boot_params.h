@@ -1,5 +1,4 @@
-#ifndef _BOOT_PARAMS_H
-#define _BOOT_PARAMS_H
+#pragma once
 
 #include <stdbool.h>
 
@@ -22,5 +21,3 @@ struct boot_params_update {
 
 bool plat_get_boot_params(struct boot_params *p);
 bool plat_update_boot_params(struct boot_params_update *p);
-
-#endif /* _BOOT_PARAMS_H */

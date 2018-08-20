@@ -1,5 +1,4 @@
-#ifndef _IO_H
-#define _IO_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -30,5 +29,3 @@ static inline void io_write_mb(size_t addr, uint32_t v)
 	isb();
 	io_write(addr, v);
 }
-
-#endif /* _IO_H */

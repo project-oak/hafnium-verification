@@ -1,5 +1,4 @@
-#ifndef _DLOG_H
-#define _DLOG_H
+#pragma once
 
 #include <stdarg.h>
 
@@ -10,5 +9,3 @@ void vdlog(const char *fmt, va_list args);
 #define dlog(...)
 #define vdlog(fmt, args)
 #endif
-
-#endif /* _DLOG_H */

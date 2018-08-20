@@ -1,5 +1,4 @@
-#ifndef _STD_H
-#define _STD_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -54,5 +53,3 @@ int strcmp(const char *a, const char *b);
 #error "Unsupported byte order"
 
 #endif
-
-#endif /* STD_H */

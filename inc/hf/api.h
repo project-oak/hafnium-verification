@@ -1,5 +1,4 @@
-#ifndef _API_H
-#define _API_H
+#pragma once
 
 #include "hf/cpu.h"
 #include "hf/vm.h"
@@ -22,5 +21,3 @@ int32_t api_rpc_request(uint32_t vm_idx, size_t size);
 int32_t api_rpc_read_request(bool block, struct vcpu **next);
 int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next);
 int32_t api_rpc_ack(void);
-
-#endif /* _API_H */

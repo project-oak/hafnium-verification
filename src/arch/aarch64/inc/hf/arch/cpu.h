@@ -1,5 +1,4 @@
-#ifndef _ARCH_CPU_H
-#define _ARCH_CPU_H
+#pragma once
 
 #include <stdalign.h>
 #include <stdbool.h>
@@ -106,5 +105,3 @@ static inline void arch_regs_set_retval(struct arch_regs *r, size_t v)
 {
 	r->r[0] = v;
 }
-
-#endif /* _ARCH_CPU_H */

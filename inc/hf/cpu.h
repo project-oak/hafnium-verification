@@ -1,5 +1,4 @@
-#ifndef _CPU_H
-#define _CPU_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -61,5 +60,3 @@ struct cpu *cpu_find(size_t id);
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu *vcpu);
 void vcpu_off(struct vcpu *vcpu);
-
-#endif /* _CPU_H */

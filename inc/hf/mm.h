@@ -1,5 +1,4 @@
-#ifndef _MM_H
-#define _MM_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -59,5 +58,3 @@ bool mm_cpu_init(void);
 void *mm_identity_map(paddr_t begin, paddr_t end, int mode);
 bool mm_unmap(paddr_t begin, paddr_t end, int mode);
 void mm_defrag(void);
-
-#endif /* _MM_H */

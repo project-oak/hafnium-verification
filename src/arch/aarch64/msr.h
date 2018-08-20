@@ -1,5 +1,4 @@
-#ifndef _MSR_H
-#define _MSR_H
+#pragma once
 
 #include <stddef.h>
 
@@ -16,5 +15,3 @@
 			       :                         \
 			       : "rZ"((size_t)(value))); \
 	} while (0)
-
-#endif /* _MSR_H */

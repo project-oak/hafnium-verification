@@ -1,5 +1,4 @@
-#ifndef _HF_TEST_H
-#define _HF_TEST_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -140,5 +139,3 @@ union hf_test_any {
 			dlog(HF_TEST_LOG_PREFIX "OK\n");     \
 		}                                            \
 	} while (0)
-
-#endif /* _HF_TEST_H */

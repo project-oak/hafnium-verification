@@ -1,5 +1,4 @@
-#ifndef _FDT_H
-#define _FDT_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -24,5 +23,3 @@ bool fdt_read_property(const struct fdt_node *node, const char *name,
 
 void fdt_add_mem_reservation(struct fdt_header *hdr, uint64_t addr,
 			     uint64_t len);
-
-#endif /* _FDT_H */

@@ -1,5 +1,4 @@
-#ifndef _ARCH_ADDR_H
-#define _ARCH_ADDR_H
+#pragma once
 
 #include <stdint.h>
 
@@ -10,5 +9,3 @@ typedef uintptr_t uintpaddr_t;
 
 /* Integer type large enough to hold a virtual address. */
 typedef uintptr_t uintvaddr_t;
-
-#endif /* _ARCH_ADDR_H */

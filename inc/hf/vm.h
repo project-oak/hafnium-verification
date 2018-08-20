@@ -1,5 +1,4 @@
-#ifndef _VM_H
-#define _VM_H
+#pragma once
 
 #include "hf/cpu.h"
 #include "hf/mm.h"
@@ -29,5 +28,3 @@ struct vm {
 bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count);
 void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg);
 void vm_set_current(struct vm *vm);
-
-#endif /* _VM_H */

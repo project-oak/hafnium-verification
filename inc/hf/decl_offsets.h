@@ -1,5 +1,4 @@
-#ifndef _DECL_OFFSETS_H
-#define _DECL_OFFSETS_H
+#pragma once
 
 #ifdef GEN_OFFSETS
 
@@ -31,5 +30,3 @@
 		      " and not" #actual)
 
 #endif /* GEN_OFFSETS */
-
-#endif /* _DECL_OFFSETS_H */

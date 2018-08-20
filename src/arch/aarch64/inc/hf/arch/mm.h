@@ -1,5 +1,4 @@
-#ifndef _ARCH_MM_H
-#define _ARCH_MM_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -178,5 +177,3 @@ static inline void arch_mm_set_vm(uint64_t vmid, paddr_t table)
 uint64_t arch_mm_mode_to_attrs(int mode);
 bool arch_mm_init(paddr_t table, bool first);
 int arch_mm_max_level(int mode);
-
-#endif /* _ARCH_MM_H */

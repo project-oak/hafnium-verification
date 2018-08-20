@@ -1,5 +1,4 @@
-#ifndef _PSCI_H
-#define _PSCI_H
+#pragma once
 
 /* clang-format off */
 
@@ -41,5 +40,3 @@
 #define PSCI_INVALID_ADDRESS           (-9)
 
 /* clang-format on */
-
-#endif /* _PSCI_H */

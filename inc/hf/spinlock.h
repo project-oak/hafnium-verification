@@ -1,5 +1,4 @@
-#ifndef _SPINLOCK_H
-#define _SPINLOCK_H
+#pragma once
 
 #include <stdatomic.h>
 
@@ -28,5 +27,3 @@ static inline void sl_unlock(struct spinlock *l)
 {
 	atomic_flag_clear_explicit(&l->v, memory_order_release);
 }
-
-#endif /* _SPINLOCK_H */
