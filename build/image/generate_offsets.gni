@@ -23,7 +23,10 @@ template("generate_offsets") {
                            ])
 
     # Disable LTO so we get an object file.
-    configs -= [ "//build:lto" ]
+    configs -= [
+      "//build:sections",
+      "//build:lto",
+    ]
     defines = [ "GEN_OFFSETS" ]
     visibility = [ ":${header_target}" ]
   }

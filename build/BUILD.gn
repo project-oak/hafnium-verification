@@ -36,7 +36,6 @@ config("compiler_defaults") {
       "-fno-builtin",
       "-ffreestanding",
       "-fpic",
-      "-ffunction-sections",
     ]
 
     defines += [
@@ -58,6 +57,13 @@ config("executable_ldconfig") {
   if (current_toolchain == arch_toolchain) {
     ldflags = [ "--gc-sections" ]
   }
+}
+
+config("sections") {
+  cflags = [
+    "-ffunction-sections",
+    "-fdata-sections",
+  ]
 }
 
 config("lto") {

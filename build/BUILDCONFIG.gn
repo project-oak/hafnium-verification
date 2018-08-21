@@ -53,6 +53,7 @@ assert(target_cpu == host_cpu, "Cross compiles not yet supported")
 # All binary targets will get this list of configs by default
 _shared_binary_target_configs = [
   "//build:compiler_defaults",
+  "//build:sections",
   "//build:lto",
 ]
 
