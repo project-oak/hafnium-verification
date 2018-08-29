@@ -44,18 +44,18 @@ struct arch_regs {
 static inline struct cpu *cpu(void)
 {
 	struct cpu *p;
-	__asm volatile("mrs %0, tpidr_el2" : "=r"(p));
+	__asm__ volatile("mrs %0, tpidr_el2" : "=r"(p));
 	return p;
 }
 
 static inline void arch_irq_disable(void)
 {
-	__asm volatile("msr DAIFSet, #0xf");
+	__asm__ volatile("msr DAIFSet, #0xf");
 }
 
 static inline void arch_irq_enable(void)
 {
-	__asm volatile("msr DAIFClr, #0xf");
+	__asm__ volatile("msr DAIFClr, #0xf");
 }
 
 static inline void arch_cpu_update(bool is_primary)

@@ -235,10 +235,10 @@ bool arch_mm_init(paddr_t table, bool first)
 	    (3 << 28) | /* RES1 bits. */
 	    0;
 
-	__asm volatile("dsb sy");
-	__asm volatile("isb");
+	__asm__ volatile("dsb sy");
+	__asm__ volatile("isb");
 	write_msr(sctlr_el2, v);
-	__asm volatile("isb");
+	__asm__ volatile("isb");
 
 	return true;
 }
