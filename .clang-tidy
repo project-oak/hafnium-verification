@@ -1,4 +1,5 @@
-Checks: 'readability-*,portability-*,performance-*,misc-*,bugprone-*,modernize-*'
-HeaderFilterRegex: '.*'
+Checks: 'readability-*,portability-*,performance-*,misc-*,bugprone-*,modernize-*
+         ,-modernize-deprecated-headers,-clang-analyzer-valist.Uninitialized'
+HeaderFilterRegex: '^(?!third_party).+'
 FormatStyle: file
 WarningsAsErrors: '*'

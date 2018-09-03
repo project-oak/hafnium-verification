@@ -1,0 +1,38 @@
+config("gtest_config") {
+  visibility = [ ":gtest" ]
+
+  include_dirs = [
+    "googletest/googletest/include",
+    "googletest/googlemock/include",
+  ]
+
+  ldflags = [ "-pthread" ]
+}
+
+source_set("gtest") {
+  testonly = true
+
+  sources = [
+    "googletest/googlemock/src/gmock-all.cc",
+    "googletest/googletest/src/gtest-all.cc",
+  ]
+
+  include_dirs = [
+    "googletest/googletest",
+    "googletest/googlemock",
+  ]
+
+  all_dependent_configs = [ ":gtest_config" ]
+}
+
+source_set("gtest_main") {
+  testonly = true
+
+  sources = [
+    "googletest/googlemock/src/gmock_main.cc",
+  ]
+
+  deps = [
+    ":gtest",
+  ]
+}

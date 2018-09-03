@@ -9,6 +9,7 @@ from __future__ import print_function
 import xml.etree.ElementTree as ET
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -81,6 +82,9 @@ def Main():
         test_re = re.compile(args.test or ".*")
         sponge = ET.Element("testsuites")
         sponge.set("name", args.initrd)
+        sponge.set(
+            "timestamp",
+            datetime.datetime.now().replace(microsecond=0).isoformat())
         for suite in tests["suites"]:
             if not suite_re.match(suite["name"]):
                 continue
@@ -93,6 +97,7 @@ def Main():
                     continue
                 sponge_test = ET.SubElement(sponge_suite, "testcase")
                 sponge_test.set("name", test)
+                sponge_test.set("classname", suite['name'])
                 sponge_test.set("status", "run")
                 tests_run_from_suite += 1
                 if tests_run_from_suite == 1:

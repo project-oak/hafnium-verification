@@ -1,6 +1,23 @@
 import("//build/image/image.gni")
 
-group("arch_images") {
+group("tests") {
+  testonly = true
+
+  deps = [
+    ":unit_tests",
+    ":vm_tests",
+  ]
+}
+
+group("unit_tests") {
+  testonly = true
+
+  deps = [
+    "//src:unit_tests($mock_toolchain)",
+  ]
+}
+
+group("vm_tests") {
   testonly = true
 
   deps = [

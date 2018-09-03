@@ -31,7 +31,7 @@ declare_args() {
 assert(host_os == "linux", "Only linux builds are currently supported")
 
 # Check that the requested architecture is supported
-assert(arch == "aarch64", "Unsupported arch: $arch")
+assert(arch == "aarch64" || arch == "mock", "Unsupported arch: $arch")
 
 # Setup the standard variables
 if (target_os == "") {
@@ -77,10 +77,12 @@ set_defaults("source_set") {
 if (use_gcc) {
   host_toolchain = "//build/toolchain/host:gcc"
   target_toolchain = "//build/toolchain/host:gcc"
+  mock_toolchain = "//build/toolchain/host:gcc_mock_arch"
   arch_toolchain = "//build/toolchain/arch:gcc_${arch}"
 } else {
   host_toolchain = "//build/toolchain/host:clang"
   target_toolchain = "//build/toolchain/host:clang"
+  mock_toolchain = "//build/toolchain/host:clang_mock_arch"
   arch_toolchain = "//build/toolchain/arch:clang_${arch}"
 }
 

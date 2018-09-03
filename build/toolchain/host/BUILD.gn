@@ -104,6 +104,12 @@ template("cc_toolchain") {
       command = "cp -af {{source}} {{output}}"
       description = "COPY {{source}} {{output}}"
     }
+
+    if (defined(invoker.toolchain_args)) {
+      toolchain_args = {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+    }
   }
 }
 
@@ -115,9 +121,35 @@ cc_toolchain("clang") {
   cflags = "-fcolor-diagnostics"
 }
 
+cc_toolchain("clang_mock_arch") {
+  ar = "llvm-ar"
+  cc = "clang"
+  cxx = "clang++"
+  cflags = "-fcolor-diagnostics"
+
+  toolchain_args = {
+    # When building for the host, use the mock architecture to make things
+    # testable.
+    arch = "mock"
+  }
+}
+
 cc_toolchain("gcc") {
   ar = "ar"
   cc = "gcc"
   cxx = "g++"
   cflags = "-fdiagnostics-color=always"
+}
+
+cc_toolchain("gcc_mock_arch") {
+  ar = "ar"
+  cc = "gcc"
+  cxx = "g++"
+  cflags = "-fdiagnostics-color=always"
+
+  toolchain_args = {
+    # When building for the host, use the mock architecture to make things
+    # testable.
+    arch = "mock"
+  }
 }

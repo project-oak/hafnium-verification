@@ -45,9 +45,9 @@ clobber:
 .PHONY: format
 format:
 	@echo "Formatting..."
-	@find src/ -name *.c -o -name *.h | xargs clang-format -style file -i
-	@find inc/ -name *.c -o -name *.h | xargs clang-format -style file -i
-	@find test/ -name *.c -o -name *.h | xargs clang-format -style file -i
+	@find src/ -name *.c -o -name *.cc -o -name *.h | xargs clang-format -style file -i
+	@find inc/ -name *.c -o -name *.cc -o -name *.h | xargs clang-format -style file -i
+	@find test/ -name *.c -o -name *.cc -o -name *.h | xargs clang-format -style file -i
 	@find . \( -name *.gn -o -name *.gni \) -exec $(GN) format {} \;
 
 # see .clang-tidy.
@@ -55,12 +55,12 @@ format:
 tidy: $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 	@echo "Tidying..."
-	@find src/ -name *.c -exec clang-tidy -p $(OUT_DIR) -fix {} \;
-	@find test/ -name *.c -exec clang-tidy -p $(OUT_DIR) -fix {} \;
+	@find src/ \( -name *.c -o -name *.cc \) -exec clang-tidy -p $(OUT_DIR) -fix {} \;
+	@find test/ \( -name *.c -o -name *.cc \) -exec clang-tidy -p $(OUT_DIR) -fix {} \;
 
 .PHONY: check
 check: $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 	@echo "Checking..."
-	@find src/ -name *.c -exec clang-check -p $(OUT_DIR) -analyze {} \;
-	@find test/ -name *.c -exec clang-check -p $(OUT_DIR) -analyze {} \;
+	@find src/ \( -name *.c -o -name *.cc \) -exec clang-check -p $(OUT_DIR) -analyze {} \;
+	@find test/ \( -name *.c -o -name *.cc \) -exec clang-check -p $(OUT_DIR) -analyze {} \;

@@ -1,5 +1,7 @@
 #include "hf/cpu.h"
 
+#include <stdalign.h>
+
 #include "hf/arch/cpu.h"
 
 #include "hf/api.h"

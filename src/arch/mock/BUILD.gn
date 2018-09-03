@@ -1,0 +1,6 @@
+# Mock implementation of putchar logs to the console.
+source_set("putchar") {
+  sources = [
+    "putchar.c",
+  ]
+}

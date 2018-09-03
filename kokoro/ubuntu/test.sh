@@ -9,8 +9,14 @@ set -e
 set -x
 
 TIMEOUT="timeout --foreground"
-OUT="out/aarch64/qemu/clang_aarch64"
-HFTEST="timeout --foreground 30s ./test/vm/hftest.py --out $OUT --initrd"
+OUT="out/aarch64/qemu"
+HFTEST="$TIMEOUT 30s ./test/vm/hftest.py --out $OUT/clang_aarch64 --initrd"
+
+# Run the host unit tests
+mkdir -p $OUT/clang_mock_arch/test_log/unit_tests
+$TIMEOUT 30s $OUT/clang_mock_arch/unit_tests \
+  --gtest_output="xml:$OUT/clang_mock_arch/test_log/unit_tests/sponge_log.xml" \
+  | tee $OUT/clang_mock_arch/test_log/unit_tests/sponge_log.log
 
 # Run the tests with a timeout so they can't loop forever.
 $HFTEST primary_only_test

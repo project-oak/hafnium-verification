@@ -46,10 +46,28 @@ source_set("fdt") {
   sources = [
     "fdt.c",
   ]
+
+  deps = [
+    ":common",
+    ":common_debug",
+  ]
 }
 
 source_set("memiter") {
   sources = [
     "memiter.c",
+  ]
+}
+
+executable("unit_tests") {
+  testonly = true
+
+  sources = [
+    "fdt_test.cc",
+  ]
+
+  deps = [
+    ":fdt",
+    "//third_party:gtest_main",
   ]
 }
