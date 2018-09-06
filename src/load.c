@@ -123,11 +123,12 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 
 		/* Map the 1TB of memory. */
 		/* TODO: We should do a whitelist rather than a blacklist. */
-		if (!mm_vm_identity_map(&primary_vm.ptable, pa_init(0),
-					pa_init(1024ull * 1024 * 1024 * 1024),
-					MM_MODE_R | MM_MODE_W | MM_MODE_X |
-						MM_MODE_NOINVALIDATE,
-					NULL)) {
+		if (!mm_vm_identity_map(
+			    &primary_vm.ptable, pa_init(0),
+			    pa_init(UINT64_C(1024) * 1024 * 1024 * 1024),
+			    MM_MODE_R | MM_MODE_W | MM_MODE_X |
+				    MM_MODE_NOINVALIDATE,
+			    NULL)) {
 			dlog("Unable to initialise memory for primary vm\n");
 			return false;
 		}

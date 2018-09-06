@@ -9,54 +9,54 @@
 /* Keep macro alignment */
 /* clang-format off */
 
-#define NON_SHAREABLE   0ull
-#define OUTER_SHAREABLE 2ull
-#define INNER_SHAREABLE 3ull
+#define NON_SHAREABLE   UINT64_C(0)
+#define OUTER_SHAREABLE UINT64_C(2)
+#define INNER_SHAREABLE UINT64_C(3)
 
-#define STAGE1_XN          (1ull << 54)
-#define STAGE1_CONTIGUOUS  (1ull << 52)
-#define STAGE1_DBM         (1ull << 51)
-#define STAGE1_NG          (1ull << 11)
-#define STAGE1_AF          (1ull << 10)
+#define STAGE1_XN          (UINT64_C(1) << 54)
+#define STAGE1_CONTIGUOUS  (UINT64_C(1) << 52)
+#define STAGE1_DBM         (UINT64_C(1) << 51)
+#define STAGE1_NG          (UINT64_C(1) << 11)
+#define STAGE1_AF          (UINT64_C(1) << 10)
 #define STAGE1_SH(x)       ((x) << 8)
 #define STAGE1_AP(x)       ((x) << 6)
-#define STAGE1_NS          (1ull << 5)
+#define STAGE1_NS          (UINT64_C(1) << 5)
 #define STAGE1_ATTRINDX(x) ((x) << 2)
 
-#define STAGE1_READONLY  2ull
-#define STAGE1_READWRITE 0ull
+#define STAGE1_READONLY  UINT64_C(2)
+#define STAGE1_READWRITE UINT64_C(0)
 
-#define STAGE1_DEVICEINDX 0ull
-#define STAGE1_NORMALINDX 1ull
+#define STAGE1_DEVICEINDX UINT64_C(0)
+#define STAGE1_NORMALINDX UINT64_C(1)
 
 #define STAGE2_XN(x)      ((x) << 53)
-#define STAGE2_CONTIGUOUS (1ull << 52)
-#define STAGE2_DBM        (1ull << 51)
-#define STAGE2_AF         (1ull << 10)
+#define STAGE2_CONTIGUOUS (UINT64_C(1) << 52)
+#define STAGE2_DBM        (UINT64_C(1) << 51)
+#define STAGE2_AF         (UINT64_C(1) << 10)
 #define STAGE2_SH(x)      ((x) << 8)
 #define STAGE2_S2AP(x)    ((x) << 6)
 #define STAGE2_MEMATTR(x) ((x) << 2)
 
-#define STAGE2_EXECUTE_ALL  0ull
-#define STAGE2_EXECUTE_EL0  1ull
-#define STAGE2_EXECUTE_NONE 2ull
-#define STAGE2_EXECUTE_EL1  3ull
+#define STAGE2_EXECUTE_ALL  UINT64_C(0)
+#define STAGE2_EXECUTE_EL0  UINT64_C(1)
+#define STAGE2_EXECUTE_NONE UINT64_C(2)
+#define STAGE2_EXECUTE_EL1  UINT64_C(3)
 
 /* The following are stage-2 memory attributes for normal memory. */
-#define STAGE2_NONCACHEABLE 1ull
-#define STAGE2_WRITETHROUGH 2ull
-#define STAGE2_WRITEBACK    3ull
+#define STAGE2_NONCACHEABLE UINT64_C(1)
+#define STAGE2_WRITETHROUGH UINT64_C(2)
+#define STAGE2_WRITEBACK    UINT64_C(3)
 
 #define STAGE2_MEMATTR_NORMAL(outer, inner) ((((outer) << 2) | (inner)) << 2)
 
 /* The following stage-2 memory attributes for device memory. */
-#define STAGE2_MEMATTR_DEVICE_nGnRnE (0ull << 2)
-#define STAGE2_MEMATTR_DEVICE_nGnRE  (1ull << 2)
-#define STAGE2_MEMATTR_DEVICE_nGRE   (2ull << 2)
-#define STAGE2_MEMATTR_DEVICE_GRE    (3ull << 2)
+#define STAGE2_MEMATTR_DEVICE_nGnRnE (UINT64_C(0) << 2)
+#define STAGE2_MEMATTR_DEVICE_nGnRE  (UINT64_C(1) << 2)
+#define STAGE2_MEMATTR_DEVICE_nGRE   (UINT64_C(2) << 2)
+#define STAGE2_MEMATTR_DEVICE_GRE    (UINT64_C(3) << 2)
 
-#define STAGE2_ACCESS_READ  1ull
-#define STAGE2_ACCESS_WRITE 2ull
+#define STAGE2_ACCESS_READ  UINT64_C(1)
+#define STAGE2_ACCESS_WRITE UINT64_C(2)
 
 /* clang-format on */
 

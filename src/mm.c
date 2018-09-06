@@ -58,7 +58,7 @@ static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
  */
 static inline size_t mm_entry_size(int level)
 {
-	return 1ull << (PAGE_BITS + level * PAGE_LEVEL_BITS);
+	return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS);
 }
 
 /**
@@ -78,7 +78,7 @@ static inline ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
 static inline size_t mm_index(ptable_addr_t addr, int level)
 {
 	ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
-	return v & ((1ull << PAGE_LEVEL_BITS) - 1);
+	return v & ((UINT64_C(1) << PAGE_LEVEL_BITS) - 1);
 }
 
 /**
@@ -96,8 +96,8 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	size_t inc;
 
 	/* Just return pointer to table if it's already populated. */
-	if (arch_mm_pte_is_table(v)) {
-		return ptr_from_va(va_from_pa(arch_mm_pte_to_table(v)));
+	if (arch_mm_pte_is_table(v, level)) {
+		return ptr_from_va(va_from_pa(arch_mm_table_from_pte(v)));
 	}
 
 	/* Allocate a new table. */
@@ -109,16 +109,15 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	}
 
 	/* Determine template for new pte and its increment. */
-	if (!arch_mm_pte_is_block(v)) {
-		inc = 0;
-		new_pte = arch_mm_absent_pte();
+	if (arch_mm_pte_is_block(v, level)) {
+		int level_below = level - 1;
+		inc = mm_entry_size(level_below);
+		new_pte = arch_mm_block_pte(level_below,
+					    arch_mm_block_from_pte(v),
+					    arch_mm_pte_attrs(v));
 	} else {
-		inc = mm_entry_size(level - 1);
-		if (level == 1) {
-			new_pte = arch_mm_block_to_page_pte(v);
-		} else {
-			new_pte = v;
-		}
+		inc = 0;
+		new_pte = arch_mm_absent_pte(level);
 	}
 
 	/* Initialise entries in the new table. */
@@ -132,7 +131,7 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	 * update it.
 	 */
 	atomic_thread_fence(memory_order_release);
-	*pte = arch_mm_pa_to_table_pte(pa_init((uintpaddr_t)ntable));
+	*pte = arch_mm_table_pte(level, pa_init((uintpaddr_t)ntable));
 
 	return ntable;
 }
@@ -147,7 +146,7 @@ static void mm_free_page_pte(pte_t pte, int level, bool sync)
 	(void)level;
 	(void)sync;
 	/* TODO: Implement.
-	if (!arch_mm_pte_is_present(pte) || level < 1)
+	if (!arch_mm_pte_is_present(pte, level) || level < 1)
 		return;
 	*/
 }
@@ -176,16 +175,12 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 
 	/* Fill each entry in the table. */
 	while (begin < end) {
-		if (level == 0) {
-			if (commit) {
-				*pte = arch_mm_pa_to_page_pte(pa, attrs);
-			}
-		} else if ((end - begin) >= entry_size &&
-			   arch_mm_is_block_allowed(level) &&
-			   (begin & (entry_size - 1)) == 0) {
+		if ((end - begin) >= entry_size &&
+		    arch_mm_is_block_allowed(level) &&
+		    (begin & (entry_size - 1)) == 0) {
 			if (commit) {
 				pte_t v = *pte;
-				*pte = arch_mm_pa_to_block_pte(pa, attrs);
+				*pte = arch_mm_block_pte(level, pa, attrs);
 				/* TODO: Add barrier. How do we ensure this
 				 * isn't in use by another CPU? Send IPI? */
 				mm_free_page_pte(v, level, sync);
@@ -321,7 +316,7 @@ static bool mm_ptable_identity_map_page(struct mm_ptable *t, paddr_t pa,
 	}
 
 	i = mm_index(addr, 0);
-	table[i] = arch_mm_pa_to_page_pte(pa, attrs);
+	table[i] = arch_mm_block_pte(0, pa, attrs);
 	return true;
 }
 
@@ -333,19 +328,16 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
 {
 	uint64_t i;
 	for (i = 0; i < PAGE_SIZE / sizeof(pte_t); i++) {
-		if (!arch_mm_pte_is_present(table[i])) {
+		if (!arch_mm_pte_is_present(table[i], level)) {
 			continue;
 		}
 
 		dlog("%*s%x: %x\n", 4 * (max_level - level), "", i, table[i]);
-		if (!level) {
-			continue;
-		}
 
-		if (arch_mm_pte_is_table(table[i])) {
+		if (arch_mm_pte_is_table(table[i], level)) {
 			mm_dump_table_recursive(
 				ptr_from_va(va_from_pa(
-					arch_mm_pte_to_table(table[i]))),
+					arch_mm_table_from_pte(table[i]))),
 				level - 1, max_level);
 		}
 	}
@@ -403,20 +395,17 @@ static bool mm_is_mapped_recursive(const pte_t *table, ptable_addr_t addr,
 
 	pte = table[mm_index(addr, level)];
 
-	if (level == 0) {
-		return arch_mm_pte_is_present(pte);
-	}
-
-	if (arch_mm_is_block_allowed(level) && arch_mm_pte_is_block(pte)) {
+	if (arch_mm_pte_is_block(pte, level)) {
 		return true;
 	}
 
-	if (arch_mm_pte_is_table(pte)) {
+	if (arch_mm_pte_is_table(pte, level)) {
 		return mm_is_mapped_recursive(
-			ptr_from_va(va_from_pa(arch_mm_pte_to_table(pte))),
+			ptr_from_va(va_from_pa(arch_mm_table_from_pte(pte))),
 			addr, level - 1);
 	}
 
+	/* The entry is not present. */
 	return false;
 }
 
@@ -453,7 +442,7 @@ bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
 	}
 
 	for (i = 0; i < PAGE_SIZE / sizeof(pte_t); i++) {
-		table[i] = arch_mm_absent_pte();
+		table[i] = arch_mm_absent_pte(arch_mm_max_level(mode));
 	}
 
 	/* TODO: halloc could return a virtual or physical address if mm not
