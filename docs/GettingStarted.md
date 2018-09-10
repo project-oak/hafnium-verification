@@ -23,6 +23,12 @@ Review CLs at [go/hafnium-review](https://goto.google.com/hafnium-review).
 
 ## Compiling the hypervisor
 
+Install prerequisites:
+
+``` shell
+sudo apt install make binutils-aarch64-linux-gnu
+```
+
 By default, the hypervisor is built with clang for an aarch64 QEMU target by
 running:
 
