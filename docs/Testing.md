@@ -25,7 +25,7 @@ behaviour.
 
 ### `hftest`
 
-Having a framework for tests makes them easier to read and write. `hftest` in a
+Having a framework for tests makes them easier to read and write. `hftest` is a
 framework to meet the needs of VM based tests for Hafnium. It consists of:
 
    * assertions
