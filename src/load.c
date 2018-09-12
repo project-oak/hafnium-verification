@@ -13,7 +13,7 @@
  * Copies data to an unmapped location by mapping it for write, copying the
  * data, then unmapping it.
  */
-static bool copy_to_unmaped(paddr_t to, const void *from, size_t size)
+static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
 {
 	paddr_t to_end = pa_add(to, size);
 	void *ptr;
@@ -40,7 +40,7 @@ static bool relocate(const char *from, size_t size)
 	size_t tmp = (size_t)&bin_end[0];
 	paddr_t dest = pa_init((tmp + 0x80000 - 1) & ~(0x80000 - 1));
 	dlog("bin_end is at %p, copying to %p\n", &bin_end[0], pa_addr(dest));
-	return copy_to_unmaped(dest, from, size);
+	return copy_to_unmapped(dest, from, size);
 }
 
 /**
@@ -199,8 +199,8 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 		*mem_end = pa_init(pa_addr(*mem_end) - mem);
 		secondary_mem_begin = *mem_end;
 
-		if (!copy_to_unmaped(*mem_end, kernel.next,
-				     kernel.limit - kernel.next)) {
+		if (!copy_to_unmapped(*mem_end, kernel.next,
+				      kernel.limit - kernel.next)) {
 			dlog("Unable to copy kernel for vm %u\n", count);
 			continue;
 		}
