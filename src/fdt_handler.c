@@ -108,14 +108,15 @@ static bool find_initrd(struct fdt_node *n, struct boot_params *p)
 	return true;
 }
 
-static void find_memory_range(const struct fdt_node *root,
-			      struct boot_params *p)
+static void find_memory_ranges(const struct fdt_node *root,
+			       struct boot_params *p)
 {
 	struct fdt_node n = *root;
 	const char *name;
 	uint64_t address_size;
 	uint64_t size_size;
 	uint64_t entry_size;
+	size_t mem_range_index = 0;
 
 	/* Get the sizes of memory range addresses and sizes. */
 	if (fdt_read_number(&n, "#address-cells", &address_size)) {
@@ -153,16 +154,24 @@ static void find_memory_range(const struct fdt_node *root,
 			size_t len =
 				convert_number(data + address_size, size_size);
 
-			if (len > pa_addr(p->mem_end) - pa_addr(p->mem_begin)) {
-				/* Remember the largest range we've found. */
-				p->mem_begin = pa_init(addr);
-				p->mem_end = pa_init(addr + len);
+			if (mem_range_index < MAX_MEM_RANGES) {
+				p->mem_ranges[mem_range_index].begin =
+					pa_init(addr);
+				p->mem_ranges[mem_range_index].end =
+					pa_init(addr + len);
+				++mem_range_index;
+			} else {
+				dlog("Found memory range %u in FDT but only "
+				     "%u supported, ignoring additional range "
+				     "of size %u.\n",
+				     mem_range_index, MAX_MEM_RANGES, len);
 			}
 
 			size -= entry_size;
 			data += entry_size;
 		}
 	} while (fdt_next_sibling(&n, &name));
+	p->mem_ranges_count = mem_range_index;
 
 	/* TODO: Check for "reserved-memory" nodes. */
 }
@@ -199,9 +208,8 @@ bool fdt_get_boot_params(paddr_t fdt_addr, struct boot_params *p)
 		goto out_unmap_fdt;
 	}
 
-	p->mem_begin = pa_init(0);
-	p->mem_end = pa_init(0);
-	find_memory_range(&n, p);
+	p->mem_ranges_count = 0;
+	find_memory_ranges(&n, p);
 
 	if (!find_initrd(&n, p)) {
 		goto out_unmap_fdt;
@@ -224,6 +232,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 	struct fdt_header *fdt;
 	struct fdt_node n;
 	bool ret = false;
+	size_t i;
 
 	/* Map the fdt header in. */
 	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_header_size()),
@@ -277,9 +286,12 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 	}
 
 	/* Patch fdt to reserve memory for secondary VMs. */
-	fdt_add_mem_reservation(
-		fdt, pa_addr(p->reserved_begin),
-		pa_addr(p->reserved_end) - pa_addr(p->reserved_begin));
+	for (i = 0; i < p->reserved_ranges_count; ++i) {
+		fdt_add_mem_reservation(
+			fdt, pa_addr(p->reserved_ranges[i].begin),
+			pa_addr(p->reserved_ranges[i].end) -
+				pa_addr(p->reserved_ranges[i].begin));
+	}
 
 	ret = true;
 

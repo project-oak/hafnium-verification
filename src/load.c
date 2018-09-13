@@ -1,8 +1,10 @@
 #include "hf/load.h"
 
+#include <assert.h>
 #include <stdbool.h>
 
 #include "hf/api.h"
+#include "hf/boot_params.h"
 #include "hf/dlog.h"
 #include "hf/memiter.h"
 #include "hf/mm.h"
@@ -146,26 +148,113 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 }
 
 /**
- * Loads all secondary VMs in the given memory range. "mem_end" is updated to
- * reflect the fact that some of the memory isn't available to the primary VM
- * anymore.
+ * Try to find a memory range of the given size within the given ranges, and
+ * remove it from them. Return true on success, or false if no large enough
+ * contiguous range is found.
  */
-bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
-		    paddr_t *mem_end)
+bool carve_out_mem_range(struct mem_range *mem_ranges, size_t mem_ranges_count,
+			 uint64_t size_to_find, paddr_t *found_begin,
+			 paddr_t *found_end)
+{
+	size_t i;
+
+	/* TODO(b/116191358): Consider being cleverer about how we pack VMs
+	 * together, with a non-greedy algorithm. */
+	for (i = 0; i < mem_ranges_count; ++i) {
+		if (size_to_find <=
+		    pa_addr(mem_ranges[i].end) - pa_addr(mem_ranges[i].begin)) {
+			/* This range is big enough, take some of it from the
+			 * end and reduce its size accordingly. */
+			*found_end = mem_ranges[i].end;
+			*found_begin = pa_init(pa_addr(mem_ranges[i].end) -
+					       size_to_find);
+			mem_ranges[i].end = *found_begin;
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Given arrays of memory ranges before and after memory was removed for
+ * secondary VMs, add the difference to the reserved ranges of the given update.
+ * Return true on success, or false if there would be more than MAX_MEM_RANGES
+ * reserved ranges after adding the new ones.
+ * `before` and `after` must be arrays of exactly `mem_ranges_count` elements.
+ */
+bool update_reserved_ranges(struct boot_params_update *update,
+			    const struct mem_range *before,
+			    const struct mem_range *after,
+			    size_t mem_ranges_count)
+{
+	size_t i;
+
+	for (i = 0; i < mem_ranges_count; ++i) {
+		if (pa_addr(after[i].begin) > pa_addr(before[i].begin)) {
+			if (update->reserved_ranges_count >= MAX_MEM_RANGES) {
+				dlog("Too many reserved ranges after loading "
+				     "secondary VMs.\n");
+				return false;
+			}
+			update->reserved_ranges[update->reserved_ranges_count]
+				.begin = before[i].begin;
+			update->reserved_ranges[update->reserved_ranges_count]
+				.end = after[i].begin;
+			update->reserved_ranges_count++;
+		}
+		if (pa_addr(after[i].end) < pa_addr(before[i].end)) {
+			if (update->reserved_ranges_count >= MAX_MEM_RANGES) {
+				dlog("Too many reserved ranges after loading "
+				     "secondary VMs.\n");
+				return false;
+			}
+			update->reserved_ranges[update->reserved_ranges_count]
+				.begin = after[i].end;
+			update->reserved_ranges[update->reserved_ranges_count]
+				.end = before[i].end;
+			update->reserved_ranges_count++;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * Loads all secondary VMs into the memory ranges from the given params.
+ * Memory reserved for the VMs is added to the `reserved_ranges` of `update`.
+ */
+bool load_secondary(const struct memiter *cpio,
+		    const struct boot_params *params,
+		    struct boot_params_update *update)
 {
 	struct memiter it;
 	struct memiter str;
 	uint64_t mem;
 	uint64_t cpu;
 	uint32_t count;
+	struct mem_range mem_ranges_available[MAX_MEM_RANGES];
+	size_t i;
+
+	static_assert(
+		sizeof(mem_ranges_available) == sizeof(params->mem_ranges),
+		"mem_range arrays must be the same size for memcpy.");
+	static_assert(sizeof(mem_ranges_available) < 500,
+		      "This will use too much stack, either make "
+		      "MAX_MEM_RANGES smaller or change this.");
+	memcpy(mem_ranges_available, params->mem_ranges,
+	       sizeof(mem_ranges_available));
 
 	if (!find_file(cpio, "vms.txt", &it)) {
 		dlog("vms.txt is missing\n");
 		return true;
 	}
 
-	/* Round the last address down to the page size. */
-	*mem_end = pa_init(pa_addr(*mem_end) & ~(PAGE_SIZE - 1));
+	/* Round the last addresses down to the page size. */
+	for (i = 0; i < params->mem_ranges_count; ++i) {
+		mem_ranges_available[i].end =
+			pa_init(pa_addr(mem_ranges_available[i].end) &
+				~(PAGE_SIZE - 1));
+	}
 
 	for (count = 0;
 	     memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
@@ -183,11 +272,6 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 
 		/* Round up to page size. */
 		mem = (mem + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-		if (mem > pa_addr(*mem_end) - pa_addr(mem_begin)) {
-			dlog("Not enough memory for vm %u (%u bytes)\n", count,
-			     mem);
-			continue;
-		}
 
 		if (mem < kernel.limit - kernel.next) {
 			dlog("Kernel is larger than available memory for vm "
@@ -196,11 +280,15 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 			continue;
 		}
 
-		secondary_mem_end = *mem_end;
-		*mem_end = pa_init(pa_addr(*mem_end) - mem);
-		secondary_mem_begin = *mem_end;
+		if (!carve_out_mem_range(
+			    mem_ranges_available, params->mem_ranges_count, mem,
+			    &secondary_mem_begin, &secondary_mem_end)) {
+			dlog("Not enough memory for vm %u (%u bytes)\n", count,
+			     mem);
+			continue;
+		}
 
-		if (!copy_to_unmapped(*mem_end, kernel.next,
+		if (!copy_to_unmapped(secondary_mem_begin, kernel.next,
 				      kernel.limit - kernel.next)) {
 			dlog("Unable to copy kernel for vm %u\n", count);
 			continue;
@@ -237,12 +325,19 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 		}
 
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
-		     pa_addr(*mem_end));
+		     pa_addr(secondary_mem_begin));
 
 		vm_start_vcpu(&secondary_vm[count], 0, secondary_entry, 0);
 	}
 
 	secondary_vm_count = count;
 
-	return true;
+	/* Add newly reserved areas to update params by looking at the
+	 * difference between the available ranges from the original params and
+	 * the updated mem_ranges_available. We assume that the number and order
+	 * of available ranges is the same, i.e. we don't remove any ranges
+	 * above only make them smaller. */
+	return update_reserved_ranges(update, params->mem_ranges,
+				      mem_ranges_available,
+				      params->mem_ranges_count);
 }

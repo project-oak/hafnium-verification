@@ -45,10 +45,10 @@ static void one_time_init(void)
 {
 	struct boot_params params;
 	struct boot_params_update update;
-	paddr_t new_mem_end;
 	struct memiter primary_initrd;
 	struct memiter cpio;
 	void *initrd;
+	size_t i;
 
 	dlog("Initialising hafnium\n");
 
@@ -63,8 +63,12 @@ static void one_time_init(void)
 		panic("unable to retrieve boot params");
 	}
 
-	dlog("Memory range:  0x%x - 0x%x\n", pa_addr(params.mem_begin),
-	     pa_addr(params.mem_end) - 1);
+	for (i = 0; i < params.mem_ranges_count; ++i) {
+		dlog("Memory range:  0x%x - 0x%x\n",
+		     pa_addr(params.mem_ranges[i].begin),
+		     pa_addr(params.mem_ranges[i].end) - 1);
+	}
+
 	dlog("Ramdisk range: 0x%x - 0x%x\n", pa_addr(params.initrd_begin),
 	     pa_addr(params.initrd_end) - 1);
 
@@ -79,20 +83,20 @@ static void one_time_init(void)
 		     pa_addr(params.initrd_end) - pa_addr(params.initrd_begin));
 
 	/* Load all VMs. */
-	new_mem_end = params.mem_end;
 	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd)) {
 		panic("unable to load primary VM");
 	}
 
-	if (!load_secondary(&cpio, params.mem_begin, &new_mem_end)) {
+	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
+	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
+	/* load_secondary will add regions assigned to the secondary VMs from
+	 * mem_ranges to reserved_ranges. */
+	update.reserved_ranges_count = 0;
+	if (!load_secondary(&cpio, &params, &update)) {
 		panic("unable to load secondary VMs");
 	}
 
-	/* Prepare to run by updating bootparams as seens by primary VM. */
-	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
-	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
-	update.reserved_begin = new_mem_end;
-	update.reserved_end = params.mem_end;
+	/* Prepare to run by updating bootparams as seen by primary VM. */
 	if (!plat_update_boot_params(&update)) {
 		panic("plat_update_boot_params failed");
 	}
