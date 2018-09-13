@@ -92,8 +92,7 @@ static void one_time_init(void)
 	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
 	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
 	update.reserved_begin = new_mem_end;
-	update.reserved_end =
-		pa_init(pa_addr(params.mem_end) - pa_addr(new_mem_end));
+	update.reserved_end = params.mem_end;
 	if (!plat_update_boot_params(&update)) {
 		panic("plat_update_boot_params failed");
 	}
