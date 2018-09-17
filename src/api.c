@@ -1,9 +1,15 @@
 #include "hf/api.h"
 
+#include <assert.h>
+
 #include "hf/std.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"
+
+static_assert(HF_RPC_REQUEST_MAX_SIZE == PAGE_SIZE,
+	      "Currently, a page is mapped for the send and receive buffers so "
+	      "the maximum request is the size of a page.");
 
 struct vm secondary_vm[MAX_VMS];
 uint32_t secondary_vm_count;
@@ -66,28 +72,28 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
 
 	/* Only the primary VM can switch vcpus. */
 	if (cpu()->current->vm != &primary_vm) {
-		return HF_VCPU_WAIT_FOR_INTERRUPT;
+		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 	}
 
 	if (vm_idx >= secondary_vm_count) {
-		return HF_VCPU_WAIT_FOR_INTERRUPT;
+		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 	}
 
 	vm = secondary_vm + vm_idx;
 	if (vcpu_idx >= vm->vcpu_count) {
-		return HF_VCPU_WAIT_FOR_INTERRUPT;
+		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 	}
 
 	vcpu = vm->vcpus + vcpu_idx;
 
 	sl_lock(&vcpu->lock);
 	if (vcpu->state != vcpu_state_ready) {
-		ret = HF_VCPU_WAIT_FOR_INTERRUPT;
+		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 	} else {
 		vcpu->state = vcpu_state_running;
 		vm_set_current(vm);
 		*next = vcpu;
-		ret = HF_VCPU_YIELD;
+		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0);
 	}
 	sl_unlock(&vcpu->lock);
 
@@ -100,8 +106,9 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
  */
 struct vcpu *api_wait_for_interrupt(void)
 {
-	return api_switch_to_primary(HF_VCPU_WAIT_FOR_INTERRUPT,
-				     vcpu_state_blocked_interrupt);
+	return api_switch_to_primary(
+		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0),
+		vcpu_state_blocked_interrupt);
 }
 
 /**
@@ -230,7 +237,7 @@ int32_t api_rpc_request(uint32_t vm_idx, size_t size)
 
 		if (!to->rpc.recv_waiter) {
 			to->rpc.state = rpc_state_pending;
-			ret = 0;
+			ret = to->vcpu_count;
 		} else {
 			struct vcpu *to_vcpu = to->rpc.recv_waiter;
 
@@ -246,7 +253,7 @@ int32_t api_rpc_request(uint32_t vm_idx, size_t size)
 			arch_regs_set_retval(&to_vcpu->regs, size);
 			sl_unlock(&to_vcpu->lock);
 
-			ret = to_vcpu - to->vcpus + 1;
+			ret = to_vcpu - to->vcpus;
 		}
 	}
 
@@ -298,8 +305,10 @@ int32_t api_rpc_read_request(bool block, struct vcpu **next)
 		 * Inidicate to primary VM that this vcpu blocked waiting for an
 		 * interrupt.
 		 */
-		arch_regs_set_retval(&(*next)->regs,
-				     HF_VCPU_WAIT_FOR_INTERRUPT);
+		arch_regs_set_retval(
+			&(*next)->regs,
+			HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+					     0));
 		ret = 0;
 	}
 	sl_unlock(&vm->lock);
@@ -368,8 +377,9 @@ int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
 	 * Switch back to primary VM so that it is aware that a response was
 	 * received. But we leave the current vcpu still runnable.
 	 */
-	*next = api_switch_to_primary((size << 8) | HF_VCPU_RESPONSE_READY,
-				      vcpu_state_ready);
+	*next = api_switch_to_primary(
+		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_RESPONSE_READY, size),
+		vcpu_state_ready);
 
 	return 0;
 }

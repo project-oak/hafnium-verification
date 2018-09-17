@@ -19,12 +19,6 @@ typedef uintptr_t hf_ipaddr_t;
 /* Keep macro alignment */
 /* clang-format off */
 
-/* Return values for vcpu_run() hypervisor call. */
-#define HF_VCPU_YIELD              0x00
-#define HF_VCPU_WAIT_FOR_INTERRUPT 0x01
-#define HF_VCPU_WAKE_UP            0x02
-#define HF_VCPU_RESPONSE_READY     0x03
-
 /* TODO: Define constants below according to spec. */
 #define HF_VCPU_RUN         0xff00
 #define HF_VM_GET_COUNT     0xff01
@@ -34,6 +28,19 @@ typedef uintptr_t hf_ipaddr_t;
 #define HF_RPC_READ_REQUEST 0xff05
 #define HF_RPC_ACK          0xff06
 #define HF_RPC_REPLY        0xff07
+
+/* Return codes for hf_vcpu_run(). */
+#define HF_VCPU_RUN_YIELD              0x00
+#define HF_VCPU_RUN_WAIT_FOR_INTERRUPT 0x01
+#define HF_VCPU_RUN_WAKE_UP            0x02
+#define HF_VCPU_RUN_RESPONSE_READY     0x03
+
+/* Construct and destruct the hf_vcpu_run() response. */
+#define HF_VCPU_RUN_RESPONSE(code, data) ((code & 0xff) | (data << 8))
+#define HF_VCPU_RUN_CODE(ret) (ret & 0xff)
+#define HF_VCPU_RUN_DATA(ret) (ret >> 8)
+
+#define HF_RPC_REQUEST_MAX_SIZE 4096
 
 /* clang-format on */
 
