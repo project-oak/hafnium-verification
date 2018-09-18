@@ -68,7 +68,14 @@ grep -v tty ../examples/inittab > ./etc/inittab
 
 At this point you can copy into the current directory additional files you may
 want in the RAM disk, for example, the kernel module built in the previous
-section. Then run the following commands:
+section. Assuming the BusyBox root directory is in the same parent directory as
+the Hafnium root directory:
+
+``` shell
+cp ../../hafnium/driver/linux/hafnium.ko .
+```
+
+Then run the following commands:
 
 ``` shell
 find . | cpio -o -H newc | gzip > ../initrd.img
