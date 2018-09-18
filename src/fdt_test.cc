@@ -29,7 +29,7 @@ using ::testing::Eq;
  * };
  *
  * $ dtc --boot-cpu 0 --in-format dts --out-format dtb --out-version 17 test.dts
- * | xxd
+ * | xxd -i
  */
 
 static const uint8_t test_dtb[] = {

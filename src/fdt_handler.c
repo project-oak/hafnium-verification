@@ -79,7 +79,7 @@ static bool fdt_write_number(struct fdt_node *node, const char *name,
 }
 
 /**
- * Finds the memory region where initrd is stored, and udpates the fdt node
+ * Finds the memory region where initrd is stored, and updates the fdt node
  * cursor to the node called "chosen".
  */
 static bool find_initrd(struct fdt_node *n, struct boot_params *p)
