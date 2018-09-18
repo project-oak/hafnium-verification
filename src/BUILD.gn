@@ -5,7 +5,6 @@ source_set("src") {
     "api.c",
     "cpio.c",
     "cpu.c",
-    "fdt_handler.c",
     "load.c",
     "main.c",
     "mm.c",
@@ -15,6 +14,7 @@ source_set("src") {
   deps = [
     ":common",
     ":fdt",
+    ":fdt_handler",
     ":memiter",
   ]
 
@@ -53,6 +53,18 @@ source_set("fdt") {
   ]
 }
 
+source_set("fdt_handler") {
+  sources = [
+    "fdt_handler.c",
+  ]
+
+  deps = [
+    ":common",
+    ":common_debug",
+    ":fdt",
+  ]
+}
+
 source_set("memiter") {
   sources = [
     "memiter.c",
@@ -63,11 +75,15 @@ executable("unit_tests") {
   testonly = true
 
   sources = [
+    "fdt_handler_test.cc",
     "fdt_test.cc",
   ]
+  cflags_cc = [ "-Wno-c99-extensions" ]
 
   deps = [
     ":fdt",
+    ":fdt_handler",
+    "mock:mm",
     "//third_party:gtest_main",
   ]
 }

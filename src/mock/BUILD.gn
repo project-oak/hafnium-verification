@@ -1,0 +1,5 @@
+source_set("mm") {
+  sources = [
+    "mm.c",
+  ]
+}

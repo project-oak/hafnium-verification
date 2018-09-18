@@ -280,7 +280,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 
 	/* Patch fdt to reserve primary VM memory. */
 	{
-		size_t tmp = (size_t)&plat_update_boot_params;
+		size_t tmp = (size_t)&fdt_patch;
 		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
 		fdt_add_mem_reservation(fdt, tmp & ~0xfffff, 0x80000);
 	}
