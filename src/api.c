@@ -79,12 +79,12 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
 		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 	}
 
-	vm = secondary_vm + vm_idx;
+	vm = &secondary_vm[vm_idx];
 	if (vcpu_idx >= vm->vcpu_count) {
 		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 	}
 
-	vcpu = vm->vcpus + vcpu_idx;
+	vcpu = &vm->vcpus[vcpu_idx];
 
 	sl_lock(&vcpu->lock);
 	if (vcpu->state != vcpu_state_ready) {
@@ -224,7 +224,7 @@ int32_t api_rpc_request(uint32_t vm_idx, size_t size)
 		return -1;
 	}
 
-	to = secondary_vm + vm_idx;
+	to = &secondary_vm[vm_idx];
 	sl_lock(&to->lock);
 
 	if (to->rpc.state != rpc_state_idle || !to->rpc.recv) {

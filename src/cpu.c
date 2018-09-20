@@ -10,13 +10,13 @@
 #include "hf/vm.h"
 
 /* The stack to be used by the CPUs. */
-alignas(2 * sizeof(size_t)) static char callstacks[STACK_SIZE * MAX_CPUS];
+alignas(2 * sizeof(size_t)) static char callstacks[MAX_CPUS][STACK_SIZE];
 
 /* State of all supported CPUs. The stack of the first one is initialized. */
 struct cpu cpus[MAX_CPUS] = {
 	{
 		.is_on = 1,
-		.stack_bottom = callstacks + STACK_SIZE,
+		.stack_bottom = &callstacks[0][STACK_SIZE],
 	},
 };
 
@@ -26,10 +26,10 @@ void cpu_module_init(void)
 
 	/* Initialize all CPUs. */
 	for (i = 0; i < MAX_CPUS; i++) {
-		struct cpu *c = cpus + i;
+		struct cpu *c = &cpus[i];
 		cpu_init(c);
 		c->id = i; /* TODO: Initialize ID based on fdt. */
-		c->stack_bottom = callstacks + STACK_SIZE * (i + 1);
+		c->stack_bottom = &callstacks[i][STACK_SIZE];
 	}
 }
 
@@ -74,7 +74,7 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, size_t arg)
 	sl_unlock(&c->lock);
 
 	if (!prev) {
-		struct vcpu *vcpu = primary_vm.vcpus + cpu_index(c);
+		struct vcpu *vcpu = &primary_vm.vcpus[cpu_index(c)];
 		arch_regs_init(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}
@@ -101,7 +101,7 @@ struct cpu *cpu_find(size_t id)
 
 	for (i = 0; i < MAX_CPUS; i++) {
 		if (cpus[i].id == id) {
-			return cpus + i;
+			return &cpus[i];
 		}
 	}
 

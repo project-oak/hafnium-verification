@@ -128,5 +128,5 @@ struct vcpu *cpu_main(void)
 
 	vm_set_current(&primary_vm);
 
-	return primary_vm.vcpus + cpu_index(c);
+	return &primary_vm.vcpus[cpu_index(c)];
 }

@@ -50,7 +50,7 @@ static void fdt_tokenizer_init(struct fdt_tokenizer *t, const char *strs,
 
 static void fdt_tokenizer_align(struct fdt_tokenizer *t)
 {
-	t->cur = (char *)(((size_t)t->cur + 3) & ~3);
+	t->cur = (char *)(((uintptr_t)t->cur + 3) & ~3);
 }
 
 static bool fdt_tokenizer_uint32(struct fdt_tokenizer *t, uint32_t *res)

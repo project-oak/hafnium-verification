@@ -206,7 +206,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 			continue;
 		}
 
-		if (!vm_init(secondary_vm + count, count + 1, cpu)) {
+		if (!vm_init(&secondary_vm[count], count + 1, cpu)) {
 			dlog("Unable to initialise vm %u\n", count);
 			continue;
 		}
@@ -239,7 +239,7 @@ bool load_secondary(const struct memiter *cpio, paddr_t mem_begin,
 		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
 		     pa_addr(*mem_end));
 
-		vm_start_vcpu(secondary_vm + count, 0, secondary_entry, 0);
+		vm_start_vcpu(&secondary_vm[count], 0, secondary_entry, 0);
 	}
 
 	secondary_vm_count = count;

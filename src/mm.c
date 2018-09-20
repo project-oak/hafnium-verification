@@ -162,7 +162,7 @@ static void mm_free_page_pte(pte_t pte, int level, bool sync)
 static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 uint64_t attrs, pte_t *table, int level, int flags)
 {
-	pte_t *pte = table + mm_index(begin, level);
+	pte_t *pte = &table[mm_index(begin, level)];
 	ptable_addr_t level_end = mm_level_end(begin, level);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
@@ -308,7 +308,7 @@ static bool mm_ptable_identity_map_page(struct mm_ptable *t, paddr_t pa,
 	addr = pa_addr(pa);
 
 	for (i = arch_mm_max_level(mode); i > 0; i--) {
-		table = mm_populate_table_pte(table + mm_index(addr, i), i,
+		table = mm_populate_table_pte(&table[mm_index(addr, i)], i,
 					      sync);
 		if (!table) {
 			return false;

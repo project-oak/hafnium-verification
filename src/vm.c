@@ -16,7 +16,7 @@ bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 
 	/* Do basic initialization of vcpus. */
 	for (i = 0; i < vcpu_count; i++) {
-		vcpu_init(vm->vcpus + i, vm);
+		vcpu_init(&vm->vcpus[i], vm);
 	}
 
 	return mm_ptable_init(&vm->ptable, 0);
@@ -25,7 +25,7 @@ bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 /* TODO: Shall we use index or id here? */
 void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg)
 {
-	struct vcpu *vcpu = vm->vcpus + index;
+	struct vcpu *vcpu = &vm->vcpus[index];
 	if (index < vm->vcpu_count) {
 		arch_regs_init(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);

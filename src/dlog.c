@@ -82,7 +82,7 @@ static void print_num(size_t v, size_t base, size_t width, int flags)
 	static const char *digits_upper = "0123456789ABCDEFX";
 	const char *d = (flags & FLAG_UPPER) ? digits_upper : digits_lower;
 	char buf[51];
-	char *ptr = buf + sizeof(buf) - 1;
+	char *ptr = &buf[sizeof(buf) - 1];
 	char *num;
 	*ptr = '\0';
 	do {
