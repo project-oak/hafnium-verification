@@ -18,6 +18,7 @@ struct rpc {
 };
 
 struct vm {
+	uint32_t id;
 	struct spinlock lock;
 	uint32_t vcpu_count;
 	struct vcpu vcpus[MAX_CPUS];

@@ -9,7 +9,6 @@
 
 struct mm_ptable {
 	paddr_t table;
-	uint32_t id;
 };
 
 #define PAGE_SIZE (1 << PAGE_BITS)
@@ -40,7 +39,7 @@ struct mm_ptable {
  */
 #define MM_MODE_NOINVALIDATE 0x40
 
-bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode);
+bool mm_ptable_init(struct mm_ptable *t, int mode);
 void mm_ptable_dump(struct mm_ptable *t, int mode);
 void mm_ptable_defrag(struct mm_ptable *t, int mode);
 bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode);

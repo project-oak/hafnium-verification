@@ -10,6 +10,7 @@ bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 
 	memset(vm, 0, sizeof(*vm));
 
+	vm->id = id;
 	vm->vcpu_count = vcpu_count;
 	vm->rpc.state = rpc_state_idle;
 
@@ -18,7 +19,7 @@ bool vm_init(struct vm *vm, uint32_t id, uint32_t vcpu_count)
 		vcpu_init(vm->vcpus + i, vm);
 	}
 
-	return mm_ptable_init(&vm->ptable, id, 0);
+	return mm_ptable_init(&vm->ptable, 0);
 }
 
 /* TODO: Shall we use index or id here? */
@@ -34,5 +35,5 @@ void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg)
 void vm_set_current(struct vm *vm)
 {
 	arch_cpu_update(vm == &primary_vm);
-	arch_mm_set_vm(vm->ptable.id, vm->ptable.table);
+	arch_mm_set_vm(vm->id, vm->ptable.table);
 }

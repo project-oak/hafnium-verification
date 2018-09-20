@@ -426,7 +426,7 @@ static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
 /**
  * Initialises the given page table.
  */
-bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
+bool mm_ptable_init(struct mm_ptable *t, int mode)
 {
 	size_t i;
 	pte_t *table;
@@ -448,7 +448,6 @@ bool mm_ptable_init(struct mm_ptable *t, uint32_t id, int mode)
 	/* TODO: halloc could return a virtual or physical address if mm not
 	 * enabled? */
 	t->table = pa_init((uintpaddr_t)table);
-	t->id = id;
 
 	return true;
 }
@@ -556,7 +555,7 @@ bool mm_init(void)
 	dlog("rodata: 0x%x - 0x%x\n", rodata_begin, rodata_end);
 	dlog("data: 0x%x - 0x%x\n", data_begin, data_end);
 
-	if (!mm_ptable_init(&ptable, 0, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
+	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
 		dlog("Unable to allocate memory for page table.\n");
 		return false;
 	}
