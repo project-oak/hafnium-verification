@@ -11,10 +11,6 @@ static_assert(HF_RPC_REQUEST_MAX_SIZE == PAGE_SIZE,
 	      "Currently, a page is mapped for the send and receive buffers so "
 	      "the maximum request is the size of a page.");
 
-struct vm secondary_vm[MAX_VMS];
-uint32_t secondary_vm_count;
-struct vm primary_vm;
-
 /**
  * Switches the physical CPU back to the corresponding vcpu of the primary VM.
  */
@@ -22,10 +18,11 @@ struct vcpu *api_switch_to_primary(size_t primary_retval,
 				   enum vcpu_state secondary_state)
 {
 	struct vcpu *vcpu = cpu()->current;
-	struct vcpu *next = &primary_vm.vcpus[cpu_index(cpu())];
+	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
+	struct vcpu *next = &primary->vcpus[cpu_index(cpu())];
 
 	/* Switch back to primary VM. */
-	vm_set_current(&primary_vm);
+	vm_set_current(primary);
 
 	/*
 	 * Inidicate to primary VM that this vcpu blocked waiting for an
@@ -46,42 +43,57 @@ struct vcpu *api_switch_to_primary(size_t primary_retval,
  */
 int32_t api_vm_get_count(void)
 {
-	return secondary_vm_count;
+	return vm_get_count();
 }
 
 /**
  * Returns the number of vcpus configured in the given VM.
  */
-int32_t api_vcpu_get_count(uint32_t vm_idx)
+int32_t api_vcpu_get_count(uint32_t vm_id)
 {
-	if (vm_idx >= secondary_vm_count) {
+	struct vm *vm;
+
+	/* Only the primary VM needs to know about vcpus for scheduling. */
+	if (cpu()->current->vm->id != HF_PRIMARY_VM_ID) {
 		return -1;
 	}
 
-	return secondary_vm[vm_idx].vcpu_count;
+	vm = vm_get(vm_id);
+	if (vm == NULL) {
+		return -1;
+	}
+
+	return vm->vcpu_count;
 }
 
 /**
  * Runs the given vcpu of the given vm.
  */
-int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
+int32_t api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx, struct vcpu **next)
 {
 	struct vm *vm;
 	struct vcpu *vcpu;
 	int32_t ret;
 
 	/* Only the primary VM can switch vcpus. */
-	if (cpu()->current->vm != &primary_vm) {
-		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
+	if (cpu()->current->vm->id != HF_PRIMARY_VM_ID) {
+		goto fail;
 	}
 
-	if (vm_idx >= secondary_vm_count) {
-		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
+	/* Only secondary VM vcpus can be run. */
+	if (vm_id == HF_PRIMARY_VM_ID) {
+		goto fail;
 	}
 
-	vm = &secondary_vm[vm_idx];
+	/* The requested VM must exist. */
+	vm = vm_get(vm_id);
+	if (vm == NULL) {
+		goto fail;
+	}
+
+	/* The requested vcpu must exist. */
 	if (vcpu_idx >= vm->vcpu_count) {
-		return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
+		goto fail;
 	}
 
 	vcpu = &vm->vcpus[vcpu_idx];
@@ -98,6 +110,9 @@ int32_t api_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx, struct vcpu **next)
 	sl_unlock(&vcpu->lock);
 
 	return ret;
+
+fail:
+	return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
 }
 
 /**
@@ -195,7 +210,7 @@ exit:
  * Sends an RPC request from the primary VM to a secondary VM. Data is copied
  * from the caller's send buffer to the destination's receive buffer.
  */
-int32_t api_rpc_request(uint32_t vm_idx, size_t size)
+int32_t api_rpc_request(uint32_t vm_id, size_t size)
 {
 	struct vm *from = cpu()->current->vm;
 	struct vm *to;
@@ -203,12 +218,23 @@ int32_t api_rpc_request(uint32_t vm_idx, size_t size)
 	int32_t ret;
 
 	/* Basic argument validation. */
-	if (size > PAGE_SIZE || vm_idx >= secondary_vm_count) {
+	if (size > HF_RPC_REQUEST_MAX_SIZE) {
+		return -1;
+	}
+
+	/* Disallow reflexive requests as this suggests an error in the VM. */
+	if (vm_id == from->id) {
+		return -1;
+	}
+
+	/* Ensure the target VM exists. */
+	to = vm_get(vm_id);
+	if (to == NULL) {
 		return -1;
 	}
 
 	/* Only the primary VM can make calls. */
-	if (from != &primary_vm) {
+	if (from->id != HF_PRIMARY_VM_ID) {
 		return -1;
 	}
 
@@ -224,7 +250,6 @@ int32_t api_rpc_request(uint32_t vm_idx, size_t size)
 		return -1;
 	}
 
-	to = &secondary_vm[vm_idx];
 	sl_lock(&to->lock);
 
 	if (to->rpc.state != rpc_state_idle || !to->rpc.recv) {
@@ -275,10 +300,11 @@ int32_t api_rpc_read_request(bool block, struct vcpu **next)
 {
 	struct vcpu *vcpu = cpu()->current;
 	struct vm *vm = vcpu->vm;
+	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
 	int32_t ret;
 
 	/* Only the secondary VMs can receive calls. */
-	if (vm == &primary_vm) {
+	if (vm->id == HF_PRIMARY_VM_ID) {
 		return -1;
 	}
 
@@ -298,8 +324,8 @@ int32_t api_rpc_read_request(bool block, struct vcpu **next)
 		sl_unlock(&vcpu->lock);
 
 		/* Switch back to primary vm. */
-		*next = &primary_vm.vcpus[cpu_index(cpu())];
-		vm_set_current(&primary_vm);
+		*next = &primary->vcpus[cpu_index(cpu())];
+		vm_set_current(primary);
 
 		/*
 		 * Inidicate to primary VM that this vcpu blocked waiting for an
@@ -334,7 +360,7 @@ int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
 	}
 
 	/* Only the secondary VM can send responses. */
-	if (from == &primary_vm) {
+	if (from->id == HF_PRIMARY_VM_ID) {
 		return -1;
 	}
 
@@ -355,7 +381,7 @@ int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
 		return -1;
 	}
 
-	to = &primary_vm;
+	to = vm_get(HF_PRIMARY_VM_ID);
 	sl_lock(&to->lock);
 
 	if (to->rpc.state != rpc_state_idle || !to->rpc.recv) {

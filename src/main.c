@@ -13,6 +13,8 @@
 #include "hf/std.h"
 #include "hf/vm.h"
 
+#include "vmapi/hf/call.h"
+
 char ptable_buf[PAGE_SIZE * 40];
 
 /**
@@ -113,6 +115,7 @@ static void one_time_init(void)
 struct vcpu *cpu_main(void)
 {
 	struct cpu *c = cpu();
+	struct vm *primary;
 
 	/*
 	 * Do global one-time initialisation just once. We avoid using atomics
@@ -130,7 +133,8 @@ struct vcpu *cpu_main(void)
 		panic("mm_cpu_init failed");
 	}
 
-	vm_set_current(&primary_vm);
+	primary = vm_get(HF_PRIMARY_VM_ID);
+	vm_set_current(primary);
 
-	return &primary_vm.vcpus[cpu_index(c)];
+	return &primary->vcpus[cpu_index(c)];
 }

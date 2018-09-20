@@ -11,6 +11,8 @@
 #include "hf/std.h"
 #include "hf/vm.h"
 
+#include "vmapi/hf/call.h"
+
 /**
  * Copies data to an unmapped location by mapping it for write, copying the
  * data, then unmapping it.
@@ -117,16 +119,23 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 
 	{
 		uintpaddr_t tmp = (uintpaddr_t)&load_primary;
+		struct vm *vm;
+
 		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
-		if (!vm_init(&primary_vm, 0, MAX_CPUS)) {
+		if (!vm_init(MAX_CPUS, &vm)) {
 			dlog("Unable to initialise primary vm\n");
+			return false;
+		}
+
+		if (vm->id != HF_PRIMARY_VM_ID) {
+			dlog("Primary vm was not given correct id\n");
 			return false;
 		}
 
 		/* Map the 1TB of memory. */
 		/* TODO: We should do a whitelist rather than a blacklist. */
 		if (!mm_vm_identity_map(
-			    &primary_vm.ptable, pa_init(0),
+			    &vm->ptable, pa_init(0),
 			    pa_init(UINT64_C(1024) * 1024 * 1024 * 1024),
 			    MM_MODE_R | MM_MODE_W | MM_MODE_X |
 				    MM_MODE_NOINVALIDATE,
@@ -135,13 +144,13 @@ bool load_primary(const struct memiter *cpio, size_t kernel_arg,
 			return false;
 		}
 
-		if (!mm_ptable_unmap_hypervisor(&primary_vm.ptable,
+		if (!mm_ptable_unmap_hypervisor(&vm->ptable,
 						MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to unmap hypervisor from primary vm\n");
 			return false;
 		}
 
-		vm_start_vcpu(&primary_vm, 0, ipa_init(tmp), kernel_arg);
+		vm_start_vcpu(vm, 0, ipa_init(tmp), kernel_arg);
 	}
 
 	return true;
@@ -227,11 +236,11 @@ bool load_secondary(const struct memiter *cpio,
 		    const struct boot_params *params,
 		    struct boot_params_update *update)
 {
+	struct vm *primary;
 	struct memiter it;
 	struct memiter name;
 	uint64_t mem;
 	uint64_t cpu;
-	uint32_t count;
 	struct mem_range mem_ranges_available[MAX_MEM_RANGES];
 	size_t i;
 
@@ -243,6 +252,8 @@ bool load_secondary(const struct memiter *cpio,
 		      "MAX_MEM_RANGES smaller or change this.");
 	memcpy(mem_ranges_available, params->mem_ranges,
 	       sizeof(mem_ranges_available));
+
+	primary = vm_get(HF_PRIMARY_VM_ID);
 
 	if (!find_file(cpio, "vms.txt", &it)) {
 		dlog("vms.txt is missing\n");
@@ -256,15 +267,14 @@ bool load_secondary(const struct memiter *cpio,
 				~(PAGE_SIZE - 1));
 	}
 
-	for (count = 0;
-	     memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
-	     memiter_parse_str(&it, &name) && count < MAX_VMS;
-	     count++) {
+	while (memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
+	       memiter_parse_str(&it, &name)) {
 		struct memiter kernel;
 		paddr_t secondary_mem_begin;
 		paddr_t secondary_mem_end;
 		ipaddr_t secondary_entry;
 		const char *p;
+		struct vm *vm;
 
 		dlog("Loading ");
 		for (p = name.next; p != name.limit; ++p) {
@@ -298,22 +308,21 @@ bool load_secondary(const struct memiter *cpio,
 			continue;
 		}
 
-		if (!vm_init(&secondary_vm[count], count + 1, cpu)) {
+		if (!vm_init(cpu, &vm)) {
 			dlog("Unable to initialise VM\n");
 			continue;
 		}
 
 		/* TODO: Remove this. */
 		/* Grant VM access to uart. */
-		mm_vm_identity_map_page(&secondary_vm[count].ptable,
-					pa_init(PL011_BASE),
+		mm_vm_identity_map_page(&vm->ptable, pa_init(PL011_BASE),
 					MM_MODE_R | MM_MODE_W | MM_MODE_D |
 						MM_MODE_NOINVALIDATE,
 					NULL);
 
 		/* Grant the VM access to the memory. */
-		if (!mm_vm_identity_map(&secondary_vm[count].ptable,
-					secondary_mem_begin, secondary_mem_end,
+		if (!mm_vm_identity_map(&vm->ptable, secondary_mem_begin,
+					secondary_mem_end,
 					MM_MODE_R | MM_MODE_W | MM_MODE_X |
 						MM_MODE_NOINVALIDATE,
 					&secondary_entry)) {
@@ -322,7 +331,7 @@ bool load_secondary(const struct memiter *cpio,
 		}
 
 		/* Deny the primary VM access to this memory. */
-		if (!mm_vm_unmap(&primary_vm.ptable, secondary_mem_begin,
+		if (!mm_vm_unmap(&primary->ptable, secondary_mem_begin,
 				 secondary_mem_end, MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to unmap secondary VM from primary VM\n");
 			return false;
@@ -331,10 +340,8 @@ bool load_secondary(const struct memiter *cpio,
 		dlog("Loaded with %u vcpus, entry at 0x%x\n", cpu,
 		     pa_addr(secondary_mem_begin));
 
-		vm_start_vcpu(&secondary_vm[count], 0, secondary_entry, 0);
+		vm_start_vcpu(vm, 0, secondary_entry, 0);
 	}
-
-	secondary_vm_count = count;
 
 	/* Add newly reserved areas to update params by looking at the
 	 * difference between the available ranges from the original params and

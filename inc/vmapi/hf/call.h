@@ -29,6 +29,9 @@ typedef uintptr_t hf_ipaddr_t;
 #define HF_RPC_ACK          0xff06
 #define HF_RPC_REPLY        0xff07
 
+/* The ID of the primary VM which is responsile for scheduling. */
+#define HF_PRIMARY_VM_ID 0
+
 /* Return codes for hf_vcpu_run(). */
 #define HF_VCPU_RUN_YIELD              0x00
 #define HF_VCPU_RUN_WAIT_FOR_INTERRUPT 0x01
@@ -53,9 +56,9 @@ size_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 /**
  * Runs the given vcpu of the given vm.
  */
-static inline int32_t hf_vcpu_run(uint32_t vm_idx, uint32_t vcpu_idx)
+static inline int32_t hf_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx)
 {
-	return hf_call(HF_VCPU_RUN, vm_idx, vcpu_idx, 0);
+	return hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0);
 }
 
 /**
@@ -69,9 +72,9 @@ static inline int32_t hf_vm_get_count(void)
 /**
  * Returns the number of VCPUs configured in the given secondary VM.
  */
-static inline int32_t hf_vcpu_get_count(uint32_t vm_idx)
+static inline int32_t hf_vcpu_get_count(uint32_t vm_id)
 {
-	return hf_call(HF_VCPU_GET_COUNT, vm_idx, 0, 0);
+	return hf_call(HF_VCPU_GET_COUNT, vm_id, 0, 0);
 }
 
 /**
@@ -87,9 +90,9 @@ static inline int32_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
  * Called by the primary VM to send an RPC request to a secondary VM. Data is
  * copied from the caller's send buffer to the destination's receive buffer.
  */
-static inline int32_t hf_rpc_request(uint32_t vm_idx, size_t size)
+static inline int32_t hf_rpc_request(uint32_t vm_id, size_t size)
 {
-	return hf_call(HF_RPC_REQUEST, vm_idx, size, 0);
+	return hf_call(HF_RPC_REQUEST, vm_id, size, 0);
 }
 
 /**

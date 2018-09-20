@@ -164,7 +164,7 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 
 	ret.new = NULL;
 
-	if (cpu()->current->vm == &primary_vm &&
+	if (cpu()->current->vm->id == HF_PRIMARY_VM_ID &&
 	    psci_handler(arg0, arg1, arg2, arg3, &ret.user_ret)) {
 		return ret;
 	}
@@ -264,7 +264,7 @@ struct vcpu *sync_lower_exception(uint64_t esr)
 		}
 
 	case 0x17: /* EC = 010111, SMC instruction. */
-		if (vcpu->vm != &primary_vm ||
+		if (vcpu->vm->id != HF_PRIMARY_VM_ID ||
 		    !psci_handler(vcpu->regs.r[0], vcpu->regs.r[1],
 				  vcpu->regs.r[2], vcpu->regs.r[3], &ret)) {
 			dlog("Unsupported SMC call: 0x%x\n", vcpu->regs.r[0]);

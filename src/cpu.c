@@ -9,6 +9,8 @@
 #include "hf/std.h"
 #include "hf/vm.h"
 
+#include "vmapi/hf/call.h"
+
 /* The stack to be used by the CPUs. */
 alignas(2 * sizeof(size_t)) static char callstacks[MAX_CPUS][STACK_SIZE];
 
@@ -74,7 +76,8 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, size_t arg)
 	sl_unlock(&c->lock);
 
 	if (!prev) {
-		struct vcpu *vcpu = &primary_vm.vcpus[cpu_index(c)];
+		struct vcpu *vcpu =
+			&vm_get(HF_PRIMARY_VM_ID)->vcpus[cpu_index(c)];
 		arch_regs_init(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}

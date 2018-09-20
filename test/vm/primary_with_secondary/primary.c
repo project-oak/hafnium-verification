@@ -21,7 +21,7 @@ static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
  */
 TEST(hf_vm_get_count, one_secondary_vm)
 {
-	EXPECT_EQ(hf_vm_get_count(), 1);
+	EXPECT_EQ(hf_vm_get_count(), 2);
 }
 
 /**
@@ -29,7 +29,7 @@ TEST(hf_vm_get_count, one_secondary_vm)
  */
 TEST(hf_vcpu_get_count, secondary_has_one_vcpu)
 {
-	EXPECT_EQ(hf_vcpu_get_count(0), 1);
+	EXPECT_EQ(hf_vcpu_get_count(1), 1);
 }
 
 /**
