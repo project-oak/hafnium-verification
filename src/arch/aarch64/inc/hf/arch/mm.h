@@ -10,14 +10,8 @@ typedef uint64_t pte_t;
 
 #define PAGE_LEVEL_BITS 9
 
-#define HF_ARCH_AARCH64_MM_PTE_ATTR_MASK \
+#define ARCH_AARCH64_MM_PTE_ATTR_MASK \
 	(((UINT64_C(1) << PAGE_BITS) - 1) | ~((UINT64_C(1) << 48) - 1))
-
-#define HF_ARCH_AARCH64_MM_GET_PTE_ATTRS(v) \
-	((v)&HF_ARCH_AARCH64_MM_PTE_ATTR_MASK)
-
-#define HF_ARCH_AARCH64_MM_CLEAR_PTE_ATTRS(v) \
-	((v) & ~HF_ARCH_AARCH64_MM_PTE_ATTR_MASK)
 
 /**
  * Returns the encoding of a page table entry that isn't present.
@@ -90,13 +84,18 @@ static inline bool arch_mm_pte_is_block(pte_t pte, int level)
 	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
 }
 
+static inline uint64_t arch_aarch64_mm_clear_pte_attrs(pte_t pte)
+{
+	return pte & ~ARCH_AARCH64_MM_PTE_ATTR_MASK;
+}
+
 /**
  * Clears the given physical address, i.e., sets the ignored bits (from a page
  * table perspective) to zero.
  */
 static inline paddr_t arch_mm_clear_pa(paddr_t pa)
 {
-	return pa_init(HF_ARCH_AARCH64_MM_CLEAR_PTE_ATTRS(pa_addr(pa)));
+	return pa_init(arch_aarch64_mm_clear_pte_attrs(pa_addr(pa)));
 }
 
 /**
@@ -105,7 +104,7 @@ static inline paddr_t arch_mm_clear_pa(paddr_t pa)
  */
 static inline paddr_t arch_mm_block_from_pte(pte_t pte)
 {
-	return pa_init(HF_ARCH_AARCH64_MM_CLEAR_PTE_ATTRS(pte));
+	return pa_init(arch_aarch64_mm_clear_pte_attrs(pte));
 }
 
 /**
@@ -114,7 +113,7 @@ static inline paddr_t arch_mm_block_from_pte(pte_t pte)
  */
 static inline paddr_t arch_mm_table_from_pte(pte_t pte)
 {
-	return pa_init(HF_ARCH_AARCH64_MM_CLEAR_PTE_ATTRS(pte));
+	return pa_init(arch_aarch64_mm_clear_pte_attrs(pte));
 }
 
 /**
@@ -123,7 +122,7 @@ static inline paddr_t arch_mm_table_from_pte(pte_t pte)
  */
 static inline uint64_t arch_mm_pte_attrs(pte_t pte)
 {
-	return HF_ARCH_AARCH64_MM_GET_PTE_ATTRS(pte);
+	return pte & ARCH_AARCH64_MM_PTE_ATTR_MASK;
 }
 
 /**
