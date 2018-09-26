@@ -43,6 +43,7 @@ static inline pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs)
 {
 	pte_t pte = pa_addr(pa) | attrs;
 	if (level == 0) {
+		/* A level 0 'block' is actually a page entry. */
 		pte |= 0x2;
 	}
 	return pte;
@@ -80,6 +81,7 @@ static inline bool arch_mm_pte_is_table(pte_t pte, int level)
  */
 static inline bool arch_mm_pte_is_block(pte_t pte, int level)
 {
+	/* We count pages at level 0 as blocks. */
 	return arch_mm_is_block_allowed(level) &&
 	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
 }
