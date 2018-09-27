@@ -228,7 +228,7 @@ bool load_secondary(const struct memiter *cpio,
 		    struct boot_params_update *update)
 {
 	struct memiter it;
-	struct memiter str;
+	struct memiter name;
 	uint64_t mem;
 	uint64_t cpu;
 	uint32_t count;
@@ -258,15 +258,22 @@ bool load_secondary(const struct memiter *cpio,
 
 	for (count = 0;
 	     memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
-	     memiter_parse_str(&it, &str) && count < MAX_VMS;
+	     memiter_parse_str(&it, &name) && count < MAX_VMS;
 	     count++) {
 		struct memiter kernel;
 		paddr_t secondary_mem_begin;
 		paddr_t secondary_mem_end;
 		ipaddr_t secondary_entry;
+		const char *p;
 
-		if (!memiter_find_file(cpio, &str, &kernel)) {
-			dlog("Unable to load kernel for vm %u\n", count);
+		dlog("Loading ");
+		for (p = name.next; p != name.limit; ++p) {
+			dlog("%c", *p);
+		}
+		dlog("\n");
+
+		if (!memiter_find_file(cpio, &name, &kernel)) {
+			dlog("Unable to load kernel\n");
 			continue;
 		}
 
@@ -274,28 +281,25 @@ bool load_secondary(const struct memiter *cpio,
 		mem = (mem + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 
 		if (mem < kernel.limit - kernel.next) {
-			dlog("Kernel is larger than available memory for vm "
-			     "%u\n",
-			     count);
+			dlog("Kernel is larger than available memory\n");
 			continue;
 		}
 
 		if (!carve_out_mem_range(
 			    mem_ranges_available, params->mem_ranges_count, mem,
 			    &secondary_mem_begin, &secondary_mem_end)) {
-			dlog("Not enough memory for vm %u (%u bytes)\n", count,
-			     mem);
+			dlog("Not enough memory (%u bytes)\n", mem);
 			continue;
 		}
 
 		if (!copy_to_unmapped(secondary_mem_begin, kernel.next,
 				      kernel.limit - kernel.next)) {
-			dlog("Unable to copy kernel for vm %u\n", count);
+			dlog("Unable to copy kernel\n");
 			continue;
 		}
 
 		if (!vm_init(&secondary_vm[count], count + 1, cpu)) {
-			dlog("Unable to initialise vm %u\n", count);
+			dlog("Unable to initialise VM\n");
 			continue;
 		}
 
@@ -313,7 +317,7 @@ bool load_secondary(const struct memiter *cpio,
 					MM_MODE_R | MM_MODE_W | MM_MODE_X |
 						MM_MODE_NOINVALIDATE,
 					&secondary_entry)) {
-			dlog("Unable to initialise memory for vm %u\n", count);
+			dlog("Unable to initialise memory\n");
 			continue;
 		}
 
@@ -324,7 +328,7 @@ bool load_secondary(const struct memiter *cpio,
 			return false;
 		}
 
-		dlog("Loaded VM%u with %u vcpus, entry at 0x%x\n", count, cpu,
+		dlog("Loaded with %u vcpus, entry at 0x%x\n", cpu,
 		     pa_addr(secondary_mem_begin));
 
 		vm_start_vcpu(&secondary_vm[count], 0, secondary_entry, 0);
