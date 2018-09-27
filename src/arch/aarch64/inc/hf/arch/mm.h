@@ -203,3 +203,11 @@ static inline void arch_mm_set_vm(uint64_t vmid, paddr_t table)
 uint64_t arch_mm_mode_to_attrs(int mode);
 bool arch_mm_init(paddr_t table, bool first);
 int arch_mm_max_level(int mode);
+
+/**
+ * Given the attrs from a table at some level and the attrs from all the blocks
+ * in that table, return equivalent attrs to use for a block which will replace
+ * the entire table.
+ */
+uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
+					   uint64_t block_attrs);

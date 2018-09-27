@@ -30,11 +30,14 @@
 #define INNER_SHAREABLE UINT64_C(3)
 
 #define STAGE1_XN          (UINT64_C(1) << 54)
+#define STAGE1_PXN         (UINT64_C(1) << 53)
 #define STAGE1_CONTIGUOUS  (UINT64_C(1) << 52)
 #define STAGE1_DBM         (UINT64_C(1) << 51)
 #define STAGE1_NG          (UINT64_C(1) << 11)
 #define STAGE1_AF          (UINT64_C(1) << 10)
 #define STAGE1_SH(x)       ((x) << 8)
+#define STAGE1_AP2         (UINT64_C(1) << 7)
+#define STAGE1_AP1         (UINT64_C(1) << 6)
 #define STAGE1_AP(x)       ((x) << 6)
 #define STAGE1_NS          (UINT64_C(1) << 5)
 #define STAGE1_ATTRINDX(x) ((x) << 2)
@@ -57,6 +60,13 @@
 #define STAGE2_EXECUTE_EL0  UINT64_C(1)
 #define STAGE2_EXECUTE_NONE UINT64_C(2)
 #define STAGE2_EXECUTE_EL1  UINT64_C(3)
+
+/* Table attributes only apply to stage 1 translations. */
+#define TABLE_NSTABLE  (UINT64_C(1) << 63)
+#define TABLE_APTABLE1 (UINT64_C(1) << 62)
+#define TABLE_APTABLE0 (UINT64_C(1) << 61)
+#define TABLE_XNTABLE  (UINT64_C(1) << 60)
+#define TABLE_PXNTABLE (UINT64_C(1) << 59)
 
 /* The following are stage-2 memory attributes for normal memory. */
 #define STAGE2_NONCACHEABLE UINT64_C(1)
@@ -257,4 +267,29 @@ bool arch_mm_init(paddr_t table, bool first)
 	__asm__ volatile("isb");
 
 	return true;
+}
+
+uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
+					   uint64_t block_attrs)
+{
+	/*
+	 * Only stage 1 table descriptors have attributes, but the bits are res0
+	 * for stage 2 table descriptors so this code is safe for both.
+	 */
+	if (table_attrs & TABLE_NSTABLE) {
+		block_attrs |= STAGE1_NS;
+	}
+	if (table_attrs & TABLE_APTABLE1) {
+		block_attrs |= STAGE1_AP2;
+	}
+	if (table_attrs & TABLE_APTABLE0) {
+		block_attrs &= ~STAGE1_AP1;
+	}
+	if (table_attrs & TABLE_XNTABLE) {
+		block_attrs |= STAGE1_XN;
+	}
+	if (table_attrs & TABLE_PXNTABLE) {
+		block_attrs |= STAGE1_PXN;
+	}
+	return block_attrs;
 }
