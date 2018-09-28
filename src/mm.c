@@ -138,17 +138,25 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 
 /**
  * Frees all page-table-related memory associated with the given pte at the
- * given level.
+ * given level, including any subtables recursively.
  */
-static void mm_free_page_pte(pte_t pte, int level, bool sync)
+static void mm_free_page_pte(pte_t pte, int level)
 {
-	(void)pte;
-	(void)level;
-	(void)sync;
-	/* TODO: Implement.
-	if (!arch_mm_pte_is_present(pte, level) || level < 1)
+	pte_t *table;
+	uint64_t i;
+
+	if (!arch_mm_pte_is_table(pte, level)) {
 		return;
-	*/
+	}
+
+	table = ptr_from_va(va_from_pa(arch_mm_table_from_pte(pte)));
+	/* Recursively free any subtables. */
+	for (i = 0; i < PAGE_SIZE / sizeof(pte_t); ++i) {
+		mm_free_page_pte(table[i], level - 1);
+	}
+
+	/* Free the table itself. */
+	hfree(table);
 }
 
 /**
@@ -183,7 +191,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 				*pte = arch_mm_block_pte(level, pa, attrs);
 				/* TODO: Add barrier. How do we ensure this
 				 * isn't in use by another CPU? Send IPI? */
-				mm_free_page_pte(v, level, sync);
+				mm_free_page_pte(v, level);
 			}
 		} else {
 			pte_t *nt = mm_populate_table_pte(pte, level, sync);
