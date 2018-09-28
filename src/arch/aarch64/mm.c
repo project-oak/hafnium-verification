@@ -90,7 +90,7 @@ static uint8_t mm_max_s2_level = 2;
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
-	uint64_t attrs = 1; /* Present bit. */
+	uint64_t attrs = 0;
 
 	if (mode & MM_MODE_STAGE1) {
 		attrs |= STAGE1_AF | STAGE1_SH(OUTER_SHAREABLE);

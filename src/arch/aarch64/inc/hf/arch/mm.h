@@ -26,6 +26,11 @@ typedef uint64_t pte_t;
 
 #define PAGE_LEVEL_BITS 9
 
+/*
+ * This mask actually includes everything other than the address bits: not just
+ * the attributes but also some ignored bits, reserved bits, and the entry type
+ * bits which distinguish between absent, table, block or page entries.
+ */
 #define ARCH_AARCH64_MM_PTE_ATTR_MASK \
 	(((UINT64_C(1) << PAGE_BITS) - 1) | ~((UINT64_C(1) << 48) - 1))
 
@@ -57,7 +62,7 @@ static inline pte_t arch_mm_table_pte(int level, paddr_t pa)
  */
 static inline pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs)
 {
-	pte_t pte = pa_addr(pa) | attrs;
+	pte_t pte = pa_addr(pa) | attrs | 0x1;
 	if (level == 0) {
 		/* A level 0 'block' is actually a page entry. */
 		pte |= 0x2;
