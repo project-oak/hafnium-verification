@@ -7,7 +7,7 @@
 set -e
 # Fail on any part of a pipeline failing.
 set -o pipefail
-# Treat unset variables as an error
+# Treat unset variables as an error.
 set -u
 # Display commands being run.
 set -x
