@@ -214,8 +214,7 @@ struct vcpu *irq_lower(void)
 	/* TODO: Only switch if we know the interrupt was not for the secondary
 	 * VM. */
 	/* Switch back to primary VM, interrupts will be handled there. */
-	return api_switch_to_primary(HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0),
-				     vcpu_state_ready);
+	return api_yield();
 }
 
 struct vcpu *sync_lower_exception(uint64_t esr)

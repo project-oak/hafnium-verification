@@ -14,8 +14,8 @@ static_assert(HF_RPC_REQUEST_MAX_SIZE == PAGE_SIZE,
 /**
  * Switches the physical CPU back to the corresponding vcpu of the primary VM.
  */
-struct vcpu *api_switch_to_primary(size_t primary_retval,
-				   enum vcpu_state secondary_state)
+static struct vcpu *api_switch_to_primary(size_t primary_retval,
+					  enum vcpu_state secondary_state)
 {
 	struct vcpu *vcpu = cpu()->current;
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
@@ -113,17 +113,6 @@ int32_t api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx, struct vcpu **next)
 
 fail:
 	return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
-}
-
-/**
- * Puts the current vcpu in wait for interrupt mode, and returns to the primary
- * vm.
- */
-struct vcpu *api_wait_for_interrupt(void)
-{
-	return api_switch_to_primary(
-		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0),
-		vcpu_state_blocked_interrupt);
 }
 
 /**
@@ -434,4 +423,25 @@ int32_t api_rpc_ack(void)
 	}
 
 	return ret;
+}
+
+/**
+ * Returns to the primary vm leaving the current vcpu ready to be scheduled
+ * again.
+ */
+struct vcpu *api_yield(void)
+{
+	return api_switch_to_primary(HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0),
+				     vcpu_state_ready);
+}
+
+/**
+ * Puts the current vcpu in wait for interrupt mode, and returns to the primary
+ * vm.
+ */
+struct vcpu *api_wait_for_interrupt(void)
+{
+	return api_switch_to_primary(
+		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0),
+		vcpu_state_blocked_interrupt);
 }
