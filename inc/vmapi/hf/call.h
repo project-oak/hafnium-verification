@@ -51,12 +51,12 @@ typedef uintptr_t hf_ipaddr_t;
  * This function must be implemented to trigger the architecture specific
  * mechanism to call to the hypervisor.
  */
-size_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
+int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 
 /**
  * Runs the given vcpu of the given vm.
  */
-static inline int32_t hf_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx)
+static inline int64_t hf_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx)
 {
 	return hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0);
 }
@@ -64,7 +64,7 @@ static inline int32_t hf_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx)
 /**
  * Returns the number of secondary VMs.
  */
-static inline int32_t hf_vm_get_count(void)
+static inline int64_t hf_vm_get_count(void)
 {
 	return hf_call(HF_VM_GET_COUNT, 0, 0, 0);
 }
@@ -72,7 +72,7 @@ static inline int32_t hf_vm_get_count(void)
 /**
  * Returns the number of VCPUs configured in the given secondary VM.
  */
-static inline int32_t hf_vcpu_get_count(uint32_t vm_id)
+static inline int64_t hf_vcpu_get_count(uint32_t vm_id)
 {
 	return hf_call(HF_VCPU_GET_COUNT, vm_id, 0, 0);
 }
@@ -81,7 +81,7 @@ static inline int32_t hf_vcpu_get_count(uint32_t vm_id)
  * Configures the pages to send/receive data through. The pages must not be
  * shared.
  */
-static inline int32_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
+static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
 {
 	return hf_call(HF_VM_CONFIGURE, send, recv, 0);
 }
@@ -90,7 +90,7 @@ static inline int32_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
  * Called by the primary VM to send an RPC request to a secondary VM. Data is
  * copied from the caller's send buffer to the destination's receive buffer.
  */
-static inline int32_t hf_rpc_request(uint32_t vm_id, size_t size)
+static inline int64_t hf_rpc_request(uint32_t vm_id, size_t size)
 {
 	return hf_call(HF_RPC_REQUEST, vm_id, size, 0);
 }
@@ -104,7 +104,7 @@ static inline int32_t hf_rpc_request(uint32_t vm_id, size_t size)
  * either calling api_rpc_reply or api_rpc_ack. No new requests can be accepted
  * until the current one is acknowledged.
  */
-static inline int32_t hf_rpc_read_request(bool block)
+static inline int64_t hf_rpc_read_request(bool block)
 {
 	return hf_call(HF_RPC_READ_REQUEST, block, 0, 0);
 }
@@ -114,7 +114,7 @@ static inline int32_t hf_rpc_read_request(bool block)
  * After this call completes, the caller will be able to receive additional
  * requests or replies.
  */
-static inline int32_t hf_rpc_ack(void)
+static inline int64_t hf_rpc_ack(void)
 {
 	return hf_call(HF_RPC_ACK, 0, 0, 0);
 }
@@ -125,7 +125,7 @@ static inline int32_t hf_rpc_ack(void)
  *
  * It can optionally acknowledge the pending request.
  */
-static inline int32_t hf_rpc_reply(size_t size, bool ack)
+static inline int64_t hf_rpc_reply(size_t size, bool ack)
 {
 	return hf_call(HF_RPC_REPLY, size, ack, 0);
 }

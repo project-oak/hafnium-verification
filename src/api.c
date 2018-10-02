@@ -41,7 +41,7 @@ static struct vcpu *api_switch_to_primary(size_t primary_retval,
 /**
  * Returns the number of VMs configured to run.
  */
-int32_t api_vm_get_count(void)
+int64_t api_vm_get_count(void)
 {
 	return vm_get_count();
 }
@@ -49,7 +49,7 @@ int32_t api_vm_get_count(void)
 /**
  * Returns the number of vcpus configured in the given VM.
  */
-int32_t api_vcpu_get_count(uint32_t vm_id)
+int64_t api_vcpu_get_count(uint32_t vm_id)
 {
 	struct vm *vm;
 
@@ -69,11 +69,11 @@ int32_t api_vcpu_get_count(uint32_t vm_id)
 /**
  * Runs the given vcpu of the given vm.
  */
-int32_t api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx, struct vcpu **next)
+int64_t api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx, struct vcpu **next)
 {
 	struct vm *vm;
 	struct vcpu *vcpu;
-	int32_t ret;
+	int64_t ret;
 
 	/* Only the primary VM can switch vcpus. */
 	if (cpu()->current->vm->id != HF_PRIMARY_VM_ID) {
@@ -119,14 +119,14 @@ fail:
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
  */
-int32_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
+int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 {
 	struct vm *vm = cpu()->current->vm;
 	paddr_t pa_send_begin;
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
 	paddr_t pa_recv_end;
-	int32_t ret;
+	int64_t ret;
 
 	/* Fail if addresses are not page-aligned. */
 	if ((ipa_addr(send) & (PAGE_SIZE - 1)) ||
@@ -199,12 +199,12 @@ exit:
  * Sends an RPC request from the primary VM to a secondary VM. Data is copied
  * from the caller's send buffer to the destination's receive buffer.
  */
-int32_t api_rpc_request(uint32_t vm_id, size_t size)
+int64_t api_rpc_request(uint32_t vm_id, size_t size)
 {
 	struct vm *from = cpu()->current->vm;
 	struct vm *to;
 	const void *from_buf;
-	int32_t ret;
+	int64_t ret;
 
 	/* Basic argument validation. */
 	if (size > HF_RPC_REQUEST_MAX_SIZE) {
@@ -285,12 +285,12 @@ int32_t api_rpc_request(uint32_t vm_id, size_t size)
  * either calling api_rpc_reply or api_rpc_ack. No new requests can be accepted
  * until the current one is acknowledged.
  */
-int32_t api_rpc_read_request(bool block, struct vcpu **next)
+int64_t api_rpc_read_request(bool block, struct vcpu **next)
 {
 	struct vcpu *vcpu = cpu()->current;
 	struct vm *vm = vcpu->vm;
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
-	int32_t ret;
+	int64_t ret;
 
 	/* Only the secondary VMs can receive calls. */
 	if (vm->id == HF_PRIMARY_VM_ID) {
@@ -337,7 +337,7 @@ int32_t api_rpc_read_request(bool block, struct vcpu **next)
  *
  * It can optionally acknowledge the pending request.
  */
-int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
+int64_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
 {
 	struct vm *from = cpu()->current->vm;
 	struct vm *to;
@@ -404,10 +404,10 @@ int32_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
  * After this call completes, the caller will be able to receive additional
  * requests or replies.
  */
-int32_t api_rpc_ack(void)
+int64_t api_rpc_ack(void)
 {
 	struct vm *vm = cpu()->current->vm;
-	int32_t ret;
+	int64_t ret;
 
 	sl_lock(&vm->lock);
 	if (vm->rpc.state != rpc_state_inflight) {

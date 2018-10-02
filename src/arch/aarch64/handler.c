@@ -9,7 +9,7 @@
 #include "psci.h"
 
 struct hvc_handler_return {
-	long user_ret;
+	uint64_t user_ret;
 	struct vcpu *new;
 };
 
@@ -62,7 +62,7 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
  * Returns true if the request was a PSCI one, false otherwise.
  */
 static bool psci_handler(uint32_t func, size_t arg0, size_t arg1, size_t arg2,
-			 long *ret)
+			 int32_t *ret)
 {
 	struct cpu *c;
 	int32_t sret;
@@ -164,9 +164,12 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 
 	ret.new = NULL;
 
-	if (cpu()->current->vm->id == HF_PRIMARY_VM_ID &&
-	    psci_handler(arg0, arg1, arg2, arg3, &ret.user_ret)) {
-		return ret;
+	if (cpu()->current->vm->id == HF_PRIMARY_VM_ID) {
+		int32_t psci_ret;
+		if (psci_handler(arg0, arg1, arg2, arg3, &psci_ret)) {
+			ret.user_ret = psci_ret;
+			return ret;
+		}
 	}
 
 	switch ((uint32_t)arg0 & ~PSCI_CONVENTION_MASK) {
@@ -221,7 +224,7 @@ struct vcpu *sync_lower_exception(uint64_t esr)
 {
 	struct cpu *c = cpu();
 	struct vcpu *vcpu = c->current;
-	long ret;
+	int32_t ret;
 
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
