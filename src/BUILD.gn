@@ -18,7 +18,7 @@ source_set("src") {
   ]
 
   if (is_debug) {
-    deps += [ ":common_debug" ]
+    deps += [ ":dlog" ]
   }
 }
 
@@ -30,7 +30,7 @@ source_set("common") {
 }
 
 # Debug code that is not specific to a certain image so can be shared.
-source_set("common_debug") {
+source_set("dlog") {
   sources = [
     "dlog.c",
   ]
@@ -48,8 +48,11 @@ source_set("fdt") {
 
   deps = [
     ":common",
-    ":common_debug",
   ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
 }
 
 source_set("fdt_handler") {
@@ -59,9 +62,12 @@ source_set("fdt_handler") {
 
   deps = [
     ":common",
-    ":common_debug",
     ":fdt",
   ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
 }
 
 source_set("memiter") {
@@ -76,9 +82,11 @@ source_set("mm") {
     "mm.c",
   ]
 
-  deps = [
-    ":common_debug",
-  ]
+  deps = []
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
 }
 
 executable("unit_tests") {

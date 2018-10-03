@@ -8,7 +8,7 @@ source_set("hftest_vm") {
 
   deps = [
     "//src:common",
-    "//src:common_debug",
+    "//src:dlog",
     "//src:fdt",
     "//src:memiter",
     "//src/arch/${arch}:entry",
@@ -22,7 +22,7 @@ source_set("hftest_vm") {
 source_set("other_vm") {
   deps = [
     "//src:common",
-    "//src:common_debug",
+    "//src:dlog",
     "//src/arch/${arch}:entry",
     "//src/arch/${arch}/vm:hf_call",
     "//src/arch/${arch}/vm:shutdown",
