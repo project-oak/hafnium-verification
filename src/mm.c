@@ -94,6 +94,7 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	pte_t new_pte;
 	size_t i;
 	size_t inc;
+	int level_below = level - 1;
 
 	/* Just return pointer to table if it's already populated. */
 	if (arch_mm_pte_is_table(v, level)) {
@@ -110,14 +111,13 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 
 	/* Determine template for new pte and its increment. */
 	if (arch_mm_pte_is_block(v, level)) {
-		int level_below = level - 1;
 		inc = mm_entry_size(level_below);
 		new_pte = arch_mm_block_pte(level_below,
 					    arch_mm_block_from_pte(v),
 					    arch_mm_pte_attrs(v));
 	} else {
 		inc = 0;
-		new_pte = arch_mm_absent_pte(level);
+		new_pte = arch_mm_absent_pte(level_below);
 	}
 
 	/* Initialise entries in the new table. */
