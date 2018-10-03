@@ -48,6 +48,7 @@ static_assert(
 
 #define MAP_FLAG_SYNC   0x01
 #define MAP_FLAG_COMMIT 0x02
+#define MAP_FLAG_UNMAP  0x04
 
 /* clang-format on */
 
@@ -188,8 +189,24 @@ static void mm_free_page_pte(pte_t pte, int level)
 }
 
 /**
+ * Returns whether all entries in this table are absent.
+ */
+static bool mm_ptable_is_empty(pte_t *table, int level)
+{
+	uint64_t i;
+
+	for (i = 0; i < NUM_ENTRIES; ++i) {
+		if (arch_mm_pte_is_present(table[i], level)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
  * Updates the page table at the given level to map the given address range to a
- * physical range using the provided (architecture-specific) attributes.
+ * physical range using the provided (architecture-specific) attributes. Or if
+ * MAP_FLAG_UNMAP is set, unmap the given range instead.
  *
  * This function calls itself recursively if it needs to update additional
  * levels, but the recursion is bound by the maximum number of levels in a page
@@ -203,6 +220,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
 	bool sync = flags & MAP_FLAG_SYNC;
+	bool unmap = flags & MAP_FLAG_UNMAP;
 
 	/* Cap end so that we don't go over the current level max. */
 	if (end > level_end) {
@@ -211,25 +229,61 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 
 	/* Fill each entry in the table. */
 	while (begin < end) {
-		if ((end - begin) >= entry_size &&
-		    arch_mm_is_block_allowed(level) &&
-		    (begin & (entry_size - 1)) == 0) {
+		if (unmap ? !arch_mm_pte_is_present(*pte, level)
+			  : arch_mm_pte_is_block(*pte, level) &&
+				    arch_mm_pte_attrs(*pte) == attrs) {
+			/*
+			 * If the entry is already mapped with the right
+			 * attributes, or already absent in the case of
+			 * unmapping, no need to do anything; carry on to the
+			 * next entry.
+			 */
+		} else if ((end - begin) >= entry_size &&
+			   (unmap || arch_mm_is_block_allowed(level)) &&
+			   (begin & (entry_size - 1)) == 0) {
+			/*
+			 * If the entire entry is within the region we want to
+			 * map, map/unmap the whole entry.
+			 */
 			if (commit) {
 				pte_t v = *pte;
-				*pte = arch_mm_block_pte(level, pa, attrs);
+				*pte = unmap ? arch_mm_absent_pte(level)
+					     : arch_mm_block_pte(level, pa,
+								 attrs);
 				/* TODO: Add barrier. How do we ensure this
 				 * isn't in use by another CPU? Send IPI? */
 				mm_free_page_pte(v, level);
 			}
 		} else {
+			/*
+			 * If the entry is already a subtable get it; otherwise
+			 * replace it with an equivalent subtable and get that.
+			 */
 			pte_t *nt = mm_populate_table_pte(pte, level, sync);
 			if (!nt) {
 				return false;
 			}
 
+			/*
+			 * Recurse to map/unmap the appropriate entries within
+			 * the subtable.
+			 */
 			if (!mm_map_level(begin, end, pa, attrs, nt, level - 1,
 					  flags)) {
 				return false;
+			}
+
+			/*
+			 * If the subtable is now empty, replace it with an
+			 * absent entry at this level.
+			 */
+			if (commit && unmap &&
+			    mm_ptable_is_empty(nt, level - 1)) {
+				pte_t v = *pte;
+				*pte = arch_mm_absent_pte(level);
+				/* TODO: Add barrier. How do we ensure this
+				 * isn't in use by another CPU? Send IPI? */
+				mm_free_page_pte(v, level);
 			}
 		}
 
@@ -300,7 +354,8 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 			    paddr_t pa_end, int mode)
 {
-	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
+	int flags =
+		((mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC) | MAP_FLAG_UNMAP;
 	int level = arch_mm_max_level(mode);
 	pte_t *table = ptr_from_pa(t->table);
 	ptable_addr_t begin;
@@ -344,8 +399,15 @@ static bool mm_ptable_identity_map_page(struct mm_ptable *t, paddr_t pa,
 	addr = pa_addr(pa);
 
 	for (i = arch_mm_max_level(mode); i > 0; i--) {
-		table = mm_populate_table_pte(&table[mm_index(addr, i)], i,
-					      sync);
+		pte_t *pte = &table[mm_index(addr, i)];
+		if (arch_mm_pte_is_block(*pte, i) &&
+		    arch_mm_pte_attrs(*pte) == attrs) {
+			/* If the page is within a block that is already mapped
+			 * with the appropriate attributes, no need to do
+			 * anything more. */
+			return true;
+		}
+		table = mm_populate_table_pte(pte, i, sync);
 		if (!table) {
 			return false;
 		}

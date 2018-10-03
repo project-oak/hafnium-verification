@@ -162,3 +162,185 @@ TEST(mm, ptable_defrag_block_subtables)
 			<< "i=" << i;
 	}
 }
+
+/** If nothing is mapped, unmapping the hypervisor should have no effect. */
+TEST(mm, ptable_unmap_hypervisor_not_mapped)
+{
+	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+
+	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	init_absent(table);
+
+	struct mm_ptable ptable;
+	ptable.table = pa_init((uintpaddr_t)table);
+
+	EXPECT_TRUE(mm_ptable_unmap_hypervisor(&ptable, 0));
+
+	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+}
+
+/**
+ * Unmapping everything should result in an empty page table with no subtables.
+ */
+TEST(mm, vm_unmap)
+{
+	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+
+	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	pte_t *subtable_a = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	pte_t *subtable_aa = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	init_absent(table);
+	init_absent(subtable_a);
+	init_absent(subtable_aa);
+
+	subtable_aa[0] = arch_mm_block_pte(TOP_LEVEL - 2, pa_init(0), 0);
+	subtable_a[0] = arch_mm_table_pte(TOP_LEVEL - 1,
+					  pa_init((uintpaddr_t)subtable_aa));
+	table[0] =
+		arch_mm_table_pte(TOP_LEVEL, pa_init((uintpaddr_t)subtable_a));
+
+	struct mm_ptable ptable;
+	ptable.table = pa_init((uintpaddr_t)table);
+
+	EXPECT_TRUE(mm_vm_unmap(&ptable, pa_init(0), pa_init(1), 0));
+
+	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+}
+
+/**
+ * Mapping a range should result in just the corresponding pages being mapped.
+ */
+TEST(mm, vm_identity_map)
+{
+	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+
+	/* Start with an empty page table. */
+	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	init_absent(table);
+	struct mm_ptable ptable;
+	ptable.table = pa_init((uintpaddr_t)table);
+
+	/* Try mapping the first page. */
+	ipaddr_t ipa = ipa_init(-1);
+	EXPECT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), pa_init(PAGE_SIZE),
+				       0, &ipa));
+	EXPECT_THAT(ipa_addr(ipa), Eq(0));
+
+	/* Check that the first page is mapped, and nothing else. */
+	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+	ASSERT_TRUE(arch_mm_pte_is_table(table[0], TOP_LEVEL));
+	pte_t *subtable_a = (pte_t *)ptr_from_va(
+		va_from_pa(arch_mm_table_from_pte(table[0])));
+	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(subtable_a[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+	ASSERT_TRUE(arch_mm_pte_is_table(subtable_a[0], TOP_LEVEL - 1));
+	pte_t *subtable_aa = (pte_t *)ptr_from_va(
+		va_from_pa(arch_mm_table_from_pte(subtable_a[0])));
+	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(subtable_aa[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+	EXPECT_TRUE(arch_mm_pte_is_block(subtable_aa[0], TOP_LEVEL - 2));
+	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(subtable_aa[0])), Eq(0));
+}
+
+/** Mapping a range that is already mapped should be a no-op. */
+TEST(mm, vm_identity_map_already_mapped)
+{
+	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+
+	/* Start with a full page table mapping everything. */
+	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	init_blocks(table, TOP_LEVEL, pa_init(0), 0);
+	struct mm_ptable ptable;
+	ptable.table = pa_init((uintpaddr_t)table);
+
+	/* Try mapping the first page. */
+	ipaddr_t ipa = ipa_init(-1);
+	EXPECT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), pa_init(PAGE_SIZE),
+				       0, &ipa));
+	EXPECT_THAT(ipa_addr(ipa), Eq(0));
+
+	/*
+	 * The table should still be full of blocks, with no subtables or
+	 * anything else.
+	 */
+	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
+		EXPECT_TRUE(arch_mm_pte_is_block(table[i], TOP_LEVEL))
+			<< "i=" << i;
+	}
+}
+
+/** Mapping a single page should result in just that page being mapped. */
+TEST(mm, vm_identity_map_page)
+{
+	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+
+	/* Start with an empty page table. */
+	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	init_absent(table);
+	struct mm_ptable ptable;
+	ptable.table = pa_init((uintpaddr_t)table);
+
+	/* Try mapping the first page. */
+	ipaddr_t ipa = ipa_init(-1);
+	EXPECT_TRUE(mm_vm_identity_map_page(&ptable, pa_init(0), 0, &ipa));
+	EXPECT_THAT(ipa_addr(ipa), Eq(0));
+
+	/* Check that the first page is mapped, and nothing else. */
+	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+	ASSERT_TRUE(arch_mm_pte_is_table(table[0], TOP_LEVEL));
+	pte_t *subtable_a = (pte_t *)ptr_from_va(
+		va_from_pa(arch_mm_table_from_pte(table[0])));
+	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(subtable_a[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+	ASSERT_TRUE(arch_mm_pte_is_table(subtable_a[0], TOP_LEVEL - 1));
+	pte_t *subtable_aa = (pte_t *)ptr_from_va(
+		va_from_pa(arch_mm_table_from_pte(subtable_a[0])));
+	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
+		EXPECT_THAT(subtable_aa[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	}
+	EXPECT_TRUE(arch_mm_pte_is_block(subtable_aa[0], TOP_LEVEL - 2));
+	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(subtable_aa[0])), Eq(0));
+}
+
+/** Mapping a page that is already mapped should be a no-op. */
+TEST(mm, vm_identity_map_page_already_mapped)
+{
+	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+
+	/* Start with a full page table mapping everything. */
+	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	init_blocks(table, TOP_LEVEL, pa_init(0), 0);
+	struct mm_ptable ptable;
+	ptable.table = pa_init((uintpaddr_t)table);
+
+	/* Try mapping the first page. */
+	ipaddr_t ipa = ipa_init(-1);
+	EXPECT_TRUE(mm_vm_identity_map_page(&ptable, pa_init(0), 0, &ipa));
+	EXPECT_THAT(ipa_addr(ipa), Eq(0));
+
+	/*
+	 * The table should still be full of blocks, with no subtables or
+	 * anything else.
+	 */
+	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
+		EXPECT_TRUE(arch_mm_pte_is_block(table[i], TOP_LEVEL))
+			<< "i=" << i;
+	}
+}
