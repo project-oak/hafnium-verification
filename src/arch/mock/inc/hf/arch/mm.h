@@ -5,10 +5,24 @@
 
 #include "hf/addr.h"
 
+/*
+ * Our mock architecture has page tables rather similar to aarch64, but not
+ * quite.
+ * - The highest level table is always 2, lowest level is 0.
+ * - Blocks are allowed at all levels.
+ * There are four types of entries:
+ * - Absent: 0
+ * - Page, at level 0: <page-aligned address> | <attrs> | 0x3
+ * - Block, at level 2 or 1: <block-aligned address> | <attrs> | 0x1
+ * - Subtable, at level 2 or 1: <subtable address> | 0x3
+ * <attrs> are always 0 for now.
+ */
+
 /* A page table entry. */
 typedef uint64_t pte_t;
 
 #define PAGE_LEVEL_BITS 9
+#define PL011_BASE 0x11
 
 /**
  * Returns the encoding of a page table entry that isn't present.
@@ -38,7 +52,7 @@ static inline pte_t arch_mm_table_pte(int level, paddr_t pa)
  */
 static inline pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs)
 {
-	pte_t pte = pa_addr(pa) | attrs;
+	pte_t pte = pa_addr(pa) | attrs | 0x1;
 	if (level == 0) {
 		pte |= 0x2;
 	}
@@ -81,13 +95,20 @@ static inline bool arch_mm_pte_is_block(pte_t pte, int level)
 	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
 }
 
+static inline uint64_t hf_arch_mock_mm_clear_pte_attrs(pte_t pte)
+{
+	return pte & ~0x3;
+}
+
 /**
  * Clears the given physical address, i.e., sets the ignored bits (from a page
  * table perspective) to zero.
  */
 static inline paddr_t arch_mm_clear_pa(paddr_t pa)
 {
-	return pa_init(0);
+	/* This is assumed to round down to the page boundary. */
+	return pa_init(hf_arch_mock_mm_clear_pte_attrs(pa_addr(pa)) &
+		       ~((1 << PAGE_BITS) - 1));
 }
 
 /**
@@ -96,7 +117,7 @@ static inline paddr_t arch_mm_clear_pa(paddr_t pa)
  */
 static inline paddr_t arch_mm_block_from_pte(pte_t pte)
 {
-	return pa_init(pte);
+	return pa_init(hf_arch_mock_mm_clear_pte_attrs(pte));
 }
 
 /**
@@ -105,7 +126,7 @@ static inline paddr_t arch_mm_block_from_pte(pte_t pte)
  */
 static inline paddr_t arch_mm_table_from_pte(pte_t pte)
 {
-	return pa_init(pte);
+	return pa_init(hf_arch_mock_mm_clear_pte_attrs(pte));
 }
 
 /**
@@ -118,18 +139,53 @@ static inline uint64_t arch_mm_pte_attrs(pte_t pte)
 }
 
 /**
+ * Given the attrs from a table at some level and the attrs from all the blocks
+ * in that table, return equivalent attrs to use for a block which will replace
+ * the entire table.
+ */
+static inline uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
+							 uint64_t block_attrs)
+{
+	return table_attrs | block_attrs;
+}
+
+/**
  * Invalidates stage-1 TLB entries referring to the given virtual address range.
  */
-void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end);
+static inline void arch_mm_invalidate_stage1_range(vaddr_t va_begin,
+						   vaddr_t va_end)
+{
+}
 
 /**
  * Invalidates stage-2 TLB entries referring to the given intermediate physical
  * address range.
  */
-void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end);
+static inline void arch_mm_invalidate_stage2_range(ipaddr_t va_begin,
+						   ipaddr_t va_end)
+{
+}
+
+/**
+ * Determines the maximum level supported by the given mode.
+ */
+static inline int arch_mm_max_level(int mode)
+{
+	(void)mode;
+	return 2;
+}
+
+static inline uint64_t arch_mm_mode_to_attrs(int mode)
+{
+	(void)mode;
+	return 0;
+}
+
+static inline bool arch_mm_init(paddr_t table, bool first)
+{
+	(void)table;
+	(void)first;
+	return true;
+}
 
 void arch_mm_set_vm(uint64_t vmid, paddr_t table);
-
-uint64_t arch_mm_mode_to_attrs(int mode);
-bool arch_mm_init(paddr_t table, bool first);
-int arch_mm_max_level(int mode);

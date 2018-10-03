@@ -1,13 +1,11 @@
 # Hypervisor specific code.
 source_set("src") {
   sources = [
-    "alloc.c",
     "api.c",
     "cpio.c",
     "cpu.c",
     "load.c",
     "main.c",
-    "mm.c",
     "vm.c",
   ]
 
@@ -16,6 +14,7 @@ source_set("src") {
     ":fdt",
     ":fdt_handler",
     ":memiter",
+    ":mm",
   ]
 
   if (is_debug) {
@@ -71,6 +70,17 @@ source_set("memiter") {
   ]
 }
 
+source_set("mm") {
+  sources = [
+    "alloc.c",
+    "mm.c",
+  ]
+
+  deps = [
+    ":common_debug",
+  ]
+}
+
 executable("unit_tests") {
   testonly = true
 
@@ -79,11 +89,24 @@ executable("unit_tests") {
     "fdt_test.cc",
   ]
   cflags_cc = [ "-Wno-c99-extensions" ]
-
+  ldflags = [
+    "-Xlinker",
+    "-defsym=text_begin=0",
+    "-Xlinker",
+    "-defsym=text_end=100",
+    "-Xlinker",
+    "-defsym=rodata_begin=200",
+    "-Xlinker",
+    "-defsym=rodata_end=300",
+    "-Xlinker",
+    "-defsym=data_begin=400",
+    "-Xlinker",
+    "-defsym=data_end=500",
+  ]
   deps = [
     ":fdt",
     ":fdt_handler",
-    "mock:mm",
+    ":mm",
     "//third_party:gtest_main",
   ]
 }

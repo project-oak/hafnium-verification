@@ -1,12 +1,17 @@
 extern "C" {
 #include "hf/fdt_handler.h"
 
+#include "hf/alloc.h"
 #include "hf/boot_params.h"
 }
+
+#include <memory>
 
 #include <gmock/gmock.h>
 
 using ::testing::Eq;
+
+static constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
 
 /*
  * /dts-v1/;
@@ -35,7 +40,7 @@ using ::testing::Eq;
  * | xxd -i
  */
 
-static const uint8_t test_dtb[] = {
+static constexpr uint8_t test_dtb[] = {
 	0xd0, 0x0d, 0xfe, 0xed, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x00, 0x38,
 	0x00, 0x00, 0x01, 0x30, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x11,
 	0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4f,
@@ -71,7 +76,11 @@ static const uint8_t test_dtb[] = {
 
 TEST(fdt, get_boot_params)
 {
-	struct boot_params params;
+	std::unique_ptr<uint8_t[]> test_heap(new uint8_t[TEST_HEAP_SIZE]);
+	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+	ASSERT_TRUE(mm_init());
+
+	struct boot_params params = {};
 	EXPECT_TRUE(
 		fdt_get_boot_params(pa_init((uintpaddr_t)&test_dtb), &params));
 	EXPECT_THAT(params.mem_ranges_count, Eq(3));
