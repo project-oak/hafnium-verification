@@ -24,7 +24,7 @@ bool vm_init(uint32_t vcpu_count, struct vm **new_vm)
 
 	vm->id = vm_count;
 	vm->vcpu_count = vcpu_count;
-	vm->rpc.state = rpc_state_idle;
+	vm->mailbox.state = mailbox_state_empty;
 
 	/* Do basic initialization of vcpus. */
 	for (i = 0; i < vcpu_count; i++) {

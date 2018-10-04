@@ -10,10 +10,19 @@
 #include "hf/spinlock.h"
 
 enum vcpu_state {
+	/* The vcpu is switched off. */
 	vcpu_state_off,
+
+	/* The vcpu is ready to be run. */
 	vcpu_state_ready,
+
+	/* The vcpu is currently running. */
 	vcpu_state_running,
-	vcpu_state_blocked_rpc,
+
+	/* The vcpu is waiting for a message. */
+	vcpu_state_blocked_mailbox,
+
+	/* The vcpu is waiting for an interrupt. */
 	vcpu_state_blocked_interrupt,
 };
 
@@ -21,7 +30,7 @@ struct vcpu {
 	struct spinlock lock;
 	enum vcpu_state state;
 	struct vm *vm;
-	struct vcpu *rpc_next;
+	struct vcpu *mailbox_next;
 	struct arch_regs regs;
 };
 

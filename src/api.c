@@ -7,12 +7,16 @@
 
 #include "vmapi/hf/call.h"
 
-static_assert(HF_RPC_REQUEST_MAX_SIZE == PAGE_SIZE,
+static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
 	      "Currently, a page is mapped for the send and receive buffers so "
 	      "the maximum request is the size of a page.");
 
 /**
  * Switches the physical CPU back to the corresponding vcpu of the primary VM.
+ *
+ * This triggers the scheduling logic to run. Run in the context of secondary VM
+ * to cause HF_VCPU_RUN to return and the primary VM to regain control of the
+ * cpu.
  */
 static struct vcpu *api_switch_to_primary(size_t primary_retval,
 					  enum vcpu_state secondary_state)
@@ -25,8 +29,7 @@ static struct vcpu *api_switch_to_primary(size_t primary_retval,
 	vm_set_current(primary);
 
 	/*
-	 * Inidicate to primary VM that this vcpu blocked waiting for an
-	 * interrupt.
+	 * Set the return valuefor the primary VM's call to HF_VCPU_RUN.
 	 */
 	arch_regs_set_retval(&next->regs, primary_retval);
 
@@ -36,6 +39,28 @@ static struct vcpu *api_switch_to_primary(size_t primary_retval,
 	sl_unlock(&vcpu->lock);
 
 	return next;
+}
+
+/**
+ * Returns to the primary vm leaving the current vcpu ready to be scheduled
+ * again.
+ */
+struct vcpu *api_yield(void)
+{
+	return api_switch_to_primary(
+		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0, 0),
+		vcpu_state_ready);
+}
+
+/**
+ * Puts the current vcpu in wait for interrupt mode, and returns to the primary
+ * vm.
+ */
+struct vcpu *api_wait_for_interrupt(void)
+{
+	return api_switch_to_primary(
+		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0, 0),
+		vcpu_state_blocked_interrupt);
 }
 
 /**
@@ -100,19 +125,20 @@ int64_t api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx, struct vcpu **next)
 
 	sl_lock(&vcpu->lock);
 	if (vcpu->state != vcpu_state_ready) {
-		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
+		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0,
+					   0);
 	} else {
 		vcpu->state = vcpu_state_running;
 		vm_set_current(vm);
 		*next = vcpu;
-		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0);
+		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0, 0);
 	}
 	sl_unlock(&vcpu->lock);
 
 	return ret;
 
 fail:
-	return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0);
+	return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0, 0);
 }
 
 /**
@@ -137,7 +163,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	sl_lock(&vm->lock);
 
 	/* We only allow these to be setup once. */
-	if (vm->rpc.send || vm->rpc.recv) {
+	if (vm->mailbox.send || vm->mailbox.recv) {
 		ret = -1;
 		goto exit;
 	}
@@ -168,8 +194,9 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	pa_recv_end = pa_add(pa_recv_begin, PAGE_SIZE);
 
 	/* Map the send page as read-only in the hypervisor address space. */
-	vm->rpc.send = mm_identity_map(pa_send_begin, pa_send_end, MM_MODE_R);
-	if (!vm->rpc.send) {
+	vm->mailbox.send =
+		mm_identity_map(pa_send_begin, pa_send_end, MM_MODE_R);
+	if (!vm->mailbox.send) {
 		ret = -1;
 		goto exit;
 	}
@@ -178,9 +205,10 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
 	 * Map the receive page as writable in the hypervisor address space. On
 	 * failure, unmap the send page before returning.
 	 */
-	vm->rpc.recv = mm_identity_map(pa_recv_begin, pa_recv_end, MM_MODE_W);
-	if (!vm->rpc.recv) {
-		vm->rpc.send = NULL;
+	vm->mailbox.recv =
+		mm_identity_map(pa_recv_begin, pa_recv_end, MM_MODE_W);
+	if (!vm->mailbox.recv) {
+		vm->mailbox.send = NULL;
 		mm_unmap(pa_send_begin, pa_send_end, 0);
 		ret = -1;
 		goto exit;
@@ -196,18 +224,20 @@ exit:
 }
 
 /**
- * Sends an RPC request from the primary VM to a secondary VM. Data is copied
- * from the caller's send buffer to the destination's receive buffer.
+ * Copies data from the sender's send buffer to the recipient's receive buffer
+ * and notifies the recipient.
  */
-int64_t api_rpc_request(uint32_t vm_id, size_t size)
+int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 {
 	struct vm *from = cpu()->current->vm;
 	struct vm *to;
 	const void *from_buf;
+	uint16_t vcpu;
 	int64_t ret;
+	int64_t primary_ret;
 
-	/* Basic argument validation. */
-	if (size > HF_RPC_REQUEST_MAX_SIZE) {
+	/* Limit the size of transfer. */
+	if (size > HF_MAILBOX_SIZE) {
 		return -1;
 	}
 
@@ -222,199 +252,169 @@ int64_t api_rpc_request(uint32_t vm_id, size_t size)
 		return -1;
 	}
 
-	/* Only the primary VM can make calls. */
-	if (from->id != HF_PRIMARY_VM_ID) {
-		return -1;
-	}
-
 	/*
 	 * Check that the sender has configured its send buffer. It is safe to
 	 * use from_buf after releasing the lock because the buffer cannot be
 	 * modified once it's configured.
 	 */
 	sl_lock(&from->lock);
-	from_buf = from->rpc.send;
+	from_buf = from->mailbox.send;
 	sl_unlock(&from->lock);
-	if (!from_buf) {
+	if (from_buf == NULL) {
 		return -1;
 	}
 
 	sl_lock(&to->lock);
 
-	if (to->rpc.state != rpc_state_idle || !to->rpc.recv) {
+	if (to->mailbox.state != mailbox_state_empty ||
+	    to->mailbox.recv == NULL) {
 		/* Fail if the target isn't currently ready to receive data. */
 		ret = -1;
-	} else {
-		/* Copy data. */
-		memcpy(to->rpc.recv, from_buf, size);
-		to->rpc.recv_bytes = size;
-
-		if (!to->rpc.recv_waiter) {
-			to->rpc.state = rpc_state_pending;
-			ret = to->vcpu_count;
-		} else {
-			struct vcpu *to_vcpu = to->rpc.recv_waiter;
-
-			to->rpc.state = rpc_state_inflight;
-
-			/*
-			 * Take target vcpu out of waiter list and mark as ready
-			 * to run again.
-			 */
-			sl_lock(&to_vcpu->lock);
-			to->rpc.recv_waiter = to_vcpu->rpc_next;
-			to_vcpu->state = vcpu_state_ready;
-			arch_regs_set_retval(&to_vcpu->regs, size);
-			sl_unlock(&to_vcpu->lock);
-
-			ret = to_vcpu - to->vcpus;
-		}
+		goto out;
 	}
 
+	/* Copy data. */
+	memcpy(to->mailbox.recv, from_buf, size);
+	to->mailbox.recv_bytes = size;
+	to->mailbox.recv_from_id = from->id;
+	to->mailbox.state = mailbox_state_read;
+
+	/* Messages for the primary VM are delivered directly. */
+	if (to->id == HF_PRIMARY_VM_ID) {
+		primary_ret =
+			HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_MESSAGE, 0, size);
+		ret = 0;
+		goto out;
+	}
+
+	/*
+	 * Try to find a vcpu to handle the message and tell the scheduler to
+	 * run it.
+	 */
+	if (to->mailbox.recv_waiter == NULL) {
+		/*
+		 * The scheduler must choose a vcpu to interrupt so it can
+		 * handle the message.
+		 */
+		to->mailbox.state = mailbox_state_received;
+		vcpu = HF_INVALID_VCPU;
+	} else {
+		struct vcpu *to_vcpu = to->mailbox.recv_waiter;
+
+		/*
+		 * Take target vcpu out of waiter list and mark as ready
+		 * to run again.
+		 */
+		sl_lock(&to_vcpu->lock);
+		to->mailbox.recv_waiter = to_vcpu->mailbox_next;
+		to_vcpu->state = vcpu_state_ready;
+
+		/* Return from HF_MAILBOX_RECEIVE. */
+		arch_regs_set_retval(&to_vcpu->regs,
+				     HF_MAILBOX_RECEIVE_RESPONSE(
+					     to->mailbox.recv_from_id, size));
+
+		sl_unlock(&to_vcpu->lock);
+
+		vcpu = to_vcpu - to->vcpus;
+	}
+
+	/* Return to the primary VM directly or with a switch. */
+	primary_ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAKE_UP, to->id, vcpu);
+	ret = 0;
+
+out:
+	/*
+	 * Unlock before routing the return values as switching to the primary
+	 * will acquire more locks and nesting the locks is avoidable.
+	 */
 	sl_unlock(&to->lock);
 
-	return ret;
+	/* Report errors to the sender. */
+	if (ret != 0) {
+		return ret;
+	}
+
+	/* If the sender is the primary, return the vcpu to schedule. */
+	if (from->id == HF_PRIMARY_VM_ID) {
+		return vcpu;
+	}
+
+	/* Switch to primary for scheduling and return success to the sender. */
+	*next = api_switch_to_primary(primary_ret, vcpu_state_ready);
+	return 0;
 }
 
 /**
- * Reads a request sent from a previous call to api_rpc_request. If one isn't
- * available, this function can optionally block the caller until one becomes
- * available.
+ * Receives a message from the mailbox. If one isn't available, this function
+ * can optionally block the caller until one becomes available.
  *
- * Once the caller has completed handling a request, it must indicate it by
- * either calling api_rpc_reply or api_rpc_ack. No new requests can be accepted
- * until the current one is acknowledged.
+ * No new messages can be received until the mailbox has been cleared.
  */
-int64_t api_rpc_read_request(bool block, struct vcpu **next)
+int64_t api_mailbox_receive(bool block, struct vcpu **next)
 {
 	struct vcpu *vcpu = cpu()->current;
 	struct vm *vm = vcpu->vm;
-	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
-	int64_t ret;
+	int64_t ret = 0;
 
-	/* Only the secondary VMs can receive calls. */
+	/*
+	 * The primary VM will receive messages as a status code from running
+	 * vcpus and must not call this function.
+	 */
 	if (vm->id == HF_PRIMARY_VM_ID) {
 		return -1;
 	}
 
 	sl_lock(&vm->lock);
-	if (vm->rpc.state == rpc_state_pending) {
-		ret = vm->rpc.recv_bytes;
-		vm->rpc.state = rpc_state_inflight;
-	} else if (!block) {
-		ret = -1;
-	} else {
-		sl_lock(&vcpu->lock);
-		vcpu->state = vcpu_state_blocked_rpc;
 
-		/* Push vcpu into waiter list. */
-		vcpu->rpc_next = vm->rpc.recv_waiter;
-		vm->rpc.recv_waiter = vcpu;
-		sl_unlock(&vcpu->lock);
-
-		/* Switch back to primary vm. */
-		*next = &primary->vcpus[cpu_index(cpu())];
-		vm_set_current(primary);
-
-		/*
-		 * Inidicate to primary VM that this vcpu blocked waiting for an
-		 * interrupt.
-		 */
-		arch_regs_set_retval(
-			&(*next)->regs,
-			HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
-					     0));
-		ret = 0;
+	/* Return pending messages without blocking. */
+	if (vm->mailbox.state == mailbox_state_received) {
+		vm->mailbox.state = mailbox_state_read;
+		block = false;
+		ret = HF_MAILBOX_RECEIVE_RESPONSE(vm->mailbox.recv_from_id,
+						  vm->mailbox.recv_bytes);
+		goto out;
 	}
+
+	/* No pending message so fail if not allowed to block. */
+	if (!block) {
+		ret = -1;
+		goto out;
+	}
+
+	sl_lock(&vcpu->lock);
+	vcpu->state = vcpu_state_blocked_mailbox;
+
+	/* Push vcpu into waiter list. */
+	vcpu->mailbox_next = vm->mailbox.recv_waiter;
+	vm->mailbox.recv_waiter = vcpu;
+	sl_unlock(&vcpu->lock);
+
+	/* Switch back to primary vm to block. */
+	*next = api_wait_for_interrupt();
+
+out:
 	sl_unlock(&vm->lock);
 
 	return ret;
 }
 
 /**
- * Sends a reply from a secondary VM to the primary VM. Data is copied from the
- * caller's send buffer to the destination's receive buffer.
- *
- * It can optionally acknowledge the pending request.
+ * Clears the caller's mailbox so that a new message can be received. The caller
+ * must have copied out all data they wish to preserve as new messages will
+ * overwrite the old and will arrive asynchronously.
  */
-int64_t api_rpc_reply(size_t size, bool ack, struct vcpu **next)
-{
-	struct vm *from = cpu()->current->vm;
-	struct vm *to;
-	const void *from_buf;
-
-	/* Basic argument validation. */
-	if (size > PAGE_SIZE) {
-		return -1;
-	}
-
-	/* Only the secondary VM can send responses. */
-	if (from->id == HF_PRIMARY_VM_ID) {
-		return -1;
-	}
-
-	/* Acknowledge the current pending request if requested. */
-	if (ack) {
-		api_rpc_ack();
-	}
-
-	/*
-	 * Check that the sender has configured its send buffer. It is safe to
-	 * use from_buf after releasing the lock because the buffer cannot be
-	 * modified once it's configured.
-	 */
-	sl_lock(&from->lock);
-	from_buf = from->rpc.send;
-	sl_unlock(&from->lock);
-	if (!from_buf) {
-		return -1;
-	}
-
-	to = vm_get(HF_PRIMARY_VM_ID);
-	sl_lock(&to->lock);
-
-	if (to->rpc.state != rpc_state_idle || !to->rpc.recv) {
-		/*
-		 * Fail if the target isn't currently ready to receive a
-		 * response.
-		 */
-		sl_unlock(&to->lock);
-		return -1;
-	}
-
-	/* Copy data. */
-	memcpy(to->rpc.recv, from_buf, size);
-	to->rpc.recv_bytes = size;
-	to->rpc.state = rpc_state_inflight;
-	sl_unlock(&to->lock);
-
-	/*
-	 * Switch back to primary VM so that it is aware that a response was
-	 * received. But we leave the current vcpu still runnable.
-	 */
-	*next = api_switch_to_primary(
-		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_RESPONSE_READY, size),
-		vcpu_state_ready);
-
-	return 0;
-}
-
-/**
- * Acknowledges that either a request or a reply has been received and handled.
- * After this call completes, the caller will be able to receive additional
- * requests or replies.
- */
-int64_t api_rpc_ack(void)
+int64_t api_mailbox_clear(void)
 {
 	struct vm *vm = cpu()->current->vm;
 	int64_t ret;
 
 	sl_lock(&vm->lock);
-	if (vm->rpc.state != rpc_state_inflight) {
-		ret = -1;
-	} else {
+	if (vm->mailbox.state == mailbox_state_read) {
 		ret = 0;
-		vm->rpc.state = rpc_state_idle;
+		vm->mailbox.state = mailbox_state_empty;
+	} else {
+		ret = -1;
 	}
 	sl_unlock(&vm->lock);
 
@@ -423,25 +423,4 @@ int64_t api_rpc_ack(void)
 	}
 
 	return ret;
-}
-
-/**
- * Returns to the primary vm leaving the current vcpu ready to be scheduled
- * again.
- */
-struct vcpu *api_yield(void)
-{
-	return api_switch_to_primary(HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0),
-				     vcpu_state_ready);
-}
-
-/**
- * Puts the current vcpu in wait for interrupt mode, and returns to the primary
- * vm.
- */
-struct vcpu *api_wait_for_interrupt(void)
-{
-	return api_switch_to_primary(
-		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0),
-		vcpu_state_blocked_interrupt);
 }

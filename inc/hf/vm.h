@@ -3,14 +3,20 @@
 #include "hf/cpu.h"
 #include "hf/mm.h"
 
-enum rpc_state {
-	rpc_state_idle,
-	rpc_state_pending,
-	rpc_state_inflight,
+enum mailbox_state {
+	/* There is no message in the mailbox. */
+	mailbox_state_empty,
+
+	/* There is a message in the mailbox that is waiting for a reader. */
+	mailbox_state_received,
+
+	/* There is a message in the mailbox that has been read. */
+	mailbox_state_read,
 };
 
-struct rpc {
-	enum rpc_state state;
+struct mailbox {
+	enum mailbox_state state;
+	uint32_t recv_from_id;
 	int16_t recv_bytes;
 	void *recv;
 	const void *send;
@@ -23,7 +29,7 @@ struct vm {
 	uint32_t vcpu_count;
 	struct vcpu vcpus[MAX_CPUS];
 	struct mm_ptable ptable;
-	struct rpc rpc;
+	struct mailbox mailbox;
 };
 
 bool vm_init(uint32_t vcpu_count, struct vm **new_vm);

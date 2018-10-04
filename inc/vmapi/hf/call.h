@@ -24,10 +24,9 @@ typedef uintptr_t hf_ipaddr_t;
 #define HF_VM_GET_COUNT     0xff01
 #define HF_VCPU_GET_COUNT   0xff02
 #define HF_VM_CONFIGURE     0xff03
-#define HF_RPC_REQUEST      0xff04
-#define HF_RPC_READ_REQUEST 0xff05
-#define HF_RPC_ACK          0xff06
-#define HF_RPC_REPLY        0xff07
+#define HF_MAILBOX_SEND     0xff04
+#define HF_MAILBOX_RECEIVE  0xff05
+#define HF_MAILBOX_CLEAR    0xff06
 
 /* The ID of the primary VM which is responsile for scheduling. */
 #define HF_PRIMARY_VM_ID 0
@@ -36,14 +35,26 @@ typedef uintptr_t hf_ipaddr_t;
 #define HF_VCPU_RUN_YIELD              0x00
 #define HF_VCPU_RUN_WAIT_FOR_INTERRUPT 0x01
 #define HF_VCPU_RUN_WAKE_UP            0x02
-#define HF_VCPU_RUN_RESPONSE_READY     0x03
+#define HF_VCPU_RUN_MESSAGE            0x03
 
 /* Construct and destruct the hf_vcpu_run() response. */
-#define HF_VCPU_RUN_RESPONSE(code, data) ((code & 0xff) | (data << 8))
+#define HF_VCPU_RUN_RESPONSE(code, vm_id, data)               \
+	((code & 0xff) | ((uint64_t)(vm_id & 0xffff) << 16) | \
+	 ((uint64_t)data << 32))
 #define HF_VCPU_RUN_CODE(ret) (ret & 0xff)
-#define HF_VCPU_RUN_DATA(ret) (ret >> 8)
+#define HF_VCPU_RUN_VM_ID(ret) ((ret >> 16) & 0xffff)
+#define HF_VCPU_RUN_DATA(ret) (ret >> 32)
 
-#define HF_RPC_REQUEST_MAX_SIZE 4096
+/* Construct and destruct the hf_mailbox_receive() response. */
+#define HF_MAILBOX_RECEIVE_RESPONSE(vm_id, size) \
+	((vm_id & 0xffff) | ((uint64_t)size << 32))
+#define HF_MAILBOX_RECEIVE_VM_ID(ret) (ret & 0xffff)
+#define HF_MAILBOX_RECEIVE_SIZE(ret) (ret >> 32)
+
+#define HF_MAILBOX_SIZE 4096
+
+#define HF_INVALID_VM_ID 0xffff
+#define HF_INVALID_VCPU  0xffff
 
 /* clang-format on */
 
@@ -87,45 +98,28 @@ static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
 }
 
 /**
- * Called by the primary VM to send an RPC request to a secondary VM. Data is
- * copied from the caller's send buffer to the destination's receive buffer.
+ * Copies data from the sender's send buffer to the recipient's receive buffer.
  */
-static inline int64_t hf_rpc_request(uint32_t vm_id, size_t size)
+static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size)
 {
-	return hf_call(HF_RPC_REQUEST, vm_id, size, 0);
+	return hf_call(HF_MAILBOX_SEND, vm_id, size, 0);
 }
 
 /**
- * Called by the primary VM to read a request sent from a previous call to
- * api_rpc_request. If one isn't available, this function can optionally block
- * the caller until one becomes available.
+ * Called by secondary VMs to receive a message. The call can optionally block
+ * until a message is received.
  *
- * Once the caller has completed handling a request, it must indicate it by
- * either calling api_rpc_reply or api_rpc_ack. No new requests can be accepted
- * until the current one is acknowledged.
+ * The mailbox must be cleared before a new message can be received.
  */
-static inline int64_t hf_rpc_read_request(bool block)
+static inline int64_t hf_mailbox_receive(bool block)
 {
-	return hf_call(HF_RPC_READ_REQUEST, block, 0, 0);
+	return hf_call(HF_MAILBOX_RECEIVE, block, 0, 0);
 }
 
 /**
- * Acknowledges that either a request or a reply has been received and handled.
- * After this call completes, the caller will be able to receive additional
- * requests or replies.
+ * Clears the mailbox so a new message can be received.
  */
-static inline int64_t hf_rpc_ack(void)
+static inline int64_t hf_mailbox_clear(void)
 {
-	return hf_call(HF_RPC_ACK, 0, 0, 0);
-}
-
-/**
- * Called by a secondary VM to send a reply to the primary VM. Data is copied
- * from the caller's send buffer to the destination's receive buffer.
- *
- * It can optionally acknowledge the pending request.
- */
-static inline int64_t hf_rpc_reply(size_t size, bool ack)
-{
-	return hf_call(HF_RPC_REPLY, size, ack, 0);
+	return hf_call(HF_MAILBOX_CLEAR, 0, 0, 0);
 }

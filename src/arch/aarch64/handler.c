@@ -189,20 +189,16 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2));
 		break;
 
-	case HF_RPC_REQUEST:
-		ret.user_ret = api_rpc_request(arg1, arg2);
+	case HF_MAILBOX_SEND:
+		ret.user_ret = api_mailbox_send(arg1, arg2, &ret.new);
 		break;
 
-	case HF_RPC_READ_REQUEST:
-		ret.user_ret = api_rpc_read_request(arg1, &ret.new);
+	case HF_MAILBOX_RECEIVE:
+		ret.user_ret = api_mailbox_receive(arg1, &ret.new);
 		break;
 
-	case HF_RPC_ACK:
-		ret.user_ret = api_rpc_ack();
-		break;
-
-	case HF_RPC_REPLY:
-		ret.user_ret = api_rpc_reply(arg1, arg2, &ret.new);
+	case HF_MAILBOX_CLEAR:
+		ret.user_ret = api_mailbox_clear();
 		break;
 
 	default:
