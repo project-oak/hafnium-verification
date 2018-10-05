@@ -1,6 +1,6 @@
 #include "vmapi/hf/call.h"
 
-#include "../hftest.h"
+#include "hftest.h"
 
 TEST(hf_vm_get_count, no_secondary_vms)
 {

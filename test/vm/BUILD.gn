@@ -1,5 +1,6 @@
 import("//build/image/image.gni")
 
+# Primary VMs host the test framework.
 source_set("hftest_vm") {
   sources = [
     "hftest.c",
@@ -18,8 +19,8 @@ source_set("hftest_vm") {
   ]
 }
 
-# TODO: work out what to run in the secondary VMs
-source_set("other_vm") {
+# Secondary VMs can be used as part of a test in the primary.
+source_set("secondary_vm") {
   deps = [
     "//src:common",
     "//src:dlog",
@@ -28,4 +29,46 @@ source_set("other_vm") {
     "//src/arch/${arch}/vm:shutdown",
     "//src/arch/${arch}/vm:vm_entry",
   ]
+}
+
+# Tests with no secondary VMs.
+vm_kernel("primary_only_test_vm") {
+  testonly = true
+
+  sources = [
+    "primary_only.c",
+  ]
+
+  deps = [
+    ":hftest_vm",
+  ]
+}
+
+initrd("primary_only_test") {
+  testonly = true
+  primary_vm = ":primary_only_test_vm"
+}
+
+# Tests with secondary VMs.
+vm_kernel("primary_with_secondaries_test_vm") {
+  testonly = true
+
+  sources = [
+    "primary_with_secondaries.c",
+  ]
+
+  deps = [
+    ":hftest_vm",
+  ]
+}
+
+initrd("primary_with_secondaries_test") {
+  testonly = true
+  primary_vm = ":primary_with_secondaries_test_vm"
+  secondary_vms = [ [
+        "1048576",
+        "1",
+        "echo",
+        "//test/vm/secondaries:echo",
+      ] ]
 }

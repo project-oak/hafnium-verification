@@ -1,0 +1,13 @@
+import("//build/image/image.gni")
+
+vm_kernel("echo") {
+  testonly = true
+
+  sources = [
+    "echo.c",
+  ]
+
+  deps = [
+    "//test/vm:secondary_vm",
+  ]
+}

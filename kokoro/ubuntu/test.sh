@@ -24,4 +24,4 @@ $TIMEOUT 30s $OUT/clang_mock_arch/unit_tests \
 
 # Run the tests with a timeout so they can't loop forever.
 $HFTEST primary_only_test
-$HFTEST primary_with_secondary_test
+$HFTEST primary_with_secondaries_test
