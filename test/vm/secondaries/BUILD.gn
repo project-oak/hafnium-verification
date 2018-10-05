@@ -11,3 +11,27 @@ vm_kernel("echo") {
     "//test/vm:secondary_vm",
   ]
 }
+
+vm_kernel("relay_a") {
+  testonly = true
+
+  sources = [
+    "relay_a.c",
+  ]
+
+  deps = [
+    "//test/vm:secondary_vm",
+  ]
+}
+
+vm_kernel("relay_b") {
+  testonly = true
+
+  sources = [
+    "relay_b.c",
+  ]
+
+  deps = [
+    "//test/vm:secondary_vm",
+  ]
+}

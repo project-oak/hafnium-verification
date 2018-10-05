@@ -17,14 +17,21 @@ static_assert(sizeof(recv_page) == PAGE_SIZE, "Recv page is not a page.");
 static hf_ipaddr_t send_page_addr = (hf_ipaddr_t)send_page;
 static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
 
-#define ECHO_VM_ID 1
+/* Keep macro alignment */
+/* clang-format off */
+
+#define RELAY_A_VM_ID 1
+#define RELAY_B_VM_ID 2
+#define ECHO_VM_ID    3
+
+/* clang-format on */
 
 /**
- * Confirm there is 1 secondary VM.
+ * Confirm there are 3 secondary VMs.
  */
-TEST(hf_vm_get_count, one_secondary_vm)
+TEST(hf_vm_get_count, three_secondary_vms)
 {
-	EXPECT_EQ(hf_vm_get_count(), 2);
+	EXPECT_EQ(hf_vm_get_count(), 4);
 }
 
 /**
@@ -105,6 +112,36 @@ TEST(mailbox, echo)
 	EXPECT_EQ(hf_mailbox_send(ECHO_VM_ID, sizeof(message)), 0);
 	EXPECT_EQ(
 		hf_vcpu_run(ECHO_VM_ID, 0),
+		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_MESSAGE, 0, sizeof(message)));
+	EXPECT_EQ(memcmp(recv_page, message, sizeof(message)), 0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
+ * Send a message to relay_a which will forward it to relay_b where it will be
+ * sent back here.
+ */
+TEST(mailbox, relay)
+{
+	const char message[] = "Send this round the relay!";
+
+	/* Configure mailbox pages. */
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	EXPECT_EQ(hf_vcpu_run(RELAY_A_VM_ID, 0),
+		  HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0, 0));
+	EXPECT_EQ(hf_vcpu_run(RELAY_B_VM_ID, 0),
+		  HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0, 0));
+
+	/*
+	 * Send the message to relay_a which is then sent to relay_b before
+	 * checking that relay_b send the message back here.
+	 */
+	memcpy(send_page, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(RELAY_A_VM_ID, sizeof(message)), 0);
+	EXPECT_EQ(hf_vcpu_run(RELAY_A_VM_ID, 0),
+		  HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAKE_UP, RELAY_B_VM_ID, 0));
+	EXPECT_EQ(
+		hf_vcpu_run(RELAY_B_VM_ID, 0),
 		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_MESSAGE, 0, sizeof(message)));
 	EXPECT_EQ(memcmp(recv_page, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);

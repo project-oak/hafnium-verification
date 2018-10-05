@@ -65,10 +65,24 @@ vm_kernel("primary_with_secondaries_test_vm") {
 initrd("primary_with_secondaries_test") {
   testonly = true
   primary_vm = ":primary_with_secondaries_test_vm"
-  secondary_vms = [ [
-        "1048576",
-        "1",
-        "echo",
-        "//test/vm/secondaries:echo",
-      ] ]
+  secondary_vms = [
+    [
+      "1048576",
+      "1",
+      "relay_a",
+      "//test/vm/secondaries:relay_a",
+    ],
+    [
+      "1048576",
+      "1",
+      "relay_b",
+      "//test/vm/secondaries:relay_b",
+    ],
+    [
+      "1048576",
+      "1",
+      "echo",
+      "//test/vm/secondaries:echo",
+    ],
+  ]
 }
