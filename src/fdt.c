@@ -322,7 +322,10 @@ void fdt_dump(struct fdt_header *hdr)
 	struct fdt_node node;
 
 	/* Traverse the whole thing. */
-	fdt_root_node(&node, hdr);
+	if (!fdt_root_node(&node, hdr)) {
+		dlog("FDT failed validation.\n");
+		return;
+	}
 
 	fdt_tokenizer_init(&t, node.strs, node.begin, node.end);
 

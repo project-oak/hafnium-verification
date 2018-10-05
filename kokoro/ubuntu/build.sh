@@ -30,7 +30,7 @@ export PLATFORM=qemu
 # TODO: add a gcc-4.9 or above prebuilt to check the gcc build too?
 # Check the build works.
 make
-#TODO: static analysis with make check
+make check
 
 #
 # Step 2: make sure it works.
