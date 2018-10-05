@@ -44,21 +44,35 @@ SECTIONS
 	.rodata : {
 		*(.rodata.*)
 	}
-	/* .rela contains Elf64_Rela entries which contain 8-byte fields so
-	 * should be 8-byte aligned. */
+	/*
+	 * .rela contains Elf64_Rela entries which contain 8-byte fields so
+	 * should be 8-byte aligned.
+	 */
 	. = ALIGN(8);
 	rela_begin = .;
 	.rela : {
 		*(.rela.*)
 	}
 	rela_end = .;
-	/* The hftest framework adds test descriptors in the .hftest section
+	/*
+	 * The linker doesn't allow .dynsym and .dynstr to be discarded, see
+	 * /DISCARD/ below, so make sure they don't get in the way.
+	 */
+	.dynsym : {
+		*(.dynsym.*)
+	}
+	.dynstr : {
+		*(.dynstr.*)
+	}
+	/*
+	 * The hftest framework adds test descriptors in the .hftest section
 	 * which is examined at runtime to discover the available tests. The
 	 * input sections are named after the test they include so sorting here
 	 * means they are stored sorted by the name of the test suite and then
 	 * by test case names. To ensure tests aren't accidentally included in
 	 * images that are not meant to have them, the assertion checks for a
-	 * marker to signal tests are allowed. */
+	 * marker to signal tests are allowed.
+	 */
 	. = ALIGN(8);
 	hftest_begin = .;
 	.hftest : {
@@ -79,10 +93,19 @@ SECTIONS
 	.data : {
 		*(.data)
 	}
-	/* Global offset table used for relocations. This is where relocation
-	 * fix-ups are applied. */
+	/*
+	 * Global offset table used for relocations. This is where relocation
+	 * fix-ups are applied.
+	 */
 	.got : {
 		*(.got.*)
+	}
+	/*
+	 * The linker doesn't allow .dynamic to be discarded, see /DISCARD/
+	 * below, so make sure it doesn't get in the way.
+	 */
+	.dynamic : {
+		*(.dynamic.*)
 	}
 	/* The entry point code assumes that .bss is 16-byte aligned. */
 	. = ALIGN(16);
@@ -118,7 +141,9 @@ SECTIONS
 	. = ALIGN(4096);
 	bin_end = .;
 
-	/* Note the size of the image. This includes everything up to the .bss
-	 * as that is initialized to zero by the entry code. */
+	/*
+	 * Note the size of the image. This includes everything up to the .bss
+	 * as that is initialized to zero by the entry code.
+	 */
 	image_size = ABSOLUTE(bss_begin - ORIGIN_ADDRESS);
 }
