@@ -3,6 +3,7 @@
 #include "hf/boot_params.h"
 #include "hf/dlog.h"
 #include "hf/fdt.h"
+#include "hf/layout.h"
 #include "hf/mm.h"
 #include "hf/std.h"
 
@@ -279,11 +280,8 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 	}
 
 	/* Patch fdt to reserve primary VM memory. */
-	{
-		size_t tmp = (size_t)&fdt_patch;
-		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
-		fdt_add_mem_reservation(fdt, tmp & ~0xfffff, 0x80000);
-	}
+	fdt_add_mem_reservation(fdt, pa_addr(layout_primary_begin()) & ~0xfffff,
+				0x80000);
 
 	/* Patch fdt to reserve memory for secondary VMs. */
 	for (i = 0; i < p->reserved_ranges_count; ++i) {

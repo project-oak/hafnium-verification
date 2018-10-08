@@ -6,6 +6,7 @@
 #include "hf/api.h"
 #include "hf/boot_params.h"
 #include "hf/dlog.h"
+#include "hf/layout.h"
 #include "hf/memiter.h"
 #include "hf/mm.h"
 #include "hf/std.h"
@@ -39,11 +40,8 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
  */
 static bool relocate(const char *from, size_t size)
 {
-	/* TODO: This is a hack. We must read the alignment from the binary. */
-	extern char bin_end[];
-	size_t tmp = (size_t)&bin_end[0];
-	paddr_t dest = pa_init((tmp + 0x80000 - 1) & ~(0x80000 - 1));
-	dlog("bin_end is at %p, copying to %p\n", &bin_end[0], pa_addr(dest));
+	paddr_t dest = layout_primary_begin();
+	dlog("Copying to %p\n", pa_addr(dest));
 	return copy_to_unmapped(dest, from, size);
 }
 

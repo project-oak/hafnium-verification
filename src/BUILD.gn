@@ -110,6 +110,8 @@ executable("unit_tests") {
     "-defsym=data_begin=400",
     "-Xlinker",
     "-defsym=data_end=500",
+    "-Xlinker",
+    "-defsym=bin_end=600",
   ]
   deps = [
     ":fdt",

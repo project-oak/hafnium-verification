@@ -6,6 +6,7 @@
 
 #include "hf/alloc.h"
 #include "hf/dlog.h"
+#include "hf/layout.h"
 
 /* The type of addresses stored in the page table. */
 typedef uintvaddr_t ptable_addr_t;
@@ -26,13 +27,6 @@ static_assert(
 #define MAP_FLAG_COMMIT 0x02
 
 /* clang-format on */
-
-extern uint8_t text_begin[];
-extern uint8_t text_end[];
-extern uint8_t rodata_begin[];
-extern uint8_t rodata_end[];
-extern uint8_t data_begin[];
-extern uint8_t data_end[];
 
 static struct mm_ptable ptable;
 
@@ -378,12 +372,11 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
 {
 	/* TODO: If we add pages dynamically, they must be included here too. */
-	return mm_ptable_unmap(t, pa_init((uintpaddr_t)text_begin),
-			       pa_init((uintpaddr_t)text_end), mode) &&
-	       mm_ptable_unmap(t, pa_init((uintpaddr_t)rodata_begin),
-			       pa_init((uintpaddr_t)rodata_end), mode) &&
-	       mm_ptable_unmap(t, pa_init((uintpaddr_t)data_begin),
-			       pa_init((uintpaddr_t)data_end), mode);
+	return mm_ptable_unmap(t, layout_text_begin(), layout_text_end(),
+			       mode) &&
+	       mm_ptable_unmap(t, layout_rodata_begin(), layout_rodata_end(),
+			       mode) &&
+	       mm_ptable_unmap(t, layout_data_begin(), layout_data_end(), mode);
 }
 
 /**
@@ -559,9 +552,12 @@ bool mm_unmap(paddr_t begin, paddr_t end, int mode)
  */
 bool mm_init(void)
 {
-	dlog("text: 0x%x - 0x%x\n", text_begin, text_end);
-	dlog("rodata: 0x%x - 0x%x\n", rodata_begin, rodata_end);
-	dlog("data: 0x%x - 0x%x\n", data_begin, data_end);
+	dlog("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
+	     pa_addr(layout_text_end()));
+	dlog("rodata: 0x%x - 0x%x\n", pa_addr(layout_rodata_begin()),
+	     pa_addr(layout_rodata_end()));
+	dlog("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
+	     pa_addr(layout_data_end()));
 
 	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
 		dlog("Unable to allocate memory for page table.\n");
@@ -575,16 +571,13 @@ bool mm_init(void)
 					    MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
 	/* Map each section. */
-	mm_identity_map(pa_init((uintpaddr_t)text_begin),
-			pa_init((uintpaddr_t)text_end),
+	mm_identity_map(layout_text_begin(), layout_text_end(),
 			MM_MODE_X | MM_MODE_NOSYNC);
 
-	mm_identity_map(pa_init((uintpaddr_t)rodata_begin),
-			pa_init((uintpaddr_t)rodata_end),
+	mm_identity_map(layout_rodata_begin(), layout_rodata_end(),
 			MM_MODE_R | MM_MODE_NOSYNC);
 
-	mm_identity_map(pa_init((uintpaddr_t)data_begin),
-			pa_init((uintpaddr_t)data_end),
+	mm_identity_map(layout_data_begin(), layout_data_end(),
 			MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
 
 	return arch_mm_init(ptable.table, true);
