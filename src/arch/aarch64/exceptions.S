@@ -51,8 +51,8 @@ vector_table_el2:
 	lsr x18, x18, #26
 
 	/* Take the slow path if exception is not due to an HVC instruction. */
-	subs x18, x18, #0x16
-	b.ne slow_sync_lower_64
+	sub x18, x18, #0x16
+	cbnz x18, slow_sync_lower_64
 
 	/*
 	 * Save x29 and x30, which are not saved by the callee, then jump to
@@ -64,15 +64,15 @@ vector_table_el2:
 	cbnz x1, sync_lower_64_switch
 
 	/* Zero out all volatile registers (except x0) and return. */
-	stp xzr, xzr, [sp, #-16]
-	ldp x1, x2, [sp, #-16]
-	ldp x3, x4, [sp, #-16]
-	ldp x5, x6, [sp, #-16]
-	ldp x7, x8, [sp, #-16]
-	ldp x9, x10, [sp, #-16]
-	ldp x11, x12, [sp, #-16]
-	ldp x13, x14, [sp, #-16]
-	ldp x15, x16, [sp, #-16]
+	stp xzr, xzr, [sp, #-16]!
+	ldp x1, x2, [sp]
+	ldp x3, x4, [sp]
+	ldp x5, x6, [sp]
+	ldp x7, x8, [sp]
+	ldp x9, x10, [sp]
+	ldp x11, x12, [sp]
+	ldp x13, x14, [sp]
+	ldp x15, x16, [sp], #16
 	mov x17, xzr
 
 	/* Restore x18, which was saved on the stack. */
@@ -83,7 +83,7 @@ vector_table_el2:
 	/* irq_lower_64 */
 
 	/* Save x0 since we're about to clobber it. */
-	str x0, [sp, #-8]
+	str x0, [sp, #-8]!
 
 	/* Get the current vcpu. */
 	mrs x0, tpidr_el2
@@ -101,7 +101,7 @@ vector_table_el2:
 	str x18, [x0, #8 * 18]
 	stp x29, x30, [x0, #8 * 29]
 
-	ldr x2, [sp, #-8]
+	ldr x2, [sp], #8
 	stp x2, x1, [x0, #8 * 0]
 
 	/* Save return address & mode. */
@@ -116,7 +116,7 @@ vector_table_el2:
 	cbnz x0, vcpu_switch
 
 	/* vcpu is not changing. */
-	mov x0, x1
+	add x0, x1, #VCPU_REGS
 	b vcpu_restore_volatile_and_run
 
 .balign 0x80
@@ -280,18 +280,14 @@ vcpu_restore_all_and_run:
 	ldp x25, x26, [x0, #8 * 25]
 	ldp x27, x28, [x0, #8 * 27]
 
-	/* Restore volatile registers and return. */
-	sub x0, x0, #VCPU_REGS
+	/* Intentional fallthrough. */
 
 /**
- * x0 is a pointer to the vcpu.
- *
  * Restore volatile registers and run the given vcpu.
+ *
+ * x0 is a pointer to the volatile registers of the target vcpu.
  */
 vcpu_restore_volatile_and_run:
-	/* Restore volatile registers. */
-	add x0, x0, #VCPU_REGS
-
 	ldp x4, x5, [x0, #8 * 4]
 	ldp x6, x7, [x0, #8 * 6]
 	ldp x8, x9, [x0, #8 * 8]
@@ -347,7 +343,7 @@ slow_sync_lower_64:
 	cbnz x0, vcpu_switch
 
 	/* vcpu is not changing. */
-	mov x0, x1
+	add x0, x1, #VCPU_REGS
 	b vcpu_restore_volatile_and_run
 
 sync_lower_64_switch:
