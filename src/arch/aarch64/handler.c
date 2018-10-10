@@ -198,7 +198,8 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		break;
 
 	case HF_VCPU_RUN:
-		ret.user_ret = api_vcpu_run(arg1, arg2, &ret.new);
+		ret.user_ret = hf_vcpu_run_return_encode(
+			api_vcpu_run(arg1, arg2, &ret.new));
 		break;
 
 	case HF_VM_CONFIGURE:
@@ -210,7 +211,8 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		break;
 
 	case HF_MAILBOX_RECEIVE:
-		ret.user_ret = api_mailbox_receive(arg1, &ret.new);
+		ret.user_ret = hf_mailbox_receive_return_encode(
+			api_mailbox_receive(arg1, &ret.new));
 		break;
 
 	case HF_MAILBOX_CLEAR:

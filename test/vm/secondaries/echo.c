@@ -37,11 +37,9 @@ void kmain(void)
 
 	/* Loop, echo messages back to the sender. */
 	for (;;) {
-		uint64_t ret = hf_mailbox_receive(true);
-		uint32_t vm_id = HF_MAILBOX_RECEIVE_VM_ID(ret);
-		uint32_t size = HF_MAILBOX_RECEIVE_SIZE(ret);
-		memcpy(send_page, recv_page, size);
+		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		memcpy(send_page, recv_page, res.size);
 		hf_mailbox_clear();
-		hf_mailbox_send(vm_id, size);
+		hf_mailbox_send(res.vm_id, res.size);
 	}
 }

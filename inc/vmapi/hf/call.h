@@ -16,21 +16,8 @@
 
 #pragma once
 
-#if defined(__linux__) && defined(__KERNEL__)
-
-#include <linux/types.h>
-
-typedef phys_addr_t hf_ipaddr_t;
-
-#else
-
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-
-typedef uintptr_t hf_ipaddr_t;
-
-#endif
+#include "hf/abi.h"
+#include "hf/types.h"
 
 /* Keep macro alignment */
 /* clang-format off */
@@ -44,33 +31,8 @@ typedef uintptr_t hf_ipaddr_t;
 #define HF_MAILBOX_RECEIVE  0xff05
 #define HF_MAILBOX_CLEAR    0xff06
 
-/* The ID of the primary VM which is responsile for scheduling. */
-#define HF_PRIMARY_VM_ID 0
-
-/* Return codes for hf_vcpu_run(). */
-#define HF_VCPU_RUN_YIELD              0x00
-#define HF_VCPU_RUN_WAIT_FOR_INTERRUPT 0x01
-#define HF_VCPU_RUN_WAKE_UP            0x02
-#define HF_VCPU_RUN_MESSAGE            0x03
-
-/* Construct and destruct the hf_vcpu_run() response. */
-#define HF_VCPU_RUN_RESPONSE(code, vm_id, data)               \
-	((code & 0xff) | ((uint64_t)(vm_id & 0xffff) << 16) | \
-	 ((uint64_t)data << 32))
-#define HF_VCPU_RUN_CODE(ret) (ret & 0xff)
-#define HF_VCPU_RUN_VM_ID(ret) ((ret >> 16) & 0xffff)
-#define HF_VCPU_RUN_DATA(ret) (ret >> 32)
-
-/* Construct and destruct the hf_mailbox_receive() response. */
-#define HF_MAILBOX_RECEIVE_RESPONSE(vm_id, size) \
-	((vm_id & 0xffff) | ((uint64_t)size << 32))
-#define HF_MAILBOX_RECEIVE_VM_ID(ret) (ret & 0xffff)
-#define HF_MAILBOX_RECEIVE_SIZE(ret) (ret >> 32)
-
+/* The amount of data that can be sent to a mailbox. */
 #define HF_MAILBOX_SIZE 4096
-
-#define HF_INVALID_VM_ID 0xffff
-#define HF_INVALID_VCPU  0xffff
 
 /* clang-format on */
 
@@ -83,9 +45,11 @@ int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 /**
  * Runs the given vcpu of the given vm.
  */
-static inline int64_t hf_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx)
+static inline struct hf_vcpu_run_return hf_vcpu_run(uint32_t vm_id,
+						    uint32_t vcpu_idx)
 {
-	return hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0);
+	return hf_vcpu_run_return_decode(
+		hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0));
 }
 
 /**
@@ -125,11 +89,14 @@ static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size)
  * Called by secondary VMs to receive a message. The call can optionally block
  * until a message is received.
  *
+ * If no message was received, the VM ID will be HF_INVALID_VM_ID.
+ *
  * The mailbox must be cleared before a new message can be received.
  */
-static inline int64_t hf_mailbox_receive(bool block)
+static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
 {
-	return hf_call(HF_MAILBOX_RECEIVE, block, 0, 0);
+	return hf_mailbox_receive_return_decode(
+		hf_call(HF_MAILBOX_RECEIVE, block, 0, 0));
 }
 
 /**

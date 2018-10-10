@@ -16,13 +16,12 @@
 
 #pragma once
 
+/* Define the standard types for the platform. */
 #if defined(__linux__) && defined(__KERNEL__)
 
 #include <linux/types.h>
 
 typedef phys_addr_t hf_ipaddr_t;
-
-#define PRIu16 "hu"
 
 #else
 
@@ -34,10 +33,9 @@ typedef uintptr_t hf_ipaddr_t;
 
 #endif
 
-typedef uint16_t hf_vm_id_t;
-
-#define HF_VM_ID_MAX UINT16_MAX
-#define HF_PRI_VM_ID PRIu16
-
 /* The ID of the primary VM which is responsile for scheduling. */
 #define HF_PRIMARY_VM_ID 0
+
+/* Invalid values for fields to indicate absence or errors. */
+#define HF_INVALID_VM_ID 0xffffffff
+#define HF_INVALID_VCPU 0xffff

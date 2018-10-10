@@ -34,7 +34,7 @@ static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
  * to cause HF_VCPU_RUN to return and the primary VM to regain control of the
  * cpu.
  */
-static struct vcpu *api_switch_to_primary(size_t primary_retval,
+static struct vcpu *api_switch_to_primary(struct hf_vcpu_run_return primary_ret,
 					  enum vcpu_state secondary_state)
 {
 	struct vcpu *vcpu = cpu()->current;
@@ -45,9 +45,10 @@ static struct vcpu *api_switch_to_primary(size_t primary_retval,
 	vm_set_current(primary);
 
 	/*
-	 * Set the return valuefor the primary VM's call to HF_VCPU_RUN.
+	 * Set the return value for the primary VM's call to HF_VCPU_RUN.
 	 */
-	arch_regs_set_retval(&next->regs, primary_retval);
+	arch_regs_set_retval(&next->regs,
+			     hf_vcpu_run_return_encode(primary_ret));
 
 	/* Mark the vcpu as waiting. */
 	sl_lock(&vcpu->lock);
@@ -63,9 +64,10 @@ static struct vcpu *api_switch_to_primary(size_t primary_retval,
  */
 struct vcpu *api_yield(void)
 {
-	return api_switch_to_primary(
-		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0, 0),
-		vcpu_state_ready);
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_YIELD,
+	};
+	return api_switch_to_primary(ret, vcpu_state_ready);
 }
 
 /**
@@ -74,9 +76,10 @@ struct vcpu *api_yield(void)
  */
 struct vcpu *api_wait_for_interrupt(void)
 {
-	return api_switch_to_primary(
-		HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0, 0),
-		vcpu_state_blocked_interrupt);
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+	};
+	return api_switch_to_primary(ret, vcpu_state_blocked_interrupt);
 }
 
 /**
@@ -110,51 +113,51 @@ int64_t api_vcpu_get_count(uint32_t vm_id)
 /**
  * Runs the given vcpu of the given vm.
  */
-int64_t api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx, struct vcpu **next)
+struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
+				       struct vcpu **next)
 {
 	struct vm *vm;
 	struct vcpu *vcpu;
-	int64_t ret;
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+	};
 
 	/* Only the primary VM can switch vcpus. */
 	if (cpu()->current->vm->id != HF_PRIMARY_VM_ID) {
-		goto fail;
+		goto out;
 	}
 
 	/* Only secondary VM vcpus can be run. */
 	if (vm_id == HF_PRIMARY_VM_ID) {
-		goto fail;
+		goto out;
 	}
 
 	/* The requested VM must exist. */
 	vm = vm_get(vm_id);
 	if (vm == NULL) {
-		goto fail;
+		goto out;
 	}
 
 	/* The requested vcpu must exist. */
 	if (vcpu_idx >= vm->vcpu_count) {
-		goto fail;
+		goto out;
 	}
 
 	vcpu = &vm->vcpus[vcpu_idx];
 
 	sl_lock(&vcpu->lock);
 	if (vcpu->state != vcpu_state_ready) {
-		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0,
-					   0);
+		ret.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
 	} else {
 		vcpu->state = vcpu_state_running;
 		vm_set_current(vm);
 		*next = vcpu;
-		ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_YIELD, 0, 0);
+		ret.code = HF_VCPU_RUN_YIELD;
 	}
 	sl_unlock(&vcpu->lock);
 
+out:
 	return ret;
-
-fail:
-	return HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAIT_FOR_INTERRUPT, 0, 0);
 }
 
 /**
@@ -250,7 +253,9 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 	const void *from_buf;
 	uint16_t vcpu;
 	int64_t ret;
-	int64_t primary_ret;
+	struct hf_vcpu_run_return primary_ret = {
+		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+	};
 
 	/* Limit the size of transfer. */
 	if (size > HF_MAILBOX_SIZE) {
@@ -297,8 +302,8 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 
 	/* Messages for the primary VM are delivered directly. */
 	if (to->id == HF_PRIMARY_VM_ID) {
-		primary_ret =
-			HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_MESSAGE, 0, size);
+		primary_ret.code = HF_VCPU_RUN_MESSAGE;
+		primary_ret.message.size = size;
 		ret = 0;
 		/*
 		 * clang-tidy isn't able to prove that
@@ -338,8 +343,11 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 
 		/* Return from HF_MAILBOX_RECEIVE. */
 		arch_regs_set_retval(&to_vcpu->regs,
-				     HF_MAILBOX_RECEIVE_RESPONSE(
-					     to->mailbox.recv_from_id, size));
+				     hf_mailbox_receive_return_encode((
+					     struct hf_mailbox_receive_return){
+					     .vm_id = to->mailbox.recv_from_id,
+					     .size = size,
+				     }));
 
 		sl_unlock(&to_vcpu->lock);
 
@@ -347,7 +355,9 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 	}
 
 	/* Return to the primary VM directly or with a switch. */
-	primary_ret = HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_WAKE_UP, to->id, vcpu);
+	primary_ret.code = HF_VCPU_RUN_WAKE_UP;
+	primary_ret.wake_up.vm_id = to->id;
+	primary_ret.wake_up.vcpu = vcpu;
 	ret = 0;
 
 out:
@@ -364,7 +374,7 @@ out:
 
 	/* If the sender is the primary, return the vcpu to schedule. */
 	if (from->id == HF_PRIMARY_VM_ID) {
-		return vcpu;
+		return primary_ret.wake_up.vcpu;
 	}
 
 	/* Switch to primary for scheduling and return success to the sender. */
@@ -378,18 +388,21 @@ out:
  *
  * No new messages can be received until the mailbox has been cleared.
  */
-int64_t api_mailbox_receive(bool block, struct vcpu **next)
+struct hf_mailbox_receive_return api_mailbox_receive(bool block,
+						     struct vcpu **next)
 {
 	struct vcpu *vcpu = cpu()->current;
 	struct vm *vm = vcpu->vm;
-	int64_t ret = 0;
+	struct hf_mailbox_receive_return ret = {
+		.vm_id = HF_INVALID_VM_ID,
+	};
 
 	/*
 	 * The primary VM will receive messages as a status code from running
 	 * vcpus and must not call this function.
 	 */
 	if (vm->id == HF_PRIMARY_VM_ID) {
-		return -1;
+		return ret;
 	}
 
 	sl_lock(&vm->lock);
@@ -397,14 +410,13 @@ int64_t api_mailbox_receive(bool block, struct vcpu **next)
 	/* Return pending messages without blocking. */
 	if (vm->mailbox.state == mailbox_state_received) {
 		vm->mailbox.state = mailbox_state_read;
-		ret = HF_MAILBOX_RECEIVE_RESPONSE(vm->mailbox.recv_from_id,
-						  vm->mailbox.recv_bytes);
+		ret.vm_id = vm->mailbox.recv_from_id;
+		ret.size = vm->mailbox.recv_bytes;
 		goto out;
 	}
 
 	/* No pending message so fail if not allowed to block. */
 	if (!block) {
-		ret = -1;
 		goto out;
 	}
 

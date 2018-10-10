@@ -106,11 +106,15 @@ source_set("mm") {
 executable("unit_tests") {
   testonly = true
   sources = [
+    "abi_test.cc",
     "fdt_handler_test.cc",
     "fdt_test.cc",
     "mm_test.cc",
   ]
-  cflags_cc = [ "-Wno-c99-extensions" ]
+  cflags_cc = [
+    "-Wno-c99-extensions",
+    "-Wno-nested-anon-types",
+  ]
   ldflags = [
     "-Xlinker",
     "-defsym=text_begin=0",

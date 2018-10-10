@@ -34,6 +34,7 @@ config("compiler_defaults") {
       current_toolchain == arch_toolchain) {
     include_dirs = [
       "//inc",
+      "//inc/vmapi",
       "//src/arch/${arch}/inc",
     ]
 

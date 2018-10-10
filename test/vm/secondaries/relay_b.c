@@ -37,10 +37,9 @@ void kmain(void)
 
 	/* Loop, forward messages to the primary. */
 	for (;;) {
-		uint64_t ret = hf_mailbox_receive(true);
-		uint32_t size = HF_MAILBOX_RECEIVE_SIZE(ret);
-		memcpy(send_page, recv_page, size);
+		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		memcpy(send_page, recv_page, res.size);
 		hf_mailbox_clear();
-		hf_mailbox_send(HF_PRIMARY_VM_ID, size);
+		hf_mailbox_send(HF_PRIMARY_VM_ID, res.size);
 	}
 }

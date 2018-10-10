@@ -37,3 +37,15 @@ TEST(hf_vcpu_get_count, large_invalid_vm_index)
 {
 	EXPECT_EQ(hf_vcpu_get_count(0xffffffff), -1);
 }
+
+TEST(hf_vcpu_run, cannot_run_primary)
+{
+	struct hf_vcpu_run_return res = hf_vcpu_run(HF_PRIMARY_VM_ID, 0);
+	EXPECT_EQ(res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+}
+
+TEST(hf_vcpu_run, cannot_run_absent_secondary)
+{
+	struct hf_vcpu_run_return res = hf_vcpu_run(1, 0);
+	EXPECT_EQ(res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+}
