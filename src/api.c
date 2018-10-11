@@ -300,6 +300,14 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 		primary_ret =
 			HF_VCPU_RUN_RESPONSE(HF_VCPU_RUN_MESSAGE, 0, size);
 		ret = 0;
+		/*
+		 * clang-tidy isn't able to prove that
+		 * `from->id != HF_PRIMARY_VM_ID` so cover that specific case
+		 * explicitly so as not to hide other possible bugs.
+		 */
+		if (from->id == HF_PRIMARY_VM_ID) {
+			vcpu = 0;
+		}
 		goto out;
 	}
 
@@ -386,7 +394,6 @@ int64_t api_mailbox_receive(bool block, struct vcpu **next)
 	/* Return pending messages without blocking. */
 	if (vm->mailbox.state == mailbox_state_received) {
 		vm->mailbox.state = mailbox_state_read;
-		block = false;
 		ret = HF_MAILBOX_RECEIVE_RESPONSE(vm->mailbox.recv_from_id,
 						  vm->mailbox.recv_bytes);
 		goto out;
