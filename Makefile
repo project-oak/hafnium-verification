@@ -64,3 +64,12 @@ check: $(OUT_DIR)/build.ninja
 	@echo "Checking..."
 	@find src/ \( -name *.c -o -name *.cc \) -exec clang-check -p $(OUT_DIR) -analyze {} \;
 	@find test/ \( -name *.c -o -name *.cc \) -exec clang-check -p $(OUT_DIR) -analyze {} \;
+
+.PHONY: license
+license:
+	@find src/ -name *.c -o -name *.cc -o -name *.h | xargs -n1 python build/license.py --style c
+	@find inc/ -name *.c -o -name *.cc -o -name *.h | xargs -n1 python build/license.py --style c
+	@find test/ -name *.c -o -name *.cc -o -name *.h | xargs -n1 python build/license.py --style c
+	@find build/ -name *.py| xargs -n1 python build/license.py --style hash
+	@find test/ -name *.py| xargs -n1 python build/license.py --style hash
+	@find . \( -name *.gn -o -name *.gni \) | xargs -n1 python build/license.py --style hash

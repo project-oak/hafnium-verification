@@ -16,10 +16,28 @@
 
 #pragma once
 
-#include <stddef.h>
+#if defined(__linux__) && defined(__KERNEL__)
 
-void halloc_init(size_t base, size_t size);
-void *halloc(size_t size);
-void hfree(void *ptr);
-void *halloc_aligned(size_t size, size_t align);
-void *halloc_aligned_nosync(size_t size, size_t align);
+#include <linux/types.h>
+
+typedef phys_addr_t hf_ipaddr_t;
+
+#define PRIu16 "hu"
+
+#else
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+typedef uintptr_t hf_ipaddr_t;
+
+#endif
+
+typedef uint16_t hf_vm_id_t;
+
+#define HF_VM_ID_MAX UINT16_MAX
+#define HF_PRI_VM_ID PRIu16
+
+/* The ID of the primary VM which is responsile for scheduling. */
+#define HF_PRIMARY_VM_ID 0
