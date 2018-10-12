@@ -303,10 +303,13 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
 		/*
 		 * clang-tidy isn't able to prove that
 		 * `from->id != HF_PRIMARY_VM_ID` so cover that specific case
-		 * explicitly so as not to hide other possible bugs.
+		 * explicitly so as not to hide other possible bugs. clang-check
+		 * is more clever and finds that this is dead code so we also
+		 * pretend to use the new value.
 		 */
 		if (from->id == HF_PRIMARY_VM_ID) {
 			vcpu = 0;
+			(void)vcpu;
 		}
 		goto out;
 	}
