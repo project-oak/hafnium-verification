@@ -52,15 +52,12 @@ static_assert(
 
 /* clang-format on */
 
-#define NUM_ENTRIES (PAGE_SIZE / sizeof(pte_t))
-
 static struct mm_ptable ptable;
 
 /**
- * Casts a physical address to a pointer. This assumes that it is mapped (to the
- * same address), so should only be used within the mm code.
+ * Get the page table from the physical address.
  */
-static inline void *ptr_from_pa(paddr_t pa)
+static struct mm_page_table *mm_page_table_from_pa(paddr_t pa)
 {
 	return ptr_from_va(va_from_pa(pa));
 }
@@ -85,7 +82,7 @@ static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
  * Calculates the size of the address space represented by a page table entry at
  * the given level.
  */
-static inline size_t mm_entry_size(int level)
+static size_t mm_entry_size(int level)
 {
 	return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS);
 }
@@ -94,7 +91,7 @@ static inline size_t mm_entry_size(int level)
  * For a given address, calculates the maximum (plus one) address that can be
  * represented by the same table at the given level.
  */
-static inline ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
+static ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
 {
 	size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS;
 	return ((addr >> offset) + 1) << offset;
@@ -104,10 +101,24 @@ static inline ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
  * For a given address, calculates the index at which its entry is stored in a
  * table at the given level.
  */
-static inline size_t mm_index(ptable_addr_t addr, int level)
+static size_t mm_index(ptable_addr_t addr, int level)
 {
 	ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
 	return v & ((UINT64_C(1) << PAGE_LEVEL_BITS) - 1);
+}
+
+/**
+ * Allocate a new page table.
+ */
+static struct mm_page_table *mm_alloc_page_table(bool sync_alloc)
+{
+	if (sync_alloc) {
+		return halloc_aligned_nosync(sizeof(struct mm_page_table),
+					     alignof(struct mm_page_table));
+	}
+
+	return halloc_aligned(sizeof(struct mm_page_table),
+			      alignof(struct mm_page_table));
 }
 
 /**
@@ -116,9 +127,10 @@ static inline size_t mm_index(ptable_addr_t addr, int level)
  *
  * Returns a pointer to the table the entry now points to.
  */
-static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
+static struct mm_page_table *mm_populate_table_pte(pte_t *pte, int level,
+						   bool sync_alloc)
 {
-	pte_t *ntable;
+	struct mm_page_table *ntable;
 	pte_t v = *pte;
 	pte_t new_pte;
 	size_t i;
@@ -127,13 +139,12 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 
 	/* Just return pointer to table if it's already populated. */
 	if (arch_mm_pte_is_table(v, level)) {
-		return ptr_from_pa(arch_mm_table_from_pte(v));
+		return mm_page_table_from_pa(arch_mm_table_from_pte(v));
 	}
 
 	/* Allocate a new table. */
-	ntable = (sync_alloc ? halloc_aligned : halloc_aligned_nosync)(
-		PAGE_SIZE, PAGE_SIZE);
-	if (!ntable) {
+	ntable = mm_alloc_page_table(sync_alloc);
+	if (ntable == NULL) {
 		dlog("Failed to allocate memory for page table\n");
 		return NULL;
 	}
@@ -150,8 +161,8 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
 	}
 
 	/* Initialise entries in the new table. */
-	for (i = 0; i < NUM_ENTRIES; i++) {
-		ntable[i] = new_pte;
+	for (i = 0; i < MM_PTE_PER_PAGE; i++) {
+		ntable->entries[i] = new_pte;
 		new_pte += inc;
 	}
 
@@ -171,17 +182,17 @@ static pte_t *mm_populate_table_pte(pte_t *pte, int level, bool sync_alloc)
  */
 static void mm_free_page_pte(pte_t pte, int level)
 {
-	pte_t *table;
+	struct mm_page_table *table;
 	uint64_t i;
 
 	if (!arch_mm_pte_is_table(pte, level)) {
 		return;
 	}
 
-	table = ptr_from_pa(arch_mm_table_from_pte(pte));
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(pte));
 	/* Recursively free any subtables. */
-	for (i = 0; i < NUM_ENTRIES; ++i) {
-		mm_free_page_pte(table[i], level - 1);
+	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		mm_free_page_pte(table->entries[i], level - 1);
 	}
 
 	/* Free the table itself. */
@@ -191,12 +202,12 @@ static void mm_free_page_pte(pte_t pte, int level)
 /**
  * Returns whether all entries in this table are absent.
  */
-static bool mm_ptable_is_empty(pte_t *table, int level)
+static bool mm_ptable_is_empty(struct mm_page_table *table, int level)
 {
 	uint64_t i;
 
-	for (i = 0; i < NUM_ENTRIES; ++i) {
-		if (arch_mm_pte_is_present(table[i], level)) {
+	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		if (arch_mm_pte_is_present(table->entries[i], level)) {
 			return false;
 		}
 	}
@@ -213,9 +224,10 @@ static bool mm_ptable_is_empty(pte_t *table, int level)
  * table.
  */
 static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
-			 uint64_t attrs, pte_t *table, int level, int flags)
+			 uint64_t attrs, struct mm_page_table *table, int level,
+			 int flags)
 {
-	pte_t *pte = &table[mm_index(begin, level)];
+	pte_t *pte = &table->entries[mm_index(begin, level)];
 	ptable_addr_t level_end = mm_level_end(begin, level);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
@@ -259,8 +271,9 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 * If the entry is already a subtable get it; otherwise
 			 * replace it with an equivalent subtable and get that.
 			 */
-			pte_t *nt = mm_populate_table_pte(pte, level, sync);
-			if (!nt) {
+			struct mm_page_table *nt =
+				mm_populate_table_pte(pte, level, sync);
+			if (nt == NULL) {
 				return false;
 			}
 
@@ -319,7 +332,7 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
 	int level = arch_mm_max_level(mode);
-	pte_t *table = ptr_from_pa(t->table);
+	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
 	ptable_addr_t end;
 
@@ -357,7 +370,7 @@ static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 	int flags =
 		((mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC) | MAP_FLAG_UNMAP;
 	int level = arch_mm_max_level(mode);
-	pte_t *table = ptr_from_pa(t->table);
+	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
 	ptable_addr_t end;
 
@@ -385,20 +398,22 @@ static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
  * Writes the given table to the debug log, calling itself recursively to
  * write sub-tables.
  */
-static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
+static void mm_dump_table_recursive(struct mm_page_table *table, int level,
+				    int max_level)
 {
 	uint64_t i;
-	for (i = 0; i < NUM_ENTRIES; i++) {
-		if (!arch_mm_pte_is_present(table[i], level)) {
+	for (i = 0; i < MM_PTE_PER_PAGE; i++) {
+		if (!arch_mm_pte_is_present(table->entries[i], level)) {
 			continue;
 		}
 
-		dlog("%*s%x: %x\n", 4 * (max_level - level), "", i, table[i]);
+		dlog("%*s%x: %x\n", 4 * (max_level - level), "", i,
+		     table->entries[i]);
 
-		if (arch_mm_pte_is_table(table[i], level)) {
+		if (arch_mm_pte_is_table(table->entries[i], level)) {
 			mm_dump_table_recursive(
-				ptr_from_va(va_from_pa(
-					arch_mm_table_from_pte(table[i]))),
+				mm_page_table_from_pa(arch_mm_table_from_pte(
+					table->entries[i])),
 				level - 1, max_level);
 		}
 	}
@@ -409,7 +424,7 @@ static void mm_dump_table_recursive(pte_t *table, int level, int max_level)
  */
 void mm_ptable_dump(struct mm_ptable *t, int mode)
 {
-	pte_t *table = ptr_from_pa(t->table);
+	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	int max_level = arch_mm_max_level(mode);
 	mm_dump_table_recursive(table, max_level, max_level);
 }
@@ -421,13 +436,14 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
  */
 static pte_t mm_table_pte_to_absent(pte_t entry, int level)
 {
-	pte_t *subtable = ptr_from_pa(arch_mm_table_from_pte(entry));
+	struct mm_page_table *table =
+		mm_page_table_from_pa(arch_mm_table_from_pte(entry));
 	/*
 	 * Free the subtable. This is safe to do directly (rather than
 	 * using mm_free_page_pte) because we know by this point that it
 	 * doesn't have any subtables of its own.
 	 */
-	hfree(subtable);
+	hfree(table);
 	/* Replace subtable with a single absent entry. */
 	return arch_mm_absent_pte(level);
 }
@@ -440,7 +456,7 @@ static pte_t mm_table_pte_to_absent(pte_t entry, int level)
  */
 static pte_t mm_table_pte_to_block(pte_t entry, int level)
 {
-	pte_t *subtable;
+	struct mm_page_table *table;
 	uint64_t block_attrs;
 	uint64_t table_attrs;
 	uint64_t combined_attrs;
@@ -450,18 +466,18 @@ static pte_t mm_table_pte_to_block(pte_t entry, int level)
 		return entry;
 	}
 
-	subtable = ptr_from_pa(arch_mm_table_from_pte(entry));
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry));
 	/*
 	 * Replace subtable with a single block, with equivalent
 	 * attributes.
 	 */
-	block_attrs = arch_mm_pte_attrs(subtable[0]);
+	block_attrs = arch_mm_pte_attrs(table->entries[0]);
 	table_attrs = arch_mm_pte_attrs(entry);
 	combined_attrs =
 		arch_mm_combine_table_entry_attrs(table_attrs, block_attrs);
-	block_address = arch_mm_block_from_pte(subtable[0]);
+	block_address = arch_mm_block_from_pte(table->entries[0]);
 	/* Free the subtable. */
-	hfree(subtable);
+	hfree(table);
 	/*
 	 * We can assume that the block is aligned properly
 	 * because all virtual addresses are aligned by
@@ -477,7 +493,7 @@ static pte_t mm_table_pte_to_block(pte_t entry, int level)
  */
 static pte_t mm_ptable_defrag_entry(pte_t entry, int level)
 {
-	pte_t *table;
+	struct mm_page_table *table;
 	uint64_t i;
 	uint64_t attrs;
 	bool identical_blocks_so_far = true;
@@ -487,20 +503,21 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, int level)
 		return entry;
 	}
 
-	table = ptr_from_pa(arch_mm_table_from_pte(entry));
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry));
 
 	/*
 	 * Check if all entries are blocks with the same flags or are all
 	 * absent.
 	 */
-	attrs = arch_mm_pte_attrs(table[0]);
-	for (i = 0; i < NUM_ENTRIES; ++i) {
+	attrs = arch_mm_pte_attrs(table->entries[0]);
+	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
 		/*
 		 * First try to defrag the entry, in case it is a subtable.
 		 */
-		table[i] = mm_ptable_defrag_entry(table[i], level - 1);
+		table->entries[i] =
+			mm_ptable_defrag_entry(table->entries[i], level - 1);
 
-		if (arch_mm_pte_is_present(table[i], level - 1)) {
+		if (arch_mm_pte_is_present(table->entries[i], level - 1)) {
 			all_absent_so_far = false;
 		}
 
@@ -508,8 +525,8 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, int level)
 		 * If the entry is a block, check that the flags are the same as
 		 * what we have so far.
 		 */
-		if (!arch_mm_pte_is_block(table[i], level - 1) ||
-		    arch_mm_pte_attrs(table[i]) != attrs) {
+		if (!arch_mm_pte_is_block(table->entries[i], level - 1) ||
+		    arch_mm_pte_attrs(table->entries[i]) != attrs) {
 			identical_blocks_so_far = false;
 		}
 	}
@@ -528,7 +545,7 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, int level)
  */
 void mm_ptable_defrag(struct mm_ptable *t, int mode)
 {
-	pte_t *table = ptr_from_pa(t->table);
+	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	int level = arch_mm_max_level(mode);
 	uint64_t i;
 
@@ -536,8 +553,9 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 	 * Loop through each entry in the table. If it points to another table,
 	 * check if that table can be replaced by a block or an absent entry.
 	 */
-	for (i = 0; i < NUM_ENTRIES; ++i) {
-		table[i] = mm_ptable_defrag_entry(table[i], level);
+	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		table->entries[i] =
+			mm_ptable_defrag_entry(table->entries[i], level);
 	}
 }
 
@@ -558,8 +576,8 @@ bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
  * Determines if the given address is mapped in the given page table by
  * recursively traversing all levels of the page table.
  */
-static bool mm_is_mapped_recursive(const pte_t *table, ptable_addr_t addr,
-				   int level)
+static bool mm_is_mapped_recursive(struct mm_page_table *table,
+				   ptable_addr_t addr, int level)
 {
 	pte_t pte;
 	ptable_addr_t va_level_end = mm_level_end(addr, level);
@@ -569,7 +587,7 @@ static bool mm_is_mapped_recursive(const pte_t *table, ptable_addr_t addr,
 		return false;
 	}
 
-	pte = table[mm_index(addr, level)];
+	pte = table->entries[mm_index(addr, level)];
 
 	if (arch_mm_pte_is_block(pte, level)) {
 		return true;
@@ -577,8 +595,8 @@ static bool mm_is_mapped_recursive(const pte_t *table, ptable_addr_t addr,
 
 	if (arch_mm_pte_is_table(pte, level)) {
 		return mm_is_mapped_recursive(
-			ptr_from_pa(arch_mm_table_from_pte(pte)), addr,
-			level - 1);
+			mm_page_table_from_pa(arch_mm_table_from_pte(pte)),
+			addr, level - 1);
 	}
 
 	/* The entry is not present. */
@@ -591,7 +609,7 @@ static bool mm_is_mapped_recursive(const pte_t *table, ptable_addr_t addr,
 static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
 				int mode)
 {
-	pte_t *table = ptr_from_pa(t->table);
+	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	int level = arch_mm_max_level(mode);
 
 	addr = mm_round_down_to_page(addr);
@@ -605,20 +623,15 @@ static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
 bool mm_ptable_init(struct mm_ptable *t, int mode)
 {
 	size_t i;
-	pte_t *table;
+	struct mm_page_table *table;
 
-	if (mode & MM_MODE_NOSYNC) {
-		table = halloc_aligned_nosync(PAGE_SIZE, PAGE_SIZE);
-	} else {
-		table = halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	}
-
-	if (!table) {
+	table = mm_alloc_page_table(mode & MM_MODE_NOSYNC);
+	if (table == NULL) {
 		return false;
 	}
 
-	for (i = 0; i < NUM_ENTRIES; i++) {
-		table[i] = arch_mm_absent_pte(arch_mm_max_level(mode));
+	for (i = 0; i < MM_PTE_PER_PAGE; i++) {
+		table->entries[i] = arch_mm_absent_pte(arch_mm_max_level(mode));
 	}
 
 	/* TODO: halloc could return a virtual or physical address if mm not
@@ -689,7 +702,7 @@ void *mm_identity_map(paddr_t begin, paddr_t end, int mode)
 {
 	if (mm_ptable_identity_map(&ptable, begin, end,
 				   mode | MM_MODE_STAGE1)) {
-		return ptr_from_pa(begin);
+		return ptr_from_va(va_from_pa(begin));
 	}
 
 	return NULL;

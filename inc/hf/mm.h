@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <assert.h>
+#include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -23,11 +25,20 @@
 
 #include "hf/addr.h"
 
+#define PAGE_SIZE (1 << PAGE_BITS)
+#define MM_PTE_PER_PAGE (PAGE_SIZE / sizeof(pte_t))
+
+struct mm_page_table {
+	alignas(PAGE_SIZE) pte_t entries[MM_PTE_PER_PAGE];
+};
+static_assert(sizeof(struct mm_page_table) == PAGE_SIZE,
+	      "A page table must take exactly one page.");
+static_assert(alignof(struct mm_page_table) == PAGE_SIZE,
+	      "A page table must be page aligned.");
+
 struct mm_ptable {
 	paddr_t table;
 };
-
-#define PAGE_SIZE (1 << PAGE_BITS)
 
 /* The following are arch-independent page mapping modes. */
 #define MM_MODE_R 0x01 /* read */

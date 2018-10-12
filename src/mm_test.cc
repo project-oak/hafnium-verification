@@ -31,7 +31,6 @@ namespace
 using ::testing::Eq;
 
 constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
-constexpr size_t ENTRY_COUNT = PAGE_SIZE / sizeof(pte_t);
 const int TOP_LEVEL = arch_mm_max_level(0);
 const pte_t ABSENT_ENTRY = arch_mm_absent_pte(TOP_LEVEL);
 
@@ -45,22 +44,41 @@ size_t mm_entry_size(int level)
 }
 
 /**
+ * Get the page table from the physical address.
+ */
+struct mm_page_table *page_table_from_pa(paddr_t pa)
+{
+	return reinterpret_cast<struct mm_page_table *>(
+		ptr_from_va(va_from_pa(pa)));
+}
+
+/**
+ * Allocate a page table.
+ */
+struct mm_page_table *alloc_page_table()
+{
+	return reinterpret_cast<struct mm_page_table *>(halloc_aligned(
+		sizeof(struct mm_page_table), alignof(struct mm_page_table)));
+}
+
+/**
  * Fill a ptable with absent entries.
  */
-void init_absent(pte_t *table)
+void init_absent(struct mm_page_table *table)
 {
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		table[i] = ABSENT_ENTRY;
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		table->entries[i] = ABSENT_ENTRY;
 	}
 }
 
 /**
  * Fill a ptable with block entries.
  */
-void init_blocks(pte_t *table, int level, paddr_t start_address, uint64_t attrs)
+void init_blocks(struct mm_page_table *table, int level, paddr_t start_address,
+		 uint64_t attrs)
 {
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		table[i] = arch_mm_block_pte(
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		table->entries[i] = arch_mm_block_pte(
 			level, pa_add(start_address, i * mm_entry_size(level)),
 			attrs);
 	}
@@ -74,15 +92,15 @@ TEST(mm, ptable_defrag_empty)
 	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	struct mm_page_table *table = alloc_page_table();
 	init_absent(table);
 	struct mm_ptable ptable;
 	ptable.table = pa_init((uintpaddr_t)table);
 
 	mm_ptable_defrag(&ptable, 0);
 
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(table->entries[i], Eq(ABSENT_ENTRY)) << "i=" << i;
 	}
 }
 
@@ -95,20 +113,20 @@ TEST(mm, ptable_defrag_empty_subtables)
 	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
-	pte_t *subtable_a = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *subtable_aa = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *subtable_b = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	struct mm_page_table *subtable_a = alloc_page_table();
+	struct mm_page_table *subtable_aa = alloc_page_table();
+	struct mm_page_table *subtable_b = alloc_page_table();
+	struct mm_page_table *table = alloc_page_table();
 	init_absent(subtable_a);
 	init_absent(subtable_aa);
 	init_absent(subtable_b);
 	init_absent(table);
 
-	subtable_a[3] = arch_mm_table_pte(TOP_LEVEL - 1,
-					  pa_init((uintpaddr_t)subtable_aa));
-	table[0] =
+	subtable_a->entries[3] = arch_mm_table_pte(
+		TOP_LEVEL - 1, pa_init((uintpaddr_t)subtable_aa));
+	table->entries[0] =
 		arch_mm_table_pte(TOP_LEVEL, pa_init((uintpaddr_t)subtable_a));
-	table[5] =
+	table->entries[5] =
 		arch_mm_table_pte(TOP_LEVEL, pa_init((uintpaddr_t)subtable_b));
 
 	struct mm_ptable ptable;
@@ -116,8 +134,8 @@ TEST(mm, ptable_defrag_empty_subtables)
 
 	mm_ptable_defrag(&ptable, 0);
 
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(table->entries[i], Eq(ABSENT_ENTRY)) << "i=" << i;
 	}
 }
 
@@ -130,10 +148,10 @@ TEST(mm, ptable_defrag_block_subtables)
 	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
-	pte_t *subtable_a = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *subtable_aa = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *subtable_b = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	struct mm_page_table *subtable_a = alloc_page_table();
+	struct mm_page_table *subtable_aa = alloc_page_table();
+	struct mm_page_table *subtable_b = alloc_page_table();
+	struct mm_page_table *table = alloc_page_table();
 	init_blocks(subtable_a, TOP_LEVEL - 1, pa_init(0), 0);
 	init_blocks(subtable_aa, TOP_LEVEL - 2,
 		    pa_init(3 * mm_entry_size(TOP_LEVEL - 1)), 0);
@@ -141,11 +159,11 @@ TEST(mm, ptable_defrag_block_subtables)
 		    pa_init(5 * mm_entry_size(TOP_LEVEL)), 0);
 	init_blocks(table, TOP_LEVEL, pa_init(0), 0);
 
-	subtable_a[3] = arch_mm_table_pte(TOP_LEVEL - 1,
-					  pa_init((uintpaddr_t)subtable_aa));
-	table[0] =
+	subtable_a->entries[3] = arch_mm_table_pte(
+		TOP_LEVEL - 1, pa_init((uintpaddr_t)subtable_aa));
+	table->entries[0] =
 		arch_mm_table_pte(TOP_LEVEL, pa_init((uintpaddr_t)subtable_a));
-	table[5] =
+	table->entries[5] =
 		arch_mm_table_pte(TOP_LEVEL, pa_init((uintpaddr_t)subtable_b));
 
 	struct mm_ptable ptable;
@@ -153,12 +171,13 @@ TEST(mm, ptable_defrag_block_subtables)
 
 	mm_ptable_defrag(&ptable, 0);
 
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		EXPECT_TRUE(arch_mm_pte_is_present(table[i], TOP_LEVEL))
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_TRUE(
+			arch_mm_pte_is_present(table->entries[i], TOP_LEVEL))
 			<< "i=" << i;
-		EXPECT_TRUE(arch_mm_pte_is_block(table[i], TOP_LEVEL))
+		EXPECT_TRUE(arch_mm_pte_is_block(table->entries[i], TOP_LEVEL))
 			<< "i=" << i;
-		EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table[i])),
+		EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table->entries[i])),
 			    Eq(i * mm_entry_size(TOP_LEVEL)))
 			<< "i=" << i;
 	}
@@ -170,7 +189,7 @@ TEST(mm, ptable_unmap_hypervisor_not_mapped)
 	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	struct mm_page_table *table = alloc_page_table();
 	init_absent(table);
 
 	struct mm_ptable ptable;
@@ -178,8 +197,8 @@ TEST(mm, ptable_unmap_hypervisor_not_mapped)
 
 	EXPECT_TRUE(mm_ptable_unmap_hypervisor(&ptable, 0));
 
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(table->entries[i], Eq(ABSENT_ENTRY)) << "i=" << i;
 	}
 }
 
@@ -191,17 +210,18 @@ TEST(mm, vm_unmap)
 	auto test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *subtable_a = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	pte_t *subtable_aa = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
-	init_absent(table);
+	struct mm_page_table *subtable_a = alloc_page_table();
+	struct mm_page_table *subtable_aa = alloc_page_table();
+	struct mm_page_table *table = alloc_page_table();
 	init_absent(subtable_a);
 	init_absent(subtable_aa);
+	init_absent(table);
 
-	subtable_aa[0] = arch_mm_block_pte(TOP_LEVEL - 2, pa_init(0), 0);
-	subtable_a[0] = arch_mm_table_pte(TOP_LEVEL - 1,
-					  pa_init((uintpaddr_t)subtable_aa));
-	table[0] =
+	subtable_aa->entries[0] =
+		arch_mm_block_pte(TOP_LEVEL - 2, pa_init(0), 0);
+	subtable_a->entries[0] = arch_mm_table_pte(
+		TOP_LEVEL - 1, pa_init((uintpaddr_t)subtable_aa));
+	table->entries[0] =
 		arch_mm_table_pte(TOP_LEVEL, pa_init((uintpaddr_t)subtable_a));
 
 	struct mm_ptable ptable;
@@ -209,8 +229,8 @@ TEST(mm, vm_unmap)
 
 	EXPECT_TRUE(mm_vm_unmap(&ptable, pa_init(0), pa_init(1), 0));
 
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(table->entries[i], Eq(ABSENT_ENTRY)) << "i=" << i;
 	}
 }
 
@@ -223,7 +243,7 @@ TEST(mm, vm_identity_map)
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
 	/* Start with an empty page table. */
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	struct mm_page_table *table = alloc_page_table();
 	init_absent(table);
 	struct mm_ptable ptable;
 	ptable.table = pa_init((uintpaddr_t)table);
@@ -235,23 +255,28 @@ TEST(mm, vm_identity_map)
 	EXPECT_THAT(ipa_addr(ipa), Eq(0));
 
 	/* Check that the first page is mapped, and nothing else. */
-	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(table[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	for (uint64_t i = 1; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(table->entries[i], Eq(ABSENT_ENTRY)) << "i=" << i;
 	}
-	ASSERT_TRUE(arch_mm_pte_is_table(table[0], TOP_LEVEL));
-	pte_t *subtable_a = (pte_t *)ptr_from_va(
-		va_from_pa(arch_mm_table_from_pte(table[0])));
-	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(subtable_a[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	ASSERT_TRUE(arch_mm_pte_is_table(table->entries[0], TOP_LEVEL));
+	struct mm_page_table *subtable_a =
+		page_table_from_pa(arch_mm_table_from_pte(table->entries[0]));
+	for (uint64_t i = 1; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(subtable_a->entries[i], Eq(ABSENT_ENTRY))
+			<< "i=" << i;
 	}
-	ASSERT_TRUE(arch_mm_pte_is_table(subtable_a[0], TOP_LEVEL - 1));
-	pte_t *subtable_aa = (pte_t *)ptr_from_va(
-		va_from_pa(arch_mm_table_from_pte(subtable_a[0])));
-	for (uint64_t i = 1; i < ENTRY_COUNT; ++i) {
-		EXPECT_THAT(subtable_aa[i], Eq(ABSENT_ENTRY)) << "i=" << i;
+	ASSERT_TRUE(
+		arch_mm_pte_is_table(subtable_a->entries[0], TOP_LEVEL - 1));
+	struct mm_page_table *subtable_aa = page_table_from_pa(
+		arch_mm_table_from_pte(subtable_a->entries[0]));
+	for (uint64_t i = 1; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_THAT(subtable_aa->entries[i], Eq(ABSENT_ENTRY))
+			<< "i=" << i;
 	}
-	EXPECT_TRUE(arch_mm_pte_is_block(subtable_aa[0], TOP_LEVEL - 2));
-	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(subtable_aa[0])), Eq(0));
+	EXPECT_TRUE(
+		arch_mm_pte_is_block(subtable_aa->entries[0], TOP_LEVEL - 2));
+	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(subtable_aa->entries[0])),
+		    Eq(0));
 }
 
 /** Mapping a range that is already mapped should be a no-op. */
@@ -261,7 +286,7 @@ TEST(mm, vm_identity_map_already_mapped)
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 
 	/* Start with a full page table mapping everything. */
-	pte_t *table = (pte_t *)halloc_aligned(PAGE_SIZE, PAGE_SIZE);
+	struct mm_page_table *table = alloc_page_table();
 	init_blocks(table, TOP_LEVEL, pa_init(0), 0);
 	struct mm_ptable ptable;
 	ptable.table = pa_init((uintpaddr_t)table);
@@ -276,8 +301,8 @@ TEST(mm, vm_identity_map_already_mapped)
 	 * The table should still be full of blocks, with no subtables or
 	 * anything else.
 	 */
-	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
-		EXPECT_TRUE(arch_mm_pte_is_block(table[i], TOP_LEVEL))
+	for (uint64_t i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		EXPECT_TRUE(arch_mm_pte_is_block(table->entries[i], TOP_LEVEL))
 			<< "i=" << i;
 	}
 }
