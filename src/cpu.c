@@ -133,8 +133,7 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 	sl_init(&vcpu->lock);
 	vcpu->vm = vm;
 	vcpu->state = vcpu_state_off;
-	/* TODO: This needs to be moved to arch-dependent code. */
-	vcpu->regs.lazy.vmpidr_el2 = vcpu - vm->vcpus;
+	arch_regs_set_vcpu_index(&vcpu->regs, vcpu - vm->vcpus);
 }
 
 void vcpu_on(struct vcpu *vcpu)

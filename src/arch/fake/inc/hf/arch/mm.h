@@ -204,4 +204,9 @@ static inline bool arch_mm_init(paddr_t table, bool first)
 	return true;
 }
 
-void arch_mm_set_vm(uint64_t vmid, paddr_t table);
+static inline void arch_mm_set_vm(uint64_t vmid, paddr_t table)
+{
+	/* TODO */
+	(void)vmid;
+	(void)table;
+}

@@ -116,6 +116,11 @@ static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc, size_t arg)
 	r->r[0] = arg;
 }
 
+static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint32_t index)
+{
+	r->lazy.vmpidr_el2 = index;
+}
+
 static inline void arch_regs_set_retval(struct arch_regs *r, size_t v)
 {
 	r->r[0] = v;

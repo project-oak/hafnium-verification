@@ -15,20 +15,41 @@
 # Hypervisor specific code.
 source_set("src") {
   sources = [
-    "api.c",
     "cpio.c",
-    "cpu.c",
     "load.c",
     "main.c",
+  ]
+
+  deps = [
+    ":common",
+    ":fdt",
+    ":memiter",
+    ":src_testable",
+  ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
+}
+
+# One day, this will contain all the hypervisor's source but only once it can
+# all be built against the fake arch for unit tests. Utilities that are shared
+# e.g. with VM used in the VM tests have their own targets to facilitate
+# sharing.
+source_set("src_testable") {
+  sources = [
+    "alloc.c",
+    "api.c",
+    "cpu.c",
+    "fdt_handler.c",
+    "mm.c",
     "vm.c",
   ]
 
   deps = [
     ":common",
     ":fdt",
-    ":fdt_handler",
     ":memiter",
-    ":mm",
   ]
 
   if (is_debug) {
@@ -55,6 +76,7 @@ source_set("dlog") {
   ]
 }
 
+# Flattened Device Tree (FDT) utilities.
 source_set("fdt") {
   sources = [
     "fdt.c",
@@ -69,44 +91,17 @@ source_set("fdt") {
   }
 }
 
-source_set("fdt_handler") {
-  sources = [
-    "fdt_handler.c",
-  ]
-
-  deps = [
-    ":common",
-    ":fdt",
-  ]
-
-  if (is_debug) {
-    deps += [ ":dlog" ]
-  }
-}
-
 source_set("memiter") {
   sources = [
     "memiter.c",
   ]
 }
 
-source_set("mm") {
-  sources = [
-    "alloc.c",
-    "mm.c",
-  ]
-
-  deps = []
-
-  if (is_debug) {
-    deps += [ ":dlog" ]
-  }
-}
-
 executable("unit_tests") {
   testonly = true
   sources = [
     "abi_test.cc",
+    "api_test.cc",
     "fdt_handler_test.cc",
     "fdt_test.cc",
     "mm_test.cc",
@@ -132,9 +127,7 @@ executable("unit_tests") {
     "-defsym=bin_end=600",
   ]
   deps = [
-    ":fdt",
-    ":fdt_handler",
-    ":mm",
+    ":src_testable",
     "//third_party:gtest_main",
   ]
 }
