@@ -30,7 +30,7 @@ config("compiler_defaults") {
 
   cflags_cc = [ "-std=c++14" ]
 
-  if (current_toolchain == mock_toolchain ||
+  if (current_toolchain == fake_toolchain ||
       current_toolchain == arch_toolchain) {
     include_dirs = [
       "//inc",

@@ -27,7 +27,7 @@ group("unit_tests") {
   testonly = true
 
   deps = [
-    "//src:unit_tests($mock_toolchain)",
+    "//src:unit_tests($fake_toolchain)",
   ]
 }
 

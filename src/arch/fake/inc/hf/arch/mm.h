@@ -22,7 +22,7 @@
 #include "hf/addr.h"
 
 /*
- * Our mock architecture has page tables rather similar to aarch64, but not
+ * Our fake architecture has page tables rather similar to aarch64, but not
  * quite.
  * - The highest level table is always 2, lowest level is 0.
  * - Blocks are allowed at all levels.
@@ -111,7 +111,7 @@ static inline bool arch_mm_pte_is_block(pte_t pte, int level)
 	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
 }
 
-static inline uint64_t hf_arch_mock_mm_clear_pte_attrs(pte_t pte)
+static inline uint64_t hf_arch_fake_mm_clear_pte_attrs(pte_t pte)
 {
 	return pte & ~0x3;
 }
@@ -123,7 +123,7 @@ static inline uint64_t hf_arch_mock_mm_clear_pte_attrs(pte_t pte)
 static inline paddr_t arch_mm_clear_pa(paddr_t pa)
 {
 	/* This is assumed to round down to the page boundary. */
-	return pa_init(hf_arch_mock_mm_clear_pte_attrs(pa_addr(pa)) &
+	return pa_init(hf_arch_fake_mm_clear_pte_attrs(pa_addr(pa)) &
 		       ~((1 << PAGE_BITS) - 1));
 }
 
@@ -133,7 +133,7 @@ static inline paddr_t arch_mm_clear_pa(paddr_t pa)
  */
 static inline paddr_t arch_mm_block_from_pte(pte_t pte)
 {
-	return pa_init(hf_arch_mock_mm_clear_pte_attrs(pte));
+	return pa_init(hf_arch_fake_mm_clear_pte_attrs(pte));
 }
 
 /**
@@ -142,7 +142,7 @@ static inline paddr_t arch_mm_block_from_pte(pte_t pte)
  */
 static inline paddr_t arch_mm_table_from_pte(pte_t pte)
 {
-	return pa_init(hf_arch_mock_mm_clear_pte_attrs(pte));
+	return pa_init(hf_arch_fake_mm_clear_pte_attrs(pte));
 }
 
 /**

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Mock implementation of putchar logs to the console.
+# Fake implementation of putchar logs to the console.
 source_set("putchar") {
   sources = [
     "putchar.c",

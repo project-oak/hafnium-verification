@@ -135,16 +135,16 @@ cc_toolchain("clang") {
   cflags = "-fcolor-diagnostics"
 }
 
-cc_toolchain("clang_mock_arch") {
+cc_toolchain("clang_fake_arch") {
   ar = "llvm-ar"
   cc = "clang"
   cxx = "clang++"
   cflags = "-fcolor-diagnostics"
 
   toolchain_args = {
-    # When building for the host, use the mock architecture to make things
+    # When building for the host, use the fake architecture to make things
     # testable.
-    arch = "mock"
+    arch = "fake"
   }
 }
 
@@ -155,15 +155,15 @@ cc_toolchain("gcc") {
   cflags = "-fdiagnostics-color=always"
 }
 
-cc_toolchain("gcc_mock_arch") {
+cc_toolchain("gcc_fake_arch") {
   ar = "ar"
   cc = "gcc"
   cxx = "g++"
   cflags = "-fdiagnostics-color=always"
 
   toolchain_args = {
-    # When building for the host, use the mock architecture to make things
+    # When building for the host, use the fake architecture to make things
     # testable.
-    arch = "mock"
+    arch = "fake"
   }
 }
