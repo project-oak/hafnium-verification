@@ -25,9 +25,11 @@ extern "C" {
 
 #include <gmock/gmock.h>
 
+namespace
+{
 using ::testing::Eq;
 
-static constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
+constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
 
 /*
  * /dts-v1/;
@@ -56,7 +58,7 @@ static constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
  * | xxd -i
  */
 
-static constexpr uint8_t test_dtb[] = {
+constexpr uint8_t test_dtb[] = {
 	0xd0, 0x0d, 0xfe, 0xed, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x00, 0x38,
 	0x00, 0x00, 0x01, 0x30, 0x00, 0x00, 0x00, 0x28, 0x00, 0x00, 0x00, 0x11,
 	0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x4f,
@@ -107,3 +109,5 @@ TEST(fdt, get_boot_params)
 	EXPECT_THAT(pa_addr(params.mem_ranges[2].begin), Eq(0x30020000));
 	EXPECT_THAT(pa_addr(params.mem_ranges[2].end), Eq(0x30030000));
 }
+
+} /* namespace */

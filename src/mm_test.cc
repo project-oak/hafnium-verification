@@ -26,18 +26,20 @@ extern "C" {
 
 #include <gmock/gmock.h>
 
+namespace
+{
 using ::testing::Eq;
 
 constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
 constexpr size_t ENTRY_COUNT = PAGE_SIZE / sizeof(pte_t);
-const static int TOP_LEVEL = arch_mm_max_level(0);
-const static pte_t ABSENT_ENTRY = arch_mm_absent_pte(TOP_LEVEL);
+const int TOP_LEVEL = arch_mm_max_level(0);
+const pte_t ABSENT_ENTRY = arch_mm_absent_pte(TOP_LEVEL);
 
 /**
  * Calculates the size of the address space represented by a page table entry at
  * the given level.
  */
-static size_t mm_entry_size(int level)
+size_t mm_entry_size(int level)
 {
 	return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS);
 }
@@ -45,7 +47,7 @@ static size_t mm_entry_size(int level)
 /**
  * Fill a ptable with absent entries.
  */
-static void init_absent(pte_t *table)
+void init_absent(pte_t *table)
 {
 	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
 		table[i] = ABSENT_ENTRY;
@@ -55,8 +57,7 @@ static void init_absent(pte_t *table)
 /**
  * Fill a ptable with block entries.
  */
-static void init_blocks(pte_t *table, int level, paddr_t start_address,
-			uint64_t attrs)
+void init_blocks(pte_t *table, int level, paddr_t start_address, uint64_t attrs)
 {
 	for (uint64_t i = 0; i < ENTRY_COUNT; ++i) {
 		table[i] = arch_mm_block_pte(
@@ -344,3 +345,5 @@ TEST(mm, vm_identity_map_page_already_mapped)
 			<< "i=" << i;
 	}
 }
+
+} /* namespace */
