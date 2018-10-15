@@ -62,8 +62,6 @@ bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode);
 
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 			int mode, ipaddr_t *ipa);
-bool mm_vm_identity_map_page(struct mm_ptable *t, paddr_t begin, int mode,
-			     ipaddr_t *ipa);
 bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode);
 bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode);
 bool mm_vm_translate(struct mm_ptable *t, ipaddr_t ipa, paddr_t *pa);

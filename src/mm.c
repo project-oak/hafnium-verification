@@ -382,43 +382,6 @@ static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 }
 
 /**
- * Updates the given table such that a single physical address page is mapped
- * into the address space with the corresponding address page in the provided
- * architecture-agnostic mode.
- */
-static bool mm_ptable_identity_map_page(struct mm_ptable *t, paddr_t pa,
-					int mode)
-{
-	size_t i;
-	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	pte_t *table = ptr_from_pa(t->table);
-	bool sync = !(mode & MM_MODE_NOSYNC);
-	ptable_addr_t addr;
-
-	pa = arch_mm_clear_pa(pa);
-	addr = pa_addr(pa);
-
-	for (i = arch_mm_max_level(mode); i > 0; i--) {
-		pte_t *pte = &table[mm_index(addr, i)];
-		if (arch_mm_pte_is_block(*pte, i) &&
-		    arch_mm_pte_attrs(*pte) == attrs) {
-			/* If the page is within a block that is already mapped
-			 * with the appropriate attributes, no need to do
-			 * anything more. */
-			return true;
-		}
-		table = mm_populate_table_pte(pte, i, sync);
-		if (!table) {
-			return false;
-		}
-	}
-
-	i = mm_index(addr, 0);
-	table[i] = arch_mm_block_pte(0, pa, attrs);
-	return true;
-}
-
-/**
  * Writes the given table to the debug log, calling itself recursively to
  * write sub-tables.
  */
@@ -684,24 +647,6 @@ bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 }
 
 /**
- * Updates a VM's page table such that the given physical address page is
- * mapped in the address space at the corresponding address page in the
- * architecture-agnostic mode provided.
- */
-bool mm_vm_identity_map_page(struct mm_ptable *t, paddr_t begin, int mode,
-			     ipaddr_t *ipa)
-{
-	bool success =
-		mm_ptable_identity_map_page(t, begin, mode & ~MM_MODE_STAGE1);
-
-	if (success && ipa != NULL) {
-		*ipa = ipa_from_pa(begin);
-	}
-
-	return success;
-}
-
-/**
  * Updates the VM's table such that the given physical address range is not
  * mapped in the address space.
  */
@@ -778,9 +723,10 @@ bool mm_init(void)
 
 	/* Map page for uart. */
 	/* TODO: We may not want to map this. */
-	mm_ptable_identity_map_page(&ptable, pa_init(PL011_BASE),
-				    MM_MODE_R | MM_MODE_W | MM_MODE_D |
-					    MM_MODE_NOSYNC | MM_MODE_STAGE1);
+	mm_ptable_identity_map(&ptable, pa_init(PL011_BASE),
+			       pa_add(pa_init(PL011_BASE), PAGE_SIZE),
+			       MM_MODE_R | MM_MODE_W | MM_MODE_D |
+				       MM_MODE_NOSYNC | MM_MODE_STAGE1);
 
 	/* Map each section. */
 	mm_identity_map(layout_text_begin(), layout_text_end(),
