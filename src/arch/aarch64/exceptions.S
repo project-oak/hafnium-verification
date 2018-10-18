@@ -87,7 +87,6 @@ vector_table_el2:
 
 	/* Get the current vcpu. */
 	mrs x0, tpidr_el2
-	ldr x0, [x0, #CPU_CURRENT]
 
 	/* Save volatile registers. */
 	add x0, x0, #VCPU_REGS
@@ -114,7 +113,6 @@ vector_table_el2:
 	bl irq_lower
 
 	mrs x1, tpidr_el2
-	ldr x1, [x1, #CPU_CURRENT]
 	cbnz x0, vcpu_switch
 
 	/* vcpu is not changing. */
@@ -220,9 +218,8 @@ vcpu_switch:
 
 .globl vcpu_restore_all_and_run
 vcpu_restore_all_and_run:
-	/* Update cpu()->current. */
-	mrs x2, tpidr_el2
-	str x0, [x2, #CPU_CURRENT]
+	/* Update current(). */
+	msr tpidr_el2, x0
 
 	/* Get a pointer to the lazy registers. */
 	add x0, x0, #VCPU_LAZY
@@ -318,7 +315,6 @@ vcpu_restore_volatile_and_run:
 slow_sync_lower_64:
 	/* Get the current vcpu. */
 	mrs x18, tpidr_el2
-	ldr x18, [x18, #CPU_CURRENT]
 
 	/* Save volatile registers. */
 	add x18, x18, #VCPU_REGS
@@ -348,7 +344,6 @@ slow_sync_lower_64:
 
 	/* Switch to the vcpu returned by sync_lower_exception. */
 	mrs x1, tpidr_el2
-	ldr x1, [x1, #CPU_CURRENT]
 	cbnz x0, vcpu_switch
 
 	/* vcpu is not changing. */
@@ -358,7 +353,6 @@ slow_sync_lower_64:
 sync_lower_64_switch:
 	/* We'll have to switch, so save volatile state before doing so. */
 	mrs x18, tpidr_el2
-	ldr x18, [x18, #CPU_CURRENT]
 
 	/* Store zeroes in volatile register storage, except x0. */
 	add x18, x18, #VCPU_REGS

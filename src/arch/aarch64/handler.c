@@ -32,6 +32,11 @@ struct hvc_handler_return {
 int32_t smc(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 void cpu_entry(struct cpu *c);
 
+static struct vcpu *current(void)
+{
+	return (struct vcpu *)read_msr(tpidr_el2);
+}
+
 void irq_current(void)
 {
 	dlog("IRQ from current\n");
@@ -128,7 +133,7 @@ static bool psci_handler(uint32_t func, size_t arg0, size_t arg1, size_t arg2,
 		break;
 
 	case PSCI_CPU_OFF:
-		cpu_off(cpu());
+		cpu_off(current()->cpu);
 		smc(PSCI_CPU_OFF, 0, 0, 0);
 		for (;;) {
 		}
@@ -180,7 +185,7 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 
 	ret.new = NULL;
 
-	if (cpu()->current->vm->id == HF_PRIMARY_VM_ID) {
+	if (current()->vm->id == HF_PRIMARY_VM_ID) {
 		int32_t psci_ret;
 		if (psci_handler(arg0, arg1, arg2, arg3, &psci_ret)) {
 			ret.user_ret = psci_ret;
@@ -194,29 +199,31 @@ struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
 		break;
 
 	case HF_VCPU_GET_COUNT:
-		ret.user_ret = api_vcpu_get_count(arg1);
+		ret.user_ret = api_vcpu_get_count(arg1, current());
 		break;
 
 	case HF_VCPU_RUN:
 		ret.user_ret = hf_vcpu_run_return_encode(
-			api_vcpu_run(arg1, arg2, &ret.new));
+			api_vcpu_run(arg1, arg2, current(), &ret.new));
 		break;
 
 	case HF_VM_CONFIGURE:
-		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2));
+		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2),
+						current());
 		break;
 
 	case HF_MAILBOX_SEND:
-		ret.user_ret = api_mailbox_send(arg1, arg2, &ret.new);
+		ret.user_ret =
+			api_mailbox_send(arg1, arg2, current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_RECEIVE:
 		ret.user_ret = hf_mailbox_receive_return_encode(
-			api_mailbox_receive(arg1, &ret.new));
+			api_mailbox_receive(arg1, current(), &ret.new));
 		break;
 
 	case HF_MAILBOX_CLEAR:
-		ret.user_ret = api_mailbox_clear();
+		ret.user_ret = api_mailbox_clear(current());
 		break;
 
 	default:
@@ -231,13 +238,12 @@ struct vcpu *irq_lower(void)
 	/* TODO: Only switch if we know the interrupt was not for the secondary
 	 * VM. */
 	/* Switch back to primary VM, interrupts will be handled there. */
-	return api_yield();
+	return api_yield(current());
 }
 
 struct vcpu *sync_lower_exception(uint64_t esr)
 {
-	struct cpu *c = cpu();
-	struct vcpu *vcpu = c->current;
+	struct vcpu *vcpu = current();
 	int32_t ret;
 
 	switch (esr >> 26) {
@@ -246,7 +252,7 @@ struct vcpu *sync_lower_exception(uint64_t esr)
 		if (esr & 1) {
 			return NULL;
 		}
-		return api_wait_for_interrupt();
+		return api_wait_for_interrupt(current());
 
 	case 0x24: /* EC = 100100, Data abort. */
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", vcpu->regs.pc,

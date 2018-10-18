@@ -6,9 +6,6 @@ cpu_entry:
 	/* Disable interrupts. */
 	msr DAIFSet, #0xf
 
-	/* Save pointer to CPU struct for later reference. */
-	msr tpidr_el2, x0
-
 	/* Use SPx (instead of SP0). */
 	msr spsel, #1
 
@@ -21,7 +18,7 @@ cpu_entry:
 	add x30, x30, :lo12:vector_table_el2
 	msr vbar_el2, x30
 
-	/* Call into C code. */
+	/* Call into C code, x0 holds the cpu pointer. */
 	bl cpu_main
 
 	/* Run the vcpu returned by cpu_main. */

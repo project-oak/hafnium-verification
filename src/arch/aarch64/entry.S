@@ -66,4 +66,3 @@ entry:
 
 	/* Branch to the entry point for the specific image. */
 4:	b image_entry
-

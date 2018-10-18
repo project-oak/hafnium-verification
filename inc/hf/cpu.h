@@ -45,6 +45,7 @@ enum vcpu_state {
 struct vcpu {
 	struct spinlock lock;
 	enum vcpu_state state;
+	struct cpu *cpu;
 	struct vm *vm;
 	struct vcpu *mailbox_next;
 	struct arch_regs regs;
@@ -54,8 +55,6 @@ struct vcpu {
 struct cpu {
 	/* CPU identifier. Doesn't have to be contiguous. */
 	size_t id;
-
-	struct vcpu *current;
 
 	/* Pointer to bottom of the stack. */
 	void *stack_bottom;

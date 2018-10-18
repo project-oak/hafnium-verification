@@ -25,12 +25,6 @@ struct arch_regs {
 	uint16_t vcpu_index;
 };
 
-static inline struct cpu *cpu(void)
-{
-	/* TODO: */
-	return NULL;
-}
-
 static inline void arch_irq_disable(void)
 {
 	/* TODO */

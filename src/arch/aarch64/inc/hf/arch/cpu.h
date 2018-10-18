@@ -56,13 +56,6 @@ struct arch_regs {
 	} lazy;
 };
 
-static inline struct cpu *cpu(void)
-{
-	struct cpu *p;
-	__asm__ volatile("mrs %0, tpidr_el2" : "=r"(p));
-	return p;
-}
-
 static inline void arch_irq_disable(void)
 {
 	__asm__ volatile("msr DAIFSet, #0xf");

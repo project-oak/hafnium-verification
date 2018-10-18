@@ -128,10 +128,10 @@ static void one_time_init(void)
  * The entry point of CPUs when they are turned on. It is supposed to initialise
  * all state and return the first vCPU to run.
  */
-struct vcpu *cpu_main(void)
+struct vcpu *cpu_main(struct cpu *c)
 {
-	struct cpu *c = cpu();
 	struct vm *primary;
+	struct vcpu *vcpu;
 
 	/*
 	 * Do global one-time initialisation just once. We avoid using atomics
@@ -152,5 +152,7 @@ struct vcpu *cpu_main(void)
 	primary = vm_get(HF_PRIMARY_VM_ID);
 	vm_set_current(primary);
 
-	return &primary->vcpus[cpu_index(c)];
+	vcpu = &primary->vcpus[cpu_index(c)];
+	vcpu->cpu = c;
+	return vcpu;
 }

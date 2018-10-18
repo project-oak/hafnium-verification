@@ -34,26 +34,24 @@ static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
  * to cause HF_VCPU_RUN to return and the primary VM to regain control of the
  * cpu.
  */
-static struct vcpu *api_switch_to_primary(struct hf_vcpu_run_return primary_ret,
+static struct vcpu *api_switch_to_primary(struct vcpu *current,
+					  struct hf_vcpu_run_return primary_ret,
 					  enum vcpu_state secondary_state)
 {
-	struct vcpu *vcpu = cpu()->current;
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
-	struct vcpu *next = &primary->vcpus[cpu_index(cpu())];
+	struct vcpu *next = &primary->vcpus[cpu_index(current->cpu)];
 
 	/* Switch back to primary VM. */
 	vm_set_current(primary);
 
-	/*
-	 * Set the return value for the primary VM's call to HF_VCPU_RUN.
-	 */
+	/* Set the return value for the primary VM's call to HF_VCPU_RUN. */
 	arch_regs_set_retval(&next->regs,
 			     hf_vcpu_run_return_encode(primary_ret));
 
-	/* Mark the vcpu as waiting. */
-	sl_lock(&vcpu->lock);
-	vcpu->state = secondary_state;
-	sl_unlock(&vcpu->lock);
+	/* Mark the current vcpu as waiting. */
+	sl_lock(&current->lock);
+	current->state = secondary_state;
+	sl_unlock(&current->lock);
 
 	return next;
 }
@@ -62,24 +60,25 @@ static struct vcpu *api_switch_to_primary(struct hf_vcpu_run_return primary_ret,
  * Returns to the primary vm leaving the current vcpu ready to be scheduled
  * again.
  */
-struct vcpu *api_yield(void)
+struct vcpu *api_yield(struct vcpu *current)
 {
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_YIELD,
 	};
-	return api_switch_to_primary(ret, vcpu_state_ready);
+	return api_switch_to_primary(current, ret, vcpu_state_ready);
 }
 
 /**
  * Puts the current vcpu in wait for interrupt mode, and returns to the primary
  * vm.
  */
-struct vcpu *api_wait_for_interrupt(void)
+struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 {
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
 	};
-	return api_switch_to_primary(ret, vcpu_state_blocked_interrupt);
+	return api_switch_to_primary(current, ret,
+				     vcpu_state_blocked_interrupt);
 }
 
 /**
@@ -93,12 +92,12 @@ int64_t api_vm_get_count(void)
 /**
  * Returns the number of vcpus configured in the given VM.
  */
-int64_t api_vcpu_get_count(uint32_t vm_id)
+int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current)
 {
 	struct vm *vm;
 
 	/* Only the primary VM needs to know about vcpus for scheduling. */
-	if (cpu()->current->vm->id != HF_PRIMARY_VM_ID) {
+	if (current->vm->id != HF_PRIMARY_VM_ID) {
 		return -1;
 	}
 
@@ -114,6 +113,7 @@ int64_t api_vcpu_get_count(uint32_t vm_id)
  * Runs the given vcpu of the given vm.
  */
 struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
+				       const struct vcpu *current,
 				       struct vcpu **next)
 {
 	struct vm *vm;
@@ -123,7 +123,7 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 	};
 
 	/* Only the primary VM can switch vcpus. */
-	if (cpu()->current->vm->id != HF_PRIMARY_VM_ID) {
+	if (current->vm->id != HF_PRIMARY_VM_ID) {
 		goto out;
 	}
 
@@ -149,6 +149,7 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 	if (vcpu->state != vcpu_state_ready) {
 		ret.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
 	} else {
+		vcpu->cpu = current->cpu;
 		vcpu->state = vcpu_state_running;
 		vm_set_current(vm);
 		*next = vcpu;
@@ -164,9 +165,10 @@ out:
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
  */
-int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv)
+int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
+			 const struct vcpu *current)
 {
-	struct vm *vm = cpu()->current->vm;
+	struct vm *vm = current->vm;
 	paddr_t pa_send_begin;
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
@@ -246,9 +248,10 @@ exit:
  * Copies data from the sender's send buffer to the recipient's receive buffer
  * and notifies the recipient.
  */
-int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu **next)
+int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
+			 struct vcpu **next)
 {
-	struct vm *from = cpu()->current->vm;
+	struct vm *from = current->vm;
 	struct vm *to;
 	const void *from_buf;
 	uint16_t vcpu;
@@ -378,7 +381,7 @@ out:
 	}
 
 	/* Switch to primary for scheduling and return success to the sender. */
-	*next = api_switch_to_primary(primary_ret, vcpu_state_ready);
+	*next = api_switch_to_primary(current, primary_ret, vcpu_state_ready);
 	return 0;
 }
 
@@ -389,10 +392,10 @@ out:
  * No new messages can be received until the mailbox has been cleared.
  */
 struct hf_mailbox_receive_return api_mailbox_receive(bool block,
+						     struct vcpu *current,
 						     struct vcpu **next)
 {
-	struct vcpu *vcpu = cpu()->current;
-	struct vm *vm = vcpu->vm;
+	struct vm *vm = current->vm;
 	struct hf_mailbox_receive_return ret = {
 		.vm_id = HF_INVALID_VM_ID,
 	};
@@ -420,17 +423,16 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 		goto out;
 	}
 
-	sl_lock(&vcpu->lock);
-	vcpu->state = vcpu_state_blocked_mailbox;
+	sl_lock(&current->lock);
+	current->state = vcpu_state_blocked_mailbox;
 
 	/* Push vcpu into waiter list. */
-	vcpu->mailbox_next = vm->mailbox.recv_waiter;
-	vm->mailbox.recv_waiter = vcpu;
-	sl_unlock(&vcpu->lock);
+	current->mailbox_next = vm->mailbox.recv_waiter;
+	vm->mailbox.recv_waiter = current;
+	sl_unlock(&current->lock);
 
 	/* Switch back to primary vm to block. */
-	*next = api_wait_for_interrupt();
-
+	*next = api_wait_for_interrupt(current);
 out:
 	sl_unlock(&vm->lock);
 
@@ -442,9 +444,9 @@ out:
  * must have copied out all data they wish to preserve as new messages will
  * overwrite the old and will arrive asynchronously.
  */
-int64_t api_mailbox_clear(void)
+int64_t api_mailbox_clear(const struct vcpu *current)
 {
-	struct vm *vm = cpu()->current->vm;
+	struct vm *vm = current->vm;
 	int64_t ret;
 
 	sl_lock(&vm->lock);
