@@ -57,6 +57,7 @@ config("compiler_defaults") {
 
       cflags += [
         "-mcpu=${arch_cpu}",
+        "-mstrict-align",
         "-fno-stack-protector",
         "-fno-builtin",
         "-ffreestanding",
