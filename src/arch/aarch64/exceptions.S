@@ -1,8 +1,8 @@
 #include "offsets.h"
 
-.balign 0x800
 .section .text.vector_table_el2, "ax"
 .global vector_table_el2
+.balign 0x800
 vector_table_el2:
 	/* sync_cur_sp0 */
 	b .
