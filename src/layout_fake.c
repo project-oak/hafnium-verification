@@ -14,19 +14,44 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "hf/layout.h"
 
-#include "hf/addr.h"
+paddr_t layout_text_begin(void)
+{
+	return pa_init(0);
+}
 
-paddr_t layout_text_begin(void);
-paddr_t layout_text_end(void);
+paddr_t layout_text_end(void)
+{
+	return pa_init(100);
+}
 
-paddr_t layout_rodata_begin(void);
-paddr_t layout_rodata_end(void);
+paddr_t layout_rodata_begin(void)
+{
+	return pa_init(200);
+}
 
-paddr_t layout_data_begin(void);
-paddr_t layout_data_end(void);
+paddr_t layout_rodata_end(void)
+{
+	return pa_init(300);
+}
 
-paddr_t layout_bin_end(void);
+paddr_t layout_data_begin(void)
+{
+	return pa_init(400);
+}
 
-paddr_t layout_primary_begin(void);
+paddr_t layout_data_end(void)
+{
+	return pa_init(500);
+}
+
+paddr_t layout_bin_end(void)
+{
+	return pa_init(600);
+}
+
+paddr_t layout_primary_begin(void)
+{
+	return pa_init(0x80000);
+}

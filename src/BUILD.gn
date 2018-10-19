@@ -19,17 +19,10 @@ source_set("src") {
     "load.c",
     "main.c",
   ]
-
+  sources += [ "layout.c" ]
   deps = [
-    ":common",
-    ":fdt",
-    ":memiter",
     ":src_testable",
   ]
-
-  if (is_debug) {
-    deps += [ ":dlog" ]
-  }
 }
 
 # One day, this will contain all the hypervisor's source but only once it can
@@ -106,25 +99,10 @@ executable("unit_tests") {
     "fdt_test.cc",
     "mm_test.cc",
   ]
+  sources += [ "layout_fake.c" ]
   cflags_cc = [
     "-Wno-c99-extensions",
     "-Wno-nested-anon-types",
-  ]
-  ldflags = [
-    "-Xlinker",
-    "-defsym=text_begin=0",
-    "-Xlinker",
-    "-defsym=text_end=100",
-    "-Xlinker",
-    "-defsym=rodata_begin=200",
-    "-Xlinker",
-    "-defsym=rodata_end=300",
-    "-Xlinker",
-    "-defsym=data_begin=400",
-    "-Xlinker",
-    "-defsym=data_end=500",
-    "-Xlinker",
-    "-defsym=bin_end=600",
   ]
   deps = [
     ":src_testable",
