@@ -86,7 +86,7 @@
 
 /* clang-format on */
 
-static uint64_t mm_max_s2_level = 2;
+static uint8_t mm_max_s2_level = 2;
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
@@ -159,7 +159,7 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 /**
  * Determines the maximum level supported by the given mode.
  */
-int arch_mm_max_level(int mode)
+uint8_t arch_mm_max_level(int mode)
 {
 	if (mode & MM_MODE_STAGE1) {
 		/*

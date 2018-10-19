@@ -82,7 +82,7 @@ static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
  * Calculates the size of the address space represented by a page table entry at
  * the given level.
  */
-static size_t mm_entry_size(int level)
+static size_t mm_entry_size(uint8_t level)
 {
 	return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS);
 }
@@ -91,7 +91,7 @@ static size_t mm_entry_size(int level)
  * For a given address, calculates the maximum (plus one) address that can be
  * represented by the same table at the given level.
  */
-static ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
+static ptable_addr_t mm_level_end(ptable_addr_t addr, uint8_t level)
 {
 	size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS;
 	return ((addr >> offset) + 1) << offset;
@@ -101,7 +101,7 @@ static ptable_addr_t mm_level_end(ptable_addr_t addr, int level)
  * For a given address, calculates the index at which its entry is stored in a
  * table at the given level.
  */
-static size_t mm_index(ptable_addr_t addr, int level)
+static size_t mm_index(ptable_addr_t addr, uint8_t level)
 {
 	ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
 	return v & ((UINT64_C(1) << PAGE_LEVEL_BITS) - 1);
@@ -127,7 +127,7 @@ static struct mm_page_table *mm_alloc_page_table(bool sync_alloc)
  *
  * Returns a pointer to the table the entry now points to.
  */
-static struct mm_page_table *mm_populate_table_pte(pte_t *pte, int level,
+static struct mm_page_table *mm_populate_table_pte(pte_t *pte, uint8_t level,
 						   bool sync_alloc)
 {
 	struct mm_page_table *ntable;
@@ -135,7 +135,7 @@ static struct mm_page_table *mm_populate_table_pte(pte_t *pte, int level,
 	pte_t new_pte;
 	size_t i;
 	size_t inc;
-	int level_below = level - 1;
+	uint8_t level_below = level - 1;
 
 	/* Just return pointer to table if it's already populated. */
 	if (arch_mm_pte_is_table(v, level)) {
@@ -180,7 +180,7 @@ static struct mm_page_table *mm_populate_table_pte(pte_t *pte, int level,
  * Frees all page-table-related memory associated with the given pte at the
  * given level, including any subtables recursively.
  */
-static void mm_free_page_pte(pte_t pte, int level)
+static void mm_free_page_pte(pte_t pte, uint8_t level)
 {
 	struct mm_page_table *table;
 	uint64_t i;
@@ -202,7 +202,7 @@ static void mm_free_page_pte(pte_t pte, int level)
 /**
  * Returns whether all entries in this table are absent.
  */
-static bool mm_ptable_is_empty(struct mm_page_table *table, int level)
+static bool mm_ptable_is_empty(struct mm_page_table *table, uint8_t level)
 {
 	uint64_t i;
 
@@ -224,8 +224,8 @@ static bool mm_ptable_is_empty(struct mm_page_table *table, int level)
  * table.
  */
 static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
-			 uint64_t attrs, struct mm_page_table *table, int level,
-			 int flags)
+			 uint64_t attrs, struct mm_page_table *table,
+			 uint8_t level, int flags)
 {
 	pte_t *pte = &table->entries[mm_index(begin, level)];
 	ptable_addr_t level_end = mm_level_end(begin, level);
@@ -331,7 +331,7 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 {
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
-	int level = arch_mm_max_level(mode);
+	uint8_t level = arch_mm_max_level(mode);
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
 	ptable_addr_t end;
@@ -369,7 +369,7 @@ static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 {
 	int flags =
 		((mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC) | MAP_FLAG_UNMAP;
-	int level = arch_mm_max_level(mode);
+	uint8_t level = arch_mm_max_level(mode);
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
 	ptable_addr_t end;
@@ -398,7 +398,7 @@ static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
  * Writes the given table to the debug log, calling itself recursively to
  * write sub-tables.
  */
-static void mm_dump_table_recursive(struct mm_page_table *table, int level,
+static void mm_dump_table_recursive(struct mm_page_table *table, uint8_t level,
 				    int max_level)
 {
 	uint64_t i;
@@ -434,7 +434,7 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
  * absent entry with which it can be replaced. Note that `entry` will no longer
  * be valid after calling this function as the subtable will have been freed.
  */
-static pte_t mm_table_pte_to_absent(pte_t entry, int level)
+static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level)
 {
 	struct mm_page_table *table =
 		mm_page_table_from_pa(arch_mm_table_from_pte(entry));
@@ -454,7 +454,7 @@ static pte_t mm_table_pte_to_absent(pte_t entry, int level)
  * `entry` will no longer be valid after calling this function as the subtable
  * may have been freed.
  */
-static pte_t mm_table_pte_to_block(pte_t entry, int level)
+static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level)
 {
 	struct mm_page_table *table;
 	uint64_t block_attrs;
@@ -491,7 +491,7 @@ static pte_t mm_table_pte_to_block(pte_t entry, int level)
  * Defragment the given ptable entry by recursively replacing any tables with
  * block or absent entries where possible.
  */
-static pte_t mm_ptable_defrag_entry(pte_t entry, int level)
+static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
 {
 	struct mm_page_table *table;
 	uint64_t i;
@@ -546,7 +546,7 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, int level)
 void mm_ptable_defrag(struct mm_ptable *t, int mode)
 {
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
-	int level = arch_mm_max_level(mode);
+	uint8_t level = arch_mm_max_level(mode);
 	uint64_t i;
 
 	/*
@@ -577,7 +577,7 @@ bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode)
  * recursively traversing all levels of the page table.
  */
 static bool mm_is_mapped_recursive(struct mm_page_table *table,
-				   ptable_addr_t addr, int level)
+				   ptable_addr_t addr, uint8_t level)
 {
 	pte_t pte;
 	ptable_addr_t va_level_end = mm_level_end(addr, level);
@@ -610,7 +610,7 @@ static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
 				int mode)
 {
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
-	int level = arch_mm_max_level(mode);
+	uint8_t level = arch_mm_max_level(mode);
 
 	addr = mm_round_down_to_page(addr);
 

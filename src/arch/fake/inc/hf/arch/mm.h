@@ -185,7 +185,7 @@ static inline void arch_mm_invalidate_stage2_range(ipaddr_t va_begin,
 /**
  * Determines the maximum level supported by the given mode.
  */
-static inline int arch_mm_max_level(int mode)
+static inline uint8_t arch_mm_max_level(int mode)
 {
 	(void)mode;
 	return 2;
