@@ -46,7 +46,7 @@ static_assert(
 /* Keep macro alignment */
 /* clang-format off */
 
-#define MAP_FLAG_SYNC   0x01
+#define MAP_FLAG_NOSYNC 0x01
 #define MAP_FLAG_COMMIT 0x02
 #define MAP_FLAG_UNMAP  0x04
 
@@ -110,9 +110,9 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
 /**
  * Allocate a new page table.
  */
-static struct mm_page_table *mm_alloc_page_table(bool sync_alloc)
+static struct mm_page_table *mm_alloc_page_table(bool nosync)
 {
-	if (sync_alloc) {
+	if (nosync) {
 		return halloc_aligned_nosync(sizeof(struct mm_page_table),
 					     alignof(struct mm_page_table));
 	}
@@ -128,7 +128,7 @@ static struct mm_page_table *mm_alloc_page_table(bool sync_alloc)
  * Returns a pointer to the table the entry now points to.
  */
 static struct mm_page_table *mm_populate_table_pte(pte_t *pte, uint8_t level,
-						   bool sync_alloc)
+						   bool nosync)
 {
 	struct mm_page_table *ntable;
 	pte_t v = *pte;
@@ -143,7 +143,7 @@ static struct mm_page_table *mm_populate_table_pte(pte_t *pte, uint8_t level,
 	}
 
 	/* Allocate a new table. */
-	ntable = mm_alloc_page_table(sync_alloc);
+	ntable = mm_alloc_page_table(nosync);
 	if (ntable == NULL) {
 		dlog("Failed to allocate memory for page table\n");
 		return NULL;
@@ -231,7 +231,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 	ptable_addr_t level_end = mm_level_end(begin, level);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
-	bool sync = flags & MAP_FLAG_SYNC;
+	bool nosync = flags & MAP_FLAG_NOSYNC;
 	bool unmap = flags & MAP_FLAG_UNMAP;
 
 	/* Cap end so that we don't go over the current level max. */
@@ -272,7 +272,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 * replace it with an equivalent subtable and get that.
 			 */
 			struct mm_page_table *nt =
-				mm_populate_table_pte(pte, level, sync);
+				mm_populate_table_pte(pte, level, nosync);
 			if (nt == NULL) {
 				return false;
 			}
@@ -330,7 +330,7 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 				   paddr_t pa_end, int mode)
 {
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	int flags = (mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC;
+	int flags = (mode & MM_MODE_NOSYNC) ? MAP_FLAG_NOSYNC : 0;
 	uint8_t level = arch_mm_max_level(mode);
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
@@ -367,8 +367,8 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 			    paddr_t pa_end, int mode)
 {
-	int flags =
-		((mode & MM_MODE_NOSYNC) ? 0 : MAP_FLAG_SYNC) | MAP_FLAG_UNMAP;
+	int flags = ((mode & MM_MODE_NOSYNC) ? MAP_FLAG_NOSYNC : 0) |
+		    MAP_FLAG_UNMAP;
 	uint8_t level = arch_mm_max_level(mode);
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
