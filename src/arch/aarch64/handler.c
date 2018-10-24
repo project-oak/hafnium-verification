@@ -25,11 +25,11 @@
 #include "psci.h"
 
 struct hvc_handler_return {
-	uint64_t user_ret;
+	uintreg_t user_ret;
 	struct vcpu *new;
 };
 
-int32_t smc(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
+int32_t smc(uintreg_t arg0, uintreg_t arg1, uintreg_t arg2, uintreg_t arg3);
 void cpu_entry(struct cpu *c);
 
 static struct vcpu *current(void)
@@ -45,7 +45,7 @@ void irq_current(void)
 	}
 }
 
-void sync_current_exception(uint64_t esr, uint64_t elr)
+void sync_current_exception(uintreg_t esr, uintreg_t elr)
 {
 	switch (esr >> 26) {
 	case 0x25: /* EC = 100101, Data abort. */
@@ -82,8 +82,8 @@ void sync_current_exception(uint64_t esr, uint64_t elr)
  *
  * Returns true if the request was a PSCI one, false otherwise.
  */
-static bool psci_handler(uint32_t func, size_t arg0, size_t arg1, size_t arg2,
-			 int32_t *ret)
+static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
+			 uintreg_t arg2, int32_t *ret)
 {
 	struct cpu *c;
 	int32_t sret;
@@ -158,8 +158,8 @@ static bool psci_handler(uint32_t func, size_t arg0, size_t arg1, size_t arg2,
 		 * itself off).
 		 */
 		do {
-			sret = smc(PSCI_CPU_ON, arg0, (size_t)&cpu_entry,
-				   (size_t)c);
+			sret = smc(PSCI_CPU_ON, arg0, (uintreg_t)&cpu_entry,
+				   (uintreg_t)c);
 		} while (sret == PSCI_RETURN_ALREADY_ON);
 
 		if (sret == PSCI_RETURN_SUCCESS) {
@@ -178,8 +178,8 @@ static bool psci_handler(uint32_t func, size_t arg0, size_t arg1, size_t arg2,
 	return true;
 }
 
-struct hvc_handler_return hvc_handler(size_t arg0, size_t arg1, size_t arg2,
-				      size_t arg3)
+struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
+				      uintreg_t arg2, uintreg_t arg3)
 {
 	struct hvc_handler_return ret;
 
@@ -241,7 +241,7 @@ struct vcpu *irq_lower(void)
 	return api_yield(current());
 }
 
-struct vcpu *sync_lower_exception(uint64_t esr)
+struct vcpu *sync_lower_exception(uintreg_t esr)
 {
 	struct vcpu *vcpu = current();
 	int32_t ret;

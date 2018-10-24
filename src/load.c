@@ -110,8 +110,7 @@ static bool find_file(const struct memiter *cpio, const char *name,
 /**
  * Loads the primary VM.
  */
-// TODO: kernel_arg is a size_t???
-bool load_primary(const struct memiter *cpio, size_t kernel_arg,
+bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 		  struct memiter *initrd)
 {
 	struct memiter it;

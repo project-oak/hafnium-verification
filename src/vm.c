@@ -69,7 +69,7 @@ struct vm *vm_get(uint32_t id)
 }
 
 /* TODO: Shall we use index or id here? */
-void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, size_t arg)
+void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg)
 {
 	struct vcpu *vcpu = &vm->vcpus[index];
 	if (index < vm->vcpu_count) {

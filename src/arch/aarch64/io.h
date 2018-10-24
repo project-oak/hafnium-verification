@@ -21,12 +21,12 @@
 
 #include "hf/arch/barriers.h"
 
-static inline uint32_t io_read(size_t addr)
+static inline uint32_t io_read(uintptr_t addr)
 {
 	return *(volatile uint32_t *)addr;
 }
 
-static inline uint32_t io_read_mb(size_t addr)
+static inline uint32_t io_read_mb(uintptr_t addr)
 {
 	uint32_t v = io_read(addr);
 	dsb();
@@ -34,12 +34,12 @@ static inline uint32_t io_read_mb(size_t addr)
 	return v;
 }
 
-static inline void io_write(size_t addr, uint32_t v)
+static inline void io_write(uintptr_t addr, uint32_t v)
 {
 	*(volatile uint32_t *)addr = v;
 }
 
-static inline void io_write_mb(size_t addr, uint32_t v)
+static inline void io_write_mb(uintptr_t addr, uint32_t v)
 {
 	dsb();
 	isb();

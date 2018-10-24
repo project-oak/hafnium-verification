@@ -353,7 +353,7 @@ void fdt_dump(struct fdt_header *hdr)
 			dlog("%*sNew node: \"%s\"\n", 2 * depth, "", name);
 			depth++;
 			while (fdt_next_property(&t, &name, &buf, &size)) {
-				size_t i;
+				uint32_t i;
 				dlog("%*sproperty: \"%s\" (", 2 * depth, "",
 				     name);
 				for (i = 0; i < size; i++) {
@@ -379,7 +379,8 @@ void fdt_dump(struct fdt_header *hdr)
 	{
 		struct fdt_reserve_entry *e =
 			(struct fdt_reserve_entry
-				 *)((size_t)hdr + be32toh(hdr->off_mem_rsvmap));
+				 *)((uintptr_t)hdr +
+				    be32toh(hdr->off_mem_rsvmap));
 		while (e->address || e->size) {
 			dlog("Entry: %p (0x%x bytes)\n", be64toh(e->address),
 			     be64toh(e->size));
@@ -388,10 +389,11 @@ void fdt_dump(struct fdt_header *hdr)
 	}
 }
 
-void fdt_add_mem_reservation(struct fdt_header *hdr, size_t addr, size_t len)
+void fdt_add_mem_reservation(struct fdt_header *hdr, uint64_t addr,
+			     uint64_t len)
 {
 	/* TODO: Clean this up. */
-	char *begin = (char *)hdr + be32toh(hdr->off_mem_rsvmap);
+	uint8_t *begin = (uint8_t *)hdr + be32toh(hdr->off_mem_rsvmap);
 	struct fdt_reserve_entry *e = (struct fdt_reserve_entry *)begin;
 	hdr->totalsize = htobe32(be32toh(hdr->totalsize) +
 				 sizeof(struct fdt_reserve_entry));
@@ -410,7 +412,7 @@ size_t fdt_header_size(void)
 	return sizeof(struct fdt_header);
 }
 
-size_t fdt_total_size(struct fdt_header *hdr)
+uint32_t fdt_total_size(struct fdt_header *hdr)
 {
 	return be32toh(hdr->totalsize);
 }

@@ -22,37 +22,39 @@
 
 #include "hf/addr.h"
 
+typedef uint64_t uintreg_t;
+
 struct arch_regs {
 	/* General purpose registers. */
-	uint64_t r[31];
-	uint64_t pc;
-	uint64_t spsr;
+	uintreg_t r[31];
+	uintreg_t pc;
+	uintreg_t spsr;
 
 	/* TODO: We need to save virtual timer state. */
 	struct {
-		uint64_t vmpidr_el2;
-		uint64_t csselr_el1;
-		uint64_t sctlr_el1;
-		uint64_t actlr_el1;
-		uint64_t cpacr_el1;
-		uint64_t ttbr0_el1;
-		uint64_t ttbr1_el1;
-		uint64_t tcr_el1;
-		uint64_t esr_el1;
-		uint64_t afsr0_el1;
-		uint64_t afsr1_el1;
-		uint64_t far_el1;
-		uint64_t mair_el1;
-		uint64_t vbar_el1;
-		uint64_t contextidr_el1;
-		uint64_t tpidr_el0;
-		uint64_t tpidrro_el0;
-		uint64_t tpidr_el1;
-		uint64_t amair_el1;
-		uint64_t cntkctl_el1;
-		uint64_t sp_el0;
-		uint64_t sp_el1;
-		uint64_t par_el1;
+		uintreg_t vmpidr_el2;
+		uintreg_t csselr_el1;
+		uintreg_t sctlr_el1;
+		uintreg_t actlr_el1;
+		uintreg_t cpacr_el1;
+		uintreg_t ttbr0_el1;
+		uintreg_t ttbr1_el1;
+		uintreg_t tcr_el1;
+		uintreg_t esr_el1;
+		uintreg_t afsr0_el1;
+		uintreg_t afsr1_el1;
+		uintreg_t far_el1;
+		uintreg_t mair_el1;
+		uintreg_t vbar_el1;
+		uintreg_t contextidr_el1;
+		uintreg_t tpidr_el0;
+		uintreg_t tpidrro_el0;
+		uintreg_t tpidr_el1;
+		uintreg_t amair_el1;
+		uintreg_t cntkctl_el1;
+		uintreg_t sp_el0;
+		uintreg_t sp_el1;
+		uintreg_t par_el1;
 	} lazy;
 };
 
@@ -68,9 +70,9 @@ static inline void arch_irq_enable(void)
 
 static inline void arch_cpu_update(bool is_primary)
 {
-	uint64_t hcr;
-	uint64_t cptr;
-	uint64_t cnthctl;
+	uintreg_t hcr;
+	uintreg_t cptr;
+	uintreg_t cnthctl;
 
 	/* TODO: Determine if we need to set TSW. */
 	hcr = (1u << 31) | /* RW bit. */
@@ -100,7 +102,8 @@ static inline void arch_cpu_update(bool is_primary)
 	__asm__ volatile("msr cnthctl_el2, %0" ::"r"(cnthctl));
 }
 
-static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc, size_t arg)
+static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc,
+				  uintreg_t arg)
 {
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
@@ -114,7 +117,7 @@ static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint32_t index)
 	r->lazy.vmpidr_el2 = index;
 }
 
-static inline void arch_regs_set_retval(struct arch_regs *r, size_t v)
+static inline void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)
 {
 	r->r[0] = v;
 }

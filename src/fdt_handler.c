@@ -232,7 +232,7 @@ bool fdt_get_boot_params(paddr_t fdt_addr, struct boot_params *p)
 		goto out_unmap_fdt;
 	}
 
-	p->kernel_arg = (size_t)fdt;
+	p->kernel_arg = (uintreg_t)fdt;
 	ret = true;
 
 out_unmap_fdt:

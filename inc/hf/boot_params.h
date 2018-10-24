@@ -18,6 +18,8 @@
 
 #include <stdbool.h>
 
+#include "hf/arch/cpu.h"
+
 #include "hf/mm.h"
 
 #define MAX_MEM_RANGES 20
@@ -32,7 +34,7 @@ struct boot_params {
 	size_t mem_ranges_count;
 	paddr_t initrd_begin;
 	paddr_t initrd_end;
-	size_t kernel_arg;
+	uintreg_t kernel_arg;
 };
 
 struct boot_params_update {

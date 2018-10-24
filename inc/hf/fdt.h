@@ -28,7 +28,7 @@ struct fdt_node {
 };
 
 size_t fdt_header_size(void);
-size_t fdt_total_size(struct fdt_header *hdr);
+uint32_t fdt_total_size(struct fdt_header *hdr);
 void fdt_dump(struct fdt_header *hdr);
 bool fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr);
 bool fdt_find_child(struct fdt_node *node, const char *child);

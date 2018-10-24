@@ -28,7 +28,7 @@
 #include "vmapi/hf/call.h"
 
 /* The stack to be used by the CPUs. */
-alignas(2 * sizeof(size_t)) static char callstacks[MAX_CPUS][STACK_SIZE];
+alignas(2 * sizeof(uintreg_t)) static char callstacks[MAX_CPUS][STACK_SIZE];
 
 /* State of all supported CPUs. The stack of the first one is initialized. */
 struct cpu cpus[MAX_CPUS] = {
@@ -82,7 +82,7 @@ void cpu_irq_disable(struct cpu *c)
 /**
  * Turns CPU on and returns the previous state.
  */
-bool cpu_on(struct cpu *c, ipaddr_t entry, size_t arg)
+bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 {
 	bool prev;
 

@@ -20,9 +20,11 @@
 
 #include "hf/addr.h"
 
+typedef uint64_t uintreg_t;
+
 struct arch_regs {
-	uint64_t r[5];
-	uint16_t vcpu_index;
+	uintreg_t r[5];
+	uintreg_t vcpu_index;
 };
 
 static inline void arch_irq_disable(void)
@@ -41,7 +43,8 @@ static inline void arch_cpu_update(bool is_primary)
 	(void)is_primary;
 }
 
-static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc, size_t arg)
+static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc,
+				  uintreg_t arg)
 {
 	/* TODO */
 	(void)pc;
@@ -52,7 +55,7 @@ static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint16_t index)
 	r->vcpu_index = index;
 }
 
-static inline void arch_regs_set_retval(struct arch_regs *r, size_t v)
+static inline void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)
 {
 	r->r[0] = v;
 }
