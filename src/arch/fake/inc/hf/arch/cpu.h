@@ -37,16 +37,14 @@ static inline void arch_irq_enable(void)
 	/* TODO */
 }
 
-static inline void arch_cpu_update(bool is_primary)
-{
-	/* TODO */
-	(void)is_primary;
-}
-
-static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc,
+static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
+				  uint64_t vmid, paddr_t table, ipaddr_t pc,
 				  uintreg_t arg)
 {
 	/* TODO */
+	(void)is_primary;
+	(void)vmid;
+	(void)table;
 	(void)pc;
 	r->r[0] = arg;
 }

@@ -193,13 +193,6 @@ static inline void arch_mm_invalidate_stage2_range(ipaddr_t va_begin,
 		"dsb ish\n");
 }
 
-static inline void arch_mm_set_vm(uint64_t vmid, paddr_t table)
-{
-	__asm__ volatile("msr vttbr_el2, %0"
-			 :
-			 : "r"(pa_addr(table) | (vmid << 48)));
-}
-
 uint64_t arch_mm_mode_to_attrs(int mode);
 bool arch_mm_init(paddr_t table, bool first);
 uint8_t arch_mm_max_level(int mode);

@@ -92,9 +92,10 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 	sl_unlock(&c->lock);
 
 	if (!prev) {
-		struct vcpu *vcpu =
-			&vm_get(HF_PRIMARY_VM_ID)->vcpus[cpu_index(c)];
-		arch_regs_init(&vcpu->regs, entry, arg);
+		struct vm *vm = vm_get(HF_PRIMARY_VM_ID);
+		struct vcpu *vcpu = &vm->vcpus[cpu_index(c)];
+		arch_regs_init(&vcpu->regs, true, vm->id, vm->ptable.table,
+			       entry, arg);
 		vcpu_on(vcpu);
 	}
 

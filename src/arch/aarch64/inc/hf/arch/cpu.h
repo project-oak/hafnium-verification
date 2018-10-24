@@ -55,6 +55,10 @@ struct arch_regs {
 		uintreg_t sp_el0;
 		uintreg_t sp_el1;
 		uintreg_t par_el1;
+		uintreg_t hcr_el2;
+		uintreg_t cptr_el2;
+		uintreg_t cnthctl_el2;
+		uintreg_t vttbr_el2;
 	} lazy;
 };
 
@@ -68,7 +72,9 @@ static inline void arch_irq_enable(void)
 	__asm__ volatile("msr DAIFClr, #0xf");
 }
 
-static inline void arch_cpu_update(bool is_primary)
+static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
+				  uint64_t vmid, paddr_t table, ipaddr_t pc,
+				  uintreg_t arg)
 {
 	uintreg_t hcr;
 	uintreg_t cptr;
@@ -97,14 +103,10 @@ static inline void arch_cpu_update(bool is_primary)
 			   (1u << 1);  /* EL1PCEN, trap phys timer access. */
 	}
 
-	__asm__ volatile("msr hcr_el2, %0" ::"r"(hcr));
-	__asm__ volatile("msr cptr_el2, %0" ::"r"(cptr));
-	__asm__ volatile("msr cnthctl_el2, %0" ::"r"(cnthctl));
-}
-
-static inline void arch_regs_init(struct arch_regs *r, ipaddr_t pc,
-				  uintreg_t arg)
-{
+	r->lazy.hcr_el2 = hcr;
+	r->lazy.cptr_el2 = cptr;
+	r->lazy.cnthctl_el2 = cnthctl;
+	r->lazy.vttbr_el2 = pa_addr(table) | (vmid << 48);
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */

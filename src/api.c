@@ -41,9 +41,6 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
 	struct vcpu *next = &primary->vcpus[cpu_index(current->cpu)];
 
-	/* Switch back to primary VM. */
-	vm_set_current(primary);
-
 	/* Set the return value for the primary VM's call to HF_VCPU_RUN. */
 	arch_regs_set_retval(&next->regs,
 			     hf_vcpu_run_return_encode(primary_ret));
@@ -151,7 +148,6 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 	} else {
 		vcpu->cpu = current->cpu;
 		vcpu->state = vcpu_state_running;
-		vm_set_current(vm);
 		*next = vcpu;
 		ret.code = HF_VCPU_RUN_YIELD;
 	}

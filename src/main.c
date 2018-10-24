@@ -130,7 +130,6 @@ static void one_time_init(void)
  */
 struct vcpu *cpu_main(struct cpu *c)
 {
-	struct vm *primary;
 	struct vcpu *vcpu;
 
 	/*
@@ -149,10 +148,7 @@ struct vcpu *cpu_main(struct cpu *c)
 		panic("mm_cpu_init failed");
 	}
 
-	primary = vm_get(HF_PRIMARY_VM_ID);
-	vm_set_current(primary);
-
-	vcpu = &primary->vcpus[cpu_index(c)];
+	vcpu = &vm_get(HF_PRIMARY_VM_ID)->vcpus[cpu_index(c)];
 	vcpu->cpu = c;
 	return vcpu;
 }

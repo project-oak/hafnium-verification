@@ -279,7 +279,15 @@ vcpu_switch:
 	stp x20, x21, [x1, #16 * 10]
 
 	mrs x22, par_el1
-	str x22, [x1, #16 * 11]
+	mrs x23, hcr_el2
+	stp x22, x23, [x1, #16 * 11]
+
+	mrs x24, cptr_el2
+	mrs x25, cnthctl_el2
+	stp x24, x25, [x1, #16 * 12]
+
+	mrs x26, vttbr_el2
+	str x26, [x1, #16 * 13]
 
 	/* Intentional fallthrough. */
 
@@ -335,8 +343,16 @@ vcpu_restore_all_and_run:
 	msr sp_el0, x20
 	msr sp_el1, x21
 
-	ldr x22, [x0, #16 * 11]
+	ldp x22, x23, [x0, #16 * 11]
 	msr par_el1, x22
+	msr hcr_el2, x23
+
+	ldp x24, x25, [x0, #16 * 12]
+	msr cptr_el2, x22
+	msr cnthctl_el2, x23
+
+	ldr x26, [x0, #16 * 13]
+	msr vttbr_el2, x26
 
 	/* Restore non-volatile registers. */
 	add x0, x0, #(VCPU_REGS - VCPU_LAZY)
