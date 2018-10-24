@@ -143,8 +143,75 @@ vector_table_el2:
 	/* serr_lower_32 */
 	b .
 
-.balign 0x80
+slow_sync_lower_64:
+	/* Get the current vcpu. */
+	mrs x18, tpidr_el2
 
+	/* Save volatile registers. */
+	add x18, x18, #VCPU_REGS
+	stp x0, x1, [x18, #8 * 0]
+	stp x2, x3, [x18, #8 * 2]
+	stp x4, x5, [x18, #8 * 4]
+	stp x6, x7, [x18, #8 * 6]
+	stp x8, x9, [x18, #8 * 8]
+	stp x10, x11, [x18, #8 * 10]
+	stp x12, x13, [x18, #8 * 12]
+	stp x14, x15, [x18, #8 * 14]
+	stp x16, x17, [x18, #8 * 16]
+	stp x29, x30, [x18, #8 * 29]
+
+	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
+	ldr x0, [sp], #16
+	str x0, [x18, #8 * 18]
+
+	/* Save return address & mode. */
+	mrs x1, elr_el2
+	mrs x2, spsr_el2
+	stp x1, x2, [x18, #8 * 31]
+
+	/* Read syndrome register and call C handler. */
+	mrs x0, esr_el2
+	bl sync_lower_exception
+
+	/* Switch to the vcpu returned by sync_lower_exception. */
+	mrs x1, tpidr_el2
+	cbnz x0, vcpu_switch
+
+	/* vcpu is not changing. */
+	add x0, x1, #VCPU_REGS
+	b vcpu_restore_volatile_and_run
+
+sync_lower_64_switch:
+	/* We'll have to switch, so save volatile state before doing so. */
+	mrs x18, tpidr_el2
+
+	/* Store zeroes in volatile register storage, except x0. */
+	add x18, x18, #VCPU_REGS
+	stp x0, xzr, [x18, #8 * 0]
+	stp xzr, xzr, [x18, #8 * 2]
+	stp xzr, xzr, [x18, #8 * 4]
+	stp xzr, xzr, [x18, #8 * 6]
+	stp xzr, xzr, [x18, #8 * 8]
+	stp xzr, xzr, [x18, #8 * 10]
+	stp xzr, xzr, [x18, #8 * 12]
+	stp xzr, xzr, [x18, #8 * 14]
+	stp xzr, xzr, [x18, #8 * 16]
+	stp x29, x30, [x18, #8 * 29]
+
+	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
+	ldr x2, [sp], #16
+	str x2, [x18, #8 * 18]
+
+	/* Save return address & mode. */
+	mrs x2, elr_el2
+	mrs x3, spsr_el2
+	stp x2, x3, [x18, #8 * 31]
+
+	/* Save lazy state, then switch to new vcpu. */
+	mov x0, x1
+	sub x1, x18, #VCPU_REGS
+
+	/* Intentional fallthrough. */
 /**
  * Switch to a new vcpu.
  *
@@ -214,11 +281,11 @@ vcpu_switch:
 	mrs x22, par_el1
 	str x22, [x1, #16 * 11]
 
-	/* Intentional fall through. */
+	/* Intentional fallthrough. */
 
 .globl vcpu_restore_all_and_run
 vcpu_restore_all_and_run:
-	/* Update current(). */
+	/* Update pointer to current vcpu. */
 	msr tpidr_el2, x0
 
 	/* Get a pointer to the lazy registers. */
@@ -307,72 +374,3 @@ vcpu_restore_volatile_and_run:
 	ldp x2, x3, [x0, #8 * 2]
 	ldp x0, x1, [x0, #8 * 0]
 	eret
-
-slow_sync_lower_64:
-	/* Get the current vcpu. */
-	mrs x18, tpidr_el2
-
-	/* Save volatile registers. */
-	add x18, x18, #VCPU_REGS
-	stp x0, x1, [x18, #8 * 0]
-	stp x2, x3, [x18, #8 * 2]
-	stp x4, x5, [x18, #8 * 4]
-	stp x6, x7, [x18, #8 * 6]
-	stp x8, x9, [x18, #8 * 8]
-	stp x10, x11, [x18, #8 * 10]
-	stp x12, x13, [x18, #8 * 12]
-	stp x14, x15, [x18, #8 * 14]
-	stp x16, x17, [x18, #8 * 16]
-	stp x29, x30, [x18, #8 * 29]
-
-	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
-	ldr x0, [sp], #16
-	str x0, [x18, #8 * 18]
-
-	/* Save return address & mode. */
-	mrs x1, elr_el2
-	mrs x2, spsr_el2
-	stp x1, x2, [x18, #8 * 31]
-
-	/* Read syndrome register and call C handler. */
-	mrs x0, esr_el2
-	bl sync_lower_exception
-
-	/* Switch to the vcpu returned by sync_lower_exception. */
-	mrs x1, tpidr_el2
-	cbnz x0, vcpu_switch
-
-	/* vcpu is not changing. */
-	add x0, x1, #VCPU_REGS
-	b vcpu_restore_volatile_and_run
-
-sync_lower_64_switch:
-	/* We'll have to switch, so save volatile state before doing so. */
-	mrs x18, tpidr_el2
-
-	/* Store zeroes in volatile register storage, except x0. */
-	add x18, x18, #VCPU_REGS
-	stp x0, xzr, [x18, #8 * 0]
-	stp xzr, xzr, [x18, #8 * 2]
-	stp xzr, xzr, [x18, #8 * 4]
-	stp xzr, xzr, [x18, #8 * 6]
-	stp xzr, xzr, [x18, #8 * 8]
-	stp xzr, xzr, [x18, #8 * 10]
-	stp xzr, xzr, [x18, #8 * 12]
-	stp xzr, xzr, [x18, #8 * 14]
-	stp xzr, xzr, [x18, #8 * 16]
-	stp x29, x30, [x18, #8 * 29]
-
-	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
-	ldr x2, [sp], #16
-	str x2, [x18, #8 * 18]
-
-	/* Save return address & mode. */
-	mrs x2, elr_el2
-	mrs x3, spsr_el2
-	stp x2, x3, [x18, #8 * 31]
-
-	/* Save lazy state, then switch to new vcpu. */
-	mov x0, x1
-	sub x1, x18, #VCPU_REGS
-	b vcpu_switch
