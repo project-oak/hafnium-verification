@@ -35,10 +35,11 @@ void arch_irq_disable(void);
 void arch_irq_enable(void);
 
 /**
- * Initializes the register state for a VM.
+ * Reset the register values other than the PC and argument which are set with
+ * `arch_regs_set_pc_arg()`.
  */
-void arch_regs_init(struct arch_regs *r, bool is_primary, uint64_t vmid,
-		    paddr_t table, uint32_t index);
+void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
+		     paddr_t table, uint32_t index);
 
 /**
  * Updates the given registers so that when a vcpu runs, it starts off at the

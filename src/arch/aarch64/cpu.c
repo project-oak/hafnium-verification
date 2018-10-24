@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include "hf/addr.h"
+#include "hf/std.h"
 
 void arch_irq_disable(void)
 {
@@ -32,12 +33,19 @@ void arch_irq_enable(void)
 	__asm__ volatile("msr DAIFClr, #0xf");
 }
 
-void arch_regs_init(struct arch_regs *r, bool is_primary, uint64_t vmid,
-		    paddr_t table, uint32_t index)
+void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
+		     paddr_t table, uint32_t index)
 {
+	uintreg_t pc = r->pc;
+	uintreg_t arg = r->r[0];
 	uintreg_t hcr;
 	uintreg_t cptr;
 	uintreg_t cnthctl;
+
+	memset(r, 0, sizeof(*r));
+
+	r->pc = pc;
+	r->r[0] = arg;
 
 	/* TODO: Determine if we need to set TSW. */
 	hcr = (1u << 31) | /* RW bit. */

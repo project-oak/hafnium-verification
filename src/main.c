@@ -18,6 +18,8 @@
 #include <stddef.h>
 #include <stdnoreturn.h>
 
+#include "hf/arch/init.h"
+
 #include "hf/api.h"
 #include "hf/boot_params.h"
 #include "hf/cpio.h"
@@ -72,6 +74,8 @@ static void one_time_init(void)
 	struct mpool ppool;
 
 	dlog("Initialising hafnium\n");
+
+	arch_one_time_init();
 
 	mpool_init(&ppool, sizeof(struct mm_page_table));
 	mpool_add_chunk(&ppool, ptable_buf, sizeof(ptable_buf));
@@ -148,6 +152,7 @@ static void one_time_init(void)
 struct vcpu *cpu_main(struct cpu *c)
 {
 	struct vcpu *vcpu;
+	struct vm *vm;
 
 	/*
 	 * Do global one-time initialisation just once. We avoid using atomics
@@ -160,13 +165,17 @@ struct vcpu *cpu_main(struct cpu *c)
 		one_time_init();
 	}
 
-	dlog("Starting up cpu %d\n", cpu_index(c));
-
 	if (!mm_cpu_init()) {
 		panic("mm_cpu_init failed");
 	}
 
 	vcpu = &vm_get(HF_PRIMARY_VM_ID)->vcpus[cpu_index(c)];
+	vm = vcpu->vm;
 	vcpu->cpu = c;
+
+	/* Reset the registers to give a clean start for the primary's vCPU. */
+	arch_regs_reset(&vcpu->regs, true, vm->id, vm->ptable.root,
+			vcpu_index(vcpu));
+
 	return vcpu;
 }

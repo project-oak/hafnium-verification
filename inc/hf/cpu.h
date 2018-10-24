@@ -132,7 +132,7 @@ void cpu_off(struct cpu *c);
 struct cpu *cpu_find(size_t id);
 
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
-void vcpu_on(struct vcpu *vcpu);
+void vcpu_on(struct vcpu *vcpu, ipaddr_t entry, uintreg_t arg);
 void vcpu_off(struct vcpu *vcpu);
 size_t vcpu_index(const struct vcpu *vcpu);
 

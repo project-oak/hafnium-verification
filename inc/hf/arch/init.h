@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google LLC
+ * Copyright 2019 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,35 +14,12 @@
  * limitations under the License.
  */
 
-#include "hf/arch/cpu.h"
+#pragma once
 
-void arch_irq_disable(void)
-{
-	/* TODO */
-}
-
-void arch_irq_enable(void)
-{
-	/* TODO */
-}
-
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
-		     paddr_t table, uint32_t index)
-{
-	/* TODO */
-	(void)is_primary;
-	(void)vmid;
-	(void)table;
-	r->vcpu_index = index;
-}
-
-void arch_regs_set_pc_arg(struct arch_regs *r, ipaddr_t pc, uintreg_t arg)
-{
-	(void)pc;
-	r->r[0] = arg;
-}
-
-void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)
-{
-	r->r[0] = v;
-}
+/**
+ * Performs arch specific boot time initialization.
+ *
+ * It must only be called once, on first boot and must be called as early as
+ * possible.
+ */
+void arch_one_time_init(void);

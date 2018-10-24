@@ -157,7 +157,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 			return false;
 		}
 
-		vm_start_vcpu(vm, 0, ipa_from_pa(primary_begin), kernel_arg);
+		vcpu_on(&vm->vcpus[0], ipa_from_pa(primary_begin), kernel_arg);
 	}
 
 	return true;

@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#include <stdnoreturn.h>
+
+#include "hf/arch/init.h"
+
 #include "hf/api.h"
 #include "hf/cpu.h"
 #include "hf/dlog.h"
@@ -34,7 +38,32 @@ struct hvc_handler_return {
 
 void cpu_entry(struct cpu *c);
 
-static inline struct vcpu *current(void)
+static uint32_t el3_psci_version = 0;
+
+/* Performs arch specific boot time initialisation. */
+void arch_one_time_init(void)
+{
+	el3_psci_version = smc(PSCI_VERSION, 0, 0, 0);
+
+	/* Check there's nothing unexpected about PSCI. */
+	switch (el3_psci_version) {
+	case PSCI_VERSION_0_2:
+	case PSCI_VERSION_1_0:
+	case PSCI_VERSION_1_1:
+		/* Supported EL3 PSCI version. */
+		dlog("Found PSCI version: 0x%x\n", el3_psci_version);
+		break;
+
+	default:
+		/* Unsupported EL3 PSCI version. Log a warning but continue. */
+		dlog("Warning: unknown PSCI version: 0x%x\n", el3_psci_version);
+		el3_psci_version = 0;
+		break;
+	}
+}
+
+/* Gets a reference to the currently executing vCPU. */
+static struct vcpu *current(void)
 {
 	return (struct vcpu *)read_msr(tpidr_el2);
 }
@@ -94,40 +123,45 @@ void begin_restoring_state(struct vcpu *vcpu)
 	}
 }
 
-void irq_current_exception(uintreg_t elr, uintreg_t spsr)
+/**
+ * This should never be reached as it means something has gone very wrong.
+ */
+static noreturn void hang(void)
+{
+	dlog("Hang: something went very wrong!\n");
+	for (;;) {
+		/* Do nothing. */
+	}
+}
+
+noreturn void irq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	(void)elr;
 	(void)spsr;
 
 	dlog("IRQ from current\n");
-	for (;;) {
-		/* do nothing */
-	}
+	hang();
 }
 
-void fiq_current_exception(uintreg_t elr, uintreg_t spsr)
+noreturn void fiq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	(void)elr;
 	(void)spsr;
 
 	dlog("FIQ from current\n");
-	for (;;) {
-		/* do nothing */
-	}
+	hang();
 }
 
-void serr_current_exception(uintreg_t elr, uintreg_t spsr)
+noreturn void serr_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	(void)elr;
 	(void)spsr;
 
 	dlog("SERR from current\n");
-	for (;;) {
-		/* do nothing */
-	}
+	hang();
 }
 
-void sync_current_exception(uintreg_t elr, uintreg_t spsr)
+noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	uintreg_t esr = read_msr(esr_el2);
 
@@ -150,16 +184,18 @@ void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 		dlog("Unknown current sync exception pc=0x%x, esr=0x%x, "
 		     "ec=0x%x\n",
 		     elr, esr, esr >> 26);
+		break;
 	}
 
-	for (;;) {
-		/* do nothing */
-	}
+	hang();
 }
 
 /**
  * Handles PSCI requests received via HVC or SMC instructions from the primary
  * VM only.
+ *
+ * A minimal PSCI 1.1 interface is offered which can make use of previous
+ * version of PSCI in EL3 by acting as an adapter.
  *
  * Returns true if the request was a PSCI one, false otherwise.
  */
@@ -167,29 +203,67 @@ static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
 			 uintreg_t arg2, int32_t *ret)
 {
 	struct cpu *c;
-	int32_t sret;
 
-	switch (func & ~PSCI_CONVENTION_MASK) {
+	/*
+	 * If there's a problem with the EL3 PSCI, block standard secure service
+	 * calls by marking them as unknown. Other calls will be allowed to pass
+	 * through.
+	 *
+	 * This blocks more calls than just PSCI so it may need to be made more
+	 * lenient in future.
+	 */
+	if (el3_psci_version == 0) {
+		*ret = SMCCC_RETURN_UNKNOWN;
+		return (func & SMCCC_SERVICE_CALL_MASK) ==
+		       SMCCC_STANDARD_SECURE_SERVICE_CALL;
+	}
+
+	switch (func & ~SMCCC_CONVENTION_MASK) {
 	case PSCI_VERSION:
-		/* Version is 0.2. */
-		*ret = 2;
+		*ret = PSCI_VERSION_1_1;
 		break;
 
-	case PSCI_MIGRATE_INFO_TYPE:
-		/* Trusted OS does not require migration. */
-		*ret = 2;
+	case PSCI_FEATURES:
+		switch (arg0 & ~SMCCC_CONVENTION_MASK) {
+		case PSCI_CPU_SUSPEND:
+			if (el3_psci_version == PSCI_VERSION_0_2) {
+				/*
+				 * PSCI 0.2 doesn't support PSCI_FEATURES so
+				 * report PSCI 0.2 compatible features.
+				 */
+				*ret = 0;
+			} else {
+				/* PSCI 1.x only defines two feature bits. */
+				*ret = smc(func, arg0, 0, 0) & 0x3;
+			}
+			break;
+
+		case PSCI_VERSION:
+		case PSCI_FEATURES:
+		case PSCI_SYSTEM_OFF:
+		case PSCI_SYSTEM_RESET:
+		case PSCI_AFFINITY_INFO:
+		case PSCI_CPU_OFF:
+		case PSCI_CPU_ON:
+			/* These are supported without special features. */
+			*ret = 0;
+			break;
+
+		default:
+			/* Everything else is unsupported. */
+			*ret = PSCI_RETURN_NOT_SUPPORTED;
+			break;
+		}
 		break;
 
 	case PSCI_SYSTEM_OFF:
 		smc(PSCI_SYSTEM_OFF, 0, 0, 0);
-		for (;;) {
-		}
+		hang();
 		break;
 
 	case PSCI_SYSTEM_RESET:
 		smc(PSCI_SYSTEM_RESET, 0, 0, 0);
-		for (;;) {
-		}
+		hang();
 		break;
 
 	case PSCI_AFFINITY_INFO:
@@ -213,11 +287,25 @@ static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
 		sl_unlock(&c->lock);
 		break;
 
+	case PSCI_CPU_SUSPEND: {
+		/*
+		 * Update vcpu state to wake from the provided entry point but
+		 * if suspend returns, for example because it failed or was a
+		 * standby power state, the SMC will return and the updated
+		 * vcpu registers will be ignored.
+		 */
+		struct vcpu *vcpu = current();
+
+		arch_regs_set_pc_arg(&vcpu->regs, ipa_init(arg1), arg2);
+		*ret = smc(PSCI_CPU_SUSPEND | SMCCC_64_BIT, arg0,
+			   (uintreg_t)&cpu_entry, (uintreg_t)vcpu->cpu);
+		break;
+	}
+
 	case PSCI_CPU_OFF:
 		cpu_off(current()->cpu);
 		smc(PSCI_CPU_OFF, 0, 0, 0);
-		for (;;) {
-		}
+		hang();
 		break;
 
 	case PSCI_CPU_ON:
@@ -239,17 +327,30 @@ static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
 		 * itself off).
 		 */
 		do {
-			sret = smc(PSCI_CPU_ON, arg0, (uintreg_t)&cpu_entry,
-				   (uintreg_t)c);
-		} while (sret == PSCI_RETURN_ALREADY_ON);
+			*ret = smc(PSCI_CPU_ON | SMCCC_64_BIT, arg0,
+				   (uintreg_t)&cpu_entry, (uintreg_t)c);
+		} while (*ret == PSCI_RETURN_ALREADY_ON);
 
-		if (sret == PSCI_RETURN_SUCCESS) {
-			*ret = PSCI_RETURN_SUCCESS;
-		} else {
-			dlog("Unexpected return from PSCI_CPU_ON: 0x%x\n",
-			     sret);
-			*ret = PSCI_RETURN_INTERNAL_FAILURE;
+		if (*ret != PSCI_RETURN_SUCCESS) {
+			cpu_off(c);
 		}
+		break;
+
+	case PSCI_MIGRATE:
+	case PSCI_MIGRATE_INFO_TYPE:
+	case PSCI_MIGRATE_INFO_UP_CPU:
+	case PSCI_CPU_FREEZE:
+	case PSCI_CPU_DEFAULT_SUSPEND:
+	case PSCI_NODE_HW_STATE:
+	case PSCI_SYSTEM_SUSPEND:
+	case PSCI_SET_SYSPEND_MODE:
+	case PSCI_STAT_RESIDENCY:
+	case PSCI_STAT_COUNT:
+	case PSCI_SYSTEM_RESET2:
+	case PSCI_MEM_PROTECT:
+	case PSCI_MEM_PROTECT_CHECK_RANGE:
+		/* Block all other known PSCI calls. */
+		*ret = PSCI_RETURN_NOT_SUPPORTED;
 		break;
 
 	default:
@@ -303,7 +404,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		}
 	}
 
-	switch ((uint32_t)arg0 & ~PSCI_CONVENTION_MASK) {
+	switch ((uint32_t)arg0 & ~SMCCC_CONVENTION_MASK) {
 	case HF_VM_GET_ID:
 		ret.user_ret = api_vm_get_id(current());
 		break;
@@ -458,7 +559,6 @@ static struct vcpu_fault_info fault_info_init(uintreg_t esr,
 struct vcpu *sync_lower_exception(uintreg_t esr)
 {
 	struct vcpu *vcpu = current();
-	int32_t ret;
 	struct vcpu_fault_info info;
 
 	switch (esr >> 26) {
@@ -498,18 +598,22 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		}
 		break;
 
-	case 0x17: /* EC = 010111, SMC instruction. */
+	case 0x17: /* EC = 010111, SMC instruction. */ {
+		uintreg_t smc_pc = vcpu->regs.pc;
+		int32_t ret;
+
 		if (vcpu->vm->id != HF_PRIMARY_VM_ID ||
 		    !psci_handler(vcpu->regs.r[0], vcpu->regs.r[1],
 				  vcpu->regs.r[2], vcpu->regs.r[3], &ret)) {
 			dlog("Unsupported SMC call: 0x%x\n", vcpu->regs.r[0]);
-			ret = -1;
+			ret = PSCI_RETURN_NOT_SUPPORTED;
 		}
 
 		/* Skip the SMC instruction. */
-		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
+		vcpu->regs.pc = smc_pc + (esr & (1u << 25) ? 4 : 2);
 		vcpu->regs.r[0] = ret;
 		return NULL;
+	}
 
 	default:
 		dlog("Unknown lower sync exception pc=0x%x, esr=0x%x, "
