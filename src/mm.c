@@ -34,8 +34,10 @@
 /* The type of addresses stored in the page table. */
 typedef uintvaddr_t ptable_addr_t;
 
-/* For stage 2, the input is an intermediate physical addresses rather than a
- * virtual address so: */
+/*
+ * For stage 2, the input is an intermediate physical addresses rather than a
+ * virtual address so:
+ */
 static_assert(
 	sizeof(ptable_addr_t) == sizeof(uintpaddr_t),
 	"Currently, the same code manages the stage 1 and stage 2 page tables "

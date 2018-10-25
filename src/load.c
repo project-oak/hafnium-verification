@@ -185,8 +185,10 @@ bool carve_out_mem_range(struct mem_range *mem_ranges, size_t mem_ranges_count,
 	for (i = 0; i < mem_ranges_count; ++i) {
 		if (size_to_find <=
 		    pa_addr(mem_ranges[i].end) - pa_addr(mem_ranges[i].begin)) {
-			/* This range is big enough, take some of it from the
-			 * end and reduce its size accordingly. */
+			/*
+			 * This range is big enough, take some of it from the
+			 * end and reduce its size accordingly.
+			 */
 			*found_end = mem_ranges[i].end;
 			*found_begin = pa_init(pa_addr(mem_ranges[i].end) -
 					       size_to_find);
@@ -357,11 +359,13 @@ bool load_secondary(const struct memiter *cpio,
 		vm_start_vcpu(vm, 0, secondary_entry, 0);
 	}
 
-	/* Add newly reserved areas to update params by looking at the
+	/*
+	 * Add newly reserved areas to update params by looking at the
 	 * difference between the available ranges from the original params and
 	 * the updated mem_ranges_available. We assume that the number and order
 	 * of available ranges is the same, i.e. we don't remove any ranges
-	 * above only make them smaller. */
+	 * above only make them smaller.
+	 */
 	return update_reserved_ranges(update, params->mem_ranges,
 				      mem_ranges_available,
 				      params->mem_ranges_count);

@@ -105,10 +105,12 @@ static void one_time_init(void)
 		panic("unable to load primary VM");
 	}
 
+	/*
+	 * load_secondary will add regions assigned to the secondary VMs from
+	 * mem_ranges to reserved_ranges.
+	 */
 	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
 	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
-	/* load_secondary will add regions assigned to the secondary VMs from
-	 * mem_ranges to reserved_ranges. */
 	update.reserved_ranges_count = 0;
 	if (!load_secondary(&cpio, &params, &update)) {
 		panic("unable to load secondary VMs");
