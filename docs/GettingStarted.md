@@ -29,34 +29,23 @@ Install prerequisites:
 sudo apt install make binutils-aarch64-linux-gnu
 ```
 
-By default, the hypervisor is built with clang for an aarch64 QEMU target by
-running:
+By default, the hypervisor is built with clang for a few target platforms along
+with tests.
 
 ``` shell
 make
 ```
 
-The compiled image can be found at `out/aarch64/qemu/clang_aarch64/hafnium.bin`.
+The compiled image can be found under `out/`, for example the QEMU image is at
+at `out/qemu_aarch64_clang/hafnium.bin`.
 
-To build for the HiKey board, change the target platform:
-
-``` shell
-PLATFORM=hikey make
-```
-
-To build using gcc instead of clang, the aarch64 variant must be installed:
-
-``` shell
-sudo apt install gcc-aarch64-linux-gnu
-GCC=true make
-```
 ## Running on QEMU
 
 You will need at least version 2.9 for QEMU. The following command line can be
 used to run Hafnium on it:
 
 ``` shell
-qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/aarch64/qemu/clang_aarch64/hafnium.bin
+qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/qemu_aarch64_clang/hafnium.bin
 ```
 
 Though it is admittedly not very useful because it doesn't have any virtual
@@ -67,7 +56,7 @@ The following command line will run Hafnium, with the RAM disk just created,
 which will then boot into the primary Linux VM:
 
 ``` shell
-qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/aarch64/qemu/clang_aarch64/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
+qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
 ```
 
 ## Running tests

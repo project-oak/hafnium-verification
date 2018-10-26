@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//build/arch/common.gni")
+import("//build/toolchain/embedded.gni")
 
 # Build image, link to an ELF file then convert to plain binary.
 template("image_binary") {
   assert(defined(invoker.image_name),
          "image_binary() must specify an \"image_name\" value")
-  assert(defined(invoker.origin_address),
-         "image_binary() must specify an \"origin_address\" value")
 
   output_root = ""
   if (defined(invoker.output_path)) {
@@ -44,10 +42,8 @@ template("image_binary") {
       rebase_path("//build/image/image.ld"),
     ]
     ldflags = [
-      "-pie",
       "-T",
       rebase_path("//build/image/image.ld"),
-      "--defsym=ORIGIN_ADDRESS=${invoker.origin_address}",
     ]
     visibility = [ ":${invoker.target_name}" ]
   }
@@ -65,7 +61,7 @@ template("image_binary") {
     ]
     args = [
       "--tool_prefix",
-      arch_tool_prefix,
+      tool_prefix,
       "--input",
       rebase_path(elf_file),
       "--output",
@@ -91,7 +87,6 @@ template("hypervisor") {
                              "testonly",
                            ])
     image_name = target_name
-    origin_address = arch_hypervisor_origin_address
   }
 }
 
@@ -110,7 +105,6 @@ template("vm_kernel") {
                            ])
     output_path = "vm"
     image_name = target_name
-    origin_address = "0x1000"
   }
 }
 

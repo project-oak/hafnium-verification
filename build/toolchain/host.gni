@@ -12,34 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Host toolchain specific build arguments.
-declare_args() {
-  # Build with a specific compiler version e.g. when building with clang, set
-  # to "3.9" to build with `clang-3.9`.
-  host_cc_version = ""
-}
-
 # Template for host toolchains.
-template("cc_toolchain") {
+template("host_cc_toolchain") {
   toolchain(target_name) {
-    assert(defined(invoker.ar), "cc_toolchain() must specify a \"ar\" value")
-    assert(defined(invoker.cc), "cc_toolchain() must specify a \"cc\" value")
-    assert(defined(invoker.cxx), "cc_toolchain() must specify a \"cxx\" value")
+    assert(defined(invoker.ar), "\"ar\" must be defined for ${target_name}.")
+    assert(defined(invoker.cc), "\"cc\" must be defined for ${target_name}.")
+    assert(defined(invoker.cxx), "\"cxx\" must be defined for ${target_name}.")
 
-    cc = "${invoker.cc}"
-    cxx = "${invoker.cxx}"
-    if (host_cc_version != "") {
-      cc += "-${host_cc_version}"
-      cxx += "-${host_cc_version}"
+    # Collect extra flags from the toolchain.
+    extra_defines = ""
+    extra_cflags = ""
+    extra_ldflags = ""
+    if (defined(invoker.extra_defines)) {
+      extra_defines += " ${invoker.extra_defines}"
     }
-    if (defined(invoker.cflags)) {
-      cc += " ${invoker.cflags}"
-      cxx += " ${invoker.cflags}"
+    if (defined(invoker.extra_cflags)) {
+      extra_cflags += " ${invoker.extra_cflags}"
+    }
+    if (defined(invoker.extra_ldflags)) {
+      extra_ldflags += " ${invoker.extra_ldflags}"
     }
 
     tool("cc") {
       depfile = "{{output}}.d"
-      command = "${cc} -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
+      command = "${invoker.cc} -MMD -MF $depfile ${extra_defines} {{defines}} {{include_dirs}} ${extra_cflags} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CC {{output}}"
       outputs = [
@@ -49,7 +45,7 @@ template("cc_toolchain") {
 
     tool("cxx") {
       depfile = "{{output}}.d"
-      command = "${cxx} -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
+      command = "${invoker.cxx} -MMD -MF $depfile ${extra_defines} {{defines}} {{include_dirs}} ${extra_cflags} {{cflags}} {{cflags_cc}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CXX {{output}}"
       outputs = [
@@ -74,8 +70,7 @@ template("cc_toolchain") {
       sofile = "{{output_dir}}/$soname"
       rspfile = soname + ".rsp"
 
-      command =
-          "${cxx} -shared {{ldflags}} -o $sofile -Wl,-soname=$soname @$rspfile"
+      command = "${invoker.cxx} -shared ${extra_ldflags} {{ldflags}} -o $sofile -Wl,-soname=$soname @$rspfile"
       rspfile_content = "-Wl,--whole-archive {{inputs}} {{solibs}} -Wl,--no-whole-archive {{libs}}"
 
       description = "SOLINK $soname"
@@ -100,7 +95,7 @@ template("cc_toolchain") {
     tool("link") {
       outfile = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
       rspfile = "$outfile.rsp"
-      command = "${cxx} {{ldflags}} -o $outfile -Wl,--start-group @$rspfile {{solibs}} -Wl,--end-group {{libs}}"
+      command = "${invoker.cxx} ${extra_ldflags} {{ldflags}} -o $outfile -Wl,--start-group @$rspfile {{solibs}} -Wl,--end-group {{libs}}"
       description = "LINK $outfile"
       default_output_dir = "{{root_out_dir}}"
       rspfile_content = "{{inputs}}"
@@ -127,43 +122,55 @@ template("cc_toolchain") {
   }
 }
 
-# Specialize for clang or gcc
-cc_toolchain("clang") {
-  ar = "llvm-ar"
-  cc = "clang"
-  cxx = "clang++"
-  cflags = "-fcolor-diagnostics"
-}
-
-cc_toolchain("clang_fake_arch") {
-  ar = "llvm-ar"
-  cc = "clang"
-  cxx = "clang++"
-  cflags = "-fcolor-diagnostics"
-
-  toolchain_args = {
-    # When building for the host, use the fake architecture to make things
-    # testable.
-    arch = "fake"
+template("host_toolchain") {
+  assert(defined(invoker.use_fake_arch),
+         "\"use_fake_arch\" must be defined for ${target_name}.")
+  if (invoker.use_fake_arch) {
+    assert(defined(invoker.max_cpus),
+           "\"max_cpus\" must be defined for ${target_name}.")
+    assert(defined(invoker.max_vms),
+           "\"max_vms\" must be defined for ${target_name}.")
   }
-}
 
-cc_toolchain("gcc") {
-  ar = "ar"
-  cc = "gcc"
-  cxx = "g++"
-  cflags = "-fdiagnostics-color=always"
-}
+  # Specialize for clang.
+  host_cc_toolchain("${target_name}_clang") {
+    ar = "llvm-ar"
+    cc = "clang -fcolor-diagnostics"
+    cxx = "clang++"
 
-cc_toolchain("gcc_fake_arch") {
-  ar = "ar"
-  cc = "gcc"
-  cxx = "g++"
-  cflags = "-fdiagnostics-color=always"
+    # TODO: remove the need for this
+    extra_defines = "-DPL011_BASE=0"
 
-  toolchain_args = {
-    # When building for the host, use the fake architecture to make things
-    # testable.
-    arch = "fake"
+    if (invoker.use_fake_arch) {
+      toolchain_args = {
+        platform_max_cpus = invoker.max_cpus
+        platform_max_vms = invoker.max_vms
+
+        # When building for the ${target_name}, use the fake architecture to make things
+        # testable.
+        arch = "fake"
+      }
+    }
+  }
+
+  # Specialize for gcc.
+  host_cc_toolchain("${target_name}_gcc") {
+    ar = "ar"
+    cc = "gcc -fdiagnostics-color=always"
+    cxx = "g++ -fdiagnostics-color=always"
+
+    # TODO: remove the need for this
+    extra_defines = "-DPL011_BASE=0"
+
+    if (invoker.use_fake_arch) {
+      toolchain_args = {
+        platform_max_cpus = invoker.max_cpus
+        platform_max_vms = invoker.max_vms
+
+        # When building for the ${target_name}, use the fake architecture to make things
+        # testable.
+        arch = "fake"
+      }
+    }
   }
 }

@@ -12,47 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//build/image/image.gni")
-
-group("tests") {
+group("all") {
   testonly = true
 
   deps = [
-    ":unit_tests",
-    ":vm_tests",
+    "//src:hafnium(//build/toolchain:aem_v8a_fvp_clang)",
+    "//src:hafnium(//build/toolchain:hikey_clang)",
+    "//src:hafnium(//build/toolchain:qemu_aarch64_clang)",
+    "//src:unit_tests(//build/toolchain:host_fake_clang)",
+    "//test/vm:vm_tests(//build/toolchain:qemu_aarch64_clang)",
   ]
-}
 
-group("unit_tests") {
-  testonly = true
-
-  deps = [
-    "//src:unit_tests($fake_toolchain)",
-  ]
-}
-
-group("vm_tests") {
-  testonly = true
-
-  deps = [
-    ":hypervisor",
-    "//test/vm/:primary_only_test($arch_toolchain)",
-    "//test/vm/:primary_with_secondaries_test($arch_toolchain)",
-  ]
-}
-
-group("hypervisor") {
-  deps = [
-    ":hafnium($arch_toolchain)",
-  ]
-}
-
-# Only build the image for the arch
-if (current_toolchain == arch_toolchain) {
-  hypervisor("hafnium") {
-    deps = [
-      "//src",
-      "//src/arch/${arch}",
-    ]
-  }
+  # TODO: add a gcc-4.9 or above prebuilt to check the gcc build too?
 }

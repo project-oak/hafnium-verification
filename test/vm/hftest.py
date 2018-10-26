@@ -72,6 +72,7 @@ def hftest_lines(raw):
 def Main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True)
+    parser.add_argument("--log", required=True)
     parser.add_argument("--initrd", required=True)
     parser.add_argument("--suite")
     parser.add_argument("--test")
@@ -79,7 +80,7 @@ def Main():
     # Resolve some paths.
     hafnium = os.path.join(args.out, "hafnium.bin")
     initrd = os.path.join(args.out, "initrd", args.initrd + ".img")
-    log = os.path.join(args.out, "test_log", args.initrd)
+    log = os.path.join(args.log, args.initrd)
     ensure_dir(log)
     print("Logs saved under", log)
     log_file = os.path.join(log, "sponge_log.log")

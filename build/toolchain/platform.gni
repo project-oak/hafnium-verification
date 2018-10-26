@@ -12,15 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Configuration of the build for the platform.
 declare_args() {
-  # The specific CPU that runs the architecture.
-  arch_cpu = ""
+  # The maximum number of CPUs available on the platform.
+  platform_max_cpus = 0
 
-  # The origin address of the hypervisor image
-  arch_hypervisor_origin_address = ""
+  # The maximum number of VMs required for the platform.
+  platform_max_vms = 0
 }
-
-assert(arch_cpu != "", "Must provide the CPU to build for as \"arch_cpu\".")
-assert(
-    arch_hypervisor_origin_address != "",
-    "Must provide the origin address of the hypervisor image \"arch_hypervisor_origin_address\".")

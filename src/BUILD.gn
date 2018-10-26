@@ -12,14 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Hypervisor specific code.
-source_set("src") {
+import("//build/image/image.gni")
+
+# The hypervisor image.
+hypervisor("hafnium") {
+  sources = [
+    "layout.c",
+  ]
+  deps = [
+    ":src_not_testable_yet",
+    "//src/arch/${arch}",
+  ]
+}
+
+# Hypervisor specific code that isn't. One day it will be testable and both the
+# src targets will merge!
+source_set("src_not_testable_yet") {
   sources = [
     "cpio.c",
     "load.c",
     "main.c",
   ]
-  sources += [ "layout.c" ]
   deps = [
     ":src_testable",
   ]

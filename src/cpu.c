@@ -27,6 +27,8 @@
 
 #include "vmapi/hf/call.h"
 
+#define STACK_SIZE PAGE_SIZE
+
 /* The stack to be used by the CPUs. */
 alignas(2 * sizeof(uintreg_t)) static char callstacks[MAX_CPUS][STACK_SIZE];
 

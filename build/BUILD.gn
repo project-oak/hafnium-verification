@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//build/arch/common.gni")
-import("//build/arch/aarch64.gni")  # TODO: remove when no dependency on arch_aarch64_pl011_base_address
+import("//build/toolchain/platform.gni")
 
+# Default language and error reporting configuration.
 config("compiler_defaults") {
   cflags = [
     "-g",
@@ -29,65 +29,24 @@ config("compiler_defaults") {
   cflags_c = [ "-std=c11" ]
 
   cflags_cc = [ "-std=c++14" ]
-
-  if (current_toolchain == fake_toolchain ||
-      current_toolchain == arch_toolchain) {
-    include_dirs = [
-      "//inc",
-      "//inc/vmapi",
-      "//src/arch/${arch}/inc",
-    ]
-
-    defines = [
-      # TODO: move these build args for the platforms
-      "MAX_CPUS=8",
-      "MAX_VMS=16",
-      "STACK_SIZE=4096",
-    ]
-
-    if (is_debug) {
-      defines += [ "DEBUG=1" ]
-    } else {
-      defines += [ "DEBUG=0" ]
-    }
-
-    # Configuration specific for the bare metal images.
-    if (current_toolchain == arch_toolchain) {
-      include_dirs += [ "${root_gen_dir}/inc" ]
-
-      cflags += [
-        "-mcpu=${arch_cpu}",
-        "-mstrict-align",
-        "-fno-stack-protector",
-        "-fno-builtin",
-        "-ffreestanding",
-        "-fpic",
-      ]
-
-      # TODO: this should be arch specific but it is currenly used by the
-      # platform generic code to map the memory
-      if (arch_aarch64_use_pl011) {
-        defines += [ "PL011_BASE=${arch_aarch64_pl011_base_address}" ]
-      }
-    }
-  }
 }
 
-config("executable_ldconfig") {
-  if (current_toolchain == arch_toolchain) {
-    ldflags = [ "--gc-sections" ]
-  }
-}
-
-config("sections") {
-  cflags = [
-    "-ffunction-sections",
-    "-fdata-sections",
+# Platform configuration.
+config("platform") {
+  include_dirs = [
+    "//inc",
+    "//inc/vmapi",
+    "//src/arch/${arch}/inc",
   ]
-}
 
-config("lto") {
-  if (current_toolchain == arch_toolchain) {
-    cflags = [ "-flto" ]
+  defines = [
+    "MAX_CPUS=${platform_max_cpus}",
+    "MAX_VMS=${platform_max_vms}",
+  ]
+
+  if (is_debug) {
+    defines += [ "DEBUG=1" ]
+  } else {
+    defines += [ "DEBUG=0" ]
   }
 }

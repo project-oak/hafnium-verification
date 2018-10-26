@@ -1,5 +1,0 @@
-arch_cpu = "cortex-a57+nofp"
-arch_hypervisor_origin_address = "0x88000000"
-
-arch_aarch64_use_pl011 = true
-arch_aarch64_pl011_base_address = "0x1c090000"

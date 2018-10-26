@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//build/arch/aarch64.gni")
-import("//build/image/generate_offsets.gni")
+import("args.gni")
 
 # Hypervisor specific code.
 source_set("aarch64") {
@@ -33,14 +32,6 @@ source_set("aarch64") {
 
   deps = [
     ":entry",
-    ":offsets",
-  ]
-}
-
-# Calculate struct field offsets for hypervisor_entry.S.
-generate_offsets("offsets") {
-  sources = [
-    "offsets.c",
   ]
 }
 

@@ -1,0 +1,248 @@
+# Copyright 2018 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+declare_args() {
+  # Set by arch toolchain. Prefix for binutils tools.
+  tool_prefix = ""
+}
+
+# Template for embedded toolchains; there is no support for C++ or libraries.
+# Instead, use source_set to group source together.
+template("embedded_cc_toolchain") {
+  toolchain(target_name) {
+    assert(defined(invoker.cc), "\"cc\" must be defined for ${target_name}.")
+    assert(defined(invoker.ld), "\"ld\" must be defined for ${target_name}.")
+
+    # Collect extra flags from the toolchain.
+    extra_defines = ""
+    extra_cflags = "-flto -ffunction-sections -fdata-sections"
+    extra_ldflags = "--gc-sections -pie"
+    if (defined(invoker.extra_defines)) {
+      extra_defines += " ${invoker.extra_defines}"
+    }
+    if (defined(invoker.extra_cflags)) {
+      extra_cflags += " ${invoker.extra_cflags}"
+    }
+    if (defined(invoker.extra_ldflags)) {
+      extra_ldflags += " ${invoker.extra_ldflags}"
+    }
+
+    # Define the tools.
+    tool("cc") {
+      depfile = "{{output}}.d"
+      command = "${invoker.cc} -MMD -MF $depfile ${extra_defines} {{defines}} {{include_dirs}} ${extra_cflags} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "CC {{output}}"
+      outputs = [
+        "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+      ]
+    }
+
+    tool("asm") {
+      depfile = "{{output}}.d"
+      command = "${invoker.cc} -MMD -MF $depfile ${extra_defines} {{defines}} {{include_dirs}} {{asmflags}} -c {{source}} -o {{output}}"
+      depsformat = "gcc"
+      description = "ASM {{output}}"
+      outputs = [
+        "{{source_out_dir}}/{{target_output_name}}.{{source_name_part}}.o",
+      ]
+    }
+
+    tool("link") {
+      outfile = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
+      rspfile = "$outfile.rsp"
+      command = "${invoker.ld} ${extra_ldflags} {{ldflags}} -o $outfile --start-group @$rspfile --end-group"
+      description = "LINK $outfile"
+      default_output_dir = "{{root_out_dir}}"
+      rspfile_content = "{{inputs}}"
+      outputs = [
+        outfile,
+      ]
+    }
+
+    tool("stamp") {
+      command = "touch {{output}}"
+      description = "STAMP {{output}}"
+    }
+
+    tool("copy") {
+      command = "cp -af {{source}} {{output}}"
+      description = "COPY {{source}} {{output}}"
+    }
+
+    toolchain_args = {
+      forward_variables_from(invoker.toolchain_args, "*")
+    }
+  }
+}
+
+# Specialize for clang.
+template("embedded_clang_toolchain") {
+  assert(defined(invoker.target),
+         "\"target\" must be defined for ${target_name}.")
+  assert(defined(invoker.tool_prefix),
+         "\"tool_prefix\" must be defined for ${target_name}.")
+
+  embedded_cc_toolchain(target_name) {
+    cc = "clang -target ${invoker.target} -fcolor-diagnostics"
+    ld = "ld.lld --color-diagnostics"
+
+    extra_defines = ""
+    extra_cflags = ""
+    extra_ldflags = "-O2 -lto-O2 --icf=all --fatal-warnings"
+    if (defined(invoker.extra_defines)) {
+      extra_defines += " ${invoker.extra_defines}"
+    }
+    if (defined(invoker.extra_cflags)) {
+      extra_cflags += " ${invoker.extra_cflags}"
+    }
+    if (defined(invoker.extra_ldflags)) {
+      extra_ldflags += " ${invoker.extra_ldflags}"
+    }
+
+    toolchain_args = {
+      tool_prefix = invoker.tool_prefix
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+    }
+  }
+}
+
+# Specialize for gcc.
+template("embedded_gcc_toolchain") {
+  assert(defined(invoker.tool_prefix),
+         "\"tool_prefix\" must be defined for ${target_name}.")
+
+  embedded_cc_toolchain(target_name) {
+    cc = "${invoker.tool_prefix}gcc -fdiagnostics-color=always"
+    ld = "${invoker.tool_prefix}ld"
+
+    extra_defines = ""
+    extra_cflags = ""
+    extra_ldflags = ""
+    if (defined(invoker.extra_defines)) {
+      extra_defines += " ${invoker.extra_defines}"
+    }
+    if (defined(invoker.extra_cflags)) {
+      extra_cflags += " ${invoker.extra_cflags}"
+    }
+    if (defined(invoker.extra_ldflags)) {
+      extra_ldflags += " ${invoker.extra_ldflags}"
+    }
+
+    toolchain_args = {
+      tool_prefix = invoker.tool_prefix
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+    }
+  }
+}
+
+# Expand to clang and gcc variants.
+template("embedded_platform_toolchain") {
+  assert(defined(invoker.arch), "\"arch\" must be defined for ${target_name}.")
+  assert(defined(invoker.target),
+         "\"target\" must be defined for ${target_name}.")
+  assert(defined(invoker.tool_prefix),
+         "\"tool_prefix\" must be defined for ${target_name}.")
+  assert(defined(invoker.origin_address),
+         "\"origin_address\" must be defined for ${target_name}.")
+  assert(defined(invoker.max_cpus),
+         "\"max_cpus\" must be defined for ${target_name}.")
+  assert(defined(invoker.max_vms),
+         "\"max_vms\" must be defined for ${target_name}.")
+
+  defines = ""
+  cflags = "-fno-stack-protector -fno-builtin -ffreestanding -fpic"
+  ldflags = "--defsym=ORIGIN_ADDRESS=${invoker.origin_address}"
+  if (defined(invoker.extra_defines)) {
+    defines += " ${invoker.extra_defines}"
+  }
+  if (defined(invoker.extra_cflags)) {
+    cflags += " ${invoker.extra_cflags}"
+  }
+  if (defined(invoker.extra_ldflags)) {
+    ldflags += " ${invoker.extra_ldflags}"
+  }
+
+  embedded_clang_toolchain("${target_name}_clang") {
+    target = invoker.target
+    tool_prefix = invoker.tool_prefix
+    extra_defines = defines
+    extra_cflags = cflags
+    extra_ldflags = ldflags
+    toolchain_args = {
+      platform_max_cpus = invoker.max_cpus
+      platform_max_vms = invoker.max_vms
+      arch = invoker.arch
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+    }
+  }
+
+  embedded_gcc_toolchain("${target_name}_gcc") {
+    tool_prefix = invoker.tool_prefix
+    extra_defines = defines
+    extra_cflags = cflags
+    extra_ldflags = ldflags
+    toolchain_args = {
+      platform_max_cpus = invoker.max_cpus
+      platform_max_vms = invoker.max_vms
+      arch = invoker.arch
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+    }
+  }
+}
+
+# Specialize for different architectures.
+
+template("aarch64_toolchain") {
+  assert(defined(invoker.cpu), "\"cpu\" must be defiend for ${target_name}.")
+  assert(defined(invoker.origin_address),
+         "\"origin_address\" must be defined for ${target_name}.")
+  assert(defined(invoker.use_pl011),
+         "\"use_pl011\" must be defined for ${target_name}.")
+  assert(defined(invoker.max_cpus),
+         "\"max_cpus\" must be defined for ${target_name}.")
+  assert(defined(invoker.max_vms),
+         "\"max_vms\" must be defined for ${target_name}.")
+
+  embedded_platform_toolchain(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "origin_address",
+                             "max_cpus",
+                             "max_vms",
+                           ])
+    arch = "aarch64"
+    target = "aarch64-none-eabi"
+    tool_prefix = "aarch64-linux-gnu-"  # TODO: this isn't right for bare metal but it works.
+    extra_cflags = "-mcpu=${invoker.cpu} -mstrict-align"
+
+    if (invoker.use_pl011) {
+      assert(defined(invoker.pl011_base_address),
+             "\"pl011_base_address\" must be defined for ${target_name}.")
+      extra_defines = "-DPL011_BASE=${invoker.pl011_base_address}"
+    }
+
+    toolchain_args = {
+      arch_aarch64_use_pl011 = invoker.use_pl011
+    }
+  }
+}

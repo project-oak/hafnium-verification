@@ -14,19 +14,9 @@
  * limitations under the License.
  */
 
-#include "offsets.h"
+#pragma once
 
-#include <assert.h>
-
-#include "hf/cpu.h"
-
-#define CHECK_OFFSET(name, type, field) \
-	CHECK_OFFSET_1(#name, name, offsetof(type, field))
-#define CHECK_OFFSET_1(name, actual, expected)               \
-	static_assert((actual) == (expected),                \
-		      "Offset " name " should be " #expected \
-		      " and not " #actual)
-
-CHECK_OFFSET(CPU_STACK_BOTTOM, struct cpu, stack_bottom);
-CHECK_OFFSET(VCPU_REGS, struct vcpu, regs);
-CHECK_OFFSET(VCPU_LAZY, struct vcpu, regs.lazy);
+/* These are checked in offset.c. */
+#define CPU_STACK_BOTTOM 8
+#define VCPU_REGS 32
+#define VCPU_LAZY (VCPU_REGS + 264)

@@ -38,7 +38,6 @@
 typedef uint64_t pte_t;
 
 #define PAGE_LEVEL_BITS 9
-#define PL011_BASE 0x11
 
 /**
  * Returns the encoding of a page table entry that isn't present.

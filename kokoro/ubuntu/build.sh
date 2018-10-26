@@ -38,13 +38,8 @@ fi
 # Step 1: make sure it builds.
 #
 
-export ARCH=aarch64
-export PLATFORM=qemu
-
-# TODO: add a gcc-4.9 or above prebuilt to check the gcc build too?
 # Check the build works.
 make
-make check
 
 #
 # Step 2: make sure it works.
@@ -53,15 +48,45 @@ make check
 ./kokoro/ubuntu/test.sh
 
 #
-# Step 3: make sure the code looks good.
+# Step 3: static analysis.
+#
+
+make check
+if [[ `git status --porcelain` ]]
+then
+	echo "Run \`make check\' locally to fix this."
+	exit 1
+fi
+
+#
+# Step 4: make sure the code looks good.
 #
 
 make format
-make tidy
-make license
-
 if [[ `git status --porcelain` ]]
 then
-	echo "Run \`make format\', \`make tidy\` and \`make license\` locally to fix this."
+	echo "Run \`make format\' locally to fix this."
+	exit 1
+fi
+
+#
+# Step 5: make sure there's not lint.
+#
+
+make tidy
+if [[ `git status --porcelain` ]]
+then
+	echo "Run \`make tidy\' locally to fix this."
+	exit 1
+fi
+
+#
+# Step 6: make sure all the files have a license.
+#
+
+make license
+if [[ `git status --porcelain` ]]
+then
+	echo "Run \`make license\' locally to fix this."
 	exit 1
 fi
