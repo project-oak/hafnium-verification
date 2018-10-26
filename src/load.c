@@ -52,16 +52,6 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
 }
 
 /**
- * Moves the kernel of the primary VM to its final destination.
- */
-static bool relocate(const char *from, size_t size)
-{
-	paddr_t dest = layout_primary_begin();
-	dlog("Copying to %p\n", pa_addr(dest));
-	return copy_to_unmapped(dest, from, size);
-}
-
-/**
  * Looks for a file in the given cpio archive. The filename is not
  * null-terminated, so we use a memory iterator to represent it. The file, if
  * found, is returned in the "it" argument.
@@ -114,13 +104,15 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 		  struct memiter *initrd)
 {
 	struct memiter it;
+	paddr_t primary_begin = layout_primary_begin();
 
 	if (!find_file(cpio, "vmlinuz", &it)) {
 		dlog("Unable to find vmlinuz\n");
 		return false;
 	}
 
-	if (!relocate(it.next, it.limit - it.next)) {
+	dlog("Copying primary to %p\n", pa_addr(primary_begin));
+	if (!copy_to_unmapped(primary_begin, it.next, it.limit - it.next)) {
 		dlog("Unable to relocate kernel for primary vm.\n");
 		return false;
 	}
@@ -131,10 +123,8 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 	}
 
 	{
-		uintpaddr_t tmp = (uintpaddr_t)&load_primary;
 		struct vm *vm;
 
-		tmp = (tmp + 0x80000 - 1) & ~(0x80000 - 1);
 		if (!vm_init(MAX_CPUS, &vm)) {
 			dlog("Unable to initialise primary vm\n");
 			return false;
@@ -163,7 +153,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 			return false;
 		}
 
-		vm_start_vcpu(vm, 0, ipa_init(tmp), kernel_arg);
+		vm_start_vcpu(vm, 0, ipa_from_pa(primary_begin), kernel_arg);
 	}
 
 	return true;
