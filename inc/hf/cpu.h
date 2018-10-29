@@ -84,3 +84,4 @@ struct cpu *cpu_find(size_t id);
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu *vcpu);
 void vcpu_off(struct vcpu *vcpu);
+size_t vcpu_index(struct vcpu *vcpu);

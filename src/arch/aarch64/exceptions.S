@@ -16,50 +16,167 @@
 
 #include "offsets.h"
 
-.section .text.vector_table_el2, "ax"
-.global vector_table_el2
-.balign 0x800
-vector_table_el2:
-sync_cur_sp0:
-	b .
+/**
+ * Saves the volatile registers onto the stack. This currently takes 14
+ * instructions, so it can be used in exception handlers with 18 instructions
+ * left, 2 of which in the same cache line (assuming a 16-byte cache line).
+ *
+ * On return, x0 and x1 are initialised to elr_el2 and spsr_el2 respectively,
+ * which can be used as the first and second arguments of a subsequent call.
+ */
+.macro save_volatile_to_stack
+	/* Reserve stack space and save registers x0-x18, x29 & x30. */
+	stp x0, x1, [sp, #-(8 * 24)]!
+	stp x2, x3, [sp, #8 * 2]
+	stp x4, x5, [sp, #8 * 4]
+	stp x6, x7, [sp, #8 * 6]
+	stp x8, x9, [sp, #8 * 8]
+	stp x10, x11, [sp, #8 * 10]
+	stp x12, x13, [sp, #8 * 12]
+	stp x14, x15, [sp, #8 * 14]
+	stp x16, x17, [sp, #8 * 16]
+	str x18, [sp, #8 * 18]
+	stp x29, x30, [sp, #8 * 20]
 
-.balign 0x80
-irq_cur_sp0:
-	b irq_current
+	/*
+	 * Save elr_el2 & spsr_el2. This such that we can take nested exception
+	 * and still be able to unwind.
+	 */
+	mrs x0, elr_el2
+	mrs x1, spsr_el2
+	stp x0, x1, [sp, #8 * 22]
+.endm
 
-.balign 0x80
-fiq_cur_sp0:
-	b .
+/**
+ * Restores the volatile registers from the stack. This currently takes 14
+ * instructions, so it can be used in exception handlers while still leaving 18
+ * instructions left; if paired with save_volatile_to_stack, there are 4
+ * instructions to spare.
+ */
+.macro restore_volatile_from_stack
+	/* Restore registers x2-x18, x29 & x30. */
+	ldp x2, x3, [sp, #8 * 2]
+	ldp x4, x5, [sp, #8 * 4]
+	ldp x6, x7, [sp, #8 * 6]
+	ldp x8, x9, [sp, #8 * 8]
+	ldp x10, x11, [sp, #8 * 10]
+	ldp x12, x13, [sp, #8 * 12]
+	ldp x14, x15, [sp, #8 * 14]
+	ldp x16, x17, [sp, #8 * 16]
+	ldr x18, [sp, #8 * 18]
+	ldp x29, x30, [sp, #8 * 20]
 
-.balign 0x80
-serr_cur_sp0:
-	b .
+	/* Restore registers elr_el2 & spsr_el2, using x0 & x1 as scratch. */
+	ldp x0, x1, [sp, #8 * 22]
+	msr elr_el2, x0
+	msr spsr_el2, x1
 
-.balign 0x80
-sync_cur_spx:
-	mrs x0, esr_el2
-	mrs x1, elr_el2
-	b sync_current_exception
+	/* Restore x0 & x1, and release stack space. */
+	ldp x0, x1, [sp], #8 * 24
+.endm
 
-.balign 0x80
-irq_cur_spx:
-	b irq_current
+/**
+ * This is a generic handler for exceptions taken at the current EL while using
+ * SP0. It behaves similarly to the SPx case by first switching to SPx, doing
+ * the work, then switching back to SP0 before returning.
+ *
+ * Switching to SPx and calling the C handler takes 16 instructions, so it's not
+ * possible to add a branch to a common exit path without going into the next
+ * cache line (assuming 16-byte cache lines). Additionally, to restore and
+ * return we need an additional 16 instructions, so we implement the whole
+ * handler within the allotted 32 instructions.
+ */
+.macro current_exception_sp0 handler:req
+	msr spsel, #1
+	save_volatile_to_stack
+	bl \handler
+	restore_volatile_from_stack
+	msr spsel, #0
+	eret
+.endm
 
-.balign 0x80
-fiq_cur_spx:
-	b .
+/**
+ * This is a generic handler for exceptions taken at the current EL while using
+ * SPx. It saves volatile registers, calls the C handler, restores volatile
+ * registers, then returns.
+ *
+ * Saving state and jumping to C handler takes 15 instructions. We add an extra
+ * branch to a common exit path. So each handler takes up one unique cache line
+ * and one shared cache line (assuming 16-byte cache lines).
+ */
+.macro current_exception_spx handler:req
+	save_volatile_to_stack
+	bl \handler
+	b restore_from_stack_and_return
+.endm
 
-.balign 0x80
-serr_cur_spx:
-	b .
-
-.balign 0x80
-sync_lower_64:
-
+/**
+ * Saves the volatile registers into the register buffer of the current vcpu. It
+ * allocates space on the stack for x18 and saves it if "also_save_x18" is
+ * specified; otherwise the caller is expected to have saved x18 in a similar
+ * fashion.
+ */
+.macro save_volatile_to_vcpu also_save_x18
+.ifnb \also_save_x18
 	/*
 	 * Save x18 since we're about to clobber it. We subtract 16 instead of
 	 * 8 from the stack pointer to keep it 16-byte aligned.
 	 */
+	str x18, [sp, #-16]!
+.endif
+	/* Get the current vcpu. */
+	mrs x18, tpidr_el2
+	stp x0, x1, [x18, #VCPU_REGS + 8 * 0]
+	stp x2, x3, [x18, #VCPU_REGS + 8 * 2]
+	stp x4, x5, [x18, #VCPU_REGS + 8 * 4]
+	stp x6, x7, [x18, #VCPU_REGS + 8 * 6]
+	stp x8, x9, [x18, #VCPU_REGS + 8 * 8]
+	stp x10, x11, [x18, #VCPU_REGS + 8 * 10]
+	stp x12, x13, [x18, #VCPU_REGS + 8 * 12]
+	stp x14, x15, [x18, #VCPU_REGS + 8 * 14]
+	stp x16, x17, [x18, #VCPU_REGS + 8 * 16]
+	stp x29, x30, [x18, #VCPU_REGS + 8 * 29]
+
+	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
+	ldr x0, [sp], #16
+	str x0, [x18, #VCPU_REGS + 8 * 18]
+
+	/* Save return address & mode. */
+	mrs x1, elr_el2
+	mrs x2, spsr_el2
+	stp x1, x2, [x18, #VCPU_REGS + 8 * 31]
+.endm
+
+/**
+ * This is a generic handler for exceptions taken at a lower EL. It saves the
+ * volatile registers to the current vcpu and calls the C handler, which can
+ * select one of two paths: (a) restore volatile registers and return, or
+ * (b) switch to a different vcpu. In the latter case, the handler needs to save
+ * all non-volatile registers (they haven't been saved yet), then restore all
+ * registers from the new vcpu.
+ */
+.macro lower_exception handler:req
+	save_volatile_to_vcpu also_save_x18
+
+	/* Call C handler. */
+	bl \handler
+
+	/* Switch vcpu if requested by handler. */
+	cbnz x0, vcpu_switch
+
+	/* vcpu is not changing. */
+	mrs x0, tpidr_el2
+	b vcpu_restore_volatile_and_run
+.endm
+
+/**
+ * This is the handler for a sync exception taken at a lower EL. If the reason
+ * for the exception is an HVC call, it calls the faster hvc_handler without
+ * saving a lot of the registers, otherwise it goes to slow_sync_lower, which is
+ * the slow path where all registers needs to be saved/restored.
+ */
+.macro lower_sync_exception
+	/* Save x18 as save_volatile_to_vcpu would have. */
 	str x18, [sp, #-16]!
 
 	/* Extract the exception class (EC) from exception syndrome register. */
@@ -68,7 +185,7 @@ sync_lower_64:
 
 	/* Take the slow path if exception is not due to an HVC instruction. */
 	sub x18, x18, #0x16
-	cbnz x18, slow_sync_lower_64
+	cbnz x18, slow_sync_lower
 
 	/*
 	 * Save x29 and x30, which are not saved by the callee, then jump to
@@ -77,7 +194,7 @@ sync_lower_64:
 	stp x29, x30, [sp, #-16]!
 	bl hvc_handler
 	ldp x29, x30, [sp], #16
-	cbnz x1, sync_lower_64_switch
+	cbnz x1, sync_lower_switch
 
 	/* Zero out all volatile registers (except x0) and return. */
 	stp xzr, xzr, [sp, #-16]!
@@ -94,138 +211,120 @@ sync_lower_64:
 	/* Restore x18, which was saved on the stack. */
 	ldr x18, [sp], #16
 	eret
+.endm
+
+/**
+ * The following is the exception table. A pointer to it will be stored in
+ * register vbar_el2.
+ */
+.section .text.vector_table_el2, "ax"
+.global vector_table_el2
+.balign 0x800
+vector_table_el2:
+sync_cur_sp0:
+	current_exception_sp0 sync_current_exception
+
+.balign 0x80
+irq_cur_sp0:
+	current_exception_sp0 irq_current_exception
+
+.balign 0x80
+fiq_cur_sp0:
+	current_exception_sp0 fiq_current_exception
+
+.balign 0x80
+serr_cur_sp0:
+	current_exception_sp0 serr_current_exception
+
+.balign 0x80
+sync_cur_spx:
+	current_exception_spx sync_current_exception
+
+.balign 0x80
+irq_cur_spx:
+	current_exception_spx irq_current_exception
+
+.balign 0x80
+fiq_cur_spx:
+	current_exception_spx fiq_current_exception
+
+.balign 0x80
+serr_cur_spx:
+	current_exception_spx serr_current_exception
+
+.balign 0x80
+sync_lower_64:
+	lower_sync_exception
 
 .balign 0x80
 irq_lower_64:
-
-	/* Save x0 since we're about to clobber it. */
-	str x0, [sp, #-8]!
-
-	/* Get the current vcpu. */
-	mrs x0, tpidr_el2
-
-	/* Save volatile registers. */
-	add x0, x0, #VCPU_REGS
-	stp x2, x3, [x0, #8 * 2]
-	stp x4, x5, [x0, #8 * 4]
-	stp x6, x7, [x0, #8 * 6]
-	stp x8, x9, [x0, #8 * 8]
-	stp x10, x11, [x0, #8 * 10]
-	stp x12, x13, [x0, #8 * 12]
-	stp x14, x15, [x0, #8 * 14]
-	stp x16, x17, [x0, #8 * 16]
-	str x18, [x0, #8 * 18]
-	stp x29, x30, [x0, #8 * 29]
-
-	ldr x2, [sp], #8
-	stp x2, x1, [x0, #8 * 0]
-
-	/* Save return address & mode. */
-	mrs x1, elr_el2
-	mrs x2, spsr_el2
-	stp x1, x2, [x0, #8 * 31]
-
-	/* Call C handler. */
-	bl irq_lower
-
-	mrs x1, tpidr_el2
-	cbnz x0, vcpu_switch
-
-	/* vcpu is not changing. */
-	add x0, x1, #VCPU_REGS
-	b vcpu_restore_volatile_and_run
+	lower_exception irq_lower
 
 .balign 0x80
 fiq_lower_64:
-	b .
+	lower_exception fiq_lower
 
 .balign 0x80
 serr_lower_64:
-	b .
+	lower_exception serr_lower
 
 .balign 0x80
 sync_lower_32:
-	b .
+	lower_sync_exception
 
 .balign 0x80
 irq_lower_32:
-	b .
+	lower_exception irq_lower
 
 .balign 0x80
 fiq_lower_32:
-	b .
+	lower_exception fiq_lower
 
 .balign 0x80
 serr_lower_32:
-	b .
+	lower_exception serr_lower
 
-slow_sync_lower_64:
-	/* Get the current vcpu. */
-	mrs x18, tpidr_el2
-
-	/* Save volatile registers. */
-	add x18, x18, #VCPU_REGS
-	stp x0, x1, [x18, #8 * 0]
-	stp x2, x3, [x18, #8 * 2]
-	stp x4, x5, [x18, #8 * 4]
-	stp x6, x7, [x18, #8 * 6]
-	stp x8, x9, [x18, #8 * 8]
-	stp x10, x11, [x18, #8 * 10]
-	stp x12, x13, [x18, #8 * 12]
-	stp x14, x15, [x18, #8 * 14]
-	stp x16, x17, [x18, #8 * 16]
-	stp x29, x30, [x18, #8 * 29]
-
-	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
-	ldr x0, [sp], #16
-	str x0, [x18, #8 * 18]
-
-	/* Save return address & mode. */
-	mrs x1, elr_el2
-	mrs x2, spsr_el2
-	stp x1, x2, [x18, #8 * 31]
+.balign 0x40
+slow_sync_lower:
+	/* The caller must have saved x18, so we don't save it here. */
+	save_volatile_to_vcpu
 
 	/* Read syndrome register and call C handler. */
 	mrs x0, esr_el2
 	bl sync_lower_exception
-
-	/* Switch to the vcpu returned by sync_lower_exception. */
-	mrs x1, tpidr_el2
 	cbnz x0, vcpu_switch
 
 	/* vcpu is not changing. */
-	add x0, x1, #VCPU_REGS
+	mrs x0, tpidr_el2
 	b vcpu_restore_volatile_and_run
 
-sync_lower_64_switch:
+sync_lower_switch:
 	/* We'll have to switch, so save volatile state before doing so. */
 	mrs x18, tpidr_el2
 
 	/* Store zeroes in volatile register storage, except x0. */
-	add x18, x18, #VCPU_REGS
-	stp x0, xzr, [x18, #8 * 0]
-	stp xzr, xzr, [x18, #8 * 2]
-	stp xzr, xzr, [x18, #8 * 4]
-	stp xzr, xzr, [x18, #8 * 6]
-	stp xzr, xzr, [x18, #8 * 8]
-	stp xzr, xzr, [x18, #8 * 10]
-	stp xzr, xzr, [x18, #8 * 12]
-	stp xzr, xzr, [x18, #8 * 14]
-	stp xzr, xzr, [x18, #8 * 16]
-	stp x29, x30, [x18, #8 * 29]
+	stp x0, xzr, [x18, #VCPU_REGS + 8 * 0]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 2]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 4]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 6]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 8]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 10]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 12]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 14]
+	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 16]
+	stp x29, x30, [x18, #VCPU_REGS + 8 * 29]
 
 	/* x18 was saved on the stack, so we move it to vcpu regs buffer. */
 	ldr x2, [sp], #16
-	str x2, [x18, #8 * 18]
+	str x2, [x18, #VCPU_REGS + 8 * 18]
 
 	/* Save return address & mode. */
 	mrs x2, elr_el2
 	mrs x3, spsr_el2
-	stp x2, x3, [x18, #8 * 31]
+	stp x2, x3, [x18, #VCPU_REGS + 8 * 31]
 
 	/* Save lazy state, then switch to new vcpu. */
 	mov x0, x1
-	sub x1, x18, #VCPU_REGS
 
 	/* Intentional fallthrough. */
 /**
@@ -236,74 +335,71 @@ sync_lower_64_switch:
  * new one.
  *
  * x0 is a pointer to the new vcpu.
- * x1 is a pointer to the old vcpu.
  */
 vcpu_switch:
 	/* Save non-volatile registers. */
-	add x1, x1, #VCPU_REGS
-	stp x19, x20, [x1, #8 * 19]
-	stp x21, x22, [x1, #8 * 21]
-	stp x23, x24, [x1, #8 * 23]
-	stp x25, x26, [x1, #8 * 25]
-	stp x27, x28, [x1, #8 * 27]
+	mrs x1, tpidr_el2
+	stp x19, x20, [x1, #VCPU_REGS + 8 * 19]
+	stp x21, x22, [x1, #VCPU_REGS + 8 * 21]
+	stp x23, x24, [x1, #VCPU_REGS + 8 * 23]
+	stp x25, x26, [x1, #VCPU_REGS + 8 * 25]
+	stp x27, x28, [x1, #VCPU_REGS + 8 * 27]
 
 	/* Save lazy state. */
-	add x1, x1, #(VCPU_LAZY - VCPU_REGS)
-
 	mrs x24, vmpidr_el2
 	mrs x25, csselr_el1
-	stp x24, x25, [x1, #16 * 0]
+	stp x24, x25, [x1, #VCPU_LAZY + 16 * 0]
 
 	mrs x2, sctlr_el1
 	mrs x3, actlr_el1
-	stp x2, x3, [x1, #16 * 1]
+	stp x2, x3, [x1, #VCPU_LAZY + 16 * 1]
 
 	mrs x4, cpacr_el1
 	mrs x5, ttbr0_el1
-	stp x4, x5, [x1, #16 * 2]
+	stp x4, x5, [x1, #VCPU_LAZY + 16 * 2]
 
 	mrs x6, ttbr1_el1
 	mrs x7, tcr_el1
-	stp x6, x7, [x1, #16 * 3]
+	stp x6, x7, [x1, #VCPU_LAZY + 16 * 3]
 
 	mrs x8, esr_el1
 	mrs x9, afsr0_el1
-	stp x8, x9, [x1, #16 * 4]
+	stp x8, x9, [x1, #VCPU_LAZY + 16 * 4]
 
 	mrs x10, afsr1_el1
 	mrs x11, far_el1
-	stp x10, x11, [x1, #16 * 5]
+	stp x10, x11, [x1, #VCPU_LAZY + 16 * 5]
 
 	mrs x12, mair_el1
 	mrs x13, vbar_el1
-	stp x12, x13, [x1, #16 * 6]
+	stp x12, x13, [x1, #VCPU_LAZY + 16 * 6]
 
 	mrs x14, contextidr_el1
 	mrs x15, tpidr_el0
-	stp x14, x15, [x1, #16 * 7]
+	stp x14, x15, [x1, #VCPU_LAZY + 16 * 7]
 
 	mrs x16, tpidrro_el0
 	mrs x17, tpidr_el1
-	stp x16, x17, [x1, #16 * 8]
+	stp x16, x17, [x1, #VCPU_LAZY + 16 * 8]
 
 	mrs x18, amair_el1
 	mrs x19, cntkctl_el1
-	stp x18, x19, [x1, #16 * 9]
+	stp x18, x19, [x1, #VCPU_LAZY + 16 * 9]
 
 	mrs x20, sp_el0
 	mrs x21, sp_el1
-	stp x20, x21, [x1, #16 * 10]
+	stp x20, x21, [x1, #VCPU_LAZY + 16 * 10]
 
 	mrs x22, par_el1
 	mrs x23, hcr_el2
-	stp x22, x23, [x1, #16 * 11]
+	stp x22, x23, [x1, #VCPU_LAZY + 16 * 11]
 
 	mrs x24, cptr_el2
 	mrs x25, cnthctl_el2
-	stp x24, x25, [x1, #16 * 12]
+	stp x24, x25, [x1, #VCPU_LAZY + 16 * 12]
 
 	mrs x26, vttbr_el2
-	str x26, [x1, #16 * 13]
+	str x26, [x1, #VCPU_LAZY + 16 * 13]
 
 	/* Intentional fallthrough. */
 
@@ -312,97 +408,100 @@ vcpu_restore_all_and_run:
 	/* Update pointer to current vcpu. */
 	msr tpidr_el2, x0
 
-	/* Get a pointer to the lazy registers. */
-	add x0, x0, #VCPU_LAZY
-
-	ldp x24, x25, [x0, #16 * 0]
+	/* Restore lazy registers. */
+	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 0]
 	msr vmpidr_el2, x24
 	msr csselr_el1, x25
 
-	ldp x2, x3, [x0, #16 * 1]
+	ldp x2, x3, [x0, #VCPU_LAZY + 16 * 1]
 	msr sctlr_el1, x2
 	msr actlr_el1, x3
 
-	ldp x4, x5, [x0, #16 * 2]
+	ldp x4, x5, [x0, #VCPU_LAZY + 16 * 2]
 	msr cpacr_el1, x4
 	msr ttbr0_el1, x5
 
-	ldp x6, x7, [x0, #16 * 3]
+	ldp x6, x7, [x0, #VCPU_LAZY + 16 * 3]
 	msr ttbr1_el1, x6
 	msr tcr_el1, x7
 
-	ldp x8, x9, [x0, #16 * 4]
+	ldp x8, x9, [x0, #VCPU_LAZY + 16 * 4]
 	msr esr_el1, x8
 	msr afsr0_el1, x9
 
-	ldp x10, x11, [x0, #16 * 5]
+	ldp x10, x11, [x0, #VCPU_LAZY + 16 * 5]
 	msr afsr1_el1, x10
 	msr far_el1, x11
 
-	ldp x12, x13, [x0, #16 * 6]
+	ldp x12, x13, [x0, #VCPU_LAZY + 16 * 6]
 	msr mair_el1, x12
 	msr vbar_el1, x13
 
-	ldp x14, x15, [x0, #16 * 7]
+	ldp x14, x15, [x0, #VCPU_LAZY + 16 * 7]
 	msr contextidr_el1, x14
 	msr tpidr_el0, x15
 
-	ldp x16, x17, [x0, #16 * 8]
+	ldp x16, x17, [x0, #VCPU_LAZY + 16 * 8]
 	msr tpidrro_el0, x16
 	msr tpidr_el1, x17
 
-	ldp x18, x19, [x0, #16 * 9]
+	ldp x18, x19, [x0, #VCPU_LAZY + 16 * 9]
 	msr amair_el1, x18
 	msr cntkctl_el1, x19
 
-	ldp x20, x21, [x0, #16 * 10]
+	ldp x20, x21, [x0, #VCPU_LAZY + 16 * 10]
 	msr sp_el0, x20
 	msr sp_el1, x21
 
-	ldp x22, x23, [x0, #16 * 11]
+	ldp x22, x23, [x0, #VCPU_LAZY + 16 * 11]
 	msr par_el1, x22
 	msr hcr_el2, x23
 
-	ldp x24, x25, [x0, #16 * 12]
+	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 12]
 	msr cptr_el2, x24
 	msr cnthctl_el2, x25
 
-	ldr x26, [x0, #16 * 13]
+	ldr x26, [x0, #VCPU_LAZY + 16 * 13]
 	msr vttbr_el2, x26
 
 	/* Restore non-volatile registers. */
-	add x0, x0, #(VCPU_REGS - VCPU_LAZY)
-
-	ldp x19, x20, [x0, #8 * 19]
-	ldp x21, x22, [x0, #8 * 21]
-	ldp x23, x24, [x0, #8 * 23]
-	ldp x25, x26, [x0, #8 * 25]
-	ldp x27, x28, [x0, #8 * 27]
+	ldp x19, x20, [x0, #VCPU_REGS + 8 * 19]
+	ldp x21, x22, [x0, #VCPU_REGS + 8 * 21]
+	ldp x23, x24, [x0, #VCPU_REGS + 8 * 23]
+	ldp x25, x26, [x0, #VCPU_REGS + 8 * 25]
+	ldp x27, x28, [x0, #VCPU_REGS + 8 * 27]
 
 	/* Intentional fallthrough. */
-
 /**
  * Restore volatile registers and run the given vcpu.
  *
- * x0 is a pointer to the volatile registers of the target vcpu.
+ * x0 is a pointer to the target vcpu.
  */
 vcpu_restore_volatile_and_run:
-	ldp x4, x5, [x0, #8 * 4]
-	ldp x6, x7, [x0, #8 * 6]
-	ldp x8, x9, [x0, #8 * 8]
-	ldp x10, x11, [x0, #8 * 10]
-	ldp x12, x13, [x0, #8 * 12]
-	ldp x14, x15, [x0, #8 * 14]
-	ldp x16, x17, [x0, #8 * 16]
-	ldr x18, [x0, #8 * 18]
-	ldp x29, x30, [x0, #8 * 29]
+	ldp x4, x5, [x0, #VCPU_REGS + 8 * 4]
+	ldp x6, x7, [x0, #VCPU_REGS + 8 * 6]
+	ldp x8, x9, [x0, #VCPU_REGS + 8 * 8]
+	ldp x10, x11, [x0, #VCPU_REGS + 8 * 10]
+	ldp x12, x13, [x0, #VCPU_REGS + 8 * 12]
+	ldp x14, x15, [x0, #VCPU_REGS + 8 * 14]
+	ldp x16, x17, [x0, #VCPU_REGS + 8 * 16]
+	ldr x18, [x0, #VCPU_REGS + 8 * 18]
+	ldp x29, x30, [x0, #VCPU_REGS + 8 * 29]
 
 	/* Restore return address & mode. */
-	ldp x1, x2, [x0, #8 * 31]
+	ldp x1, x2, [x0, #VCPU_REGS + 8 * 31]
 	msr elr_el2, x1
 	msr spsr_el2, x2
 
 	/* Restore x0..x3, which we have used as scratch before. */
-	ldp x2, x3, [x0, #8 * 2]
-	ldp x0, x1, [x0, #8 * 0]
+	ldp x2, x3, [x0, #VCPU_REGS + 8 * 2]
+	ldp x0, x1, [x0, #VCPU_REGS + 8 * 0]
+	eret
+
+.balign 0x40
+/**
+ * Restores volatile registers from stack and returns.
+ */
+restore_from_stack_and_return:
+	restore_volatile_from_stack
 	eret

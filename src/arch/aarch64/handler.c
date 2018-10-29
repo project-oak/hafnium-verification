@@ -37,16 +37,45 @@ static struct vcpu *current(void)
 	return (struct vcpu *)read_msr(tpidr_el2);
 }
 
-void irq_current(void)
+void irq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
+	(void)elr;
+	(void)spsr;
+
 	dlog("IRQ from current\n");
 	for (;;) {
 		/* do nothing */
 	}
 }
 
-void sync_current_exception(uintreg_t esr, uintreg_t elr)
+void fiq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
+	(void)elr;
+	(void)spsr;
+
+	dlog("FIQ from current\n");
+	for (;;) {
+		/* do nothing */
+	}
+}
+
+void serr_current_exception(uintreg_t elr, uintreg_t spsr)
+{
+	(void)elr;
+	(void)spsr;
+
+	dlog("SERR from current\n");
+	for (;;) {
+		/* do nothing */
+	}
+}
+
+void sync_current_exception(uintreg_t elr, uintreg_t spsr)
+{
+	uintreg_t esr = read_msr(esr_el2);
+
+	(void)spsr;
+
 	switch (esr >> 26) {
 	case 0x25: /* EC = 100101, Data abort. */
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", elr, esr,
@@ -240,6 +269,19 @@ struct vcpu *irq_lower(void)
 	return api_yield(current());
 }
 
+struct vcpu *fiq_lower(void)
+{
+	return irq_lower();
+}
+
+struct vcpu *serr_lower(void)
+{
+	dlog("SERR from lower\n");
+	for (;;) {
+		/* do nothing */
+	}
+}
+
 struct vcpu *sync_lower_exception(uintreg_t esr)
 {
 	struct vcpu *vcpu = current();
@@ -254,8 +296,10 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		return api_wait_for_interrupt(current());
 
 	case 0x24: /* EC = 100100, Data abort. */
-		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", vcpu->regs.pc,
-		     esr, esr >> 26);
+		dlog("Lower data abort: pc=0x%x, esr=0x%x, ec=0x%x, vmid=%u, "
+		     "vcpu=%u",
+		     vcpu->regs.pc, esr, esr >> 26, vcpu->vm->id,
+		     vcpu_index(vcpu));
 		if (!(esr & (1u << 10))) { /* Check FnV bit. */
 			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
 			     read_msr(hpfar_el2) << 8);
@@ -269,8 +313,10 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		}
 
 	case 0x20: /* EC = 100000, Instruction abort. */
-		dlog("Instruction abort: pc=0x%x, esr=0x%x, ec=0x%x",
-		     vcpu->regs.pc, esr, esr >> 26);
+		dlog("Lower instruction abort: pc=0x%x, esr=0x%x, ec=0x%x, "
+		     "vmdid=%u, vcpu=%u",
+		     vcpu->regs.pc, esr, esr >> 26, vcpu->vm->id,
+		     vcpu_index(vcpu));
 		if (!(esr & (1u << 10))) { /* Check FnV bit. */
 			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
 			     read_msr(hpfar_el2) << 8);

@@ -152,3 +152,8 @@ void vcpu_off(struct vcpu *vcpu)
 	vcpu->state = vcpu_state_off;
 	sl_unlock(&vcpu->lock);
 }
+
+size_t vcpu_index(struct vcpu *vcpu)
+{
+	return vcpu - vcpu->vm->vcpus;
+}
