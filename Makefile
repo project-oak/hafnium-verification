@@ -67,9 +67,9 @@ check: $(OUT_DIR)/build.ninja
 
 .PHONY: license
 license:
-	@find src/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
-	@find inc/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
-	@find test/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
+	@find src/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
+	@find inc/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
+	@find test/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
 	@find build/ -name \*.py| xargs -n1 python build/license.py --style hash
 	@find test/ -name \*.py| xargs -n1 python build/license.py --style hash
 	@find . \( -name \*.gn -o -name \*.gni \) | xargs -n1 python build/license.py --style hash
