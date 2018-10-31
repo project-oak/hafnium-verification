@@ -86,7 +86,8 @@
 
 /* clang-format on */
 
-static uint8_t mm_max_s2_level = 2;
+static uint8_t mm_s2_max_level;
+static uint8_t mm_s2_root_table_count;
 
 void arch_mm_write_back_dcache(void *base, size_t size)
 {
@@ -183,7 +184,26 @@ uint8_t arch_mm_max_level(int mode)
 		return 2;
 	}
 
-	return mm_max_s2_level;
+	return mm_s2_max_level;
+}
+
+/**
+ * Determines the number of concatenated tables at the root of the page table
+ * for the given mode.
+ *
+ * Tables are concatenated at the root to avoid introducing another level in the
+ * page table meaning the table is shallow and wide. Each level is an extra
+ * memory access when walking the table so keeping it shallow reducing the
+ * memory accesses to aid performance.
+ */
+uint8_t arch_mm_root_table_count(int mode)
+{
+	if (mode & MM_MODE_STAGE1) {
+		/* Stage 1 doesn't concatenate tables. */
+		return 1;
+	}
+
+	return mm_s2_root_table_count;
 }
 
 bool arch_mm_init(paddr_t table, bool first)
@@ -192,6 +212,7 @@ bool arch_mm_init(paddr_t table, bool first)
 	uint64_t features = read_msr(id_aa64mmfr0_el1);
 	uint64_t v;
 	int pa_bits = pa_bits_table[features & 0xf];
+	int extend_bits;
 	int sl0;
 
 	/* Check that 4KB granules are supported. */
@@ -214,20 +235,41 @@ bool arch_mm_init(paddr_t table, bool first)
 	}
 
 	/*
-	 * Determine sl0 based on the number of bits. The maximum value is given
-	 * in D4-7 of the ARM arm.
+	 * Determine sl0, starting level of the page table, based on the number
+	 * of bits. The value is chosen to give the shallowest tree by making
+	 * use of concatenated translation tables.
+	 *
+	 *  - 0 => start at level 1
+	 *  - 1 => start at level 2
+	 *  - 2 => start at level 3
 	 */
 	if (pa_bits >= 44) {
-		mm_max_s2_level = 3;
 		sl0 = 2;
-	} else {
-		mm_max_s2_level = 2;
+		mm_s2_max_level = 3;
+	} else if (pa_bits >= 35) {
 		sl0 = 1;
+		mm_s2_max_level = 2;
+	} else {
+		sl0 = 0;
+		mm_s2_max_level = 1;
 	}
 
+	/*
+	 * Since the shallowest possible tree is used, the maximum number of
+	 * concatenated tables must be used. This means if no more than 4 bits
+	 * are used from the next level, they are instead used to index into the
+	 * concatenated tables.
+	 */
+	extend_bits = ((pa_bits - PAGE_BITS) % PAGE_LEVEL_BITS);
+	if (extend_bits > 4) {
+		extend_bits = 0;
+	}
+	mm_s2_root_table_count = 1 << extend_bits;
+
 	if (first) {
-		dlog_nosync("Number of page table levels: %d\n",
-			    mm_max_s2_level + 1);
+		dlog("Stage 2 has %d page table levels with %d pages at the "
+		     "root.\n",
+		     mm_s2_max_level + 1, mm_s2_root_table_count);
 	}
 
 	v = (1u << 31) |	       /* RES1. */

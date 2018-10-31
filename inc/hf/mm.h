@@ -37,7 +37,8 @@ static_assert(alignof(struct mm_page_table) == PAGE_SIZE,
 	      "A page table must be page aligned.");
 
 struct mm_ptable {
-	paddr_t table;
+	/** Address of the root of the page table. */
+	paddr_t root;
 };
 
 /* The following are arch-independent page mapping modes. */
@@ -67,13 +68,14 @@ struct mm_ptable {
 #define MM_MODE_NOINVALIDATE 0x40
 
 bool mm_ptable_init(struct mm_ptable *t, int mode);
+void mm_ptable_fini(struct mm_ptable *t, int mode);
 void mm_ptable_dump(struct mm_ptable *t, int mode);
 void mm_ptable_defrag(struct mm_ptable *t, int mode);
-bool mm_ptable_unmap_hypervisor(struct mm_ptable *t, int mode);
 
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 			int mode, ipaddr_t *ipa);
 bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode);
+bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode);
 bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode);
 bool mm_vm_translate(struct mm_ptable *t, ipaddr_t ipa, paddr_t *pa);
 

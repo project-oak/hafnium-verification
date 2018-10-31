@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+source_set("fake") {
+  sources = [
+    "mm.c",
+  ]
+}
+
 # Fake implementation of putchar logs to the console.
 source_set("putchar") {
   sources = [

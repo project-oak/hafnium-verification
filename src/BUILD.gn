@@ -21,7 +21,6 @@ hypervisor("hafnium") {
   ]
   deps = [
     ":src_not_testable_yet",
-    "//src/arch/${arch}",
   ]
 }
 
@@ -56,6 +55,7 @@ source_set("src_testable") {
     ":common",
     ":fdt",
     ":memiter",
+    "//src/arch/${arch}",
   ]
 
   if (is_debug) {

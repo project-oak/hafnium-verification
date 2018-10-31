@@ -74,7 +74,7 @@ void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg)
 	struct vcpu *vcpu = &vm->vcpus[index];
 	if (index < vm->vcpu_count) {
 		arch_regs_init(&vcpu->regs, vm->id == HF_PRIMARY_VM_ID, vm->id,
-			       vm->ptable.table, entry, arg);
+			       vm->ptable.root, entry, arg);
 		vcpu_on(vcpu);
 	}
 }

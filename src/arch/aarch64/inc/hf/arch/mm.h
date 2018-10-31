@@ -207,6 +207,7 @@ void arch_mm_write_back_dcache(void *base, size_t size);
 uint64_t arch_mm_mode_to_attrs(int mode);
 bool arch_mm_init(paddr_t table, bool first);
 uint8_t arch_mm_max_level(int mode);
+uint8_t arch_mm_root_table_count(int mode);
 
 /**
  * Given the attrs from a table at some level and the attrs from all the blocks

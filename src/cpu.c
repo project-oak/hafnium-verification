@@ -96,7 +96,7 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 	if (!prev) {
 		struct vm *vm = vm_get(HF_PRIMARY_VM_ID);
 		struct vcpu *vcpu = &vm->vcpus[cpu_index(c)];
-		arch_regs_init(&vcpu->regs, true, vm->id, vm->ptable.table,
+		arch_regs_init(&vcpu->regs, true, vm->id, vm->ptable.root,
 			       entry, arg);
 		vcpu_on(vcpu);
 	}

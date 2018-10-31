@@ -152,8 +152,8 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 			return false;
 		}
 
-		if (!mm_ptable_unmap_hypervisor(&vm->ptable,
-						MM_MODE_NOINVALIDATE)) {
+		if (!mm_vm_unmap_hypervisor(&vm->ptable,
+					    MM_MODE_NOINVALIDATE)) {
 			dlog("Unable to unmap hypervisor from primary vm\n");
 			return false;
 		}
