@@ -325,14 +325,15 @@ static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end,
 
 /**
  * Updates the given table such that the given physical address range is mapped
- * into the address space with the corresponding address range in the
- * architecture-agnostic mode provided.
+ * or not mapped into the address space with the architecture-agnostic mode
+ * provided.
  */
-static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
-				   paddr_t pa_end, int mode)
+static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
+				      paddr_t pa_end, int mode, bool unmap)
 {
-	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	int flags = (mode & MM_MODE_NOSYNC) ? MAP_FLAG_NOSYNC : 0;
+	uint64_t attrs = unmap ? 0 : arch_mm_mode_to_attrs(mode);
+	int flags = (mode & MM_MODE_NOSYNC ? MAP_FLAG_NOSYNC : 0) |
+		    (unmap ? MAP_FLAG_UNMAP : 0);
 	uint8_t level = arch_mm_max_level(mode);
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
 	ptable_addr_t begin;
@@ -363,37 +364,23 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 }
 
 /**
+ * Updates the given table such that the given physical address range is mapped
+ * into the address space with the architecture-agnostic mode provided.
+ */
+static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
+				   paddr_t pa_end, int mode)
+{
+	return mm_ptable_identity_update(t, pa_begin, pa_end, mode, false);
+}
+
+/**
  * Updates the given table such that the given physical address range is not
  * mapped into the address space.
  */
 static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 			    paddr_t pa_end, int mode)
 {
-	int flags = ((mode & MM_MODE_NOSYNC) ? MAP_FLAG_NOSYNC : 0) |
-		    MAP_FLAG_UNMAP;
-	uint8_t level = arch_mm_max_level(mode);
-	struct mm_page_table *table = mm_page_table_from_pa(t->table);
-	ptable_addr_t begin;
-	ptable_addr_t end;
-
-	pa_begin = arch_mm_clear_pa(pa_begin);
-	begin = pa_addr(pa_begin);
-	end = mm_round_up_to_page(pa_addr(pa_end));
-
-	/* Also do updates in two steps, similarly to mm_ptable_identity_map. */
-	if (!mm_map_level(begin, end, pa_begin, 0, table, level, flags)) {
-		return false;
-	}
-
-	mm_map_level(begin, end, pa_begin, 0, table, level,
-		     flags | MAP_FLAG_COMMIT);
-
-	/* Invalidate the tlb. */
-	if (!(mode & MM_MODE_NOINVALIDATE)) {
-		mm_invalidate_tlb(begin, end, (mode & MM_MODE_STAGE1) != 0);
-	}
-
-	return true;
+	return mm_ptable_identity_update(t, pa_begin, pa_end, mode, true);
 }
 
 /**
