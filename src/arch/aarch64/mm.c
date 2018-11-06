@@ -183,19 +183,21 @@ bool arch_mm_init(paddr_t table, bool first)
 
 	/* Check that 4KB granules are supported. */
 	if ((features >> 28) & 0xf) {
-		dlog("4KB granules are not supported\n");
+		dlog_nosync("4KB granules are not supported\n");
 		return false;
 	}
 
 	/* Check the physical address range. */
 	if (!pa_bits) {
-		dlog("Unsupported value of id_aa64mmfr0_el1.PARange: %x\n",
-		     features & 0xf);
+		dlog_nosync(
+			"Unsupported value of id_aa64mmfr0_el1.PARange: %x\n",
+			features & 0xf);
 		return false;
 	}
 
 	if (first) {
-		dlog("Supported bits in physical address: %d\n", pa_bits);
+		dlog_nosync("Supported bits in physical address: %d\n",
+			    pa_bits);
 	}
 
 	/*
@@ -211,7 +213,8 @@ bool arch_mm_init(paddr_t table, bool first)
 	}
 
 	if (first) {
-		dlog("Number of page table levels: %d\n", mm_max_s2_level + 1);
+		dlog_nosync("Number of page table levels: %d\n",
+			    mm_max_s2_level + 1);
 	}
 
 	v = (1u << 31) |	       /* RES1. */

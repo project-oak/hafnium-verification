@@ -19,9 +19,13 @@
 #include <stdarg.h>
 
 #if DEBUG
+void dlog_nosync(const char *fmt, ...);
+void vdlog_nosync(const char *fmt, va_list args);
 void dlog(const char *fmt, ...);
 void vdlog(const char *fmt, va_list args);
 #else
+#define dlog_nosync(...)
+#define vdlog_nosync(fmt, args)
 #define dlog(...)
 #define vdlog(fmt, args)
 #endif

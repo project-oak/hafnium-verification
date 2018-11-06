@@ -711,15 +711,15 @@ bool mm_unmap(paddr_t begin, paddr_t end, int mode)
  */
 bool mm_init(void)
 {
-	dlog("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
-	     pa_addr(layout_text_end()));
-	dlog("rodata: 0x%x - 0x%x\n", pa_addr(layout_rodata_begin()),
-	     pa_addr(layout_rodata_end()));
-	dlog("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
-	     pa_addr(layout_data_end()));
+	dlog_nosync("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
+		    pa_addr(layout_text_end()));
+	dlog_nosync("rodata: 0x%x - 0x%x\n", pa_addr(layout_rodata_begin()),
+		    pa_addr(layout_rodata_end()));
+	dlog_nosync("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
+		    pa_addr(layout_data_end()));
 
 	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
-		dlog("Unable to allocate memory for page table.\n");
+		dlog_nosync("Unable to allocate memory for page table.\n");
 		return false;
 	}
 

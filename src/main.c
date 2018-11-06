@@ -44,13 +44,13 @@ noreturn void panic(const char *fmt, ...)
 
 	/* TODO: Block all CPUs. */
 
-	dlog("Panic: ");
+	dlog_nosync("Panic: ");
 
 	va_start(args, fmt);
-	vdlog(fmt, args);
+	vdlog_nosync(fmt, args);
 	va_end(args);
 
-	dlog("\n");
+	dlog_nosync("\n");
 
 	for (;;) {
 	}
@@ -68,7 +68,7 @@ static void one_time_init(void)
 	void *initrd;
 	size_t i;
 
-	dlog("Initialising hafnium\n");
+	dlog_nosync("Initialising hafnium\n");
 
 	cpu_module_init();
 	halloc_init((size_t)ptable_buf, sizeof(ptable_buf));
