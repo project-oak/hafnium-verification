@@ -27,6 +27,12 @@ paddr_t layout_rodata_end(void);
 paddr_t layout_data_begin(void);
 paddr_t layout_data_end(void);
 
+paddr_t layout_initrd_begin(void);
+paddr_t layout_initrd_end(void);
+
+paddr_t layout_fdt_begin(void);
+paddr_t layout_fdt_end(void);
+
 paddr_t layout_bin_end(void);
 
 paddr_t layout_primary_begin(void);

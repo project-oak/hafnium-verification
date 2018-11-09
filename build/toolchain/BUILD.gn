@@ -12,42 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//build/toolchain/embedded.gni")
 import("//build/toolchain/host.gni")
 
 host_toolchain("host") {
-  use_fake_arch = false
-}
-
-host_toolchain("host_fake") {
-  use_fake_arch = true
-  max_cpus = 4
-  max_vms = 6
-}
-
-aarch64_toolchain("qemu_aarch64") {
-  cpu = "cortex-a57+nofp"
-  origin_address = "0x40001000"
-  use_pl011 = true
-  pl011_base_address = "0x09000000"
-  max_cpus = 8
-  max_vms = 16
-}
-
-aarch64_toolchain("hikey") {
-  cpu = "cortex-a53+nofp"
-  origin_address = "0x01000000"
-  use_pl011 = true
-  pl011_base_address = "0xf8015000"
-  max_cpus = 8
-  max_vms = 16
-}
-
-aarch64_toolchain("aem_v8a_fvp") {
-  cpu = "cortex-a57+nofp"
-  origin_address = "0x88000000"
-  use_pl011 = true
-  pl011_base_address = "0x1c090000"
-  max_cpus = 8
-  max_vms = 16
+  use_platform = false
 }

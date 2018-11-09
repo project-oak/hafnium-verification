@@ -20,5 +20,10 @@
 #include "hf/fdt.h"
 #include "hf/mm.h"
 
-bool fdt_get_boot_params(paddr_t fdt_addr, struct boot_params *p);
+struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n);
+bool fdt_unmap(struct fdt_header *fdt);
+void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p);
+bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end);
+
+/** Apply an update to the FDT. */
 bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p);

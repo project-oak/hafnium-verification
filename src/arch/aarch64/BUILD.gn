@@ -20,6 +20,7 @@ source_set("aarch64") {
     "cpu_entry.S",
     "exceptions.S",
     "hypervisor_entry.S",
+    "plat_entry.S",
     "smc.S",
   ]
 
@@ -27,7 +28,6 @@ source_set("aarch64") {
     "handler.c",
     "mm.c",
     "offsets.c",
-    "params.c",
   ]
 
   deps = [

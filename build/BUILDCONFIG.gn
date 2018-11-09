@@ -14,11 +14,16 @@
 
 # Configuration of the build toolchain.
 declare_args() {
+  # The name of the project being built.
+  project = "reference"
+
   # Enable extra debugging.
   is_debug = true
 
-  # The architecture to build the bare metal images for.
-  arch = "host"
+  # Whether to build against the platform for embedded images consisting of
+  # include paths and defines. This is also used for host targets that simulate
+  # an embedded image.
+  use_platform = false
 }
 
 # Check that we support the attempted build.
@@ -45,7 +50,7 @@ assert(target_cpu == host_cpu, "Cross compiles not yet supported.")
 _shared_binary_target_configs = [ "//build:compiler_defaults" ]
 
 # If it's not building a host utility, it's building against the platform so apply the configuration.
-if (arch != "host") {
+if (use_platform) {
   _shared_binary_target_configs += [ "//build:platform" ]
 }
 

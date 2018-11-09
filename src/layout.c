@@ -71,6 +71,42 @@ paddr_t layout_data_end(void)
 }
 
 /**
+ * Get the address the .initrd section begins at.
+ */
+paddr_t layout_initrd_begin(void)
+{
+	extern uint8_t initrd_begin[];
+	return pa_init((uintpaddr_t)initrd_begin);
+}
+
+/**
+ * Get the address the .initrd section ends at.
+ */
+paddr_t layout_initrd_end(void)
+{
+	extern uint8_t initrd_end[];
+	return pa_init((uintpaddr_t)initrd_end);
+}
+
+/**
+ * Get the address the .fdt section begins at.
+ */
+paddr_t layout_fdt_begin(void)
+{
+	extern uint8_t fdt_begin[];
+	return pa_init((uintpaddr_t)fdt_begin);
+}
+
+/**
+ * Get the address the .fdt section ends at.
+ */
+paddr_t layout_fdt_end(void)
+{
+	extern uint8_t fdt_end[];
+	return pa_init((uintpaddr_t)fdt_end);
+}
+
+/**
  * Get the address the loaded image ends at.
  */
 paddr_t layout_bin_end(void)

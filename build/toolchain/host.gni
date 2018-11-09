@@ -123,9 +123,9 @@ template("host_cc_toolchain") {
 }
 
 template("host_toolchain") {
-  assert(defined(invoker.use_fake_arch),
-         "\"use_fake_arch\" must be defined for ${target_name}.")
-  if (invoker.use_fake_arch) {
+  assert(defined(invoker.use_platform),
+         "\"use_platform\" must be defined for ${target_name}.")
+  if (invoker.use_platform) {
     assert(defined(invoker.max_cpus),
            "\"max_cpus\" must be defined for ${target_name}.")
     assert(defined(invoker.max_vms),
@@ -141,14 +141,15 @@ template("host_toolchain") {
     # TODO: remove the need for this
     extra_defines = "-DPL011_BASE=0"
 
-    if (invoker.use_fake_arch) {
+    if (invoker.use_platform) {
       toolchain_args = {
-        platform_max_cpus = invoker.max_cpus
-        platform_max_vms = invoker.max_vms
+        use_platform = true
 
         # When building for the ${target_name}, use the fake architecture to make things
         # testable.
-        arch = "fake"
+        plat_arch = "fake"
+        plat_max_cpus = invoker.max_cpus
+        plat_max_vms = invoker.max_vms
       }
     }
   }
@@ -162,14 +163,15 @@ template("host_toolchain") {
     # TODO: remove the need for this
     extra_defines = "-DPL011_BASE=0"
 
-    if (invoker.use_fake_arch) {
+    if (invoker.use_platform) {
       toolchain_args = {
-        platform_max_cpus = invoker.max_cpus
-        platform_max_vms = invoker.max_vms
+        use_platform = true
 
         # When building for the ${target_name}, use the fake architecture to make things
         # testable.
-        arch = "fake"
+        plat_arch = "fake"
+        plat_max_cpus = invoker.max_cpus
+        plat_max_vms = invoker.max_vms
       }
     }
   }

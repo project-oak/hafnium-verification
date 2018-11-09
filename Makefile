@@ -19,8 +19,9 @@ GN ?= $(PREBUILTS)/gn/gn
 NINJA ?= $(PREBUILTS)/ninja/ninja
 export PATH := $(PREBUILTS)/clang/bin:$(PATH)
 
-# Place builds for different architectures and platforms in different
-# directories.
+# Select the project to build.
+PROJECT ?= reference
+
 OUT ?= out
 OUT_DIR = out
 
@@ -29,7 +30,7 @@ all: $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 
 $(OUT_DIR)/build.ninja:
-	@$(GN) --export-compile-commands gen $(OUT_DIR)
+	@$(GN) --export-compile-commands gen --args='project="$(PROJECT)"' $(OUT_DIR)
 
 .PHONY: clean
 clean:
@@ -46,6 +47,7 @@ format:
 	@find src/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
 	@find inc/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
 	@find test/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
+	@find project/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
 	@find . \( -name \*.gn -o -name \*.gni \) | xargs -n1 $(GN) format
 
 # see .clang-tidy.

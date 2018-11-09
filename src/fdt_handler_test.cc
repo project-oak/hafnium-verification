@@ -28,6 +28,7 @@ extern "C" {
 namespace
 {
 using ::testing::Eq;
+using ::testing::NotNull;
 
 constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 10;
 
@@ -92,15 +93,22 @@ constexpr uint8_t test_dtb[] = {
 	0x73, 0x74, 0x61, 0x72, 0x74, 0x00, 0x6c, 0x69, 0x6e, 0x75, 0x78, 0x2c,
 	0x69, 0x6e, 0x69, 0x74, 0x72, 0x64, 0x2d, 0x65, 0x6e, 0x64, 0x00};
 
-TEST(fdt, get_boot_params)
+TEST(fdt, find_memory_ranges)
 {
 	std::unique_ptr<uint8_t[]> test_heap(new uint8_t[TEST_HEAP_SIZE]);
 	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
 	ASSERT_TRUE(mm_init());
 
+	struct fdt_header *fdt;
+	struct fdt_node n;
 	struct boot_params params = {};
-	EXPECT_TRUE(
-		fdt_get_boot_params(pa_init((uintpaddr_t)&test_dtb), &params));
+
+	fdt = fdt_map(pa_init((uintpaddr_t)&test_dtb), &n);
+	ASSERT_THAT(fdt, NotNull());
+	ASSERT_TRUE(fdt_find_child(&n, ""));
+	fdt_find_memory_ranges(&n, &params);
+	ASSERT_TRUE(fdt_unmap(fdt));
+
 	EXPECT_THAT(params.mem_ranges_count, Eq(3));
 	EXPECT_THAT(pa_addr(params.mem_ranges[0].begin), Eq(0x00000000));
 	EXPECT_THAT(pa_addr(params.mem_ranges[0].end), Eq(0x20000000));

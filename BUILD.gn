@@ -12,17 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-group("all") {
+# The root of the build redirects to a project build file so each project can
+# select the artifacts it needs to build.
+
+# The root of the build.
+group("root") {
+  deps = [
+    "//project/${project}:root",
+  ]
+}
+
+# The root of the build for test artifacts.
+group("test_root") {
   testonly = true
 
   deps = [
-    "//src:hafnium(//build/toolchain:aem_v8a_fvp_clang)",
-    "//src:hafnium(//build/toolchain:hikey_clang)",
-    "//src:hafnium(//build/toolchain:qemu_aarch64_clang)",
-    "//src:unit_tests(//build/toolchain:host_fake_clang)",
-    "//test/vm:gicv3_test(//build/toolchain:qemu_aarch64_clang)",
-    "//test/vm:vm_tests(//build/toolchain:qemu_aarch64_clang)",
+    "//project/${project}:test_root",
   ]
-
-  # TODO: add a gcc-4.9 or above prebuilt to check the gcc build too?
 }

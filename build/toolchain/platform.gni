@@ -14,9 +14,15 @@
 
 # Configuration of the build for the platform.
 declare_args() {
+  # The name of the platform.
+  plat_name = ""
+
+  # The architecture of the platform.
+  plat_arch = ""
+
   # The maximum number of CPUs available on the platform.
-  platform_max_cpus = 0
+  plat_max_cpus = 0
 
   # The maximum number of VMs required for the platform.
-  platform_max_vms = 0
+  plat_max_vms = 0
 }

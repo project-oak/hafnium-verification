@@ -1,4 +1,20 @@
 /*
+ * Copyright 2018 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
  * Code will start running at this symbol which is places at the start of the
  * image.
  */
@@ -82,6 +98,29 @@ SECTIONS
 	ASSERT((SIZEOF(.hftest) == (DEFINED(hftest_enable) ? SIZEOF(.hftest) : 0)),
 	       "Error: Image includes .hftest section but not HFTEST_ENABLE().")
 	rodata_end = .;
+
+	/*
+	 * A platform may choose to link blobs such as the FDT or the initrd
+	 * into the image rather than having them loaded separately. These are
+	 * placed at the end of the image and will not be mapped automatically
+	 * on boot so they can be treated as if they were loaded as separate
+	 * blobs. They are page aligned so they can be mapped individually.
+	 *
+	 * TODO: remove this when the loader can reliably deliver both the
+	 * binary and a separate blob for the initrd.
+	 */
+	. = ALIGN(4096);
+	initrd_begin = .;
+	.initrd : {
+		KEEP(*(.plat.initrd))
+	}
+	initrd_end = .;
+	. = ALIGN(4096);
+	fdt_begin = .;
+	.fdt : {
+		KEEP(*(.plat.fdt))
+	}
+	fdt_end = .;
 
 	/*
 	 * Collect together the read-write data including .bss at the end which

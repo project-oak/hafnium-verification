@@ -36,12 +36,12 @@ config("platform") {
   include_dirs = [
     "//inc",
     "//inc/vmapi",
-    "//src/arch/${arch}/inc",
+    "//src/arch/${plat_arch}/inc",
   ]
 
   defines = [
-    "MAX_CPUS=${platform_max_cpus}",
-    "MAX_VMS=${platform_max_vms}",
+    "MAX_CPUS=${plat_max_cpus}",
+    "MAX_VMS=${plat_max_vms}",
   ]
 
   if (is_debug) {

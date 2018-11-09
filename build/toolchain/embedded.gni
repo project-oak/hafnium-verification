@@ -185,9 +185,11 @@ template("embedded_platform_toolchain") {
     extra_cflags = cflags
     extra_ldflags = ldflags
     toolchain_args = {
-      platform_max_cpus = invoker.max_cpus
-      platform_max_vms = invoker.max_vms
-      arch = invoker.arch
+      use_platform = true
+      plat_name = invoker.target_name
+      plat_arch = invoker.arch
+      plat_max_cpus = invoker.max_cpus
+      plat_max_vms = invoker.max_vms
       if (defined(invoker.toolchain_args)) {
         forward_variables_from(invoker.toolchain_args, "*")
       }
@@ -200,9 +202,11 @@ template("embedded_platform_toolchain") {
     extra_cflags = cflags
     extra_ldflags = ldflags
     toolchain_args = {
-      platform_max_cpus = invoker.max_cpus
-      platform_max_vms = invoker.max_vms
-      arch = invoker.arch
+      use_platform = true
+      plat_name = invoker.target_name
+      plat_arch = invoker.arch
+      plat_max_cpus = invoker.max_cpus
+      plat_max_vms = invoker.max_vms
       if (defined(invoker.toolchain_args)) {
         forward_variables_from(invoker.toolchain_args, "*")
       }

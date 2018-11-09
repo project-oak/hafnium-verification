@@ -99,34 +99,33 @@ static bool fdt_write_number(struct fdt_node *node, const char *name,
  * Finds the memory region where initrd is stored, and updates the fdt node
  * cursor to the node called "chosen".
  */
-static bool find_initrd(struct fdt_node *n, struct boot_params *p)
+bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end)
 {
-	uint64_t begin;
-	uint64_t end;
+	uint64_t initrd_begin;
+	uint64_t initrd_end;
 
 	if (!fdt_find_child(n, "chosen")) {
 		dlog("Unable to find 'chosen'\n");
 		return false;
 	}
 
-	if (!fdt_read_number(n, "linux,initrd-start", &begin)) {
+	if (!fdt_read_number(n, "linux,initrd-start", &initrd_begin)) {
 		dlog("Unable to read linux,initrd-start\n");
 		return false;
 	}
 
-	if (!fdt_read_number(n, "linux,initrd-end", &end)) {
+	if (!fdt_read_number(n, "linux,initrd-end", &initrd_end)) {
 		dlog("Unable to read linux,initrd-end\n");
 		return false;
 	}
 
-	p->initrd_begin = pa_init(begin);
-	p->initrd_end = pa_init(end);
+	*begin = pa_init(initrd_begin);
+	*end = pa_init(initrd_end);
 
 	return true;
 }
 
-static void find_memory_ranges(const struct fdt_node *root,
-			       struct boot_params *p)
+void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p)
 {
 	struct fdt_node n = *root;
 	const char *name;
@@ -193,23 +192,21 @@ static void find_memory_ranges(const struct fdt_node *root,
 	/* TODO: Check for "reserved-memory" nodes. */
 }
 
-bool fdt_get_boot_params(paddr_t fdt_addr, struct boot_params *p)
+struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n)
 {
 	struct fdt_header *fdt;
-	struct fdt_node n;
-	bool ret = false;
 
 	/* Map the fdt header in. */
 	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_header_size()),
 			      MM_MODE_R);
 	if (!fdt) {
 		dlog("Unable to map FDT header.\n");
-		goto err_unmap_fdt_header;
+		return NULL;
 	}
 
-	if (!fdt_root_node(&n, fdt)) {
+	if (!fdt_root_node(n, fdt)) {
 		dlog("FDT failed validation.\n");
-		goto err_unmap_fdt_header;
+		goto fail;
 	}
 
 	/* Map the rest of the fdt in. */
@@ -217,31 +214,20 @@ bool fdt_get_boot_params(paddr_t fdt_addr, struct boot_params *p)
 			      MM_MODE_R);
 	if (!fdt) {
 		dlog("Unable to map full FDT.\n");
-		goto err_unmap_fdt_header;
+		goto fail;
 	}
 
-	if (!fdt_find_child(&n, "")) {
-		dlog("Unable to find FDT root node.\n");
-		goto out_unmap_fdt;
-	}
+	return fdt;
 
-	p->mem_ranges_count = 0;
-	find_memory_ranges(&n, p);
-
-	if (!find_initrd(&n, p)) {
-		goto out_unmap_fdt;
-	}
-
-	p->kernel_arg = (uintreg_t)fdt;
-	ret = true;
-
-out_unmap_fdt:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), 0);
-	return ret;
-
-err_unmap_fdt_header:
+fail:
 	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0);
-	return false;
+	return NULL;
+}
+
+bool fdt_unmap(struct fdt_header *fdt)
+{
+	paddr_t fdt_addr = pa_from_va(va_from_ptr(fdt));
+	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), 0);
 }
 
 bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
