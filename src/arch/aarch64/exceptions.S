@@ -20,41 +20,41 @@
 .global vector_table_el2
 .balign 0x800
 vector_table_el2:
-	/* sync_cur_sp0 */
+sync_cur_sp0:
 	b .
 
 .balign 0x80
-	/* irq_cur_sp0 */
+irq_cur_sp0:
 	b irq_current
 
 .balign 0x80
-	/* fiq_cur_sp0 */
+fiq_cur_sp0:
 	b .
 
 .balign 0x80
-	/* serr_cur_sp0 */
+serr_cur_sp0:
 	b .
 
 .balign 0x80
-	/* sync_cur_spx */
+sync_cur_spx:
 	mrs x0, esr_el2
 	mrs x1, elr_el2
 	b sync_current_exception
 
 .balign 0x80
-	/* irq_cur_spx */
+irq_cur_spx:
 	b irq_current
 
 .balign 0x80
-	/* fiq_cur_spx */
+fiq_cur_spx:
 	b .
 
 .balign 0x80
-	/* serr_cur_spx */
+serr_cur_spx:
 	b .
 
 .balign 0x80
-	/* sync_lower_64 */
+sync_lower_64:
 
 	/*
 	 * Save x18 since we're about to clobber it. We subtract 16 instead of
@@ -96,7 +96,7 @@ vector_table_el2:
 	eret
 
 .balign 0x80
-	/* irq_lower_64 */
+irq_lower_64:
 
 	/* Save x0 since we're about to clobber it. */
 	str x0, [sp, #-8]!
@@ -136,27 +136,27 @@ vector_table_el2:
 	b vcpu_restore_volatile_and_run
 
 .balign 0x80
-	/* fiq_lower_64 */
+fiq_lower_64:
 	b .
 
 .balign 0x80
-	/* serr_lower_64 */
+serr_lower_64:
 	b .
 
 .balign 0x80
-	/* sync_lower_32 */
+sync_lower_32:
 	b .
 
 .balign 0x80
-	/* irq_lower_32 */
+irq_lower_32:
 	b .
 
 .balign 0x80
-	/* fiq_lower_32 */
+fiq_lower_32:
 	b .
 
 .balign 0x80
-	/* serr_lower_32 */
+serr_lower_32:
 	b .
 
 slow_sync_lower_64:
