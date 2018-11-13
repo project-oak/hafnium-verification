@@ -40,5 +40,6 @@ $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
   | tee $OUT/kokoro_log/unit_tests/sponge_log.log
 
 # Run the tests with a timeout so they can't loop forever.
+$HFTEST gicv3_test
 $HFTEST primary_only_test
 $HFTEST primary_with_secondaries_test

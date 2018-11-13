@@ -77,6 +77,27 @@ initrd("primary_only_test") {
   primary_vm = ":primary_only_test_vm"
 }
 
+# Tests specific to GICv3.
+vm_kernel("gicv3_test_vm") {
+  testonly = true
+
+  sources = [
+    "exceptions.S",
+    "gicv3.c",
+    "interrupts.c",
+  ]
+
+  deps = [
+    ":hftest_vm",
+  ]
+}
+
+initrd("gicv3_test") {
+  testonly = true
+
+  primary_vm = ":gicv3_test_vm"
+}
+
 # Tests with secondary VMs.
 vm_kernel("primary_with_secondaries_test_vm") {
   testonly = true

@@ -35,7 +35,7 @@ import sys
 def qemu(hafnium, initrd, args, log):
     qemu_args = [
         "timeout", "--foreground", "5s",
-        "./prebuilts/linux-x64/qemu/qemu-system-aarch64", "-M", "virt", "-cpu",
+        "./prebuilts/linux-x64/qemu/qemu-system-aarch64", "-M", "virt,gic_version=3", "-cpu",
         "cortex-a57", "-m", "16M", "-machine", "virtualization=true",
         "-nographic", "-nodefaults", "-serial", "stdio", "-kernel", hafnium,
         "-initrd", initrd

@@ -18,6 +18,8 @@
 
 #include <stddef.h>
 
+#include "inc/hf/arch/cpu.h"
+
 #define read_msr(name)                                          \
 	__extension__({                                         \
 		uintreg_t __v;                                  \

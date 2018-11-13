@@ -20,6 +20,7 @@ group("all") {
     "//src:hafnium(//build/toolchain:hikey_clang)",
     "//src:hafnium(//build/toolchain:qemu_aarch64_clang)",
     "//src:unit_tests(//build/toolchain:host_fake_clang)",
+    "//test/vm:gicv3_test(//build/toolchain:qemu_aarch64_clang)",
     "//test/vm:vm_tests(//build/toolchain:qemu_aarch64_clang)",
   ]
 
