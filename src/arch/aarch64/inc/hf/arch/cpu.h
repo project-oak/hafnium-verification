@@ -91,16 +91,17 @@ static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
 	cptr = 0;
 	cnthctl = 0;
 
-	if (!is_primary) {
+	if (is_primary) {
+		cnthctl |=
+			(1u << 0) | /* EL1PCTEN, don't trap phys cnt access. */
+			(1u << 1);  /* EL1PCEN, don't trap phys timer access. */
+	} else {
 		hcr |= (7u << 3) |  /* AMO, IMO, FMO bits. */
 		       (1u << 9) |  /* FB bit. */
 		       (1u << 10) | /* BSU bits set to inner-sh. */
 		       (3u << 13);  /* TWI, TWE bits. */
 
 		cptr |= (1u << 10); /* TFP, trap fp access. */
-
-		cnthctl |= (1u << 0) | /* EL1PCTEN, trap phys cnt access. */
-			   (1u << 1);  /* EL1PCEN, trap phys timer access. */
 	}
 
 	r->lazy.hcr_el2 = hcr;
