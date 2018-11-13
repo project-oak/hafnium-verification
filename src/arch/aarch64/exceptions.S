@@ -364,8 +364,8 @@ vcpu_restore_all_and_run:
 	msr hcr_el2, x23
 
 	ldp x24, x25, [x0, #16 * 12]
-	msr cptr_el2, x22
-	msr cnthctl_el2, x23
+	msr cptr_el2, x24
+	msr cnthctl_el2, x25
 
 	ldr x26, [x0, #16 * 13]
 	msr vttbr_el2, x26
