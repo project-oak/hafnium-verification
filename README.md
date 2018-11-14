@@ -9,6 +9,8 @@ Further details are available in the [design doc](https://goto.google.com/hafniu
 Get in touch and keep up-to-date at
 [g/hafnium-eng](https://groups.google.com/a/google.com/forum/#!forum/hafnium-eng).
 
+File bugs at [go/hafnium-bug](https://goto.google.com/hafnium-bug).
+
 ## Getting started
 
 To jump in and build Hafnium, follow the [getting
