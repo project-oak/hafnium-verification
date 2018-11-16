@@ -136,7 +136,7 @@ template("host_toolchain") {
   host_cc_toolchain("${target_name}_clang") {
     ar = "llvm-ar"
     cc = "clang -fcolor-diagnostics"
-    cxx = "clang++"
+    cxx = "clang++ -fcolor-diagnostics"
 
     # TODO: remove the need for this
     extra_defines = "-DPL011_BASE=0"
