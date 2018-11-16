@@ -28,7 +28,7 @@ config("compiler_defaults") {
 
   cflags_c = [ "-std=c11" ]
 
-  cflags_cc = [ "-std=c++14" ]
+  cflags_cc = [ "-std=c++2a" ]
 }
 
 # Platform configuration.

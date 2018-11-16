@@ -14,11 +14,15 @@
  * limitations under the License.
  */
 
+/*
+ * This order of headers works around a libc++ issue which prevents
+ * "atomic" being included before "stdatomic.h".
+ */
+#include <gmock/gmock.h>
+
 extern "C" {
 #include "hf/api.h"
 }
-
-#include <gmock/gmock.h>
 
 namespace
 {

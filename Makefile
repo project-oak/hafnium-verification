@@ -39,15 +39,18 @@ format:
 tidy: $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 	@echo "Tidying..."
-	@find src/ \( -name \\*.c -o -name \*.cc \) | xargs clang-tidy -p $(OUT_DIR) -fix
-	@find test/ \( -name \*.c -o -name \*.cc \) | xargs clang-tidy -p $(OUT_DIR) -fix
+	# TODO: enable readability-magic-numbers once there are fewer violations.
+	# TODO: enable for c++ tests as it currently gives spurious errors.
+	@find src/ \( -name \*.c \) | xargs clang-tidy -p $(OUT_DIR) -fix
+	@find test/ \( -name \*.c \) | xargs clang-tidy -p $(OUT_DIR) -fix
 
 .PHONY: check
 check: $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 	@echo "Checking..."
-	@find src/ \( -name \*.c -o -name \*.cc \) | xargs clang-check -p $(OUT_DIR) -analyze -fix-what-you-can
-	@find test/ \( -name \*.c -o -name \*.cc \) | xargs clang-check -p $(OUT_DIR) -analyze -fix-what-you-can
+	# TODO: enable for c++ tests as it currently gives spurious errors.
+	@find src/ \( -name \*.c \) | xargs clang-check -p $(OUT_DIR) -analyze -fix-what-you-can
+	@find test/ \( -name \*.c \) | xargs clang-check -p $(OUT_DIR) -analyze -fix-what-you-can
 
 .PHONY: license
 license:

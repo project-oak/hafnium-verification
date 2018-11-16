@@ -30,7 +30,10 @@ TIMEOUT="timeout --foreground"
 OUT="out"
 HFTEST="$TIMEOUT 30s ./test/vm/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log --initrd"
 
-# Run the host unit tests
+# Add prebuilt libc++ to the path.
+export LD_LIBRARY_PATH=$PWD/prebuilts/linux-x64/clang/lib64
+
+# Run the host unit tests.
 mkdir -p $OUT/kokoro_log/unit_tests
 $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
   --gtest_output="xml:$OUT/kokoro_log/unit_tests/sponge_log.xml" \

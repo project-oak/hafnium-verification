@@ -1,5 +1,4 @@
-Checks: 'readability-*,portability-*,performance-*,misc-*,bugprone-*,modernize-*
-         ,-modernize-deprecated-headers,-clang-analyzer-valist.Uninitialized'
+Checks: 'readability-*,portability-*,performance-*,misc-*,bugprone-*,modernize-*,google-runtime-int,-modernize-deprecated-headers,-clang-analyzer-valist.Uninitialized,-readability-magic-numbers'
 HeaderFilterRegex: '^(?!third_party).+'
 FormatStyle: file
 WarningsAsErrors: '*'
