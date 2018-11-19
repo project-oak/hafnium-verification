@@ -33,6 +33,10 @@
 /**
  * Copies data to an unmapped location by mapping it for write, copying the
  * data, then unmapping it.
+ *
+ * The data is written so that it is available to all cores with the cache
+ * disabled. When switching to the partitions, the caching is initially disabled
+ * so the data must be available without the cache.
  */
 static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
 {
@@ -45,6 +49,7 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
 	}
 
 	memcpy(ptr, from, size);
+	arch_mm_write_back_dcache(ptr, size);
 
 	mm_unmap(to, to_end, 0);
 

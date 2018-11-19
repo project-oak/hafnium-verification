@@ -88,6 +88,19 @@
 
 static uint8_t mm_max_s2_level = 2;
 
+void arch_mm_write_back_dcache(void *base, size_t size)
+{
+	/* Clean each data cache line the corresponds to data in the range. */
+	uint16_t line_size = 1 << ((read_msr(CCSIDR_EL1) & 0x7) + 4);
+	uintptr_t line_begin = (uintptr_t)base & ~(line_size - 1);
+	uintptr_t end = (uintptr_t)base + size;
+	while (line_begin < end) {
+		__asm__ volatile("dc cvac, %0" : : "r"(line_begin));
+		line_begin += line_size;
+	}
+	__asm__ volatile("dsb sy");
+}
+
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
 	uint64_t attrs = 0;

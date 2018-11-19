@@ -198,6 +198,12 @@ static inline void arch_mm_invalidate_stage2_range(ipaddr_t va_begin,
 		"dsb ish\n");
 }
 
+/**
+ * Ensures that the range of data in the cache is written back so that it is
+ * visible to all cores in the system.
+ */
+void arch_mm_write_back_dcache(void *base, size_t size);
+
 uint64_t arch_mm_mode_to_attrs(int mode);
 bool arch_mm_init(paddr_t table, bool first);
 uint8_t arch_mm_max_level(int mode);
