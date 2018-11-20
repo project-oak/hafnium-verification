@@ -18,6 +18,9 @@
 
 #include <assert.h>
 
+#include "hf/arch/cpu.h"
+
+#include "hf/dlog.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -449,4 +452,177 @@ int64_t api_mailbox_clear(const struct vcpu *current)
 	}
 
 	return ret;
+}
+
+/**
+ * Enables or disables a given interrupt ID for the calling vCPU.
+ *
+ * Returns 0 on success, or -1 if the intid is invalid.
+ */
+int64_t api_enable_interrupt(uint32_t intid, bool enable, struct vcpu *current)
+{
+	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
+	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
+	if (intid >= HF_NUM_INTIDS) {
+		return -1;
+	}
+
+	sl_lock(&current->lock);
+	if (enable) {
+		current->interrupts.interrupt_enabled[intid_index] |=
+			intid_mask;
+		/* If it is pending, change state and trigger a virtual IRQ. */
+		if (current->interrupts.interrupt_pending[intid_index] &
+		    intid_mask) {
+			arch_regs_set_virtual_interrupt(&current->regs, true);
+		}
+	} else {
+		current->interrupts.interrupt_enabled[intid_index] &=
+			~intid_mask;
+	}
+
+	sl_unlock(&current->lock);
+	return 0;
+}
+
+/**
+ * Returns the ID of the next pending interrupt for the calling vCPU, and
+ * acknowledges it (i.e. marks it as no longer pending). Returns
+ * HF_INVALID_INTID if there are no pending interrupts.
+ */
+uint32_t api_get_and_acknowledge_interrupt(struct vcpu *current)
+{
+	uint8_t i;
+	uint32_t first_interrupt = HF_INVALID_INTID;
+	bool interrupts_remain = false;
+
+	/*
+	 * Find the first enabled and pending interrupt ID, return it, and
+	 * deactivate it.
+	 */
+	sl_lock(&current->lock);
+	for (i = 0; i < HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS; ++i) {
+		uint32_t enabled_and_pending =
+			current->interrupts.interrupt_enabled[i] &
+			current->interrupts.interrupt_pending[i];
+		if (enabled_and_pending == 0) {
+			continue;
+		}
+
+		if (first_interrupt != HF_INVALID_INTID) {
+			interrupts_remain = true;
+			break;
+		}
+
+		uint8_t bit_index = ctz(enabled_and_pending);
+		/* Mark it as no longer pending. */
+		current->interrupts.interrupt_pending[i] &= ~(1u << bit_index);
+		first_interrupt = i * INTERRUPT_REGISTER_BITS + bit_index;
+
+		enabled_and_pending = current->interrupts.interrupt_enabled[i] &
+				      current->interrupts.interrupt_pending[i];
+		if (enabled_and_pending != 0) {
+			interrupts_remain = true;
+			break;
+		}
+	}
+	/*
+	 * If there are no more enabled and pending interrupts left, clear the
+	 * VI bit.
+	 */
+	arch_regs_set_virtual_interrupt(&current->regs, interrupts_remain);
+
+	sl_unlock(&current->lock);
+	return first_interrupt;
+}
+
+/**
+ * Return wheher the current vCPU is allowed to inject an interrupt into the
+ * given VM and vCPU.
+ */
+static inline bool is_injection_allowed(uint32_t target_vm_id,
+					struct vcpu *current)
+{
+	uint32_t current_vm_id = current->vm->id;
+	/*
+	 * The primary VM is allowed to inject interrupts into any VM. Secondary
+	 * VMs are only allowed to inject interrupts into their own vCPUs.
+	 */
+	return current_vm_id == HF_PRIMARY_VM_ID ||
+	       current_vm_id == target_vm_id;
+}
+
+/**
+ * Injects a virtual interrupt of the given ID into the given target vCPU.
+ * This doesn't cause the vCPU to actually be run immediately; it will be taken
+ * when the vCPU is next run, which is up to the scheduler.
+ *
+ * Returns 0 on success, or -1 if the target VM or vCPU doesn't exist, the
+ * interrupt ID is invalid, or the current VM is not allowed to inject
+ * interrupts to the target VM.
+ */
+int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
+			     uint32_t intid, struct vcpu *current,
+			     struct vcpu **next)
+{
+	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
+	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
+	struct vcpu *target_vcpu;
+	struct vm *target_vm = vm_get(target_vm_id);
+
+	if (intid >= HF_NUM_INTIDS) {
+		return -1;
+	}
+	if (target_vm == NULL) {
+		return -1;
+	}
+	if (target_vcpu_idx >= target_vm->vcpu_count) {
+		/* The requested vcpu must exist. */
+		return -1;
+	}
+	if (!is_injection_allowed(target_vm_id, current)) {
+		return -1;
+	}
+	target_vcpu = &target_vm->vcpus[target_vcpu_idx];
+
+	dlog("Injecting IRQ %d for VM %d VCPU %d from VM %d VCPU %d\n", intid,
+	     target_vm_id, target_vcpu_idx, current->vm->id, current->cpu->id);
+
+	sl_lock(&target_vcpu->lock);
+
+	/* Make it pending. */
+	target_vcpu->interrupts.interrupt_pending[intid_index] |= intid_mask;
+
+	/* If it is enabled, change state and trigger a virtual IRQ. */
+	if (target_vcpu->interrupts.interrupt_enabled[intid_index] &
+	    intid_mask) {
+		dlog("IRQ %d is enabled for VM %d VCPU %d, setting VI.\n",
+		     intid, target_vm_id, target_vcpu_idx);
+		arch_regs_set_virtual_interrupt(&target_vcpu->regs, true);
+
+		if (target_vcpu->state == vcpu_state_blocked_interrupt) {
+			dlog("Changing state from blocked_interrupt to "
+			     "ready.\n");
+			target_vcpu->state = vcpu_state_ready;
+		}
+
+		if (current->vm->id != HF_PRIMARY_VM_ID &&
+		    current != target_vcpu) {
+			/*
+			 * Switch to the primary so that it can switch to the
+			 * target.
+			 */
+			struct hf_vcpu_run_return ret = {
+				.code = HF_VCPU_RUN_WAKE_UP,
+				.wake_up.vm_id = target_vm_id,
+				.wake_up.vcpu = target_vcpu_idx,
+			};
+			*next = api_switch_to_primary(current, ret,
+						      vcpu_state_ready);
+		}
+	}
+
+	sl_unlock(&target_vcpu->lock);
+
+	return 0;
 }

@@ -124,3 +124,5 @@ static inline void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)
 {
 	r->r[0] = v;
 }
+
+void arch_regs_set_virtual_interrupt(struct arch_regs *r, bool enable);

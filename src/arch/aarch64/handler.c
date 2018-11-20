@@ -32,11 +32,6 @@ struct hvc_handler_return {
 int32_t smc(uintreg_t arg0, uintreg_t arg1, uintreg_t arg2, uintreg_t arg3);
 void cpu_entry(struct cpu *c);
 
-static struct vcpu *current(void)
-{
-	return (struct vcpu *)read_msr(tpidr_el2);
-}
-
 void irq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	(void)elr;
@@ -252,6 +247,19 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	case HF_MAILBOX_CLEAR:
 		ret.user_ret = api_mailbox_clear(current());
+		break;
+
+	case HF_ENABLE_INTERRUPT:
+		ret.user_ret = api_enable_interrupt(arg1, arg2, current());
+		break;
+
+	case HF_GET_AND_ACKNOWLEDGE_INTERRUPT:
+		ret.user_ret = api_get_and_acknowledge_interrupt(current());
+		break;
+
+	case HF_INJECT_INTERRUPT:
+		ret.user_ret = api_inject_interrupt(arg1, arg2, arg3, current(),
+						    &ret.new);
 		break;
 
 	default:

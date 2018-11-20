@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include "hf/arch/cpu.h"
+
 #include "hf/abi.h"
 #include "hf/types.h"
 
@@ -23,13 +25,16 @@
 /* clang-format off */
 
 /* TODO: Define constants below according to spec. */
-#define HF_VCPU_RUN         0xff00
-#define HF_VM_GET_COUNT     0xff01
-#define HF_VCPU_GET_COUNT   0xff02
-#define HF_VM_CONFIGURE     0xff03
-#define HF_MAILBOX_SEND     0xff04
-#define HF_MAILBOX_RECEIVE  0xff05
-#define HF_MAILBOX_CLEAR    0xff06
+#define HF_VCPU_RUN                      0xff00
+#define HF_VM_GET_COUNT                  0xff01
+#define HF_VCPU_GET_COUNT                0xff02
+#define HF_VM_CONFIGURE                  0xff03
+#define HF_MAILBOX_SEND                  0xff04
+#define HF_MAILBOX_RECEIVE               0xff05
+#define HF_MAILBOX_CLEAR                 0xff06
+#define HF_ENABLE_INTERRUPT              0xff07
+#define HF_GET_AND_ACKNOWLEDGE_INTERRUPT 0xff08
+#define HF_INJECT_INTERRUPT              0xff09
 
 /** The amount of data that can be sent to a mailbox. */
 #define HF_MAILBOX_SIZE 4096
@@ -117,4 +122,40 @@ static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
 static inline int64_t hf_mailbox_clear(void)
 {
 	return hf_call(HF_MAILBOX_CLEAR, 0, 0, 0);
+}
+
+/**
+ * Enables or disables a given interrupt ID.
+ *
+ * Returns 0 on success, or -1 if the intid is invalid.
+ */
+static inline uint64_t hf_enable_interrupt(uint32_t intid, bool enable)
+{
+	return hf_call(HF_ENABLE_INTERRUPT, intid, enable, 0);
+}
+
+/**
+ * Gets the ID of the pending interrupt (if any) and acknowledge it.
+ *
+ * Returns HF_INVALID_INTID if there are no pending interrupts.
+ */
+static inline uint32_t hf_get_and_acknowledge_interrupt()
+{
+	return hf_call(HF_GET_AND_ACKNOWLEDGE_INTERRUPT, 0, 0, 0);
+}
+
+/**
+ * Injects a virtual interrupt of the given ID into the given target vCPU.
+ * This doesn't cause the vCPU to actually be run immediately; it will be taken
+ * when the vCPU is next run, which is up to the scheduler.
+ *
+ * Returns 0 on success, or -1 if the target VM or vCPU doesn't exist or
+ * the interrupt ID is invalid.
+ */
+static inline int64_t hf_inject_interrupt(uint32_t target_vm_id,
+					  uint32_t target_vcpu_idx,
+					  uint32_t intid)
+{
+	return hf_call(HF_INJECT_INTERRUPT, target_vm_id, target_vcpu_idx,
+		       intid);
 }

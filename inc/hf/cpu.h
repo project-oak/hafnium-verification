@@ -25,6 +25,11 @@
 #include "hf/addr.h"
 #include "hf/spinlock.h"
 
+#include "vmapi/hf/types.h"
+
+/** The number of bits in each element of the interrupt bitfields. */
+#define INTERRUPT_REGISTER_BITS 32
+
 enum vcpu_state {
 	/** The vcpu is switched off. */
 	vcpu_state_off,
@@ -42,6 +47,13 @@ enum vcpu_state {
 	vcpu_state_blocked_interrupt,
 };
 
+struct interrupts {
+	/** Bitfield keeping track of which interrupts are enabled. */
+	uint32_t interrupt_enabled[HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS];
+	/** Bitfield keeping track of which interrupts are pending. */
+	uint32_t interrupt_pending[HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS];
+};
+
 struct vcpu {
 	struct spinlock lock;
 	enum vcpu_state state;
@@ -49,6 +61,7 @@ struct vcpu {
 	struct vm *vm;
 	struct vcpu *mailbox_next;
 	struct arch_regs regs;
+	struct interrupts interrupts;
 };
 
 /* TODO: Update alignment such that cpus are in different cache lines. */

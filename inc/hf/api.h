@@ -38,3 +38,9 @@ int64_t api_mailbox_clear(const struct vcpu *current);
 
 struct vcpu *api_wait_for_interrupt(struct vcpu *current);
 struct vcpu *api_yield(struct vcpu *current);
+
+int64_t api_enable_interrupt(uint32_t intid, bool enable, struct vcpu *current);
+uint32_t api_get_and_acknowledge_interrupt(struct vcpu *current);
+int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
+			     uint32_t intid, struct vcpu *current,
+			     struct vcpu **next);

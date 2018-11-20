@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "hf/addr.h"
@@ -25,6 +26,7 @@ typedef uint64_t uintreg_t;
 struct arch_regs {
 	uintreg_t r[5];
 	uintreg_t vcpu_index;
+	bool virtual_interrupt;
 };
 
 static inline void arch_irq_disable(void)
@@ -48,6 +50,7 @@ static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
 	(void)pc;
 	r->r[0] = arg;
 }
+
 static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint16_t index)
 {
 	r->vcpu_index = index;
@@ -56,4 +59,10 @@ static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint16_t index)
 static inline void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)
 {
 	r->r[0] = v;
+}
+
+static inline void arch_regs_set_virtual_interrupt(struct arch_regs *r,
+						   bool enable)
+{
+	r->virtual_interrupt = enable;
 }

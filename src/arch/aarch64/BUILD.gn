@@ -25,6 +25,7 @@ source_set("aarch64") {
   ]
 
   sources += [
+    "cpu.c",
     "handler.c",
     "mm.c",
     "offsets.c",

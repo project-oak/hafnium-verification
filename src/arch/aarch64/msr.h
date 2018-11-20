@@ -33,3 +33,8 @@
 				 :                            \
 				 : "rZ"((uintreg_t)(value))); \
 	} while (0)
+
+static inline struct vcpu *current(void)
+{
+	return (struct vcpu *)read_msr(tpidr_el2);
+}
