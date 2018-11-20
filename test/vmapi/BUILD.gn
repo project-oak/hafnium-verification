@@ -99,5 +99,11 @@ initrd("primary_with_secondaries_test") {
       "echo",
       "//test/vmapi/secondaries:echo",
     ],
+    [
+      "1048576",
+      "1",
+      "interruptible",
+      "//test/vmapi/secondaries:interruptible",
+    ],
   ]
 }

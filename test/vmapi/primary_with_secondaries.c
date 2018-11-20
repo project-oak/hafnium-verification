@@ -36,9 +36,10 @@ static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
 /* Keep macro alignment */
 /* clang-format off */
 
-#define RELAY_A_VM_ID 1
-#define RELAY_B_VM_ID 2
-#define ECHO_VM_ID    3
+#define RELAY_A_VM_ID         1
+#define RELAY_B_VM_ID         2
+#define ECHO_VM_ID            3
+#define INTERRUPTIBLE_VM_ID   4
 
 /* clang-format on */
 
@@ -80,15 +81,15 @@ void next_permutation(char *s, size_t len)
 }
 
 /**
- * Confirm there are 3 secondary VMs as well as this primary VM.
+ * Confirm there are 4 secondary VMs as well as this primary VM.
  */
-TEST(hf_vm_get_count, three_secondary_vms)
+TEST(hf_vm_get_count, four_secondary_vms)
 {
-	EXPECT_EQ(hf_vm_get_count(), 4);
+	EXPECT_EQ(hf_vm_get_count(), 5);
 }
 
 /**
- * Confirm there that secondary VM has 1 VCPU.
+ * Confirm that secondary VM has 1 VCPU.
  */
 TEST(hf_vcpu_get_count, secondary_has_one_vcpu)
 {
@@ -277,5 +278,32 @@ TEST(mailbox, relay)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
 	EXPECT_EQ(memcmp(recv_page, message, sizeof(message)), 0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
+ * Send a message to the interruptible VM, which will interrupt itself to send a
+ * response back.
+ */
+TEST(interrupts, interrupt_self)
+{
+	const char message[] = "Ping";
+	const char expected_response[] = "Got IRQ 05.";
+	struct hf_vcpu_run_return run_res;
+
+	/* Configure mailbox pages. */
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Set the message, echo it and wait for a response. */
+	memcpy(send_page, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(INTERRUPTIBLE_VM_ID, sizeof(message)), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(
+		memcmp(recv_page, expected_response, sizeof(expected_response)),
+		0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }

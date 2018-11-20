@@ -49,3 +49,16 @@ vm_kernel("relay_b") {
     "//test/hftest:hftest_secondary_vm",
   ]
 }
+
+vm_kernel("interruptible") {
+  testonly = true
+
+  sources = [
+    "interruptible.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
+    "//test/hftest:hftest_secondary_vm",
+  ]
+}
