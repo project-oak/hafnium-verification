@@ -26,14 +26,12 @@
 #include "vmapi/hf/call.h"
 
 #include "../msr.h"
+#include "constants.h"
 
 /*
  * Secondary VM that sends messages in response to interrupts, and interrupts
  * itself when it receives a message.
  */
-
-#define DESTINATION_VM_ID 0
-#define SELF_INTERRUPT_ID 5
 
 alignas(4096) uint8_t kstack[4096];
 
@@ -54,7 +52,23 @@ void irq_current(void)
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
 	memcpy(send_page, buffer, size);
-	hf_mailbox_send(DESTINATION_VM_ID, size);
+	hf_mailbox_send(HF_PRIMARY_VM_ID, size);
+}
+
+/**
+ * Try to receive a message from the mailbox, blocking if necessary, and
+ * retrying if interrupted.
+ */
+struct hf_mailbox_receive_return mailbox_receive_retry()
+{
+	struct hf_mailbox_receive_return received = {
+		.vm_id = HF_INVALID_VM_ID,
+		.size = 0,
+	};
+	while (received.vm_id == HF_INVALID_VM_ID && received.size == 0) {
+		received = hf_mailbox_receive(true);
+	}
+	return received;
 }
 
 void kmain(void)
@@ -63,13 +77,23 @@ void kmain(void)
 
 	exception_setup();
 	hf_enable_interrupt(SELF_INTERRUPT_ID, true);
+	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID, true);
+	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_B, true);
 	arch_irq_enable();
 
 	/* Loop, echo messages back to the sender. */
 	for (;;) {
-		received_message = hf_mailbox_receive(true);
+		const char ping_message[] = "Ping";
+		received_message = mailbox_receive_retry();
+		if (received_message.vm_id == 0 && received_message.size == 5 &&
+		    memcmp(recv_page, ping_message, sizeof(ping_message)) ==
+			    0) {
+			/* Interrupt ourselves */
+			hf_inject_interrupt(4, 0, SELF_INTERRUPT_ID);
+		} else {
+			dlog("Got unexpected message from VM %d, size %d.\n",
+			     received_message.vm_id, received_message.size);
+		}
 		hf_mailbox_clear();
-		/* Interrupt ourselves */
-		hf_inject_interrupt(4, 0, SELF_INTERRUPT_ID);
 	}
 }

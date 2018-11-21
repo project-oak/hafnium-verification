@@ -16,6 +16,7 @@ import("//build/image/image.gni")
 
 vm_kernel("echo") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "echo.c",
@@ -28,6 +29,7 @@ vm_kernel("echo") {
 
 vm_kernel("relay_a") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "relay_a.c",
@@ -40,6 +42,7 @@ vm_kernel("relay_a") {
 
 vm_kernel("relay_b") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "relay_b.c",
@@ -52,6 +55,7 @@ vm_kernel("relay_b") {
 
 vm_kernel("interruptible") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "interruptible.c",

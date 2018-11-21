@@ -23,6 +23,7 @@
 
 #include "vmapi/hf/call.h"
 
+#include "constants.h"
 #include "hftest.h"
 
 static alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
@@ -305,5 +306,117 @@ TEST(interrupts, interrupt_self)
 	EXPECT_EQ(
 		memcmp(recv_page, expected_response, sizeof(expected_response)),
 		0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
+ * Inject an interrupt to the interrupt VM, which will send a message back.
+ * Repeat this twice to make sure it doesn't get into a bad state after the
+ * first one.
+ */
+TEST(interrupts, inject_interrupt_twice)
+{
+	const char expected_response[] = "Got IRQ 07.";
+	struct hf_vcpu_run_return run_res;
+
+	/* Configure mailbox pages. */
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Inject the interrupt and wait for a message. */
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(
+		memcmp(recv_page, expected_response, sizeof(expected_response)),
+		0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+
+	/* Inject the interrupt again, and wait for the same message. */
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(
+		memcmp(recv_page, expected_response, sizeof(expected_response)),
+		0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
+ * Inject two different interrupts to the interrupt VM, which will send a
+ * message back each time.
+ */
+TEST(interrupts, inject_two_interrupts)
+{
+	const char expected_response[] = "Got IRQ 07.";
+	const char expected_response_2[] = "Got IRQ 08.";
+	struct hf_vcpu_run_return run_res;
+
+	/* Configure mailbox pages. */
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Inject the interrupt and wait for a message. */
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(
+		memcmp(recv_page, expected_response, sizeof(expected_response)),
+		0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+
+	/* Inject a different interrupt and wait for a different message. */
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID_B);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
+	EXPECT_EQ(memcmp(recv_page, expected_response_2,
+			 sizeof(expected_response_2)),
+		  0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
+ * Inject an interrupt then send a message to the interrupt VM, which will send
+ * a message back each time. This is to test that interrupt injection doesn't
+ * interfere with message reception.
+ */
+TEST(interrupts, inject_interrupt_message)
+{
+	const char expected_response[] = "Got IRQ 07.";
+	const char message[] = "Ping";
+	const char expected_response_2[] = "Got IRQ 05.";
+	struct hf_vcpu_run_return run_res;
+
+	/* Configure mailbox pages. */
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Inject the interrupt and wait for a message. */
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(
+		memcmp(recv_page, expected_response, sizeof(expected_response)),
+		0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+
+	/* Now send a message to the secondary. */
+	memcpy(send_page, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(INTERRUPTIBLE_VM_ID, sizeof(message)),
+		  HF_INVALID_VCPU);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
+	EXPECT_EQ(memcmp(recv_page, expected_response_2,
+			 sizeof(expected_response_2)),
+		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }

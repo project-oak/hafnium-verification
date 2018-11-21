@@ -15,6 +15,10 @@
 import("//build/image/image.gni")
 import("//build/toolchain/platform.gni")
 
+config("config") {
+  include_dirs = [ "inc" ]
+}
+
 group("vmapi") {
   testonly = true
 
@@ -27,6 +31,7 @@ group("vmapi") {
 # Tests with no secondary VMs.
 vm_kernel("primary_only_test_vm") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "primary_only.c",
@@ -46,6 +51,7 @@ initrd("primary_only_test") {
 # Tests specific to GICv3.
 vm_kernel("gicv3_test_vm") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "gicv3.c",
@@ -66,6 +72,7 @@ initrd("gicv3_test") {
 # Tests with secondary VMs.
 vm_kernel("primary_with_secondaries_test_vm") {
   testonly = true
+  public_configs = [ "//test/vmapi:config" ]
 
   sources = [
     "primary_with_secondaries.c",
