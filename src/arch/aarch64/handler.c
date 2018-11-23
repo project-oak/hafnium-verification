@@ -52,8 +52,7 @@ void sync_current_exception(uintreg_t esr, uintreg_t elr)
 		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", elr, esr,
 		     esr >> 26);
 		if (!(esr & (1u << 10))) { /* Check FnV bit. */
-			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
-			     read_msr(hpfar_el2) << 8);
+			dlog(", far=0x%x", read_msr(far_el2));
 		} else {
 			dlog(", far=invalid");
 		}
