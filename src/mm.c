@@ -51,6 +51,8 @@ static_assert(
 #define MAP_FLAG_NOSYNC 0x01
 #define MAP_FLAG_COMMIT 0x02
 #define MAP_FLAG_UNMAP  0x04
+#define MAP_FLAG_NOBBM  0x08
+#define MAP_FLAG_STAGE1 0x10
 
 /* clang-format on */
 
@@ -124,13 +126,80 @@ static struct mm_page_table *mm_alloc_page_table(bool nosync)
 }
 
 /**
+ * Invalidates the TLB for the given address range.
+ */
+static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end,
+			      bool stage1)
+{
+	if (stage1) {
+		arch_mm_invalidate_stage1_range(va_init(begin), va_init(end));
+	} else {
+		arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
+	}
+}
+
+/**
+ * Frees all page-table-related memory associated with the given pte at the
+ * given level, including any subtables recursively.
+ */
+static void mm_free_page_pte(pte_t pte, uint8_t level)
+{
+	struct mm_page_table *table;
+	uint64_t i;
+
+	if (!arch_mm_pte_is_table(pte, level)) {
+		return;
+	}
+
+	/* Recursively free any subtables. */
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(pte));
+	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+		mm_free_page_pte(table->entries[i], level - 1);
+	}
+
+	/* Free the table itself. */
+	hfree(table);
+}
+
+/**
+ * Replaces a page table entry with the given value. If both old and new values
+ * are present, it performs a break-before-make sequence where it first writes
+ * an absent value to the PTE, flushes the TLB, then writes the actual new
+ * value. This is to prevent cases where CPUs have different 'present' values in
+ * their TLBs, which may result in issues for example in cache coherency.
+ */
+static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
+			     uint8_t level, int flags)
+{
+	pte_t v = *pte;
+
+	/*
+	 * We need to do the break-before-make sequence if both values are
+	 * present, and if it hasn't been inhibited by the NOBBM flag.
+	 */
+	if (!(flags & MAP_FLAG_NOBBM) && arch_mm_pte_is_present(v, level) &&
+	    arch_mm_pte_is_present(new_pte, level)) {
+		*pte = arch_mm_absent_pte(level);
+		mm_invalidate_tlb(begin, begin + mm_entry_size(level),
+				  flags & MAP_FLAG_STAGE1);
+	}
+
+	/* Assign the new pte. */
+	*pte = new_pte;
+
+	/* Free pages that aren't in use anymore. */
+	mm_free_page_pte(v, level);
+}
+
+/**
  * Populates the provided page table entry with a reference to another table if
  * needed, that is, if it does not yet point to another table.
  *
  * Returns a pointer to the table the entry now points to.
  */
-static struct mm_page_table *mm_populate_table_pte(pte_t *pte, uint8_t level,
-						   bool nosync)
+static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
+						   pte_t *pte, uint8_t level,
+						   int flags)
 {
 	struct mm_page_table *ntable;
 	pte_t v = *pte;
@@ -145,7 +214,7 @@ static struct mm_page_table *mm_populate_table_pte(pte_t *pte, uint8_t level,
 	}
 
 	/* Allocate a new table. */
-	ntable = mm_alloc_page_table(nosync);
+	ntable = mm_alloc_page_table(flags & MAP_FLAG_NOSYNC);
 	if (ntable == NULL) {
 		dlog("Failed to allocate memory for page table\n");
 		return NULL;
@@ -168,37 +237,15 @@ static struct mm_page_table *mm_populate_table_pte(pte_t *pte, uint8_t level,
 		new_pte += inc;
 	}
 
-	/*
-	 * Ensure initialisation is visible before updating the actual pte, then
-	 * update it.
-	 */
+	/* Ensure initialisation is visible before updating the pte. */
 	atomic_thread_fence(memory_order_release);
-	*pte = arch_mm_table_pte(level, pa_init((uintpaddr_t)ntable));
+
+	/* Replace the pte entry, doing a break-before-make if needed. */
+	mm_replace_entry(begin, pte,
+			 arch_mm_table_pte(level, pa_init((uintpaddr_t)ntable)),
+			 level, flags);
 
 	return ntable;
-}
-
-/**
- * Frees all page-table-related memory associated with the given pte at the
- * given level, including any subtables recursively.
- */
-static void mm_free_page_pte(pte_t pte, uint8_t level)
-{
-	struct mm_page_table *table;
-	uint64_t i;
-
-	if (!arch_mm_pte_is_table(pte, level)) {
-		return;
-	}
-
-	table = mm_page_table_from_pa(arch_mm_table_from_pte(pte));
-	/* Recursively free any subtables. */
-	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
-		mm_free_page_pte(table->entries[i], level - 1);
-	}
-
-	/* Free the table itself. */
-	hfree(table);
 }
 
 /**
@@ -213,6 +260,7 @@ static bool mm_ptable_is_empty(struct mm_page_table *table, uint8_t level)
 			return false;
 		}
 	}
+
 	return true;
 }
 
@@ -233,7 +281,6 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 	ptable_addr_t level_end = mm_level_end(begin, level);
 	size_t entry_size = mm_entry_size(level);
 	bool commit = flags & MAP_FLAG_COMMIT;
-	bool nosync = flags & MAP_FLAG_NOSYNC;
 	bool unmap = flags & MAP_FLAG_UNMAP;
 
 	/* Cap end so that we don't go over the current level max. */
@@ -260,13 +307,12 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 * map, map/unmap the whole entry.
 			 */
 			if (commit) {
-				pte_t v = *pte;
-				*pte = unmap ? arch_mm_absent_pte(level)
-					     : arch_mm_block_pte(level, pa,
-								 attrs);
-				/* TODO: Add barrier. How do we ensure this
-				 * isn't in use by another CPU? Send IPI? */
-				mm_free_page_pte(v, level);
+				pte_t new_pte =
+					unmap ? arch_mm_absent_pte(level)
+					      : arch_mm_block_pte(level, pa,
+								  attrs);
+				mm_replace_entry(begin, pte, new_pte, level,
+						 flags);
 			}
 		} else {
 			/*
@@ -274,7 +320,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 * replace it with an equivalent subtable and get that.
 			 */
 			struct mm_page_table *nt =
-				mm_populate_table_pte(pte, level, nosync);
+				mm_populate_table_pte(begin, pte, level, flags);
 			if (nt == NULL) {
 				return false;
 			}
@@ -290,14 +336,14 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 
 			/*
 			 * If the subtable is now empty, replace it with an
-			 * absent entry at this level.
+			 * absent entry at this level. We never need to do
+			 * break-before-makes here because we are assigning
+			 * an absent value.
 			 */
 			if (commit && unmap &&
 			    mm_ptable_is_empty(nt, level - 1)) {
 				pte_t v = *pte;
 				*pte = arch_mm_absent_pte(level);
-				/* TODO: Add barrier. How do we ensure this
-				 * isn't in use by another CPU? Send IPI? */
 				mm_free_page_pte(v, level);
 			}
 		}
@@ -311,19 +357,6 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 }
 
 /**
- * Invalidates the TLB for the given address range.
- */
-static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end,
-			      bool stage1)
-{
-	if (stage1) {
-		arch_mm_invalidate_stage1_range(va_init(begin), va_init(end));
-	} else {
-		arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
-	}
-}
-
-/**
  * Updates the given table such that the given physical address range is mapped
  * or not mapped into the address space with the architecture-agnostic mode
  * provided.
@@ -333,6 +366,8 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 {
 	uint64_t attrs = unmap ? 0 : arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC ? MAP_FLAG_NOSYNC : 0) |
+		    (mode & MM_MODE_NOINVALIDATE ? MAP_FLAG_NOBBM : 0) |
+		    (mode & MM_MODE_STAGE1 ? MAP_FLAG_STAGE1 : 0) |
 		    (unmap ? MAP_FLAG_UNMAP : 0);
 	uint8_t level = arch_mm_max_level(mode);
 	struct mm_page_table *table = mm_page_table_from_pa(t->table);
@@ -427,12 +462,14 @@ static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level)
 {
 	struct mm_page_table *table =
 		mm_page_table_from_pa(arch_mm_table_from_pte(entry));
+
 	/*
 	 * Free the subtable. This is safe to do directly (rather than
 	 * using mm_free_page_pte) because we know by this point that it
 	 * doesn't have any subtables of its own.
 	 */
 	hfree(table);
+
 	/* Replace subtable with a single absent entry. */
 	return arch_mm_absent_pte(level);
 }
