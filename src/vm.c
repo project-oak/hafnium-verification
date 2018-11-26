@@ -42,6 +42,10 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 	vm->vcpu_count = vcpu_count;
 	vm->mailbox.state = mailbox_state_empty;
 
+	if (!mm_ptable_init(&vm->ptable, 0, ppool)) {
+		return false;
+	}
+
 	/* Do basic initialization of vcpus. */
 	for (i = 0; i < vcpu_count; i++) {
 		vcpu_init(&vm->vcpus[i], vm);
@@ -50,7 +54,7 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 	++vm_count;
 	*new_vm = vm;
 
-	return mm_ptable_init(&vm->ptable, 0, ppool);
+	return true;
 }
 
 uint32_t vm_get_count(void)
@@ -73,8 +77,7 @@ void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg)
 {
 	struct vcpu *vcpu = &vm->vcpus[index];
 	if (index < vm->vcpu_count) {
-		arch_regs_init(&vcpu->regs, vm->id == HF_PRIMARY_VM_ID, vm->id,
-			       vm->ptable.root, entry, arg);
+		arch_regs_set_pc_arg(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}
 }

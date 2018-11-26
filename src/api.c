@@ -129,6 +129,66 @@ int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current)
 }
 
 /**
+ * This function is called by the architecture-specific context switching
+ * function to indicate that register state for the given vcpu has been saved
+ * and can therefore be used by other pcpus.
+ */
+void api_regs_state_saved(struct vcpu *vcpu)
+{
+	sl_lock(&vcpu->lock);
+	vcpu->regs_available = true;
+	sl_unlock(&vcpu->lock);
+}
+
+/**
+ * Prepares the vcpu to run by updating its state and fetching whether a return
+ * value needs to be forced onto the vCPU.
+ */
+static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
+				 struct retval_state *vcpu_retval)
+{
+	bool ret;
+
+	sl_lock(&vcpu->lock);
+	if (vcpu->state != vcpu_state_ready) {
+		ret = false;
+		goto out;
+	}
+
+	vcpu->cpu = current->cpu;
+	vcpu->state = vcpu_state_running;
+
+	/* Fetch return value to inject into vCPU if there is one. */
+	*vcpu_retval = vcpu->retval;
+	if (vcpu_retval->force) {
+		vcpu->retval.force = false;
+	}
+
+	/*
+	 * Wait until the registers become available. Care must be taken when
+	 * looping on this: it shouldn't be done while holding other locks
+	 * to avoid deadlocks.
+	 */
+	while (!vcpu->regs_available) {
+		sl_unlock(&vcpu->lock);
+		sl_lock(&vcpu->lock);
+	}
+
+	/*
+	 * Mark the registers as unavailable now that we're about to reflect
+	 * them onto the real registers. This will also prevent another physical
+	 * CPU from trying to read these registers.
+	 */
+	vcpu->regs_available = false;
+
+	ret = true;
+
+out:
+	sl_unlock(&vcpu->lock);
+	return ret;
+}
+
+/**
  * Runs the given vcpu of the given vm.
  */
 struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
@@ -137,6 +197,7 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 {
 	struct vm *vm;
 	struct vcpu *vcpu;
+	struct retval_state vcpu_retval;
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
 	};
@@ -162,18 +223,20 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 		goto out;
 	}
 
+	/* Update state if allowed. */
 	vcpu = &vm->vcpus[vcpu_idx];
-
-	sl_lock(&vcpu->lock);
-	if (vcpu->state != vcpu_state_ready) {
+	if (!api_vcpu_prepare_run(current, vcpu, &vcpu_retval)) {
 		ret.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
-	} else {
-		vcpu->cpu = current->cpu;
-		vcpu->state = vcpu_state_running;
-		*next = vcpu;
-		ret.code = HF_VCPU_RUN_YIELD;
+		goto out;
 	}
-	sl_unlock(&vcpu->lock);
+
+	*next = vcpu;
+	ret.code = HF_VCPU_RUN_YIELD;
+
+	/* Update return value if one was injected. */
+	if (vcpu_retval.force) {
+		arch_regs_set_retval(&vcpu->regs, vcpu_retval.value);
+	}
 
 out:
 	return ret;
@@ -353,12 +416,12 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 		to_vcpu->state = vcpu_state_ready;
 
 		/* Return from HF_MAILBOX_RECEIVE. */
-		arch_regs_set_retval(&to_vcpu->regs,
-				     hf_mailbox_receive_return_encode((
-					     struct hf_mailbox_receive_return){
-					     .vm_id = to->mailbox.recv_from_id,
-					     .size = size,
-				     }));
+		to_vcpu->retval.force = true;
+		to_vcpu->retval.value = hf_mailbox_receive_return_encode(
+			(struct hf_mailbox_receive_return){
+				.vm_id = to->mailbox.recv_from_id,
+				.size = size,
+			});
 
 		sl_unlock(&to_vcpu->lock);
 

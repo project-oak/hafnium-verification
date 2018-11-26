@@ -25,6 +25,7 @@ group("vmapi") {
   deps = [
     ":primary_only_test",
     ":primary_with_secondaries_test",
+    ":primary_with_state_secondary_test",
   ]
 }
 
@@ -113,4 +114,29 @@ initrd("primary_with_secondaries_test") {
       "//test/vmapi/secondaries:interruptible",
     ],
   ]
+}
+
+# Tests with state test secondary VM.
+vm_kernel("primary_with_state_secondary_test_vm") {
+  testonly = true
+
+  sources = [
+    "primary_for_state_test.c",
+  ]
+
+  deps = [
+    "//test/hftest:hftest_primary_vm",
+  ]
+}
+
+initrd("primary_with_state_secondary_test") {
+  testonly = true
+
+  primary_vm = ":primary_with_state_secondary_test_vm"
+  secondary_vms = [ [
+        "1048576",
+        "1",
+        "check_state",
+        "//test/vmapi/secondaries:check_state",
+      ] ]
 }

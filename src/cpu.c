@@ -96,8 +96,7 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 	if (!prev) {
 		struct vm *vm = vm_get(HF_PRIMARY_VM_ID);
 		struct vcpu *vcpu = &vm->vcpus[cpu_index(c)];
-		arch_regs_init(&vcpu->regs, true, vm->id, vm->ptable.root,
-			       entry, arg);
+		arch_regs_set_pc_arg(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}
 
@@ -134,9 +133,11 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 {
 	memset(vcpu, 0, sizeof(*vcpu));
 	sl_init(&vcpu->lock);
+	vcpu->regs_available = true;
 	vcpu->vm = vm;
 	vcpu->state = vcpu_state_off;
-	arch_regs_set_vcpu_index(&vcpu->regs, vcpu - vm->vcpus);
+	arch_regs_init(&vcpu->regs, vm->id == HF_PRIMARY_VM_ID, vm->id,
+		       vm->ptable.root, vcpu_index(vcpu));
 }
 
 void vcpu_on(struct vcpu *vcpu)

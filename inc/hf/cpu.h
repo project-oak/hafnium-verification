@@ -54,6 +54,11 @@ struct interrupts {
 	uint32_t interrupt_pending[HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS];
 };
 
+struct retval_state {
+	uintptr_t value;
+	bool force;
+};
+
 struct vcpu {
 	struct spinlock lock;
 	enum vcpu_state state;
@@ -62,6 +67,20 @@ struct vcpu {
 	struct vcpu *mailbox_next;
 	struct arch_regs regs;
 	struct interrupts interrupts;
+
+	/*
+	 * The following field is used to force a return value to be set the
+	 * next time a vCPU belonging to a secondary VM runs. For primary VMs,
+	 * 'regs' can be set directly.
+	 */
+	struct retval_state retval;
+
+	/*
+	 * Determine whether the 'regs' field is available for use. This is set
+	 * to false when a vCPU is about to run on a physical CPU, and is set
+	 * back to true when it is descheduled.
+	 */
+	bool regs_available;
 };
 
 /* TODO: Update alignment such that cpus are in different cache lines. */

@@ -308,8 +308,15 @@ vcpu_switch:
 	mrs x26, vttbr_el2
 	str x26, [x1, #VCPU_LAZY + 16 * 13]
 
-	/* Intentional fallthrough. */
+	/* Save new vcpu pointer in non-volatile register. */
+	mov x19, x0
 
+	/* Inform the arch-independent sections that regs have been saved. */
+	mov x0, x1
+	bl api_regs_state_saved
+	mov x0, x19
+
+	/* Intentional fallthrough. */
 .globl vcpu_restore_all_and_run
 vcpu_restore_all_and_run:
 	/* Update pointer to current vcpu. */

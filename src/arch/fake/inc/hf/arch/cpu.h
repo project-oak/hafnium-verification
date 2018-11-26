@@ -40,20 +40,20 @@ static inline void arch_irq_enable(void)
 }
 
 static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
-				  uint64_t vmid, paddr_t table, ipaddr_t pc,
-				  uintreg_t arg)
+				  uint64_t vmid, paddr_t table, uint64_t index)
 {
 	/* TODO */
 	(void)is_primary;
 	(void)vmid;
 	(void)table;
-	(void)pc;
-	r->r[0] = arg;
+	r->vcpu_index = index;
 }
 
-static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint16_t index)
+static inline void arch_regs_set_pc_arg(struct arch_regs *r, ipaddr_t pc,
+					uintreg_t arg)
 {
-	r->vcpu_index = index;
+	(void)pc;
+	r->r[0] = arg;
 }
 
 static inline void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)

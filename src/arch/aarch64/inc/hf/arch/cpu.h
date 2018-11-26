@@ -73,8 +73,7 @@ static inline void arch_irq_enable(void)
 }
 
 static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
-				  uint64_t vmid, paddr_t table, ipaddr_t pc,
-				  uintreg_t arg)
+				  uint64_t vmid, paddr_t table, uint32_t index)
 {
 	uintreg_t hcr;
 	uintreg_t cptr;
@@ -108,18 +107,32 @@ static inline void arch_regs_init(struct arch_regs *r, bool is_primary,
 	r->lazy.cptr_el2 = cptr;
 	r->lazy.cnthctl_el2 = cnthctl;
 	r->lazy.vttbr_el2 = pa_addr(table) | (vmid << 48);
+	r->lazy.vmpidr_el2 = index;
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */
+}
+
+/**
+ * Updates the given registers so that when a vcpu runs, it starts off at the
+ * given address (pc) with the given argument.
+ *
+ * This function must only be called on an arch_regs that is known not be in use
+ * by any other physical CPU.
+ */
+static inline void arch_regs_set_pc_arg(struct arch_regs *r, ipaddr_t pc,
+					uintreg_t arg)
+{
 	r->pc = ipa_addr(pc);
 	r->r[0] = arg;
 }
 
-static inline void arch_regs_set_vcpu_index(struct arch_regs *r, uint32_t index)
-{
-	r->lazy.vmpidr_el2 = index;
-}
-
+/**
+ * Updates the register holding the return value of a function.
+ *
+ * This function must only be called on an arch_regs that is known not be in use
+ * by any other physical CPU.
+ */
 static inline void arch_regs_set_retval(struct arch_regs *r, uintreg_t v)
 {
 	r->r[0] = v;
