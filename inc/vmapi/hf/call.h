@@ -44,6 +44,8 @@ int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 
 /**
  * Runs the given vcpu of the given vm.
+ *
+ * Returns an hf_vcpu_run_return struct telling the scheduler what to do next.
  */
 static inline struct hf_vcpu_run_return hf_vcpu_run(uint32_t vm_id,
 						    uint32_t vcpu_idx)
@@ -71,6 +73,8 @@ static inline int64_t hf_vcpu_get_count(uint32_t vm_id)
 /**
  * Configures the pages to send/receive data through. The pages must not be
  * shared.
+ *
+ * Returns 0 on success or -1 or failure.
  */
 static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
 {
@@ -79,6 +83,11 @@ static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
 
 /**
  * Copies data from the sender's send buffer to the recipient's receive buffer.
+ *
+ * Returns -1 on failure, and on success either:
+ * - 0, if the caller is a secondary VM
+ * - the ID of the vCPU to run to receive the message, if the caller is the
+ * primary VM.
  */
 static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size)
 {
@@ -100,7 +109,10 @@ static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
 }
 
 /**
- * Clears the mailbox so a new message can be received.
+ * Clears the caller's mailbox so a new message can be received.
+ *
+ * Returns 0 on success, or -1 if the mailbox hasn't been read or is already
+ * empty.
  */
 static inline int64_t hf_mailbox_clear(void)
 {
