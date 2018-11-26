@@ -33,8 +33,8 @@ void arch_irq_enable(void)
 	__asm__ volatile("msr DAIFClr, #0xf");
 }
 
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
-		     paddr_t table, uint32_t index)
+void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
+		     uint64_t vcpu_id, paddr_t table)
 {
 	uintreg_t pc = r->pc;
 	uintreg_t arg = r->r[0];
@@ -74,8 +74,8 @@ void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
 	r->lazy.hcr_el2 = hcr;
 	r->lazy.cptr_el2 = cptr;
 	r->lazy.cnthctl_el2 = cnthctl;
-	r->lazy.vttbr_el2 = pa_addr(table) | (vmid << 48);
-	r->lazy.vmpidr_el2 = index;
+	r->lazy.vttbr_el2 = pa_addr(table) | (vm_id << 48);
+	r->lazy.vmpidr_el2 = vcpu_id;
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */

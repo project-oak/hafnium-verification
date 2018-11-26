@@ -38,8 +38,8 @@ void arch_irq_enable(void);
  * Reset the register values other than the PC and argument which are set with
  * `arch_regs_set_pc_arg()`.
  */
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
-		     paddr_t table, uint32_t index);
+void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
+		     uint64_t vcpu_id, paddr_t table);
 
 /**
  * Updates the given registers so that when a vcpu runs, it starts off at the

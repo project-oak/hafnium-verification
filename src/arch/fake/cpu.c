@@ -26,14 +26,14 @@ void arch_irq_enable(void)
 	/* TODO */
 }
 
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vmid,
-		     paddr_t table, uint32_t index)
+void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
+		     uint64_t vcpu_id, paddr_t table)
 {
 	/* TODO */
 	(void)is_primary;
-	(void)vmid;
+	(void)vm_id;
 	(void)table;
-	r->vcpu_index = index;
+	r->vcpu_id = vcpu_id;
 }
 
 void arch_regs_set_pc_arg(struct arch_regs *r, ipaddr_t pc, uintreg_t arg)

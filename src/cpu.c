@@ -40,30 +40,57 @@ struct cpu cpus[MAX_CPUS] = {
 	},
 };
 
-void cpu_module_init(void)
-{
-	size_t i;
+static uint32_t cpu_count = 1;
 
-	/* Initialize all CPUs. */
-	for (i = 0; i < MAX_CPUS; i++) {
-		struct cpu *c = &cpus[i];
+static void cpu_init(struct cpu *c)
+{
+	/* TODO: Assumes that c is zeroed out already. */
+	sl_init(&c->lock);
+	c->irq_disable_count = 1;
+}
+
+void cpu_module_init(const uint64_t *cpu_ids, size_t count)
+{
+	uint32_t i;
+	uint32_t j;
+	uint64_t boot_cpu_id = cpus[0].id;
+	bool found_boot_cpu = false;
+
+	cpu_count = count;
+
+	/*
+	 * Initialize CPUs with the IDs from the configuration passed in. The
+	 * CPUs after the boot CPU are initialized in reverse order. The boot
+	 * CPU is initialized when it is found or in place of the last CPU if it
+	 * is not found.
+	 */
+	j = cpu_count;
+	for (i = 0; i < cpu_count; ++i) {
+		struct cpu *c;
+		uint64_t id = cpu_ids[i];
+
+		if (found_boot_cpu || id != boot_cpu_id) {
+			c = &cpus[--j];
+		} else {
+			found_boot_cpu = true;
+			c = &cpus[0];
+		}
 
 		cpu_init(c);
-		c->id = i; /* TODO: Initialize ID based on fdt. */
+		c->id = id;
 		c->stack_bottom = &callstacks[i][STACK_SIZE];
+	}
+
+	if (!found_boot_cpu) {
+		/* Boot CPU was initialized but with wrong ID. */
+		dlog("Boot CPU's ID not found in config.");
+		cpus[0].id = boot_cpu_id;
 	}
 }
 
 size_t cpu_index(struct cpu *c)
 {
 	return c - cpus;
-}
-
-void cpu_init(struct cpu *c)
-{
-	/* TODO: Assumes that c is zeroed out already. */
-	sl_init(&c->lock);
-	c->irq_disable_count = 1;
 }
 
 void cpu_irq_enable(struct cpu *c)
@@ -117,11 +144,11 @@ void cpu_off(struct cpu *c)
 /**
  * Searches for a CPU based on its id.
  */
-struct cpu *cpu_find(size_t id)
+struct cpu *cpu_find(uint64_t id)
 {
 	size_t i;
 
-	for (i = 0; i < MAX_CPUS; i++) {
+	for (i = 0; i < cpu_count; i++) {
 		if (cpus[i].id == id) {
 			return &cpus[i];
 		}

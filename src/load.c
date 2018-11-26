@@ -348,7 +348,7 @@ bool load_secondary(const struct memiter *cpio,
 		dlog("Loaded with %u vcpus, entry at 0x%x\n", cpu,
 		     pa_addr(secondary_mem_begin));
 
-		vm_start_vcpu(vm, 0, secondary_entry, 0);
+		vm_secondary_start_vcpu(vm, 0, secondary_entry, 0);
 	}
 
 	/*

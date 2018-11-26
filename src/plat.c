@@ -83,6 +83,8 @@ bool plat_get_boot_params(struct boot_params *p, struct mpool *ppool)
 		goto out_unmap_fdt;
 	}
 
+	fdt_find_cpus(&n, p->cpu_ids, &p->cpu_count);
+
 	p->mem_ranges_count = 0;
 	fdt_find_memory_ranges(&n, p);
 

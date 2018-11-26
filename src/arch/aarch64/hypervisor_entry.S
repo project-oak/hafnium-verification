@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "offsets.h"
+
 .section .init.image_entry, "ax"
 .global image_entry
 image_entry:
@@ -23,5 +25,12 @@ image_entry:
 	/* Get pointer to first cpu. */
 	adrp x0, cpus
 	add x0, x0, :lo12:cpus
+
+	/* Set the ID of this cpu from the affinity bits of mpidr. */
+	mrs x30, mpidr_el1
+	ubfx x29, x30, 0, 24
+	ubfx x30, x30, 32, 8
+	orr x30, x29, x30
+	str x30, [x0, CPU_ID]
 
 	b cpu_entry

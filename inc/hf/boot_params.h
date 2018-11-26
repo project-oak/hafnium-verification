@@ -31,6 +31,8 @@ struct mem_range {
 };
 
 struct boot_params {
+	uint64_t cpu_ids[MAX_CPUS];
+	size_t cpu_count;
 	struct mem_range mem_ranges[MAX_MEM_RANGES];
 	size_t mem_ranges_count;
 	paddr_t initrd_begin;

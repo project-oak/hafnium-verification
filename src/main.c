@@ -80,8 +80,6 @@ static void one_time_init(void)
 	mpool_init(&ppool, sizeof(struct mm_page_table));
 	mpool_add_chunk(&ppool, ptable_buf, sizeof(ptable_buf));
 
-	cpu_module_init();
-
 	if (!mm_init(&ppool)) {
 		panic("mm_init failed");
 	}
@@ -93,6 +91,8 @@ static void one_time_init(void)
 	if (!plat_get_boot_params(&params, &ppool)) {
 		panic("unable to retrieve boot params");
 	}
+
+	cpu_module_init(params.cpu_ids, params.cpu_count);
 
 	for (i = 0; i < params.mem_ranges_count; ++i) {
 		dlog("Memory range:  0x%x - 0x%x\n",
@@ -174,8 +174,7 @@ struct vcpu *cpu_main(struct cpu *c)
 	vcpu->cpu = c;
 
 	/* Reset the registers to give a clean start for the primary's vCPU. */
-	arch_regs_reset(&vcpu->regs, true, vm->id, vm->ptable.root,
-			vcpu_index(vcpu));
+	arch_regs_reset(&vcpu->regs, true, vm->id, c->id, vm->ptable.root);
 
 	return vcpu;
 }

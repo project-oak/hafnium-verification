@@ -27,6 +27,7 @@
 		      "Offset " name " should be " #expected \
 		      " and not " #actual)
 
+CHECK_OFFSET(CPU_ID, struct cpu, id);
 CHECK_OFFSET(CPU_STACK_BOTTOM, struct cpu, stack_bottom);
 CHECK_OFFSET(VCPU_REGS, struct vcpu, regs);
 CHECK_OFFSET(VCPU_LAZY, struct vcpu, regs.lazy);

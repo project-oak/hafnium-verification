@@ -103,14 +103,27 @@ void vm_unlock(struct vm_locked *locked)
 	locked->vm = NULL;
 }
 
-/* TODO: Shall we use index or id here? */
-void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg)
+/**
+ * Starts a vCPU of a secondary VM.
+ *
+ * TODO: Shall we use index or id here?
+ */
+void vm_secondary_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry,
+			     uintreg_t arg)
 {
 	struct vcpu *vcpu = &vm->vcpus[index];
 
-	if (index < vm->vcpu_count) {
-		vcpu_on(vcpu, entry, arg);
-		arch_regs_reset(&vcpu->regs, vm->id == HF_PRIMARY_VM_ID, vm->id,
-				vm->ptable.root, vcpu_index(vcpu));
+	if (index >= vm->vcpu_count) {
+		return;
 	}
+
+	/*
+	 * Set vCPU registers to a clean state ready for boot. As this is a
+	 * secondary which can migrate between pCPUs, the ID of the vCPU is
+	 * defined as the index and does not match the ID of the pCPU it is
+	 * running on.
+	 */
+	arch_regs_reset(&vcpu->regs, vm->id == HF_PRIMARY_VM_ID, vm->id, index,
+			vm->ptable.root);
+	vcpu_on(vcpu, entry, arg);
 }

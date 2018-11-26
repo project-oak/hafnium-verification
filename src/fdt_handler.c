@@ -17,6 +17,7 @@
 #include "hf/fdt_handler.h"
 
 #include "hf/boot_params.h"
+#include "hf/cpu.h"
 #include "hf/dlog.h"
 #include "hf/fdt.h"
 #include "hf/layout.h"
@@ -123,6 +124,57 @@ bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end)
 	*end = pa_init(initrd_end);
 
 	return true;
+}
+
+void fdt_find_cpus(const struct fdt_node *root, uint64_t *cpu_ids,
+		   size_t *cpu_count)
+{
+	struct fdt_node n = *root;
+	const char *name;
+	uint64_t address_size;
+
+	*cpu_count = 0;
+
+	if (!fdt_find_child(&n, "cpus")) {
+		dlog("Unable to find 'cpus'\n");
+		return;
+	}
+
+	if (fdt_read_number(&n, "#address-cells", &address_size)) {
+		address_size *= sizeof(uint32_t);
+	} else {
+		address_size = sizeof(uint32_t);
+	}
+
+	if (!fdt_first_child(&n, &name)) {
+		return;
+	}
+
+	do {
+		const char *data;
+		uint32_t size;
+
+		if (!fdt_read_property(&n, "device_type", &data, &size) ||
+		    size != sizeof("cpu") ||
+		    memcmp(data, "cpu", sizeof("cpu")) != 0 ||
+		    !fdt_read_property(&n, "reg", &data, &size)) {
+			continue;
+		}
+
+		/* Get all entries for this CPU. */
+		while (size >= address_size) {
+			if (*cpu_count >= MAX_CPUS) {
+				dlog("Found more than %d CPUs\n", MAX_CPUS);
+				return;
+			}
+
+			cpu_ids[(*cpu_count)++] =
+				convert_number(data, address_size);
+
+			size -= address_size;
+			data += address_size;
+		}
+	} while (fdt_next_sibling(&n, &name));
 }
 
 void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p)

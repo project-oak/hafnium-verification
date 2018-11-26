@@ -97,6 +97,7 @@ struct vm_locked {
 bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm);
 uint32_t vm_get_count(void);
 struct vm *vm_get(uint32_t id);
-void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg);
+void vm_secondary_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry,
+			     uintreg_t arg);
 void vm_lock(struct vm *vm, struct vm_locked *locked);
 void vm_unlock(struct vm_locked *locked);

@@ -17,6 +17,7 @@
 #pragma once
 
 /* These are checked in offset.c. */
+#define CPU_ID 0
 #define CPU_STACK_BOTTOM 8
 #define VCPU_REGS 32
 #define VCPU_LAZY (VCPU_REGS + 264)
