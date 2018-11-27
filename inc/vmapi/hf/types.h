@@ -33,7 +33,7 @@ typedef uintptr_t hf_ipaddr_t;
 
 #endif
 
-/* The ID of the primary VM which is responsile for scheduling. */
+/** The ID of the primary VM which is responsible for scheduling. */
 #define HF_PRIMARY_VM_ID 0
 
 /* Invalid values for fields to indicate absence or errors. */

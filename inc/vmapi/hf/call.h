@@ -31,7 +31,7 @@
 #define HF_MAILBOX_RECEIVE  0xff05
 #define HF_MAILBOX_CLEAR    0xff06
 
-/* The amount of data that can be sent to a mailbox. */
+/** The amount of data that can be sent to a mailbox. */
 #define HF_MAILBOX_SIZE 4096
 
 /* clang-format on */

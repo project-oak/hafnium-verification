@@ -34,7 +34,7 @@
  * <attrs> are always 0 for now.
  */
 
-/* A page table entry. */
+/** A page table entry. */
 typedef uint64_t pte_t;
 
 #define PAGE_LEVEL_BITS 9

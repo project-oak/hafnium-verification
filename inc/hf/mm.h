@@ -46,21 +46,21 @@ struct mm_ptable {
 #define MM_MODE_X 0x04 /* execute */
 #define MM_MODE_D 0x08 /* device */
 
-/*
+/**
  * This flag indicates that memory allocation must not use locks. This is
  * relevant in systems where interlocked operations are only available after
  * virtual memory is enabled.
  */
 #define MM_MODE_NOSYNC 0x10
 
-/*
+/**
  * This flag indicates that the mapping is intended to be used in a first
  * stage translation table, which might have different encodings for the
  * attribute bits than the second stage table.
  */
 #define MM_MODE_STAGE1 0x20
 
-/*
+/**
  * This flag indicates that no TLB invalidations should be issued for the
  * changes in the page table.
  */

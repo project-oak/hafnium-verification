@@ -20,13 +20,13 @@
 #include "hf/mm.h"
 
 enum mailbox_state {
-	/* There is no message in the mailbox. */
+	/** There is no message in the mailbox. */
 	mailbox_state_empty,
 
-	/* There is a message in the mailbox that is waiting for a reader. */
+	/** There is a message in the mailbox that is waiting for a reader. */
 	mailbox_state_received,
 
-	/* There is a message in the mailbox that has been read. */
+	/** There is a message in the mailbox that has been read. */
 	mailbox_state_read,
 };
 

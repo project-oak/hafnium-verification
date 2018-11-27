@@ -21,17 +21,17 @@
 
 #include "hf/arch/addr.h"
 
-/* An opaque type for a physical address. */
+/** An opaque type for a physical address. */
 typedef struct {
 	uintpaddr_t pa;
 } paddr_t;
 
-/* An opaque type for an intermediate physical address. */
+/** An opaque type for an intermediate physical address. */
 typedef struct {
 	uintpaddr_t ipa;
 } ipaddr_t;
 
-/* An opaque type for a virtual address. */
+/** An opaque type for a virtual address. */
 typedef struct {
 	uintvaddr_t va;
 } vaddr_t;

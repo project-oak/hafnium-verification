@@ -26,19 +26,19 @@
 #include "hf/spinlock.h"
 
 enum vcpu_state {
-	/* The vcpu is switched off. */
+	/** The vcpu is switched off. */
 	vcpu_state_off,
 
-	/* The vcpu is ready to be run. */
+	/** The vcpu is ready to be run. */
 	vcpu_state_ready,
 
-	/* The vcpu is currently running. */
+	/** The vcpu is currently running. */
 	vcpu_state_running,
 
-	/* The vcpu is waiting for a message. */
+	/** The vcpu is waiting for a message. */
 	vcpu_state_blocked_mailbox,
 
-	/* The vcpu is waiting for an interrupt. */
+	/** The vcpu is waiting for an interrupt. */
 	vcpu_state_blocked_interrupt,
 };
 
@@ -53,13 +53,13 @@ struct vcpu {
 
 /* TODO: Update alignment such that cpus are in different cache lines. */
 struct cpu {
-	/* CPU identifier. Doesn't have to be contiguous. */
+	/** CPU identifier. Doesn't have to be contiguous. */
 	size_t id;
 
-	/* Pointer to bottom of the stack. */
+	/** Pointer to bottom of the stack. */
 	void *stack_bottom;
 
-	/*
+	/**
 	 * Enabling/disabling irqs are counted per-cpu. They are enabled when
 	 * the count is zero, and disabled when it's non-zero.
 	 */
@@ -67,7 +67,7 @@ struct cpu {
 
 	struct spinlock lock;
 
-	/* Determines whether or not the cpu is currently on. */
+	/** Determines whether or not the cpu is currently on. */
 	bool is_on;
 };
 
