@@ -91,7 +91,7 @@ static uint8_t mm_max_s2_level = 2;
 void arch_mm_write_back_dcache(void *base, size_t size)
 {
 	/* Clean each data cache line the corresponds to data in the range. */
-	uint16_t line_size = 1 << ((read_msr(CCSIDR_EL1) & 0x7) + 4);
+	uint16_t line_size = 1 << ((read_msr(CTR_EL0) >> 16) & 0xf);
 	uintptr_t line_begin = (uintptr_t)base & ~(line_size - 1);
 	uintptr_t end = (uintptr_t)base + size;
 	while (line_begin < end) {
