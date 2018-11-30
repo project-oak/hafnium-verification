@@ -35,8 +35,7 @@ static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
  * cpu.
  */
 static struct vcpu *api_switch_to_primary(struct vcpu *current,
-					  struct hf_vcpu_run_return primary_ret,
-					  enum vcpu_state secondary_state)
+					  struct hf_vcpu_run_return primary_ret)
 {
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
 	struct vcpu *next = &primary->vcpus[cpu_index(current->cpu)];
@@ -44,11 +43,6 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 	/* Set the return value for the primary VM's call to HF_VCPU_RUN. */
 	arch_regs_set_retval(&next->regs,
 			     hf_vcpu_run_return_encode(primary_ret));
-
-	/* Mark the current vcpu as waiting. */
-	sl_lock(&current->lock);
-	current->state = secondary_state;
-	sl_unlock(&current->lock);
 
 	return next;
 }
@@ -62,7 +56,7 @@ struct vcpu *api_yield(struct vcpu *current)
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_YIELD,
 	};
-	return api_switch_to_primary(current, ret, vcpu_state_ready);
+	return api_switch_to_primary(current, ret);
 }
 
 /**
@@ -74,8 +68,13 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
 	};
-	return api_switch_to_primary(current, ret,
-				     vcpu_state_blocked_interrupt);
+
+	/* Mark the current vcpu as waiting for interrupt. */
+	sl_lock(&current->lock);
+	current->state = vcpu_state_blocked_interrupt;
+	sl_unlock(&current->lock);
+
+	return api_switch_to_primary(current, ret);
 }
 
 /**
@@ -252,9 +251,6 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 	const void *from_buf;
 	uint16_t vcpu;
 	int64_t ret;
-	struct hf_vcpu_run_return primary_ret = {
-		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
-	};
 
 	/* Limit the size of transfer. */
 	if (size > HF_MAILBOX_SIZE) {
@@ -301,20 +297,12 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 
 	/* Messages for the primary VM are delivered directly. */
 	if (to->id == HF_PRIMARY_VM_ID) {
-		primary_ret.code = HF_VCPU_RUN_MESSAGE;
-		primary_ret.message.size = size;
+		struct hf_vcpu_run_return primary_ret = {
+			.code = HF_VCPU_RUN_MESSAGE,
+			.message.size = size,
+		};
+		*next = api_switch_to_primary(current, primary_ret);
 		ret = 0;
-		/*
-		 * clang-tidy isn't able to prove that
-		 * `from->id != HF_PRIMARY_VM_ID` so cover that specific case
-		 * explicitly so as not to hide other possible bugs. clang-check
-		 * is more clever and finds that this is dead code so we also
-		 * pretend to use the new value.
-		 */
-		if (from->id == HF_PRIMARY_VM_ID) {
-			vcpu = 0;
-			(void)vcpu;
-		}
 		goto out;
 	}
 
@@ -333,8 +321,8 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 		struct vcpu *to_vcpu = to->mailbox.recv_waiter;
 
 		/*
-		 * Take target vcpu out of waiter list and mark as ready
-		 * to run again.
+		 * Take target vcpu out of waiter list and mark it as ready to
+		 * run again.
 		 */
 		sl_lock(&to_vcpu->lock);
 		to->mailbox.recv_waiter = to_vcpu->mailbox_next;
@@ -354,31 +342,22 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 	}
 
 	/* Return to the primary VM directly or with a switch. */
-	primary_ret.code = HF_VCPU_RUN_WAKE_UP;
-	primary_ret.wake_up.vm_id = to->id;
-	primary_ret.wake_up.vcpu = vcpu;
-	ret = 0;
+	if (from->id == HF_PRIMARY_VM_ID) {
+		ret = vcpu;
+	} else {
+		struct hf_vcpu_run_return primary_ret = {
+			.code = HF_VCPU_RUN_WAKE_UP,
+			.wake_up.vm_id = to->id,
+			.wake_up.vcpu = vcpu,
+		};
+		*next = api_switch_to_primary(current, primary_ret);
+		ret = 0;
+	}
 
 out:
-	/*
-	 * Unlock before routing the return values as switching to the primary
-	 * will acquire more locks and nesting the locks is avoidable.
-	 */
 	sl_unlock(&to->lock);
 
-	/* Report errors to the sender. */
-	if (ret != 0) {
-		return ret;
-	}
-
-	/* If the sender is the primary, return the vcpu to schedule. */
-	if (from->id == HF_PRIMARY_VM_ID) {
-		return primary_ret.wake_up.vcpu;
-	}
-
-	/* Switch to primary for scheduling and return success to the sender. */
-	*next = api_switch_to_primary(current, primary_ret, vcpu_state_ready);
-	return 0;
+	return ret;
 }
 
 /**
