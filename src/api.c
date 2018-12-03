@@ -23,6 +23,14 @@
 
 #include "vmapi/hf/call.h"
 
+/*
+ * To eliminate the risk of deadlocks, we define a partial order for the
+ * acquisition of locks held concurrently by the same physical CPU. Our current
+ * ordering requirements are as follows:
+ *
+ * vm::lock -> vcpu::lock
+ */
+
 static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
 	      "Currently, a page is mapped for the send and receive buffers so "
 	      "the maximum request is the size of a page.");
@@ -35,7 +43,8 @@ static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
  * cpu.
  */
 static struct vcpu *api_switch_to_primary(struct vcpu *current,
-					  struct hf_vcpu_run_return primary_ret)
+					  struct hf_vcpu_run_return primary_ret,
+					  enum vcpu_state secondary_state)
 {
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
 	struct vcpu *next = &primary->vcpus[cpu_index(current->cpu)];
@@ -43,6 +52,11 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 	/* Set the return value for the primary VM's call to HF_VCPU_RUN. */
 	arch_regs_set_retval(&next->regs,
 			     hf_vcpu_run_return_encode(primary_ret));
+
+	/* Mark the current vcpu as waiting. */
+	sl_lock(&current->lock);
+	current->state = secondary_state;
+	sl_unlock(&current->lock);
 
 	return next;
 }
@@ -56,7 +70,7 @@ struct vcpu *api_yield(struct vcpu *current)
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_YIELD,
 	};
-	return api_switch_to_primary(current, ret);
+	return api_switch_to_primary(current, ret, vcpu_state_ready);
 }
 
 /**
@@ -68,13 +82,8 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
 	};
-
-	/* Mark the current vcpu as waiting for interrupt. */
-	sl_lock(&current->lock);
-	current->state = vcpu_state_blocked_interrupt;
-	sl_unlock(&current->lock);
-
-	return api_switch_to_primary(current, ret);
+	return api_switch_to_primary(current, ret,
+				     vcpu_state_blocked_interrupt);
 }
 
 /**
@@ -301,7 +310,8 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 			.code = HF_VCPU_RUN_MESSAGE,
 			.message.size = size,
 		};
-		*next = api_switch_to_primary(current, primary_ret);
+		*next = api_switch_to_primary(current, primary_ret,
+					      vcpu_state_ready);
 		ret = 0;
 		goto out;
 	}
@@ -350,7 +360,8 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 			.wake_up.vm_id = to->id,
 			.wake_up.vcpu = vcpu,
 		};
-		*next = api_switch_to_primary(current, primary_ret);
+		*next = api_switch_to_primary(current, primary_ret,
+					      vcpu_state_ready);
 		ret = 0;
 	}
 
