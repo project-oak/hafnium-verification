@@ -413,7 +413,6 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 	}
 
 	sl_lock(&current->lock);
-	current->state = vcpu_state_blocked_mailbox;
 
 	/* Push vcpu into waiter list. */
 	current->mailbox_next = vm->mailbox.recv_waiter;
@@ -421,7 +420,13 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 	sl_unlock(&current->lock);
 
 	/* Switch back to primary vm to block. */
-	*next = api_wait_for_interrupt(current);
+	{
+		struct hf_vcpu_run_return run_return = {
+			.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+		};
+		*next = api_switch_to_primary(current, run_return,
+					      vcpu_state_blocked_mailbox);
+	}
 out:
 	sl_unlock(&vm->lock);
 
