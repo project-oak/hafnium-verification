@@ -70,6 +70,7 @@ void mpool_init(struct mpool *p, size_t entry_size)
 	p->entry_size = entry_size;
 	p->chunk_list = NULL;
 	p->entry_list = NULL;
+	p->fallback = NULL;
 	sl_init(&p->lock);
 }
 
@@ -85,10 +86,61 @@ void mpool_init_from(struct mpool *p, struct mpool *from)
 	mpool_lock(from);
 	p->chunk_list = from->chunk_list;
 	p->entry_list = from->entry_list;
+	p->fallback = from->fallback;
 
 	from->chunk_list = NULL;
 	from->entry_list = NULL;
+	from->fallback = NULL;
 	mpool_unlock(from);
+}
+
+/**
+ * Initialises the given memory pool with a fallback memory pool if this pool
+ * runs out of memory.
+ */
+void mpool_init_with_fallback(struct mpool *p, struct mpool *fallback)
+{
+	mpool_init(p, fallback->entry_size);
+	p->fallback = fallback;
+}
+
+/**
+ * Finishes the given memory pool, giving all free memory to the fallback pool
+ * if there is one.
+ */
+void mpool_fini(struct mpool *p)
+{
+	struct mpool_entry *entry;
+	struct mpool_chunk *chunk;
+
+	if (!p->fallback) {
+		return;
+	}
+
+	mpool_lock(p);
+
+	/* Merge the freelist into the fallback. */
+	entry = p->entry_list;
+	while (entry != NULL) {
+		void *ptr = entry;
+		entry = entry->next;
+		mpool_free(p->fallback, ptr);
+	}
+
+	/* Merge the chunk list into the fallback. */
+	chunk = p->chunk_list;
+	while (chunk != NULL) {
+		void *ptr = chunk;
+		size_t size = (uintptr_t)chunk->limit - (uintptr_t)chunk;
+		chunk = chunk->next_chunk;
+		mpool_add_chunk(p->fallback, ptr, size);
+	}
+
+	p->chunk_list = NULL;
+	p->entry_list = NULL;
+	p->fallback = NULL;
+
+	mpool_unlock(p);
 }
 
 /**
@@ -128,9 +180,10 @@ bool mpool_add_chunk(struct mpool *p, void *begin, size_t size)
 }
 
 /**
- * Allocates an entry from the given memory pool, if one is available.
+ * Allocates and entry from the given memory pool, if one is available. The
+ * fallback will not be used even if there is one.
  */
-void *mpool_alloc(struct mpool *p)
+static void *mpool_alloc_no_fallback(struct mpool *p)
 {
 	void *ret;
 	struct mpool_chunk *chunk;
@@ -164,7 +217,27 @@ void *mpool_alloc(struct mpool *p)
 
 exit:
 	mpool_unlock(p);
+
 	return ret;
+}
+
+/**
+ * Allocates an entry from the given memory pool, if one is available. If there
+ * isn't one available, try and allocate from the fallback if there is one.
+ */
+void *mpool_alloc(struct mpool *p)
+{
+	do {
+		void *ret = mpool_alloc_no_fallback(p);
+
+		if (ret != NULL) {
+			return ret;
+		}
+
+		p = p->fallback;
+	} while (p != NULL);
+
+	return NULL;
 }
 
 /**
@@ -185,17 +258,12 @@ void mpool_free(struct mpool *p, void *ptr)
 }
 
 /**
- * Allocates a number of contiguous and aligned entries. This is a best-effort
- * operation and only succeeds if such entries can be found in chunks (i.e., the
- * entry list is never used to satisfy these allocations).
- *
- * The alignment is specified as the number of entries, that is, if `align` is
- * 4, the alignment in bytes will be 4 * entry_size.
- *
- * The caller can enventually free the returned entries by calling
- * mpool_add_chunk.
+ * Allocates a number of contiguous and aligned entries. If a suitable
+ * allocation could not be found, the fallback will not be used even if there is
+ * one.
  */
-void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align)
+void *mpool_alloc_contiguous_no_fallback(struct mpool *p, size_t count,
+					 size_t align)
 {
 	struct mpool_chunk **prev;
 	void *ret = NULL;
@@ -215,7 +283,7 @@ void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align)
 		struct mpool_chunk *chunk = *prev;
 
 		/* Round start address up to the required alignment. */
-		start = ((uintptr_t)chunk + align - 1) / align * align;
+		start = (((uintptr_t)chunk + align - 1) / align) * align;
 
 		/*
 		 * Calculate where the new chunk would be if we consume the
@@ -223,7 +291,7 @@ void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align)
 		 * enough to satisfy the request.
 		 */
 		new_chunk =
-			(struct mpool_chunk *)(start + count * p->entry_size);
+			(struct mpool_chunk *)(start + (count * p->entry_size));
 		if (new_chunk <= chunk->limit) {
 			/* Remove the consumed area. */
 			if (new_chunk == chunk->limit) {
@@ -253,4 +321,31 @@ void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align)
 	mpool_unlock(p);
 
 	return ret;
+}
+
+/**
+ * Allocates a number of contiguous and aligned entries. This is a best-effort
+ * operation and only succeeds if such entries can be found in the chunks list
+ * or the chunks of the fallbacks (i.e., the entry list is never used to satisfy
+ * these allocations).
+ *
+ * The alignment is specified as the number of entries, that is, if `align` is
+ * 4, the alignment in bytes will be 4 * entry_size.
+ *
+ * The caller can enventually free the returned entries by calling
+ * mpool_add_chunk.
+ */
+void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align)
+{
+	do {
+		void *ret = mpool_alloc_contiguous_no_fallback(p, count, align);
+
+		if (ret != NULL) {
+			return ret;
+		}
+
+		p = p->fallback;
+	} while (p != NULL);
+
+	return NULL;
 }

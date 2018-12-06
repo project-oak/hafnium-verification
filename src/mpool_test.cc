@@ -24,6 +24,7 @@ extern "C" {
 
 namespace
 {
+using ::testing::Eq;
 using ::testing::IsNull;
 using ::testing::NotNull;
 
@@ -123,7 +124,7 @@ TEST(mpool, freeing)
 {
 	struct mpool p;
 	constexpr size_t entry_size = 16;
-	constexpr size_t entries_per_chunk = 10;
+	constexpr size_t entries_per_chunk = 12;
 	constexpr size_t chunk_count = 10;
 	std::vector<std::unique_ptr<char[]>> chunks;
 	std::vector<uintptr_t> allocs;
@@ -255,7 +256,7 @@ TEST(mpool, alloc_contiguous)
 		ret = mpool_alloc(&p);
 		ASSERT_THAT(ret, NotNull());
 		allocs.push_back((uintptr_t)ret);
-		next = (uintptr_t)ret / entry_size + 1;
+		next = ((uintptr_t)ret / entry_size) + 1;
 	} while ((next % 4) != 2);
 
 	/* Allocate 5 entries with an alignment of 4. So two must be skipped. */
@@ -287,6 +288,73 @@ TEST(mpool, alloc_contiguous)
 	/* Check that returned entries are within chunks that were added. */
 	ASSERT_THAT(check_allocs(chunks, allocs, entries_per_chunk, entry_size),
 		    true);
+}
+
+TEST(mpool, allocation_with_fallback)
+{
+	struct mpool fallback;
+	struct mpool p;
+	constexpr size_t entry_size = 16;
+	constexpr size_t entries_per_chunk = 10;
+	constexpr size_t chunk_count = 10;
+	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<uintptr_t> allocs;
+	void* ret;
+
+	mpool_init(&fallback, entry_size);
+	mpool_init_with_fallback(&p, &fallback);
+
+	/* Allocate from an empty pool. */
+	EXPECT_THAT(mpool_alloc(&p), IsNull());
+
+	/* Allocate a number of chunks and add them to the fallback pool. */
+	add_chunks(chunks, &fallback, chunk_count,
+		   entries_per_chunk * entry_size);
+
+	/* Allocate from the pool until we run out of memory. */
+	while ((ret = mpool_alloc(&p))) {
+		allocs.push_back((uintptr_t)ret);
+	}
+
+	/* Check that returned entries are within chunks that were added. */
+	ASSERT_THAT(check_allocs(chunks, allocs, entries_per_chunk, entry_size),
+		    true);
+}
+
+TEST(mpool, free_with_fallback)
+{
+	struct mpool fallback;
+	struct mpool p;
+	constexpr size_t entry_size = 16;
+	constexpr size_t entries_per_chunk = 1;
+	constexpr size_t chunk_count = 1;
+	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<uintptr_t> allocs;
+	void* ret;
+
+	mpool_init(&fallback, entry_size);
+	mpool_init_with_fallback(&p, &fallback);
+
+	/* Allocate a number of chunks and add them to the fallback pool. */
+	add_chunks(chunks, &fallback, chunk_count,
+		   entries_per_chunk * entry_size);
+
+	/* Allocate, making use of the fallback and free again. */
+	ret = mpool_alloc(&p);
+	mpool_free(&p, ret);
+
+	/* The entry is not available in the fallback. */
+	EXPECT_THAT(mpool_alloc(&fallback), IsNull());
+
+	/* The entry will be allocated by the local pool. */
+	EXPECT_THAT(mpool_alloc(&p), Eq(ret));
+
+	/* Return the memory to the local pool and then to the fallback. */
+	mpool_free(&p, ret);
+	mpool_fini(&p);
+
+	/* The fallback can now allocate the entry. */
+	EXPECT_THAT(mpool_alloc(&fallback), Eq(ret));
 }
 
 } /* namespace */
