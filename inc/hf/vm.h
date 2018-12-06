@@ -41,6 +41,7 @@ struct mailbox {
 
 struct vm {
 	uint32_t id;
+	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
 	uint32_t vcpu_count;
 	struct vcpu vcpus[MAX_CPUS];

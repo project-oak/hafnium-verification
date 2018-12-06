@@ -78,6 +78,7 @@ struct cpu {
 	 */
 	uint32_t irq_disable_count;
 
+	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
 
 	/** Determines whether or not the cpu is currently on. */
