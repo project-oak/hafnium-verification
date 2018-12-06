@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "../exception_macros.S"
+
 .section .text.vector_table_el1, "ax"
 .global vector_table_el1
 .balign 0x800
@@ -23,8 +25,7 @@ sync_cur_sp0:
 
 .balign 0x80
 irq_cur_sp0:
-	b irq_current
-	eret
+	current_exception_sp0 el1 irq_current
 
 .balign 0x80
 fiq_cur_sp0:
@@ -42,8 +43,7 @@ sync_cur_spx:
 
 .balign 0x80
 irq_cur_spx:
-	b irq_current
-	eret
+	current_exception_spx el1 irq_current
 
 .balign 0x80
 fiq_cur_spx:
@@ -84,3 +84,11 @@ fiq_lower_32:
 .balign 0x80
 serr_lower_32:
 	b .
+
+.balign 0x40
+/**
+ * Restores volatile registers from stack and returns.
+ */
+restore_from_stack_and_return:
+	restore_volatile_from_stack el1
+	eret
