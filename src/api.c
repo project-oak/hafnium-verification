@@ -574,6 +574,7 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
 	struct vcpu *target_vcpu;
 	struct vm *target_vm = vm_get(target_vm_id);
+	bool need_vm_lock;
 
 	if (intid >= HF_NUM_INTIDS) {
 		return -1;
@@ -594,11 +595,34 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 	     target_vm_id, target_vcpu_idx, current->vm->id, current->cpu->id);
 
 	sl_lock(&target_vcpu->lock);
+	/*
+	 * If we need the target_vm lock we need to release the target_vcpu lock
+	 * first to maintain the correct order of locks. In-between releasing
+	 * and acquiring it again the state of the vCPU could change in such a
+	 * way that we don't actually need to touch the target_vm after all, but
+	 * that's alright: we'll take the target_vm lock anyway, but it's safe,
+	 * just perhaps a little slow in this unusual case. The reverse is not
+	 * possible: if need_vm_lock is false, we don't release the target_vcpu
+	 * lock until we are done, so nothing should change in such as way that
+	 * we need the VM lock after all.
+	 */
+	need_vm_lock = (target_vcpu->interrupts.interrupt_enabled[intid_index] &
+			intid_mask) &&
+		       target_vcpu->state == vcpu_state_blocked_mailbox;
+	if (need_vm_lock) {
+		sl_unlock(&target_vcpu->lock);
+		sl_lock(&target_vm->lock);
+		sl_lock(&target_vcpu->lock);
+	}
 
 	/* Make it pending. */
 	target_vcpu->interrupts.interrupt_pending[intid_index] |= intid_mask;
 
-	/* If it is enabled, change state and trigger a virtual IRQ. */
+	/*
+	 * If it is enabled, change state and trigger a virtual IRQ. If you
+	 * change this logic make sure to update the need_vm_lock logic above to
+	 * match.
+	 */
 	if (target_vcpu->interrupts.interrupt_enabled[intid_index] &
 	    intid_mask) {
 		dlog("IRQ %d is enabled for VM %d VCPU %d, setting VI.\n",
@@ -606,9 +630,40 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 		arch_regs_set_virtual_interrupt(&target_vcpu->regs, true);
 
 		if (target_vcpu->state == vcpu_state_blocked_interrupt) {
-			dlog("Changing state from blocked_interrupt to "
-			     "ready.\n");
 			target_vcpu->state = vcpu_state_ready;
+		} else if (target_vcpu->state == vcpu_state_blocked_mailbox) {
+			/*
+			 * If you change this logic make sure to update the
+			 * need_vm_lock logic above to match.
+			 */
+			target_vcpu->state = vcpu_state_ready;
+
+			/* Take target vCPU out of mailbox recv_waiter list. */
+			/*
+			 * TODO: Consider using a double-linked list for the
+			 * receive waiter list to avoid the linear search here.
+			 */
+			struct vcpu **previous_next_pointer =
+				&target_vm->mailbox.recv_waiter;
+			while (*previous_next_pointer != NULL &&
+			       *previous_next_pointer != target_vcpu) {
+				/*
+				 * TODO(qwandor): Do we need to lock the vCPUs
+				 * somehow while we walk the linked list, or is
+				 * the VM lock enough?
+				 */
+				previous_next_pointer =
+					&(*previous_next_pointer)->mailbox_next;
+			}
+			if (*previous_next_pointer == NULL) {
+				dlog("Target VCPU state is "
+				     "vcpu_state_blocked_mailbox but is not in "
+				     "VM mailbox waiter list. This should "
+				     "never happen.\n");
+			} else {
+				*previous_next_pointer =
+					target_vcpu->mailbox_next;
+			}
 		}
 
 		if (current->vm->id != HF_PRIMARY_VM_ID &&
@@ -628,6 +683,9 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 	}
 
 	sl_unlock(&target_vcpu->lock);
+	if (need_vm_lock) {
+		sl_unlock(&target_vm->lock);
+	}
 
 	return 0;
 }
