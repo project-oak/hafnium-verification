@@ -41,10 +41,7 @@ source_set("echo") {
 # Echo service that waits for recipient to become writable.
 source_set("echo_with_notification") {
   testonly = true
-  public_configs = [
-    "..:config",
-    "//test/hftest:hftest_config",
-  ]
+  public_configs = [ "//test/hftest:hftest_config" ]
 
   sources = [
     "echo_with_notification.c",
@@ -52,6 +49,16 @@ source_set("echo_with_notification") {
 
   deps = [
     "//src/arch/aarch64/hftest:interrupts_gicv3",
+  ]
+}
+
+# Services related to memory sharing.
+source_set("memory") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "memory.c",
   ]
 }
 
@@ -92,6 +99,7 @@ vm_kernel("service_vm0") {
     ":echo",
     ":echo_with_notification",
     ":interruptible",
+    ":memory",
     ":relay",
     "//test/hftest:hftest_secondary_vm",
   ]

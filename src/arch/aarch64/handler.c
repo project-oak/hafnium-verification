@@ -311,6 +311,12 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 						    &ret.new);
 		break;
 
+	case HF_SHARE_MEMORY:
+		ret.user_ret =
+			api_share_memory(arg1 >> 32, ipa_init(arg2), arg3,
+					 arg1 & 0xffffffff, current());
+		break;
+
 	default:
 		ret.user_ret = -1;
 	}

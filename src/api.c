@@ -21,6 +21,8 @@
 #include "hf/arch/cpu.h"
 
 #include "hf/dlog.h"
+#include "hf/mm.h"
+#include "hf/spinlock.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -32,6 +34,9 @@
  * ordering requirements are as follows:
  *
  * vm::lock -> vcpu::lock
+ *
+ * Locks of the same kind require the lock of lowest address to be locked first,
+ * see `sl_lock_both()`.
  */
 
 static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
@@ -978,8 +983,8 @@ int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 	target_vcpu->interrupts.enabled_and_pending_count++;
 
 	/*
-	 * Only need to update state if there was not already an
-	 * interrupt enabled and pending.
+	 * Only need to update state if there was not already an interrupt
+	 * enabled and pending.
 	 */
 	if (target_vcpu->interrupts.enabled_and_pending_count != 1) {
 		goto out;
@@ -996,9 +1001,8 @@ int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 
 		/* Take target vCPU out of mailbox recv_waiter list. */
 		/*
-		 * TODO: Consider using a doubly-linked list for
-		 * the receive waiter list to avoid the linear
-		 * search here.
+		 * TODO: Consider using a doubly-linked list for the receive
+		 *       waiter list to avoid the linear search here.
 		 */
 		struct vcpu **previous_next_pointer =
 			&target_vm->mailbox.recv_waiter;
@@ -1050,6 +1054,191 @@ out:
 	if (need_vm_lock) {
 		sl_unlock(&target_vm->lock);
 	}
+
+	return ret;
+}
+
+/**
+ * Clears a region of physical memory by overwriting it with zeros. The data is
+ * flushed from the cache so the memory has been cleared across the system.
+ */
+static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
+{
+	/*
+	 * TODO: change this to a cpu local single page window rather than a
+	 *       global mapping of the whole range. Such an approach will limit
+	 *       the changes to stage-1 tables and will allow only local
+	 *       invalidation.
+	 */
+	void *ptr = mm_identity_map(begin, end, MM_MODE_W, ppool);
+	size_t size = pa_addr(end) - pa_addr(begin);
+
+	if (!ptr) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(ppool);
+		return false;
+	}
+
+	memset(ptr, 0, size);
+	arch_mm_write_back_dcache(ptr, size);
+	mm_unmap(begin, end, ppool);
+
+	return true;
+}
+
+/**
+ * Shares memory from the calling VM with another. The memory can be shared in
+ * different modes.
+ *
+ * TODO: the interface for sharing memory will need to be enhanced to allow
+ *       sharing with different modes e.g. read-only, informing the recipient
+ *       of the memory they have been given, opting to not wipe the memory and
+ *       possibly allowing multiple blocks to be transferred. What this will
+ *       look like is TBD.
+ */
+int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
+			 enum hf_share share, struct vcpu *current)
+{
+	struct vm *from = current->vm;
+	struct vm *to;
+	int orig_from_mode;
+	int from_mode;
+	int to_mode;
+	ipaddr_t begin;
+	ipaddr_t end;
+	paddr_t pa_begin;
+	paddr_t pa_end;
+	struct mpool local_page_pool;
+	int64_t ret;
+
+	/* Disallow reflexive shares as this suggests an error in the VM. */
+	if (vm_id == from->id) {
+		return -1;
+	}
+
+	/* Ensure the target VM exists. */
+	to = vm_get(vm_id);
+	if (to == NULL) {
+		return -1;
+	}
+
+	begin = addr;
+	end = ipa_add(addr, size);
+
+	/* Fail if addresses are not page-aligned. */
+	if ((ipa_addr(begin) & (PAGE_SIZE - 1)) ||
+	    (ipa_addr(end) & (PAGE_SIZE - 1))) {
+		return -1;
+	}
+
+	/* Convert the sharing request to memory management modes. */
+	switch (share) {
+	case HF_MEMORY_GIVE:
+		from_mode = MM_MODE_INVALID | MM_MODE_UNOWNED;
+		to_mode = MM_MODE_R | MM_MODE_W | MM_MODE_X;
+		break;
+
+	case HF_MEMORY_LEND:
+		from_mode = MM_MODE_INVALID;
+		to_mode = MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED;
+		break;
+
+	case HF_MEMORY_SHARE:
+		from_mode = MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_SHARED;
+		to_mode = MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED |
+			  MM_MODE_SHARED;
+		break;
+
+	default:
+		/* The input is untrusted so might not be a valid value. */
+		return -1;
+	}
+
+	/*
+	 * Create a local pool so any freed memory can't be used by another
+	 * thread. This is to ensure the original mapping can be restored if any
+	 * stage of the process fails.
+	 */
+	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
+
+	sl_lock_both(&from->lock, &to->lock);
+
+	/*
+	 * Ensure that the memory range is mapped with the same mode so that
+	 * changes can be reverted if the process fails.
+	 */
+	if (!mm_vm_get_mode(&from->ptable, begin, end, &orig_from_mode)) {
+		goto fail;
+	}
+
+	/*
+	 * Ensure the memory range is valid for the sender. If it isn't, the
+	 * sender has either shared it with another VM already or has no claim
+	 * to the memory.
+	 */
+	if (orig_from_mode & MM_MODE_INVALID) {
+		goto fail;
+	}
+
+	/*
+	 * The sender must own the memory and have exclusive access to it in
+	 * order to share it. Alternatively, it is giving memory back to the
+	 * owning VM.
+	 */
+	if (orig_from_mode & MM_MODE_UNOWNED) {
+		int orig_to_mode;
+
+		if (share != HF_MEMORY_GIVE ||
+		    !mm_vm_get_mode(&to->ptable, begin, end, &orig_to_mode) ||
+		    orig_to_mode & MM_MODE_UNOWNED) {
+			goto fail;
+		}
+	} else if (orig_from_mode & MM_MODE_SHARED) {
+		goto fail;
+	}
+
+	pa_begin = pa_from_ipa(begin);
+	pa_end = pa_from_ipa(end);
+
+	/*
+	 * First update the mapping for the sender so there is not overlap with
+	 * the recipient.
+	 */
+	if (!mm_vm_identity_map(&from->ptable, pa_begin, pa_end, from_mode,
+				NULL, &local_page_pool)) {
+		goto fail;
+	}
+
+	/* Clear the memory so no VM or device can see the previous contents. */
+	if (!api_clear_memory(pa_begin, pa_end, &local_page_pool)) {
+		goto fail_return_to_sender;
+	}
+
+	/* Complete the transfer by mapping the memory into the recipient. */
+	if (!mm_vm_identity_map(&to->ptable, pa_begin, pa_end, to_mode, NULL,
+				&local_page_pool)) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_vm_defrag(&from->ptable, &local_page_pool);
+		goto fail_return_to_sender;
+	}
+
+	ret = 0;
+	goto out;
+
+fail_return_to_sender:
+	mm_vm_identity_map(&from->ptable, pa_begin, pa_end, orig_from_mode,
+			   NULL, &local_page_pool);
+
+fail:
+	ret = -1;
+
+out:
+	sl_unlock(&from->lock);
+	sl_unlock(&to->lock);
+
+	mpool_fini(&local_page_pool);
 
 	return ret;
 }

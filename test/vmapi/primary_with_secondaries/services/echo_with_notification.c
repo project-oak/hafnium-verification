@@ -22,7 +22,6 @@
 
 #include "../msr.h"
 #include "hftest.h"
-#include "primary_with_secondary.h"
 
 static void irq(void)
 {

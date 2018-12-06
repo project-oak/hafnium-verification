@@ -94,6 +94,26 @@ struct hf_mailbox_receive_return {
 	uint32_t size;
 };
 
+enum hf_share {
+	/**
+	 * Relinquish ownership and access to the memory and pass them to the
+	 * recipient.
+	 */
+	HF_MEMORY_GIVE,
+
+	/**
+	 * Retain ownership of the memory but relinquish access to the
+	 * recipient.
+	 */
+	HF_MEMORY_LEND,
+
+	/**
+	 * Retain ownership and access but additionally allow access to the
+	 * recipient.
+	 */
+	HF_MEMORY_SHARE,
+};
+
 /**
  * Encode an hf_vcpu_run_return struct in the 64-bit packing ABI.
  */

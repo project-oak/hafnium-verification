@@ -121,6 +121,11 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 	/* There's no modelling of the stage-2 TLB. */
 }
 
+void arch_mm_write_back_dcache(void *base, size_t size)
+{
+	/* There's no modelling of the cache. */
+}
+
 uint8_t arch_mm_stage1_max_level(void)
 {
 	return 2;

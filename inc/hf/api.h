@@ -39,6 +39,8 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next);
 int64_t api_mailbox_writable_get(const struct vcpu *current);
 int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current);
+int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
+			 enum hf_share share, struct vcpu *current);
 
 struct vcpu *api_preempt(struct vcpu *current);
 struct vcpu *api_yield(struct vcpu *current);

@@ -39,6 +39,21 @@ static inline void sl_lock(struct spinlock *l)
 	}
 }
 
+/**
+ * Locks both locks, enforcing the lowest address first ordering for locks of
+ * the same kind.
+ */
+static inline void sl_lock_both(struct spinlock *a, struct spinlock *b)
+{
+	if (a < b) {
+		sl_lock(a);
+		sl_lock(b);
+	} else {
+		sl_lock(b);
+		sl_lock(a);
+	}
+}
+
 static inline void sl_unlock(struct spinlock *l)
 {
 	atomic_flag_clear_explicit(&l->v, memory_order_release);

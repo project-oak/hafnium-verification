@@ -24,6 +24,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
   public_configs = [ ":config" ]
 
   sources = [
+    "memory_sharing.c",
     "no_services.c",
     "run_race.c",
     "with_services.c",
