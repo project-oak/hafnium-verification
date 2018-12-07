@@ -35,7 +35,6 @@ static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
 void kmain(void)
 {
 	hf_vm_configure(send_page_addr, recv_page_addr);
-	hf_vm_configure(send_page_addr, recv_page_addr);
 
 	/* Loop, forward messages to the next VM. */
 	for (;;) {
