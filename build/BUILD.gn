@@ -40,6 +40,7 @@ config("platform") {
   ]
 
   defines = [
+    "HEAP_PAGES=${plat_heap_pages}",
     "MAX_CPUS=${plat_max_cpus}",
     "MAX_VMS=${plat_max_vms}",
   ]

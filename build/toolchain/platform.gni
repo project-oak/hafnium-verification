@@ -20,6 +20,9 @@ declare_args() {
   # The architecture of the platform.
   plat_arch = ""
 
+  # The number of pages to allocate for the hypervisor heap.
+  plat_heap_pages = 0
+
   # The maximum number of CPUs available on the platform.
   plat_max_cpus = 0
 

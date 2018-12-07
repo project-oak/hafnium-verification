@@ -126,6 +126,8 @@ template("host_toolchain") {
   assert(defined(invoker.use_platform),
          "\"use_platform\" must be defined for ${target_name}.")
   if (invoker.use_platform) {
+    assert(defined(invoker.heap_pages),
+           "\"heap_pages\" must be defined for ${target_name}.")
     assert(defined(invoker.max_cpus),
            "\"max_cpus\" must be defined for ${target_name}.")
     assert(defined(invoker.max_vms),
@@ -148,6 +150,7 @@ template("host_toolchain") {
         # When building for the ${target_name}, use the fake architecture to make things
         # testable.
         plat_arch = "fake"
+        plat_heap_pages = invoker.heap_pages
         plat_max_cpus = invoker.max_cpus
         plat_max_vms = invoker.max_vms
       }
@@ -170,6 +173,7 @@ template("host_toolchain") {
         # When building for the ${target_name}, use the fake architecture to make things
         # testable.
         plat_arch = "fake"
+        plat_heap_pages = invoker.heap_pages
         plat_max_cpus = invoker.max_cpus
         plat_max_vms = invoker.max_vms
       }

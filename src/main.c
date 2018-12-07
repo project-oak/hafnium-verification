@@ -31,7 +31,7 @@
 
 #include "vmapi/hf/call.h"
 
-char ptable_buf[PAGE_SIZE * 40];
+char ptable_buf[PAGE_SIZE * HEAP_PAGES];
 
 /**
  * Blocks the hypervisor.

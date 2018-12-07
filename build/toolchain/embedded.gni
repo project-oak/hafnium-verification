@@ -160,6 +160,8 @@ template("embedded_platform_toolchain") {
          "\"tool_prefix\" must be defined for ${target_name}.")
   assert(defined(invoker.origin_address),
          "\"origin_address\" must be defined for ${target_name}.")
+  assert(defined(invoker.heap_pages),
+         "\"heap_pages\" must be defined for ${target_name}.")
   assert(defined(invoker.max_cpus),
          "\"max_cpus\" must be defined for ${target_name}.")
   assert(defined(invoker.max_vms),
@@ -188,6 +190,7 @@ template("embedded_platform_toolchain") {
       use_platform = true
       plat_name = invoker.target_name
       plat_arch = invoker.arch
+      plat_heap_pages = invoker.heap_pages
       plat_max_cpus = invoker.max_cpus
       plat_max_vms = invoker.max_vms
       if (defined(invoker.toolchain_args)) {
@@ -205,6 +208,7 @@ template("embedded_platform_toolchain") {
       use_platform = true
       plat_name = invoker.target_name
       plat_arch = invoker.arch
+      plat_heap_pages = invoker.heap_pages
       plat_max_cpus = invoker.max_cpus
       plat_max_vms = invoker.max_vms
       if (defined(invoker.toolchain_args)) {
@@ -222,6 +226,8 @@ template("aarch64_toolchain") {
          "\"origin_address\" must be defined for ${target_name}.")
   assert(defined(invoker.use_pl011),
          "\"use_pl011\" must be defined for ${target_name}.")
+  assert(defined(invoker.heap_pages),
+         "\"heap_pages\" must be defined for ${target_name}.")
   assert(defined(invoker.max_cpus),
          "\"max_cpus\" must be defined for ${target_name}.")
   assert(defined(invoker.max_vms),
@@ -231,6 +237,7 @@ template("aarch64_toolchain") {
     forward_variables_from(invoker,
                            [
                              "origin_address",
+                             "heap_pages",
                              "max_cpus",
                              "max_vms",
                            ])
