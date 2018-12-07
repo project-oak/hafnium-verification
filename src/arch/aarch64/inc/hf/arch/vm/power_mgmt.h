@@ -16,6 +16,14 @@
 
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdnoreturn.h>
 
 noreturn void shutdown(void);
+
+bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
+	       void (*entry)(uintptr_t arg), uintptr_t arg);
+
+noreturn void cpu_stop(void);

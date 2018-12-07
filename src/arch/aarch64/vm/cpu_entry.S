@@ -14,19 +14,11 @@
  * limitations under the License.
  */
 
-#include "hf/arch/vm/shutdown.h"
+.globl vm_cpu_entry_raw
+vm_cpu_entry_raw:
+	/* Initialise stack from the cpu_start_state struct. */
+	ldr x1, [x0]
+	mov sp, x1
 
-#include "vmapi/hf/call.h"
-
-#include "../psci.h"
-
-/*
- * Shutdown the system or exit emulation.
- */
-noreturn void shutdown(void)
-{
-	hf_call(PSCI_SYSTEM_OFF, 0, 0, 0);
-	for (;;) {
-		/* This should never be reached. */
-	}
-}
+	/* Jump to C entry point. */
+	b vm_cpu_entry

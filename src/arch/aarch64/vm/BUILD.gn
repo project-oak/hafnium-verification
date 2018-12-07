@@ -28,10 +28,11 @@ source_set("hf_call") {
   ]
 }
 
-# Shutdown the system or exit emulation.
-source_set("shutdown") {
+# Shutdown the system or exit emulation, start/stop CPUs.
+source_set("power_mgmt") {
   sources = [
-    "shutdown.c",
+    "cpu_entry.S",
+    "power_mgmt.c",
   ]
 
   deps = [

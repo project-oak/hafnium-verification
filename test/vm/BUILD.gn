@@ -40,7 +40,7 @@ source_set("hftest_vm") {
     "//src:memiter",
     "//src/arch/${plat_arch}:entry",
     "//src/arch/${plat_arch}/vm:hf_call",
-    "//src/arch/${plat_arch}/vm:shutdown",
+    "//src/arch/${plat_arch}/vm:power_mgmt",
     "//src/arch/${plat_arch}/vm:vm_entry",
   ]
 }
@@ -54,7 +54,7 @@ source_set("secondary_vm") {
     "//src:dlog",
     "//src/arch/${plat_arch}:entry",
     "//src/arch/${plat_arch}/vm:hf_call",
-    "//src/arch/${plat_arch}/vm:shutdown",
+    "//src/arch/${plat_arch}/vm:power_mgmt",
     "//src/arch/${plat_arch}/vm:vm_entry",
   ]
 }

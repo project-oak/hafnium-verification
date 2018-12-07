@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+#include <stdalign.h>
+
+#include "hf/arch/vm/power_mgmt.h"
+
+#include "hf/spinlock.h"
+
 #include "vmapi/hf/call.h"
 
 #include "hftest.h"
@@ -48,4 +54,30 @@ TEST(hf_vcpu_run, cannot_run_absent_secondary)
 {
 	struct hf_vcpu_run_return res = hf_vcpu_run(1, 0);
 	EXPECT_EQ(res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+}
+
+/**
+ * Releases the lock passed in.
+ */
+static void vm_cpu_entry(uintptr_t arg)
+{
+	struct spinlock *lock = (struct spinlock *)arg;
+
+	dlog("Second CPU started.\n");
+	sl_unlock(lock);
+}
+
+TEST(cpus, start)
+{
+	struct spinlock lock = SPINLOCK_INIT;
+	alignas(4096) static char other_stack[4096];
+
+	/* Start secondary while holding lock. */
+	sl_lock(&lock);
+	EXPECT_EQ(cpu_start(1, other_stack, sizeof(other_stack), vm_cpu_entry,
+			    (uintptr_t)&lock),
+		  true);
+
+	/* Wait for CPU to release the lock. */
+	sl_lock(&lock);
 }
