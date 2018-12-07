@@ -19,8 +19,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define GICD_BASE 0x08000000
-#define GICR_BASE 0x080A0000
+#if GIC_VERSION != 3 && GIC_VERSION != 4
+#error This header should only be included for GICv3 or v4.
+#endif
+
 #define SGI_BASE (GICR_BASE + 0x10000)
 
 #define GICD_CTLR (*(volatile uint32_t *)(GICD_BASE + 0x0000))

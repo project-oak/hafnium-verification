@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
+#include "hf/arch/vm/interrupts_gicv3.h"
+
 #include "hf/dlog.h"
 
 #include "vmapi/hf/call.h"
 
 #include "../msr.h"
 #include "hftest.h"
-#include "interrupts.h"
 
 #define PPI_IRQ_BASE 16
 #define PHYSICAL_TIMER_IRQ (PPI_IRQ_BASE + 14)

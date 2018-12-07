@@ -39,3 +39,12 @@ source_set("power_mgmt") {
     "//src/arch/aarch64:smc",
   ]
 }
+
+# Exception handlers for interrupts
+source_set("interrupts_gicv3") {
+  testonly = true
+  sources = [
+    "exceptions.S",
+    "interrupts_gicv3.c",
+  ]
+}

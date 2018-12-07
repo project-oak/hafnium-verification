@@ -232,6 +232,12 @@ template("aarch64_toolchain") {
          "\"max_cpus\" must be defined for ${target_name}.")
   assert(defined(invoker.max_vms),
          "\"max_vms\" must be defined for ${target_name}.")
+  if (invoker.gic_version == 3 || invoker.gic_version == 4) {
+    assert(defined(invoker.gicd_base_address),
+           "\"gicd_base_address\" must be defined for ${target_name}.")
+    assert(defined(invoker.gicr_base_address),
+           "\"gicr_base_address\" must be defined for ${target_name}.")
+  }
 
   embedded_platform_toolchain(target_name) {
     forward_variables_from(invoker,
@@ -246,10 +252,17 @@ template("aarch64_toolchain") {
     tool_prefix = "aarch64-linux-gnu-"  # TODO: this isn't right for bare metal but it works.
     extra_cflags = "-mcpu=${invoker.cpu} -mstrict-align"
 
+    extra_defines = ""
     if (invoker.use_pl011) {
       assert(defined(invoker.pl011_base_address),
              "\"pl011_base_address\" must be defined for ${target_name}.")
-      extra_defines = "-DPL011_BASE=${invoker.pl011_base_address}"
+      extra_defines += " -DPL011_BASE=${invoker.pl011_base_address}"
+    }
+    if (invoker.gic_version > 0) {
+      extra_defines += " -DGIC_VERSION=${invoker.gic_version}"
+    }
+    if (invoker.gic_version == 3 || invoker.gic_version == 4) {
+      extra_defines += " -DGICD_BASE=${invoker.gicd_base_address} -DGICR_BASE=${invoker.gicr_base_address}"
     }
 
     toolchain_args = {

@@ -48,12 +48,11 @@ vm_kernel("gicv3_test_vm") {
   testonly = true
 
   sources = [
-    "exceptions.S",
     "gicv3.c",
-    "interrupts.c",
   ]
 
   deps = [
+    "//src/arch/${plat_arch}/hftest:interrupts_gicv3",
     "//test/hftest:hftest_primary_vm",
   ]
 }
