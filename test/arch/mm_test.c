@@ -61,26 +61,97 @@ TEST(arch_mm, max_level_stage1)
 /* TODO: initialize arch_mm and check max level of stage-2. */
 
 /**
- * A block is present and mutually exclusive from a table.
+ * An absent entry is not present, valid, a block nor a table.
  */
-#define LEVEL_TEST(lvl)                                                      \
-	TEST(arch_mm, block_properties_level##lvl)                           \
-	{                                                                    \
-		uint8_t level = lvl;                                         \
-		uint64_t attrs = arch_mm_mode_to_attrs(0);                   \
-		pte_t block_pte;                                             \
-                                                                             \
-		/* Test doesn't apply if a block is not allowed. */          \
-		if (!arch_mm_is_block_allowed(level)) {                      \
-			return;                                              \
-		}                                                            \
-                                                                             \
-		block_pte = arch_mm_block_pte(level, pa_init(0x12345678000), \
-					      attrs);                        \
-                                                                             \
-		EXPECT_TRUE(arch_mm_pte_is_present(block_pte, level));       \
-		EXPECT_TRUE(arch_mm_pte_is_block(block_pte, level));         \
-		EXPECT_FALSE(arch_mm_pte_is_table(block_pte, level));        \
+#define LEVEL_TEST(lvl)                                                  \
+	TEST(arch_mm, absent_properties_level##lvl)                      \
+	{                                                                \
+		uint8_t level = lvl;                                     \
+		pte_t absent_pte;                                        \
+                                                                         \
+		absent_pte = arch_mm_absent_pte(level);                  \
+                                                                         \
+		EXPECT_FALSE(arch_mm_pte_is_present(absent_pte, level)); \
+		EXPECT_FALSE(arch_mm_pte_is_valid(absent_pte, level));   \
+		EXPECT_FALSE(arch_mm_pte_is_block(absent_pte, level));   \
+		EXPECT_FALSE(arch_mm_pte_is_table(absent_pte, level));   \
+	}
+EXPAND_LEVEL_TESTS
+#undef LEVEL_TEST
+
+/**
+ * An invalid block is present and mutually exclusive from a table.
+ */
+#define LEVEL_TEST(lvl)                                                       \
+	TEST(arch_mm, invalid_block_properties_level##lvl)                    \
+	{                                                                     \
+		uint8_t level = lvl;                                          \
+		uint64_t attrs = arch_mm_mode_to_attrs(MM_MODE_INVALID);      \
+		pte_t block_pte;                                              \
+                                                                              \
+		/* Test doesn't apply if a block is not allowed. */           \
+		if (!arch_mm_is_block_allowed(level)) {                       \
+			return;                                               \
+		}                                                             \
+                                                                              \
+		block_pte = arch_mm_block_pte(level, pa_init(PAGE_SIZE * 19), \
+					      attrs);                         \
+                                                                              \
+		EXPECT_TRUE(arch_mm_pte_is_present(block_pte, level));        \
+		EXPECT_FALSE(arch_mm_pte_is_valid(block_pte, level));         \
+		EXPECT_TRUE(arch_mm_pte_is_block(block_pte, level));          \
+		EXPECT_FALSE(arch_mm_pte_is_table(block_pte, level));         \
+	}
+EXPAND_LEVEL_TESTS
+#undef LEVEL_TEST
+
+/**
+ * A valid block is present and mutually exclusive from a table.
+ */
+#define LEVEL_TEST(lvl)                                                \
+	TEST(arch_mm, valid_block_properties_level##lvl)               \
+	{                                                              \
+		uint8_t level = lvl;                                   \
+		uint64_t attrs = arch_mm_mode_to_attrs(0);             \
+		pte_t block_pte;                                       \
+                                                                       \
+		/* Test doesn't apply if a block is not allowed. */    \
+		if (!arch_mm_is_block_allowed(level)) {                \
+			return;                                        \
+		}                                                      \
+                                                                       \
+		block_pte = arch_mm_block_pte(                         \
+			level, pa_init(PAGE_SIZE * 12345678), attrs);  \
+                                                                       \
+		EXPECT_TRUE(arch_mm_pte_is_present(block_pte, level)); \
+		EXPECT_TRUE(arch_mm_pte_is_valid(block_pte, level));   \
+		EXPECT_TRUE(arch_mm_pte_is_block(block_pte, level));   \
+		EXPECT_FALSE(arch_mm_pte_is_table(block_pte, level));  \
+	}
+EXPAND_LEVEL_TESTS
+#undef LEVEL_TEST
+
+/**
+ * A table is present, valid and mutually exclusive from a block.
+ */
+#define LEVEL_TEST(lvl)                                                        \
+	TEST(arch_mm, table_properties_level##lvl)                             \
+	{                                                                      \
+		uint8_t level = lvl;                                           \
+		pte_t table_pte;                                               \
+                                                                               \
+		/* Test doesn't apply to level 0 as there can't be a table. */ \
+		if (level == 0) {                                              \
+			return;                                                \
+		}                                                              \
+                                                                               \
+		table_pte = arch_mm_table_pte(level,                           \
+					      pa_init(PAGE_SIZE * 999999999)); \
+                                                                               \
+		EXPECT_TRUE(arch_mm_pte_is_present(table_pte, level));         \
+		EXPECT_TRUE(arch_mm_pte_is_valid(table_pte, level));           \
+		EXPECT_FALSE(arch_mm_pte_is_block(table_pte, level));          \
+		EXPECT_TRUE(arch_mm_pte_is_table(table_pte, level));           \
 	}
 EXPAND_LEVEL_TESTS
 #undef LEVEL_TEST
@@ -104,6 +175,13 @@ EXPAND_LEVEL_TESTS
                                                                       \
 		addr = pa_init(0);                                    \
 		attrs = arch_mm_mode_to_attrs(0);                     \
+		block_pte = arch_mm_block_pte(level, addr, attrs);    \
+		EXPECT_EQ(arch_mm_pte_attrs(block_pte), attrs);       \
+		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte)), \
+			  pa_addr(addr));                             \
+                                                                      \
+		addr = pa_init(PAGE_SIZE * 17);                       \
+		attrs = arch_mm_mode_to_attrs(MM_MODE_INVALID);       \
 		block_pte = arch_mm_block_pte(level, addr, attrs);    \
 		EXPECT_EQ(arch_mm_pte_attrs(block_pte), attrs);       \
 		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte)), \

@@ -50,7 +50,7 @@ pte_t arch_mm_table_pte(int level, paddr_t pa)
 pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs)
 {
 	/* Single pages are encoded differently to larger blocks. */
-	pte_t pte = pa_addr(pa) | attrs | 0x1;
+	pte_t pte = pa_addr(pa) | attrs;
 	if (level == 0) {
 		pte |= 0x2;
 	}
@@ -66,6 +66,12 @@ bool arch_mm_is_block_allowed(int level)
 
 bool arch_mm_pte_is_present(pte_t pte, int level)
 {
+	/* TODO: model attributes. */
+	return arch_mm_pte_is_valid(pte, level);
+}
+
+bool arch_mm_pte_is_valid(pte_t pte, int level)
+{
 	(void)level;
 	return (pte & 0x1) != 0;
 }
@@ -79,8 +85,9 @@ bool arch_mm_pte_is_table(pte_t pte, int level)
 bool arch_mm_pte_is_block(pte_t pte, int level)
 {
 	/* Single pages are encoded differently to larger blocks. */
-	return arch_mm_is_block_allowed(level) &&
-	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
+	return (level == 0 ? (pte & 0x2) != 0
+			   : arch_mm_pte_is_present(pte, level) &&
+				     !arch_mm_pte_is_table(pte, level));
 }
 
 static uint64_t hf_arch_fake_mm_clear_pte_attrs(pte_t pte)
@@ -107,9 +114,8 @@ paddr_t arch_mm_table_from_pte(pte_t pte)
 
 uint64_t arch_mm_pte_attrs(pte_t pte)
 {
-	/* Attributes are not modelled. */
-	(void)pte;
-	return 0;
+	/* Attributes are not modelled fully. */
+	return pte & 0x1;
 }
 
 uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
@@ -143,9 +149,8 @@ uint8_t arch_mm_root_table_count(int mode)
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
-	/* Attributes are not modelled. */
-	(void)mode;
-	return 0;
+	/* Attributes are not modelled fully. */
+	return mode & MM_MODE_INVALID ? 0 : 0x1;
 }
 
 bool arch_mm_init(paddr_t table, bool first)

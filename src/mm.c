@@ -162,10 +162,10 @@ static void mm_free_page_pte(pte_t pte, uint8_t level)
 
 /**
  * Replaces a page table entry with the given value. If both old and new values
- * are present, it performs a break-before-make sequence where it first writes
- * an absent value to the PTE, flushes the TLB, then writes the actual new
- * value. This is to prevent cases where CPUs have different 'present' values in
- * their TLBs, which may result in issues for example in cache coherency.
+ * are valid, it performs a break-before-make sequence where it first writes an
+ * invalid value to the PTE, flushes the TLB, then writes the actual new value.
+ * This is to prevent cases where CPUs have different 'valid' values in their
+ * TLBs, which may result in issues for example in cache coherency.
  */
 static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 			     uint8_t level, int flags)
@@ -176,8 +176,8 @@ static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 	 * We need to do the break-before-make sequence if both values are
 	 * present, and if it hasn't been inhibited by the NOBBM flag.
 	 */
-	if (!(flags & MAP_FLAG_NOBBM) && arch_mm_pte_is_present(v, level) &&
-	    arch_mm_pte_is_present(new_pte, level)) {
+	if (!(flags & MAP_FLAG_NOBBM) && arch_mm_pte_is_valid(v, level) &&
+	    arch_mm_pte_is_valid(new_pte, level)) {
 		*pte = arch_mm_absent_pte(level);
 		mm_invalidate_tlb(begin, begin + mm_entry_size(level),
 				  flags & MAP_FLAG_STAGE1);
@@ -386,13 +386,15 @@ static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
  * provided.
  */
 static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
-				      paddr_t pa_end, int mode, bool unmap)
+				      paddr_t pa_end, int mode)
 {
-	uint64_t attrs = unmap ? 0 : arch_mm_mode_to_attrs(mode);
+	uint64_t attrs = arch_mm_mode_to_attrs(mode);
 	int flags = (mode & MM_MODE_NOSYNC ? MAP_FLAG_NOSYNC : 0) |
 		    (mode & MM_MODE_NOINVALIDATE ? MAP_FLAG_NOBBM : 0) |
 		    (mode & MM_MODE_STAGE1 ? MAP_FLAG_STAGE1 : 0) |
-		    (unmap ? MAP_FLAG_UNMAP : 0);
+		    (mode & MM_MODE_INVALID && mode & MM_MODE_UNOWNED
+			     ? MAP_FLAG_UNMAP
+			     : 0);
 	uint8_t root_level = arch_mm_max_level(mode) + 1;
 	ptable_addr_t ptable_end =
 		arch_mm_root_table_count(mode) * mm_entry_size(root_level);
@@ -439,7 +441,7 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 				   paddr_t pa_end, int mode)
 {
-	return mm_ptable_identity_update(t, pa_begin, pa_end, mode, false);
+	return mm_ptable_identity_update(t, pa_begin, pa_end, mode);
 }
 
 /**
@@ -449,7 +451,8 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
 static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
 			    paddr_t pa_end, int mode)
 {
-	return mm_ptable_identity_update(t, pa_begin, pa_end, mode, true);
+	return mm_ptable_identity_update(
+		t, pa_begin, pa_end, mode | MM_MODE_UNOWNED | MM_MODE_INVALID);
 }
 
 /**
@@ -628,8 +631,8 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 }
 
 /**
- * Determines if the given address is mapped in the given page table by
- * recursively traversing all levels of the page table.
+ * Determines if the given address is valid in the address space of the given
+ * page table by recursively traversing all levels of the page table.
  */
 static bool mm_is_mapped_recursive(struct mm_page_table *table,
 				   ptable_addr_t addr, uint8_t level)
@@ -644,8 +647,8 @@ static bool mm_is_mapped_recursive(struct mm_page_table *table,
 
 	pte = table->entries[mm_index(addr, level)];
 
-	if (arch_mm_pte_is_block(pte, level)) {
-		return true;
+	if (!arch_mm_pte_is_valid(pte, level)) {
+		return false;
 	}
 
 	if (arch_mm_pte_is_table(pte, level)) {
@@ -654,12 +657,13 @@ static bool mm_is_mapped_recursive(struct mm_page_table *table,
 			addr, level - 1);
 	}
 
-	/* The entry is not present. */
-	return false;
+	/* The entry is a valid block. */
+	return true;
 }
 
 /**
- * Determines if the given address is mapped in the given page table.
+ * Determines if the given address is valid in the address space of the given
+ * page table.
  */
 static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
 				int mode)

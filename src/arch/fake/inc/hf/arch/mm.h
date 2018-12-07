@@ -35,6 +35,7 @@ pte_t arch_mm_table_pte(int level, paddr_t pa);
 pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs);
 bool arch_mm_is_block_allowed(int level);
 bool arch_mm_pte_is_present(pte_t pte, int level);
+bool arch_mm_pte_is_valid(pte_t pte, int level);
 bool arch_mm_pte_is_table(pte_t pte, int level);
 bool arch_mm_pte_is_block(pte_t pte, int level);
 paddr_t arch_mm_clear_pa(paddr_t pa);

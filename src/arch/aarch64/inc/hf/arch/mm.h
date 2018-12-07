@@ -21,7 +21,16 @@
 
 #include "hf/addr.h"
 
-/** A page table entry. */
+/**
+ * A page table entry (PTE).
+ *
+ * It will take one of the following forms:
+ *
+ *  1. absent        : There is no mapping.
+ *  2. invalid block : Represents a block that is not in the address space.
+ *  3. valid block   : Represents a block that is in the address space.
+ *  4. table         : Represents a reference to a table of PTEs.
+ */
 typedef uint64_t pte_t;
 
 #define PAGE_LEVEL_BITS 9
@@ -35,9 +44,31 @@ pte_t arch_mm_absent_pte(int level);
 pte_t arch_mm_table_pte(int level, paddr_t pa);
 pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs);
 bool arch_mm_is_block_allowed(int level);
+
+/**
+ * Determines if a PTE is present i.e. it contains information and therefore
+ * needs to exist in the page table. Any non-absent PTE is present.
+ */
 bool arch_mm_pte_is_present(pte_t pte, int level);
-bool arch_mm_pte_is_table(pte_t pte, int level);
+
+/**
+ * Determines if a PTE is valid i.e. it can affect the address space. Tables and
+ * valid blocks fall into this category. Invalid blocks do not as they hold
+ * information about blocks that are not in the address space.
+ */
+bool arch_mm_pte_is_valid(pte_t pte, int level);
+
+/**
+ * Determines if a PTE is a block and represents an address range, valid or
+ * invalid.
+ */
 bool arch_mm_pte_is_block(pte_t pte, int level);
+
+/**
+ * Determines if a PTE represents a reference to a table of PTEs.
+ */
+bool arch_mm_pte_is_table(pte_t pte, int level);
+
 paddr_t arch_mm_clear_pa(paddr_t pa);
 paddr_t arch_mm_block_from_pte(pte_t pte);
 paddr_t arch_mm_table_from_pte(pte_t pte);

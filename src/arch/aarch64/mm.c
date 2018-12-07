@@ -29,6 +29,10 @@
 #define OUTER_SHAREABLE UINT64_C(2)
 #define INNER_SHAREABLE UINT64_C(3)
 
+#define PTE_VALID        (UINT64_C(1) << 0)
+#define PTE_LEVEL0_BLOCK (UINT64_C(1) << 1)
+#define PTE_TABLE        (UINT64_C(1) << 1)
+
 #define STAGE1_XN          (UINT64_C(1) << 54)
 #define STAGE1_PXN         (UINT64_C(1) << 53)
 #define STAGE1_CONTIGUOUS  (UINT64_C(1) << 52)
@@ -68,6 +72,10 @@
 #define TABLE_XNTABLE  (UINT64_C(1) << 60)
 #define TABLE_PXNTABLE (UINT64_C(1) << 59)
 
+/* The following are stage-2 software defined attributes. */
+#define STAGE2_SW_OWNED     (UINT64_C(1) << 55)
+#define STAGE2_SW_EXCLUSIVE (UINT64_C(1) << 56)
+
 /* The following are stage-2 memory attributes for normal memory. */
 #define STAGE2_NONCACHEABLE UINT64_C(1)
 #define STAGE2_WRITETHROUGH UINT64_C(2)
@@ -91,7 +99,7 @@
 	(((UINT64_C(1) << 48) - 1) & ~((UINT64_C(1) << PAGE_BITS) - 1))
 
 /** Mask for the attribute bits of the pte. */
-#define PTE_ATTR_MASK (~(PTE_ADDR_MASK | UINT64_C(0x3)))
+#define PTE_ATTR_MASK (~(PTE_ADDR_MASK | (UINT64_C(1) << 1)))
 
 static uint8_t mm_s2_max_level;
 static uint8_t mm_s2_root_table_count;
@@ -115,7 +123,7 @@ pte_t arch_mm_table_pte(int level, paddr_t pa)
 {
 	/* This is the same for all levels on aarch64. */
 	(void)level;
-	return pa_addr(pa) | 0x3;
+	return pa_addr(pa) | PTE_TABLE | PTE_VALID;
 }
 
 /**
@@ -125,10 +133,10 @@ pte_t arch_mm_table_pte(int level, paddr_t pa)
  */
 pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs)
 {
-	pte_t pte = pa_addr(pa) | attrs | 0x1;
+	pte_t pte = pa_addr(pa) | attrs;
 	if (level == 0) {
 		/* A level 0 'block' is actually a page entry. */
-		pte |= 0x2;
+		pte |= PTE_LEVEL0_BLOCK;
 	}
 	return pte;
 }
@@ -144,21 +152,22 @@ bool arch_mm_is_block_allowed(int level)
 }
 
 /**
- * Determines if the given pte is present, i.e., if it points to another table,
- * to a page, or a block of pages.
+ * Determines if the given pte is present, i.e., if it is valid or it is invalid
+ * but still holds state about the memory so needs to be present in the table.
  */
 bool arch_mm_pte_is_present(pte_t pte, int level)
 {
-	(void)level;
-	return (pte & 0x1) != 0;
+	return arch_mm_pte_is_valid(pte, level) || (pte & STAGE2_SW_OWNED) != 0;
 }
 
 /**
- * Determines if the given pte references another table.
+ * Determines if the given pte is valid, i.e., if it points to another table,
+ * to a page, or a block of pages that can be accessed.
  */
-bool arch_mm_pte_is_table(pte_t pte, int level)
+bool arch_mm_pte_is_valid(pte_t pte, int level)
 {
-	return level != 0 && (pte & 0x3) == 0x3;
+	(void)level;
+	return (pte & PTE_VALID) != 0;
 }
 
 /**
@@ -168,7 +177,18 @@ bool arch_mm_pte_is_block(pte_t pte, int level)
 {
 	/* We count pages at level 0 as blocks. */
 	return arch_mm_is_block_allowed(level) &&
-	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
+	       (level == 0 ? (pte & PTE_LEVEL0_BLOCK) != 0
+			   : arch_mm_pte_is_present(pte, level) &&
+				     !arch_mm_pte_is_table(pte, level));
+}
+
+/**
+ * Determines if the given pte references another table.
+ */
+bool arch_mm_pte_is_table(pte_t pte, int level)
+{
+	return level != 0 && arch_mm_pte_is_valid(pte, level) &&
+	       (pte & PTE_TABLE) != 0;
 }
 
 static uint64_t pte_addr(pte_t pte)
@@ -302,6 +322,11 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 		} else {
 			attrs |= STAGE1_ATTRINDX(STAGE1_NORMALINDX);
 		}
+
+		/* Define the valid bit. */
+		if (!(mode & MM_MODE_INVALID)) {
+			attrs |= PTE_VALID;
+		}
 	} else {
 		uint64_t access = 0;
 
@@ -339,6 +364,21 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 		} else {
 			attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK,
 						       STAGE2_WRITEBACK);
+		}
+
+		/* Define the ownership bit. */
+		if (!(mode & MM_MODE_UNOWNED)) {
+			attrs |= STAGE2_SW_OWNED;
+		}
+
+		/* Define the exclusivity bit. */
+		if (!(mode & MM_MODE_SHARED)) {
+			attrs |= STAGE2_SW_EXCLUSIVE;
+		}
+
+		/* Define the validity bit. */
+		if (!(mode & MM_MODE_INVALID)) {
+			attrs |= PTE_VALID;
 		}
 	}
 
