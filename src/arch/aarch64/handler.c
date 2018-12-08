@@ -23,13 +23,13 @@
 
 #include "msr.h"
 #include "psci.h"
+#include "smc.h"
 
 struct hvc_handler_return {
 	uintreg_t user_ret;
 	struct vcpu *new;
 };
 
-int32_t smc(uintreg_t arg0, uintreg_t arg1, uintreg_t arg2, uintreg_t arg3);
 void cpu_entry(struct cpu *c);
 
 void irq_current_exception(uintreg_t elr, uintreg_t spsr)

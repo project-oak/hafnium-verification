@@ -32,14 +32,15 @@ import subprocess
 import sys
 
 
-def qemu(hafnium, initrd, args, log):
+def qemu(image, initrd, args, log):
     qemu_args = [
         "timeout", "--foreground", "5s",
         "./prebuilts/linux-x64/qemu/qemu-system-aarch64", "-M", "virt,gic_version=3", "-cpu",
         "cortex-a57", "-smp", "4", "-m", "16M", "-machine", "virtualization=true",
-        "-nographic", "-nodefaults", "-serial", "stdio", "-kernel", hafnium,
-        "-initrd", initrd
+        "-nographic", "-nodefaults", "-serial", "stdio", "-kernel", image,
     ]
+    if initrd:
+      qemu_args += ["-initrd", initrd]
     if args:
         qemu_args += ["-append", args]
     # Save the log to a file.
@@ -71,22 +72,27 @@ def hftest_lines(raw):
 
 def Main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("image")
     parser.add_argument("--out", required=True)
     parser.add_argument("--log", required=True)
-    parser.add_argument("--initrd", required=True)
+    parser.add_argument("--initrd")
     parser.add_argument("--suite")
     parser.add_argument("--test")
     args = parser.parse_args()
     # Resolve some paths.
-    hafnium = os.path.join(args.out, "hafnium.bin")
-    initrd = os.path.join(args.out, "initrd", args.initrd + ".img")
-    log = os.path.join(args.log, args.initrd)
+    image = os.path.join(args.out, args.image + ".bin")
+    initrd = None
+    suite = args.image
+    if args.initrd:
+        initrd = os.path.join(args.out, "initrd", args.initrd + ".img")
+        suite += "_" + args.initrd
+    log = os.path.join(args.log, suite)
     ensure_dir(log)
     print("Logs saved under", log)
     log_file = os.path.join(log, "sponge_log.log")
     with open(log_file, "w") as sponge_log:
         # Query the tests in the image.
-        out = qemu(hafnium, initrd, "json", os.path.join(log, "json.log"))
+        out = qemu(image, initrd, "json", os.path.join(log, "json.log"))
         sponge_log.write(out)
         sponge_log.write("\r\n\r\n")
         hftest_json = "\n".join(hftest_lines(out))
@@ -97,7 +103,7 @@ def Main():
         suite_re = re.compile(args.suite or ".*")
         test_re = re.compile(args.test or ".*")
         sponge = ET.Element("testsuites")
-        sponge.set("name", args.initrd)
+        sponge.set("name", suite)
         sponge.set(
             "timestamp",
             datetime.datetime.now().replace(microsecond=0).isoformat())
@@ -121,7 +127,7 @@ def Main():
                 print("      RUN", test)
                 test_log = os.path.join(log,
                                         suite["name"] + "." + test + ".log")
-                out = qemu(hafnium, initrd, "run {} {}".format(
+                out = qemu(image, initrd, "run {} {}".format(
                     suite["name"], test), test_log)
                 sponge_log.write(out)
                 sponge_log.write("\r\n\r\n")

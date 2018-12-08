@@ -21,18 +21,25 @@ source_set("aarch64") {
     "exceptions.S",
     "hypervisor_entry.S",
     "plat_entry.S",
-    "smc.S",
   ]
 
   sources += [
-    "cpu.c",
     "handler.c",
-    "mm.c",
     "offsets.c",
   ]
 
   deps = [
+    ":arch",
     ":entry",
+    ":smc",
+  ]
+}
+
+# Implementation of the arch interface for aarch64.
+source_set("arch") {
+  sources = [
+    "cpu.c",
+    "mm.c",
   ]
 }
 
@@ -40,6 +47,13 @@ source_set("aarch64") {
 source_set("entry") {
   sources = [
     "entry.S",
+  ]
+}
+
+# Make a call to the secure monitor.
+source_set("smc") {
+  sources = [
+    "smc.S",
   ]
 }
 

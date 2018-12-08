@@ -45,12 +45,18 @@
 #define ASSERT_GE(x, y) ASSERT_OP(x, y, >=, true)
 #define ASSERT_GT(x, y) ASSERT_OP(x, y, >, true)
 
+#define ASSERT_TRUE(x) ASSERT_EQ(x, true);
+#define ASSERT_FALSE(x) ASSERT_EQ(x, false);
+
 #define EXPECT_EQ(x, y) ASSERT_OP(x, y, ==, false)
 #define EXPECT_NE(x, y) ASSERT_OP(x, y, !=, false)
 #define EXPECT_LE(x, y) ASSERT_OP(x, y, <=, false)
 #define EXPECT_LT(x, y) ASSERT_OP(x, y, <, false)
 #define EXPECT_GE(x, y) ASSERT_OP(x, y, >=, false)
 #define EXPECT_GT(x, y) ASSERT_OP(x, y, >, false)
+
+#define EXPECT_TRUE(x) EXPECT_EQ(x, true);
+#define EXPECT_FALSE(x) EXPECT_EQ(x, false);
 
 /*
  * This must be used exactly once in a test image to signal to the linker that

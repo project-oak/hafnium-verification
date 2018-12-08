@@ -28,7 +28,7 @@ set -x
 
 TIMEOUT="timeout --foreground"
 OUT="out"
-HFTEST="$TIMEOUT 30s ./test/vm/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log --initrd"
+HFTEST="$TIMEOUT 30s ./test/hftest/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log"
 
 # Add prebuilt libc++ to the path.
 export LD_LIBRARY_PATH=$PWD/prebuilts/linux-x64/clang/lib64
@@ -40,6 +40,7 @@ $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
   | tee $OUT/kokoro_log/unit_tests/sponge_log.log
 
 # Run the tests with a timeout so they can't loop forever.
-$HFTEST gicv3_test
-$HFTEST primary_only_test
-$HFTEST primary_with_secondaries_test
+$HFTEST arch_test
+$HFTEST hafnium --initrd gicv3_test
+$HFTEST hafnium --initrd primary_only_test
+$HFTEST hafnium --initrd primary_with_secondaries_test

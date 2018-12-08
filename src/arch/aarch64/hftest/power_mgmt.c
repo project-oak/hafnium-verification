@@ -21,6 +21,7 @@
 #include "vmapi/hf/call.h"
 
 #include "../psci.h"
+#include "../smc.h"
 
 /**
  * Holds temporary state used to set up the environment on which CPUs will
@@ -69,7 +70,7 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
 	s.arg = arg;
 
 	/* Try to start the CPU. */
-	if (hf_call(PSCI_CPU_ON, id, (size_t)&vm_cpu_entry_raw, (size_t)&s) !=
+	if (smc(PSCI_CPU_ON, id, (size_t)&vm_cpu_entry_raw, (size_t)&s) !=
 	    PSCI_RETURN_SUCCESS) {
 		return false;
 	}
@@ -88,7 +89,7 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
  */
 noreturn void cpu_stop(void)
 {
-	hf_call(PSCI_CPU_OFF, 0, 0, 0);
+	smc(PSCI_CPU_OFF, 0, 0, 0);
 	for (;;) {
 		/* This should never be reached. */
 	}
@@ -99,7 +100,7 @@ noreturn void cpu_stop(void)
  */
 noreturn void shutdown(void)
 {
-	hf_call(PSCI_SYSTEM_OFF, 0, 0, 0);
+	smc(PSCI_SYSTEM_OFF, 0, 0, 0);
 	for (;;) {
 		/* This should never be reached. */
 	}

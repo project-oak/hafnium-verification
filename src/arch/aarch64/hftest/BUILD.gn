@@ -12,40 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("//build/image/image.gni")
+# These components are only used by VMs for aarch64 specific actions.
 
-vm_kernel("echo") {
-  testonly = true
-
+# Implements image_entry for a simple VM kernel.
+source_set("entry") {
   sources = [
-    "echo.c",
-  ]
-
-  deps = [
-    "//test/vm:secondary_vm",
+    "entry.S",
   ]
 }
 
-vm_kernel("relay_a") {
-  testonly = true
-
+# Make a call to the hypervisor from a VM.
+source_set("hf_call") {
   sources = [
-    "relay_a.c",
-  ]
-
-  deps = [
-    "//test/vm:secondary_vm",
+    "hf_call.S",
   ]
 }
 
-vm_kernel("relay_b") {
-  testonly = true
-
+# Shutdown the system or exit emulation, start/stop CPUs.
+source_set("power_mgmt") {
   sources = [
-    "relay_b.c",
+    "cpu_entry.S",
+    "power_mgmt.c",
   ]
 
   deps = [
-    "//test/vm:secondary_vm",
+    "//src/arch/aarch64:smc",
   ]
 }

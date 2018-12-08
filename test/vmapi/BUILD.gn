@@ -15,47 +15,12 @@
 import("//build/image/image.gni")
 import("//build/toolchain/platform.gni")
 
-group("vm_tests") {
+group("vmapi") {
   testonly = true
 
   deps = [
     ":primary_only_test",
     ":primary_with_secondaries_test",
-  ]
-}
-
-# Primary VMs host the test framework.
-source_set("hftest_vm") {
-  testonly = true
-
-  sources = [
-    "hftest.c",
-    "hftest.h",
-  ]
-
-  deps = [
-    "//src:common",
-    "//src:dlog",
-    "//src:fdt",
-    "//src:memiter",
-    "//src/arch/${plat_arch}:entry",
-    "//src/arch/${plat_arch}/vm:hf_call",
-    "//src/arch/${plat_arch}/vm:power_mgmt",
-    "//src/arch/${plat_arch}/vm:vm_entry",
-  ]
-}
-
-# Secondary VMs can be used as part of a test in the primary.
-source_set("secondary_vm") {
-  testonly = true
-
-  deps = [
-    "//src:common",
-    "//src:dlog",
-    "//src/arch/${plat_arch}:entry",
-    "//src/arch/${plat_arch}/vm:hf_call",
-    "//src/arch/${plat_arch}/vm:power_mgmt",
-    "//src/arch/${plat_arch}/vm:vm_entry",
   ]
 }
 
@@ -68,7 +33,7 @@ vm_kernel("primary_only_test_vm") {
   ]
 
   deps = [
-    ":hftest_vm",
+    "//test/hftest:hftest_primary_vm",
   ]
 }
 
@@ -89,7 +54,7 @@ vm_kernel("gicv3_test_vm") {
   ]
 
   deps = [
-    ":hftest_vm",
+    "//test/hftest:hftest_primary_vm",
   ]
 }
 
@@ -108,7 +73,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
   ]
 
   deps = [
-    ":hftest_vm",
+    "//test/hftest:hftest_primary_vm",
   ]
 }
 
@@ -121,19 +86,19 @@ initrd("primary_with_secondaries_test") {
       "1048576",
       "1",
       "relay_a",
-      "//test/vm/secondaries:relay_a",
+      "//test/vmapi/secondaries:relay_a",
     ],
     [
       "1048576",
       "1",
       "relay_b",
-      "//test/vm/secondaries:relay_b",
+      "//test/vmapi/secondaries:relay_b",
     ],
     [
       "1048576",
       "1",
       "echo",
-      "//test/vm/secondaries:echo",
+      "//test/vmapi/secondaries:echo",
     ],
   ]
 }
