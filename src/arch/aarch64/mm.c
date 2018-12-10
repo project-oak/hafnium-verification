@@ -86,13 +86,12 @@
 
 /* clang-format on */
 
-/*
- * This mask actually includes everything other than the address bits: not just
- * the attributes but also some ignored bits, reserved bits, and the entry type
- * bits which distinguish between absent, table, block or page entries.
- */
-#define PTE_ATTR_MASK \
-	(((UINT64_C(1) << PAGE_BITS) - 1) | ~((UINT64_C(1) << 48) - 1))
+/** Mask for the address bits of the pte. */
+#define PTE_ADDR_MASK \
+	(((UINT64_C(1) << 48) - 1) & ~((UINT64_C(1) << PAGE_BITS) - 1))
+
+/** Mask for the attribute bits of the pte. */
+#define PTE_ATTR_MASK (~(PTE_ADDR_MASK | UINT64_C(0x3)))
 
 static uint8_t mm_s2_max_level;
 static uint8_t mm_s2_root_table_count;
@@ -172,18 +171,18 @@ bool arch_mm_pte_is_block(pte_t pte, int level)
 	       (pte & 0x3) == (level == 0 ? 0x3 : 0x1);
 }
 
-uint64_t arch_aarch64_mm_clear_pte_attrs(pte_t pte)
+static uint64_t pte_addr(pte_t pte)
 {
-	return pte & ~PTE_ATTR_MASK;
+	return pte & PTE_ADDR_MASK;
 }
 
 /**
- * Clears the given physical address, i.e., sets the ignored bits (from a page
- * table perspective) to zero.
+ * Clears the given physical address, i.e., clears the bits of the address that
+ * are not used in the pte.
  */
 paddr_t arch_mm_clear_pa(paddr_t pa)
 {
-	return pa_init(arch_aarch64_mm_clear_pte_attrs(pa_addr(pa)));
+	return pa_init(pte_addr(pa_addr(pa)));
 }
 
 /**
@@ -192,7 +191,7 @@ paddr_t arch_mm_clear_pa(paddr_t pa)
  */
 paddr_t arch_mm_block_from_pte(pte_t pte)
 {
-	return pa_init(arch_aarch64_mm_clear_pte_attrs(pte));
+	return pa_init(pte_addr(pte));
 }
 
 /**
@@ -201,7 +200,7 @@ paddr_t arch_mm_block_from_pte(pte_t pte)
  */
 paddr_t arch_mm_table_from_pte(pte_t pte)
 {
-	return pa_init(arch_aarch64_mm_clear_pte_attrs(pte));
+	return pa_init(pte_addr(pte));
 }
 
 /**

@@ -84,3 +84,37 @@ TEST(arch_mm, max_level_stage1)
 	}
 EXPAND_LEVEL_TESTS
 #undef LEVEL_TEST
+
+/**
+ * The address and attributes of a block must be preserved when encoding and
+ * decoding.
+ */
+#define LEVEL_TEST(lvl)                                               \
+	TEST(arch_mm, block_addr_and_attrs_preserved_level##lvl)      \
+	{                                                             \
+		uint8_t level = lvl;                                  \
+		paddr_t addr;                                         \
+		uint64_t attrs;                                       \
+		pte_t block_pte;                                      \
+                                                                      \
+		/* Test doesn't apply if a block is not allowed. */   \
+		if (!arch_mm_is_block_allowed(level)) {               \
+			return;                                       \
+		}                                                     \
+                                                                      \
+		addr = pa_init(0);                                    \
+		attrs = arch_mm_mode_to_attrs(0);                     \
+		block_pte = arch_mm_block_pte(level, addr, attrs);    \
+		EXPECT_EQ(arch_mm_pte_attrs(block_pte), attrs);       \
+		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte)), \
+			  pa_addr(addr));                             \
+                                                                      \
+		addr = pa_init(PAGE_SIZE * 500);                      \
+		attrs = arch_mm_mode_to_attrs(MM_MODE_R | MM_MODE_W); \
+		block_pte = arch_mm_block_pte(level, addr, attrs);    \
+		EXPECT_EQ(arch_mm_pte_attrs(block_pte), attrs);       \
+		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte)), \
+			  pa_addr(addr));                             \
+	}
+EXPAND_LEVEL_TESTS
+#undef LEVEL_TEST
