@@ -228,6 +228,17 @@ union hftest_any {
 		}                                                          \
 	} while (0)
 
+#define HFTEST_FAIL(message, fatal)                                        \
+	do {                                                               \
+		struct hftest_context *ctx = hftest_get_context();         \
+		++ctx->failures;                                           \
+		HFTEST_LOG_FAILURE();                                      \
+		dlog(HFTEST_LOG_PREFIX HFTEST_LOG_INDENT "%s\n", message); \
+		if (fatal) {                                               \
+			ctx->abort();                                      \
+		}                                                          \
+	} while (0)
+
 /**
  * Select the service to run in a service VM.
  */

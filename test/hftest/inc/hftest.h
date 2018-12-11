@@ -50,8 +50,8 @@
 #define ASSERT_GE(x, y) HFTEST_ASSERT_OP(x, y, >=, true)
 #define ASSERT_GT(x, y) HFTEST_ASSERT_OP(x, y, >, true)
 
-#define ASSERT_TRUE(x) ASSERT_EQ(x, true);
-#define ASSERT_FALSE(x) ASSERT_EQ(x, false);
+#define ASSERT_TRUE(x) ASSERT_EQ(x, true)
+#define ASSERT_FALSE(x) ASSERT_EQ(x, false)
 
 #define EXPECT_EQ(x, y) HFTEST_ASSERT_OP(x, y, ==, false)
 #define EXPECT_NE(x, y) HFTEST_ASSERT_OP(x, y, !=, false)
@@ -60,8 +60,11 @@
 #define EXPECT_GE(x, y) HFTEST_ASSERT_OP(x, y, >=, false)
 #define EXPECT_GT(x, y) HFTEST_ASSERT_OP(x, y, >, false)
 
-#define EXPECT_TRUE(x) EXPECT_EQ(x, true);
-#define EXPECT_FALSE(x) EXPECT_EQ(x, false);
+#define EXPECT_TRUE(x) EXPECT_EQ(x, true)
+#define EXPECT_FALSE(x) EXPECT_EQ(x, false)
+
+#define FAIL(message) HFTEST_FAIL(message, true)
+#define ADD_FAILURE(message) HFTEST_FAIL(message, false)
 
 /* Service utilities. */
 #define SERVICE_SELECT(vm_id, service, send_buffer) \

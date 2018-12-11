@@ -88,6 +88,7 @@ TEST_SERVICE(interruptible)
 		} else {
 			dlog("Got unexpected message from VM %d, size %d.\n",
 			     received_message.vm_id, received_message.size);
+			FAIL("Unexpected message");
 		}
 		hf_mailbox_clear();
 	}
