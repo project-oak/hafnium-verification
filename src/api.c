@@ -640,7 +640,7 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 
 			/* Take target vCPU out of mailbox recv_waiter list. */
 			/*
-			 * TODO: Consider using a double-linked list for the
+			 * TODO: Consider using a doubly-linked list for the
 			 * receive waiter list to avoid the linear search here.
 			 */
 			struct vcpu **previous_next_pointer =
