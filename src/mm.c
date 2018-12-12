@@ -151,7 +151,7 @@ static void mm_free_page_pte(pte_t pte, uint8_t level)
 	}
 
 	/* Recursively free any subtables. */
-	table = mm_page_table_from_pa(arch_mm_table_from_pte(pte));
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(pte, level));
 	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
 		mm_free_page_pte(table->entries[i], level - 1);
 	}
@@ -209,7 +209,7 @@ static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 
 	/* Just return pointer to table if it's already populated. */
 	if (arch_mm_pte_is_table(v, level)) {
-		return mm_page_table_from_pa(arch_mm_table_from_pte(v));
+		return mm_page_table_from_pa(arch_mm_table_from_pte(v, level));
 	}
 
 	/* Allocate a new table. */
@@ -223,8 +223,8 @@ static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 	if (arch_mm_pte_is_block(v, level)) {
 		inc = mm_entry_size(level_below);
 		new_pte = arch_mm_block_pte(level_below,
-					    arch_mm_block_from_pte(v),
-					    arch_mm_pte_attrs(v));
+					    arch_mm_block_from_pte(v, level),
+					    arch_mm_pte_attrs(v, level));
 	} else {
 		inc = 0;
 		new_pte = arch_mm_absent_pte(level_below);
@@ -291,7 +291,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 	while (begin < end) {
 		if (unmap ? !arch_mm_pte_is_present(*pte, level)
 			  : arch_mm_pte_is_block(*pte, level) &&
-				    arch_mm_pte_attrs(*pte) == attrs) {
+				    arch_mm_pte_attrs(*pte, level) == attrs) {
 			/*
 			 * If the entry is already mapped with the right
 			 * attributes, or already absent in the case of
@@ -474,7 +474,7 @@ static void mm_dump_table_recursive(struct mm_page_table *table, uint8_t level,
 		if (arch_mm_pte_is_table(table->entries[i], level)) {
 			mm_dump_table_recursive(
 				mm_page_table_from_pa(arch_mm_table_from_pte(
-					table->entries[i])),
+					table->entries[i], level)),
 				level - 1, max_level);
 		}
 	}
@@ -502,7 +502,7 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
 static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level)
 {
 	struct mm_page_table *table =
-		mm_page_table_from_pa(arch_mm_table_from_pte(entry));
+		mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
 
 	/*
 	 * Free the subtable. This is safe to do directly (rather than
@@ -533,16 +533,16 @@ static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level)
 		return entry;
 	}
 
-	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry));
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
 	/*
 	 * Replace subtable with a single block, with equivalent
 	 * attributes.
 	 */
-	block_attrs = arch_mm_pte_attrs(table->entries[0]);
-	table_attrs = arch_mm_pte_attrs(entry);
+	block_attrs = arch_mm_pte_attrs(table->entries[0], level - 1);
+	table_attrs = arch_mm_pte_attrs(entry, level);
 	combined_attrs =
 		arch_mm_combine_table_entry_attrs(table_attrs, block_attrs);
-	block_address = arch_mm_block_from_pte(table->entries[0]);
+	block_address = arch_mm_block_from_pte(table->entries[0], level - 1);
 	/* Free the subtable. */
 	hfree(table);
 	/*
@@ -570,13 +570,13 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
 		return entry;
 	}
 
-	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry));
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
 
 	/*
 	 * Check if all entries are blocks with the same flags or are all
 	 * absent.
 	 */
-	attrs = arch_mm_pte_attrs(table->entries[0]);
+	attrs = arch_mm_pte_attrs(table->entries[0], level);
 	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
 		/*
 		 * First try to defrag the entry, in case it is a subtable.
@@ -593,7 +593,7 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
 		 * what we have so far.
 		 */
 		if (!arch_mm_pte_is_block(table->entries[i], level - 1) ||
-		    arch_mm_pte_attrs(table->entries[i]) != attrs) {
+		    arch_mm_pte_attrs(table->entries[i], level) != attrs) {
 			identical_blocks_so_far = false;
 		}
 	}
@@ -653,7 +653,8 @@ static bool mm_is_mapped_recursive(struct mm_page_table *table,
 
 	if (arch_mm_pte_is_table(pte, level)) {
 		return mm_is_mapped_recursive(
-			mm_page_table_from_pa(arch_mm_table_from_pte(pte)),
+			mm_page_table_from_pa(
+				arch_mm_table_from_pte(pte, level)),
 			addr, level - 1);
 	}
 

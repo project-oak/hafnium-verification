@@ -40,39 +40,39 @@ typedef uint64_t pte_t;
  * also check that the specific implementation defines everything it needs to
  * too.
  */
-pte_t arch_mm_absent_pte(int level);
-pte_t arch_mm_table_pte(int level, paddr_t pa);
-pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs);
-bool arch_mm_is_block_allowed(int level);
+pte_t arch_mm_absent_pte(uint8_t level);
+pte_t arch_mm_table_pte(uint8_t level, paddr_t pa);
+pte_t arch_mm_block_pte(uint8_t level, paddr_t pa, uint64_t attrs);
+bool arch_mm_is_block_allowed(uint8_t level);
 
 /**
  * Determines if a PTE is present i.e. it contains information and therefore
  * needs to exist in the page table. Any non-absent PTE is present.
  */
-bool arch_mm_pte_is_present(pte_t pte, int level);
+bool arch_mm_pte_is_present(pte_t pte, uint8_t level);
 
 /**
  * Determines if a PTE is valid i.e. it can affect the address space. Tables and
  * valid blocks fall into this category. Invalid blocks do not as they hold
  * information about blocks that are not in the address space.
  */
-bool arch_mm_pte_is_valid(pte_t pte, int level);
+bool arch_mm_pte_is_valid(pte_t pte, uint8_t level);
 
 /**
  * Determines if a PTE is a block and represents an address range, valid or
  * invalid.
  */
-bool arch_mm_pte_is_block(pte_t pte, int level);
+bool arch_mm_pte_is_block(pte_t pte, uint8_t level);
 
 /**
  * Determines if a PTE represents a reference to a table of PTEs.
  */
-bool arch_mm_pte_is_table(pte_t pte, int level);
+bool arch_mm_pte_is_table(pte_t pte, uint8_t level);
 
 paddr_t arch_mm_clear_pa(paddr_t pa);
-paddr_t arch_mm_block_from_pte(pte_t pte);
-paddr_t arch_mm_table_from_pte(pte_t pte);
-uint64_t arch_mm_pte_attrs(pte_t pte);
+paddr_t arch_mm_block_from_pte(pte_t pte, uint8_t level);
+paddr_t arch_mm_table_from_pte(pte_t pte, uint8_t level);
+uint64_t arch_mm_pte_attrs(pte_t pte, uint8_t level);
 uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
 					   uint64_t block_attrs);
 void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end);

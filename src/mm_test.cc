@@ -42,7 +42,6 @@ using ::testing::Truly;
 
 constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 16;
 const int TOP_LEVEL = arch_mm_max_level(0);
-const pte_t ABSENT_ENTRY = arch_mm_absent_pte(TOP_LEVEL);
 const paddr_t VM_MEM_END = pa_init(0x200'0000'0000);
 
 /**
@@ -102,8 +101,9 @@ TEST_F(mm, ptable_init_empty)
 	constexpr int mode = MM_MODE_STAGE1;
 	struct mm_ptable ptable;
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(1), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(1), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -115,8 +115,9 @@ TEST_F(mm, ptable_init_concatenated_empty)
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -138,20 +139,25 @@ TEST_F(mm, map_first_page)
 	ASSERT_THAT(TOP_LEVEL, Eq(2));
 
 	/* Check that the first page is mapped and nothing else. */
-	EXPECT_THAT(std::span(tables).last(3), Each(Each(ABSENT_ENTRY)));
+	EXPECT_THAT(std::span(tables).last(3),
+		    Each(Each(arch_mm_absent_pte(TOP_LEVEL))));
 
 	auto table_l2 = tables.front();
-	EXPECT_THAT(table_l2.subspan(1), Each(ABSENT_ENTRY));
+	EXPECT_THAT(table_l2.subspan(1), Each(arch_mm_absent_pte(TOP_LEVEL)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table_l2[0], TOP_LEVEL));
 
-	auto table_l1 = get_table(arch_mm_table_from_pte(table_l2[0]));
-	EXPECT_THAT(table_l1.subspan(1), Each(ABSENT_ENTRY));
+	auto table_l1 =
+		get_table(arch_mm_table_from_pte(table_l2[0], TOP_LEVEL));
+	EXPECT_THAT(table_l1.subspan(1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 1)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table_l1[0], TOP_LEVEL - 1));
 
-	auto table_l0 = get_table(arch_mm_table_from_pte(table_l1[0]));
-	EXPECT_THAT(table_l0.subspan(1), Each(ABSENT_ENTRY));
+	auto table_l0 =
+		get_table(arch_mm_table_from_pte(table_l1[0], TOP_LEVEL - 1));
+	EXPECT_THAT(table_l0.subspan(1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 2)));
 	ASSERT_TRUE(arch_mm_pte_is_block(table_l0[0], TOP_LEVEL - 2));
-	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table_l0[0])),
+	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table_l0[0], TOP_LEVEL - 2)),
 		    Eq(pa_addr(page_begin)));
 
 	mm_ptable_fini(&ptable, mode);
@@ -178,20 +184,27 @@ TEST_F(mm, map_round_to_page)
 	ASSERT_THAT(TOP_LEVEL, Eq(2));
 
 	/* Check that the last page is mapped, and nothing else. */
-	EXPECT_THAT(std::span(tables).first(3), Each(Each(ABSENT_ENTRY)));
+	EXPECT_THAT(std::span(tables).first(3),
+		    Each(Each(arch_mm_absent_pte(TOP_LEVEL))));
 
 	auto table_l2 = tables.back();
-	EXPECT_THAT(table_l2.first(table_l2.size() - 1), Each(ABSENT_ENTRY));
+	EXPECT_THAT(table_l2.first(table_l2.size() - 1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table_l2.last(1)[0], TOP_LEVEL));
 
-	auto table_l1 = get_table(arch_mm_table_from_pte(table_l2.last(1)[0]));
-	EXPECT_THAT(table_l1.first(table_l1.size() - 1), Each(ABSENT_ENTRY));
+	auto table_l1 = get_table(
+		arch_mm_table_from_pte(table_l2.last(1)[0], TOP_LEVEL));
+	EXPECT_THAT(table_l1.first(table_l1.size() - 1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 1)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table_l1.last(1)[0], TOP_LEVEL - 1));
 
-	auto table_l0 = get_table(arch_mm_table_from_pte(table_l1.last(1)[0]));
-	EXPECT_THAT(table_l0.first(table_l0.size() - 1), Each(ABSENT_ENTRY));
+	auto table_l0 = get_table(
+		arch_mm_table_from_pte(table_l1.last(1)[0], TOP_LEVEL - 1));
+	EXPECT_THAT(table_l0.first(table_l0.size() - 1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 2)));
 	ASSERT_TRUE(arch_mm_pte_is_block(table_l0.last(1)[0], TOP_LEVEL - 2));
-	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table_l0.last(1)[0])),
+	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table_l0.last(1)[0],
+						   TOP_LEVEL - 2)),
 		    Eq(0x200'0000'0000 - PAGE_SIZE));
 
 	mm_ptable_fini(&ptable, mode);
@@ -212,40 +225,50 @@ TEST_F(mm, map_across_tables)
 
 	auto tables = get_ptable(ptable, mode);
 	EXPECT_THAT(tables, SizeIs(4));
-	EXPECT_THAT(std::span(tables).last(2), Each(Each(ABSENT_ENTRY)));
+	EXPECT_THAT(std::span(tables).last(2),
+		    Each(Each(arch_mm_absent_pte(TOP_LEVEL))));
 	ASSERT_THAT(TOP_LEVEL, Eq(2));
 
 	/* Check only the last page of the first table is mapped. */
 	auto table0_l2 = tables.front();
-	EXPECT_THAT(table0_l2.first(table0_l2.size() - 1), Each(ABSENT_ENTRY));
+	EXPECT_THAT(table0_l2.first(table0_l2.size() - 1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table0_l2.last(1)[0], TOP_LEVEL));
 
-	auto table0_l1 =
-		get_table(arch_mm_table_from_pte(table0_l2.last(1)[0]));
-	EXPECT_THAT(table0_l1.first(table0_l1.size() - 1), Each(ABSENT_ENTRY));
+	auto table0_l1 = get_table(
+		arch_mm_table_from_pte(table0_l2.last(1)[0], TOP_LEVEL));
+	EXPECT_THAT(table0_l1.first(table0_l1.size() - 1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 1)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table0_l1.last(1)[0], TOP_LEVEL - 1));
 
-	auto table0_l0 =
-		get_table(arch_mm_table_from_pte(table0_l1.last(1)[0]));
-	EXPECT_THAT(table0_l0.first(table0_l0.size() - 1), Each(ABSENT_ENTRY));
+	auto table0_l0 = get_table(
+		arch_mm_table_from_pte(table0_l1.last(1)[0], TOP_LEVEL - 1));
+	EXPECT_THAT(table0_l0.first(table0_l0.size() - 1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 2)));
 	ASSERT_TRUE(arch_mm_pte_is_block(table0_l0.last(1)[0], TOP_LEVEL - 2));
-	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table0_l0.last(1)[0])),
+	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table0_l0.last(1)[0],
+						   TOP_LEVEL - 2)),
 		    Eq(pa_addr(map_begin)));
 
 	/* Checl only the first page of the second table is mapped. */
 	auto table1_l2 = tables[1];
-	EXPECT_THAT(table1_l2.subspan(1), Each(ABSENT_ENTRY));
+	EXPECT_THAT(table1_l2.subspan(1), Each(arch_mm_absent_pte(TOP_LEVEL)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table1_l2[0], TOP_LEVEL));
 
-	auto table1_l1 = get_table(arch_mm_table_from_pte(table1_l2[0]));
-	EXPECT_THAT(table1_l1.subspan(1), Each(ABSENT_ENTRY));
+	auto table1_l1 =
+		get_table(arch_mm_table_from_pte(table1_l2[0], TOP_LEVEL));
+	EXPECT_THAT(table1_l1.subspan(1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 1)));
 	ASSERT_TRUE(arch_mm_pte_is_table(table1_l1[0], TOP_LEVEL - 1));
 
-	auto table1_l0 = get_table(arch_mm_table_from_pte(table1_l1[0]));
-	EXPECT_THAT(table1_l0.subspan(1), Each(ABSENT_ENTRY));
+	auto table1_l0 =
+		get_table(arch_mm_table_from_pte(table1_l1[0], TOP_LEVEL - 1));
+	EXPECT_THAT(table1_l0.subspan(1),
+		    Each(arch_mm_absent_pte(TOP_LEVEL - 2)));
 	ASSERT_TRUE(arch_mm_pte_is_block(table1_l0[0], TOP_LEVEL - 2));
-	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table1_l0[0])),
-		    Eq(pa_addr(pa_add(map_begin, PAGE_SIZE))));
+	EXPECT_THAT(
+		pa_addr(arch_mm_block_from_pte(table1_l0[0], TOP_LEVEL - 2)),
+		Eq(pa_addr(pa_add(map_begin, PAGE_SIZE))));
 
 	mm_ptable_fini(&ptable, mode);
 }
@@ -267,10 +290,10 @@ TEST_F(mm, map_all_at_top_level)
 							   _1, TOP_LEVEL))))));
 	for (uint64_t i = 0; i < tables.size(); ++i) {
 		for (uint64_t j = 0; j < MM_PTE_PER_PAGE; ++j) {
-			EXPECT_THAT(
-				pa_addr(arch_mm_block_from_pte(tables[i][j])),
-				Eq((i * mm_entry_size(TOP_LEVEL + 1)) +
-				   (j * mm_entry_size(TOP_LEVEL))))
+			EXPECT_THAT(pa_addr(arch_mm_block_from_pte(tables[i][j],
+								   TOP_LEVEL)),
+				    Eq((i * mm_entry_size(TOP_LEVEL + 1)) +
+				       (j * mm_entry_size(TOP_LEVEL))))
 				<< "i=" << i << " j=" << j;
 		}
 	}
@@ -312,8 +335,9 @@ TEST_F(mm, map_reverse_range)
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0x1234'5678),
 				       pa_init(0x5000), mode, &ipa));
 	EXPECT_THAT(ipa_addr(ipa), Eq(0x1234'5678));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -354,8 +378,9 @@ TEST_F(mm, map_last_address_quirk)
 		&ptable, pa_init(0),
 		pa_init(std::numeric_limits<uintpaddr_t>::max()), mode, &ipa));
 	EXPECT_THAT(ipa_addr(ipa), Eq(0));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -391,8 +416,9 @@ TEST_F(mm, map_ignore_out_of_range)
 	ASSERT_TRUE(mm_vm_identity_map(
 		&ptable, VM_MEM_END, pa_init(0xf0'0000'0000'0000), mode, &ipa));
 	EXPECT_THAT(ipa_addr(ipa), Eq(pa_addr(VM_MEM_END)));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, 0);
 }
 
@@ -454,8 +480,9 @@ TEST_F(mm, vm_unmap_hypervisor_not_mapped)
 	struct mm_ptable ptable;
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
 	EXPECT_TRUE(mm_vm_unmap_hypervisor(&ptable, mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -469,8 +496,9 @@ TEST_F(mm, unmap_not_mapped)
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
 	EXPECT_TRUE(
 		mm_vm_unmap(&ptable, pa_init(12345), pa_init(987652), mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -491,8 +519,9 @@ TEST_F(mm, unmap_all)
 	ASSERT_TRUE(
 		mm_vm_identity_map(&ptable, l1_begin, l1_end, mode, nullptr));
 	EXPECT_TRUE(mm_vm_unmap(&ptable, pa_init(0), VM_MEM_END, mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -510,8 +539,9 @@ TEST_F(mm, unmap_round_to_page)
 		mm_vm_identity_map(&ptable, map_begin, map_end, mode, nullptr));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, pa_add(map_begin, 93),
 				pa_add(map_begin, 99), mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -528,8 +558,9 @@ TEST_F(mm, unmap_across_tables)
 	ASSERT_TRUE(
 		mm_vm_identity_map(&ptable, map_begin, map_end, mode, nullptr));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, map_begin, map_end, mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -590,8 +621,9 @@ TEST_F(mm, unmap_reverse_range_quirk)
 				       nullptr));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, pa_add(page_begin, 100),
 				pa_add(page_begin, 50), mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -637,8 +669,9 @@ TEST_F(mm, unmap_does_not_defrag)
 		mm_vm_identity_map(&ptable, l1_begin, l1_end, mode, nullptr));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, l0_begin, l0_end, mode));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, l1_begin, l1_end, mode));
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, MM_MODE_STAGE1);
 }
 
@@ -719,8 +752,9 @@ TEST_F(mm, defrag_empty)
 	struct mm_ptable ptable;
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
 	mm_ptable_defrag(&ptable, mode);
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 
@@ -744,8 +778,9 @@ TEST_F(mm, defrag_empty_subtables)
 	ASSERT_TRUE(mm_vm_unmap(&ptable, l0_begin, l0_end, mode));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, l1_begin, l1_end, mode));
 	mm_ptable_defrag(&ptable, 0);
-	EXPECT_THAT(get_ptable(ptable, mode),
-		    AllOf(SizeIs(4), Each(Each(ABSENT_ENTRY))));
+	EXPECT_THAT(
+		get_ptable(ptable, mode),
+		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
 	mm_ptable_fini(&ptable, mode);
 }
 

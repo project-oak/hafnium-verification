@@ -19,103 +19,92 @@
 #include "hf/mm.h"
 
 /*
- * Our fake architecture has page tables base on those of aarch64:
- *
- *  - The highest level table is always 2, lowest level is 0.
- *  - Blocks are allowed at all levels.
- *
- * There are four kinds of entry:
- *
- *  1. Absent: 0
- *  2. Page, at level 0: <page-aligned address> | <attrs> | 0x3
- *  3. Block, at level 2 or 1: <block-aligned address> | <attrs> | 0x1
- *  4. Subtable, at level 2 or 1: <subtable address> | 0x3
- *
- * <attrs> are always 0 for now.
+ * The fake architecture uses the mode flags to represent the attributes applied
+ * to memory. The flags are shifted to avoid equality of modes and attributes.
  */
+#define PTE_ATTR_MODE_SHIFT 48
+#define PTE_ATTR_MODE_MASK                                               \
+	((uint64_t)(MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_D |      \
+		    MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED | \
+		    MM_MODE_STAGE1)                                      \
+	 << PTE_ATTR_MODE_SHIFT)
 
-pte_t arch_mm_absent_pte(int level)
+/* The bit to distinguish a table from a block is the highest of the page bits.
+ */
+#define PTE_TABLE (UINT64_C(1) << (PAGE_BITS - 1))
+
+/* Mask for the address part of an entry. */
+#define PTE_ADDR_MASK (~(PTE_ATTR_MODE_MASK | (UINT64_C(1) << PAGE_BITS) - 1))
+
+/* Offset the bits of each level so they can't be misued. */
+#define PTE_LEVEL_SHIFT(lvl) ((lvl)*2)
+
+pte_t arch_mm_absent_pte(uint8_t level)
 {
-	(void)level;
-	return 0;
+	return ((uint64_t)(MM_MODE_INVALID | MM_MODE_UNOWNED)
+		<< PTE_ATTR_MODE_SHIFT) >>
+	       PTE_LEVEL_SHIFT(level);
 }
 
-pte_t arch_mm_table_pte(int level, paddr_t pa)
+pte_t arch_mm_table_pte(uint8_t level, paddr_t pa)
 {
-	/* This is the same for all levels. */
-	(void)level;
-	return pa_addr(pa) | 0x3;
+	return (pa_addr(pa) | PTE_TABLE) >> PTE_LEVEL_SHIFT(level);
 }
 
-pte_t arch_mm_block_pte(int level, paddr_t pa, uint64_t attrs)
+pte_t arch_mm_block_pte(uint8_t level, paddr_t pa, uint64_t attrs)
 {
-	/* Single pages are encoded differently to larger blocks. */
-	pte_t pte = pa_addr(pa) | attrs;
-	if (level == 0) {
-		pte |= 0x2;
-	}
-	return pte;
+	return (pa_addr(pa) | attrs) >> PTE_LEVEL_SHIFT(level);
 }
 
-bool arch_mm_is_block_allowed(int level)
+bool arch_mm_is_block_allowed(uint8_t level)
 {
-	/* All levels can have blocks. */
 	(void)level;
 	return true;
 }
 
-bool arch_mm_pte_is_present(pte_t pte, int level)
+bool arch_mm_pte_is_present(pte_t pte, uint8_t level)
 {
-	/* TODO: model attributes. */
-	return arch_mm_pte_is_valid(pte, level);
+	return arch_mm_pte_is_valid(pte, level) ||
+	       !(((pte << PTE_LEVEL_SHIFT(level)) >> PTE_ATTR_MODE_SHIFT) &
+		 MM_MODE_UNOWNED);
 }
 
-bool arch_mm_pte_is_valid(pte_t pte, int level)
+bool arch_mm_pte_is_valid(pte_t pte, uint8_t level)
 {
-	(void)level;
-	return (pte & 0x1) != 0;
+	return !(((pte << PTE_LEVEL_SHIFT(level)) >> PTE_ATTR_MODE_SHIFT) &
+		 MM_MODE_INVALID);
 }
 
-bool arch_mm_pte_is_table(pte_t pte, int level)
+bool arch_mm_pte_is_block(pte_t pte, uint8_t level)
 {
-	/* Level 0 only contains pages so cannot be a table. */
-	return level != 0 && (pte & 0x3) == 0x3;
+	return arch_mm_pte_is_present(pte, level) &&
+	       !arch_mm_pte_is_table(pte, level);
 }
 
-bool arch_mm_pte_is_block(pte_t pte, int level)
+bool arch_mm_pte_is_table(pte_t pte, uint8_t level)
 {
-	/* Single pages are encoded differently to larger blocks. */
-	return (level == 0 ? (pte & 0x2) != 0
-			   : arch_mm_pte_is_present(pte, level) &&
-				     !arch_mm_pte_is_table(pte, level));
-}
-
-static uint64_t hf_arch_fake_mm_clear_pte_attrs(pte_t pte)
-{
-	return pte & ~0x3;
+	return (pte << PTE_LEVEL_SHIFT(level)) & PTE_TABLE;
 }
 
 paddr_t arch_mm_clear_pa(paddr_t pa)
 {
-	/* This is assumed to round down to the page boundary. */
-	return pa_init(hf_arch_fake_mm_clear_pte_attrs(pa_addr(pa)) &
-		       ~((1 << PAGE_BITS) - 1));
+	return pa_init(pa_addr(pa) & PTE_ADDR_MASK);
 }
 
-paddr_t arch_mm_block_from_pte(pte_t pte)
+paddr_t arch_mm_block_from_pte(pte_t pte, uint8_t level)
 {
-	return pa_init(hf_arch_fake_mm_clear_pte_attrs(pte));
+	return pa_init((pte << PTE_LEVEL_SHIFT(level)) & PTE_ADDR_MASK);
 }
 
-paddr_t arch_mm_table_from_pte(pte_t pte)
+paddr_t arch_mm_table_from_pte(pte_t pte, uint8_t level)
 {
-	return pa_init(hf_arch_fake_mm_clear_pte_attrs(pte));
+	return pa_init((pte << PTE_LEVEL_SHIFT(level)) & PTE_ADDR_MASK);
 }
 
-uint64_t arch_mm_pte_attrs(pte_t pte)
+uint64_t arch_mm_pte_attrs(pte_t pte, uint8_t level)
 {
-	/* Attributes are not modelled fully. */
-	return pte & 0x1;
+	return ((pte << PTE_LEVEL_SHIFT(level)) & PTE_ATTR_MODE_MASK) >>
+	       PTE_ATTR_MODE_SHIFT;
 }
 
 uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
@@ -149,8 +138,7 @@ uint8_t arch_mm_root_table_count(int mode)
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
-	/* Attributes are not modelled fully. */
-	return mode & MM_MODE_INVALID ? 0 : 0x1;
+	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
 }
 
 bool arch_mm_init(paddr_t table, bool first)
