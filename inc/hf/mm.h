@@ -109,7 +109,8 @@ bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode,
 		 struct mpool *ppool);
 bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool);
-bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode);
+bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
+		    int *mode);
 
 bool mm_init(struct mpool *ppool);
 bool mm_cpu_init(void);

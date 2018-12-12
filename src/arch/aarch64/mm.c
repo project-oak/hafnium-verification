@@ -64,6 +64,7 @@
 #define STAGE2_EXECUTE_EL0  UINT64_C(1)
 #define STAGE2_EXECUTE_NONE UINT64_C(2)
 #define STAGE2_EXECUTE_EL1  UINT64_C(3)
+#define STAGE2_EXECUTE_MASK UINT64_C(3)
 
 /* Table attributes only apply to stage 1 translations. */
 #define TABLE_NSTABLE  (UINT64_C(1) << 63)
@@ -301,6 +302,11 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 {
 	uint64_t attrs = 0;
 
+	/* Define the valid bit. */
+	if (!(mode & MM_MODE_INVALID)) {
+		attrs |= PTE_VALID;
+	}
+
 	if (mode & MM_MODE_STAGE1) {
 		attrs |= STAGE1_AF | STAGE1_SH(OUTER_SHAREABLE);
 
@@ -321,11 +327,6 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 			attrs |= STAGE1_ATTRINDX(STAGE1_DEVICEINDX);
 		} else {
 			attrs |= STAGE1_ATTRINDX(STAGE1_NORMALINDX);
-		}
-
-		/* Define the valid bit. */
-		if (!(mode & MM_MODE_INVALID)) {
-			attrs |= PTE_VALID;
 		}
 	} else {
 		uint64_t access = 0;
@@ -372,14 +373,41 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 		if (!(mode & MM_MODE_SHARED)) {
 			attrs |= STAGE2_SW_EXCLUSIVE;
 		}
-
-		/* Define the validity bit. */
-		if (!(mode & MM_MODE_INVALID)) {
-			attrs |= PTE_VALID;
-		}
 	}
 
 	return attrs;
+}
+
+int arch_mm_stage2_attrs_to_mode(uint64_t attrs)
+{
+	int mode = 0;
+
+	if (attrs & STAGE2_S2AP(STAGE2_ACCESS_READ)) {
+		mode |= MM_MODE_R;
+	}
+
+	if (attrs & STAGE2_S2AP(STAGE2_ACCESS_WRITE)) {
+		mode |= MM_MODE_W;
+	}
+
+	if ((attrs & STAGE2_XN(STAGE2_EXECUTE_MASK)) ==
+	    STAGE2_XN(STAGE2_EXECUTE_ALL)) {
+		mode |= MM_MODE_X;
+	}
+
+	if (!(attrs & STAGE2_SW_OWNED)) {
+		mode |= MM_MODE_UNOWNED;
+	}
+
+	if (!(attrs & STAGE2_SW_EXCLUSIVE)) {
+		mode |= MM_MODE_SHARED;
+	}
+
+	if (!(attrs & PTE_VALID)) {
+		mode |= MM_MODE_INVALID;
+	}
+
+	return mode;
 }
 
 /**

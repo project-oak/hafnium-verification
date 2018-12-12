@@ -625,56 +625,99 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode, struct mpool *ppool)
 }
 
 /**
- * Determines if the given address is valid in the address space of the given
- * page table by recursively traversing all levels of the page table.
+ * Gets the attributes applied to the given range of stage-2 addresses at the
+ * given level.
+ *
+ * The `got_attrs` argument is initially passed as false until `attrs` contains
+ * attributes of the memory region at which point it is passed as true.
+ *
+ * The value returned in `attrs` is only valid if the function returns true.
+ *
+ * Returns true if the whole range has the same attributes and false otherwise.
  */
-static bool mm_is_mapped_recursive(struct mm_page_table *table,
-				   ptable_addr_t addr, uint8_t level)
+static bool mm_ptable_get_attrs_level(struct mm_page_table *table,
+				      ptable_addr_t begin, ptable_addr_t end,
+				      uint8_t level, bool got_attrs,
+				      uint64_t *attrs)
 {
-	pte_t pte;
-	ptable_addr_t va_level_end = mm_level_end(addr, level);
+	pte_t *pte = &table->entries[mm_index(begin, level)];
+	ptable_addr_t level_end = mm_level_end(begin, level);
+	size_t entry_size = mm_entry_size(level);
 
-	/* It isn't mapped if it doesn't fit in the table. */
-	if (addr >= va_level_end) {
-		return false;
+	/* Cap end so that we don't go over the current level max. */
+	if (end > level_end) {
+		end = level_end;
 	}
 
-	pte = table->entries[mm_index(addr, level)];
+	/* Check that each entry is owned. */
+	while (begin < end) {
+		if (arch_mm_pte_is_table(*pte, level)) {
+			if (!mm_ptable_get_attrs_level(
+				    mm_page_table_from_pa(
+					    arch_mm_table_from_pte(*pte,
+								   level)),
+				    begin, end, level - 1, got_attrs, attrs)) {
+				return false;
+			}
+			got_attrs = true;
+		} else {
+			if (!got_attrs) {
+				*attrs = arch_mm_pte_attrs(*pte, level);
+				got_attrs = true;
+			} else if (arch_mm_pte_attrs(*pte, level) != *attrs) {
+				return false;
+			}
+		}
 
-	if (!arch_mm_pte_is_valid(pte, level)) {
-		return false;
-	}
-
-	if (arch_mm_pte_is_table(pte, level)) {
-		return mm_is_mapped_recursive(
-			mm_page_table_from_pa(
-				arch_mm_table_from_pte(pte, level)),
-			addr, level - 1);
+		begin = mm_start_of_next_block(begin, entry_size);
+		pte++;
 	}
 
 	/* The entry is a valid block. */
-	return true;
+	return got_attrs;
 }
 
 /**
- * Determines if the given address is valid in the address space of the given
- * page table.
+ * Gets the attributes applies to the given range of addresses in the stage-2
+ * table.
+ *
+ * The value returned in `attrs` is only valid if the function returns true.
+ *
+ * Returns true if the whole range has the same attributes and false otherwise.
  */
-static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
-				int mode)
+static bool mm_vm_get_attrs(struct mm_ptable *t, ptable_addr_t begin,
+			    ptable_addr_t end, uint64_t *attrs)
 {
-	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
-	uint8_t level = arch_mm_max_level(mode);
-	size_t index;
+	int mode = 0;
+	uint8_t max_level = arch_mm_max_level(mode);
+	uint8_t root_level = max_level + 1;
+	size_t root_table_size = mm_entry_size(root_level);
+	ptable_addr_t ptable_end =
+		arch_mm_root_table_count(mode) * mm_entry_size(root_level);
+	struct mm_page_table *table;
+	bool got_attrs = false;
 
-	addr = mm_round_down_to_page(addr);
-	index = mm_index(addr, level + 1);
+	begin = mm_round_down_to_page(begin);
+	end = mm_round_up_to_page(end);
 
-	if (index >= arch_mm_root_table_count(mode)) {
+	/* Fail if the addresses are out of range. */
+	if (end > ptable_end) {
 		return false;
 	}
 
-	return mm_is_mapped_recursive(&tables[index], addr, level);
+	table = &mm_page_table_from_pa(t->root)[mm_index(begin, root_level)];
+	while (begin < end) {
+		if (!mm_ptable_get_attrs_level(table, begin, end, max_level,
+					       got_attrs, attrs)) {
+			return false;
+		}
+
+		got_attrs = true;
+		begin = mm_start_of_next_block(begin, root_table_size);
+		table++;
+	}
+
+	return got_attrs;
 }
 
 /**
@@ -772,12 +815,23 @@ bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool)
 }
 
 /**
- * Checks whether the given intermediate physical addess is mapped in the given
- * page table of a VM.
+ * Gets the mode of the give range of intermediate physical addresses if they
+ * are mapped with the same mode.
+ *
+ * Returns true if the range is mapped with the same mode and false otherwise.
  */
-bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode)
+bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
+		    int *mode)
 {
-	return mm_ptable_is_mapped(t, ipa_addr(ipa), mode & ~MM_MODE_STAGE1);
+	uint64_t attrs;
+	bool ret;
+
+	ret = mm_vm_get_attrs(t, ipa_addr(begin), ipa_addr(end), &attrs);
+	if (ret) {
+		*mode = arch_mm_stage2_attrs_to_mode(attrs);
+	}
+
+	return ret;
 }
 
 /**

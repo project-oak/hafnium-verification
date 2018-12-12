@@ -53,6 +53,16 @@ size_t mm_entry_size(int level)
 }
 
 /**
+ * Checks whether the address is mapped in the address space.
+ */
+bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa)
+{
+	int mode;
+	return mm_vm_get_mode(t, ipa, ipa_add(ipa, 1), &mode) &&
+	       (mode & MM_MODE_INVALID) == 0;
+}
+
+/**
  * Get an STL representation of the page table.
  */
 std::span<pte_t, MM_PTE_PER_PAGE> get_table(paddr_t pa)
@@ -360,7 +370,7 @@ TEST_F(mm, map_reverse_range_quirk)
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(20), pa_init(10), mode,
 				       &ipa, &ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(20));
-	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa, mode));
+	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa));
 	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
@@ -689,9 +699,9 @@ TEST_F(mm, is_mapped_empty)
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
-	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0), mode));
-	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x8123'2344), mode));
-	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x1e0'0000'0073), mode));
+	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0)));
+	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x8123'2344)));
+	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x1e0'0000'0073)));
 	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
@@ -705,9 +715,9 @@ TEST_F(mm, is_mapped_all)
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
 				       nullptr, &ppool));
-	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0), mode));
-	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0xf247'a7b3), mode));
-	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0x1ff'7bfa'983b), mode));
+	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0)));
+	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0xf247'a7b3)));
+	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0x1ff'7bfa'983b)));
 	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
@@ -723,10 +733,10 @@ TEST_F(mm, is_mapped_page)
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, page_begin, page_end, mode,
 				       nullptr, &ppool));
-	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_from_pa(page_begin), mode));
-	EXPECT_TRUE(mm_vm_is_mapped(
-		&ptable, ipa_from_pa(pa_add(page_begin, 127)), mode));
-	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_from_pa(page_end), mode));
+	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_from_pa(page_begin)));
+	EXPECT_TRUE(
+		mm_vm_is_mapped(&ptable, ipa_from_pa(pa_add(page_begin, 127))));
+	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_from_pa(page_end)));
 	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
@@ -740,12 +750,95 @@ TEST_F(mm, is_mapped_out_of_range)
 	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
 				       nullptr, &ppool));
-	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_from_pa(VM_MEM_END), mode));
-	EXPECT_FALSE(
-		mm_vm_is_mapped(&ptable, ipa_init(0x1000'adb7'8123), mode));
+	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_from_pa(VM_MEM_END)));
+	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x1000'adb7'8123)));
 	EXPECT_FALSE(mm_vm_is_mapped(
-		&ptable, ipa_init(std::numeric_limits<uintpaddr_t>::max()),
-		mode));
+		&ptable, ipa_init(std::numeric_limits<uintpaddr_t>::max())));
+	mm_ptable_fini(&ptable, mode, &ppool);
+}
+
+/**
+ * The mode of unmapped addresses can be retrieved and is set to invalid,
+ * unowned and shared.
+ */
+TEST_F(mm, get_mode_empty)
+{
+	constexpr int mode = 0;
+	constexpr int default_mode =
+		MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED;
+	struct mm_ptable ptable;
+	int read_mode;
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+
+	read_mode = 0;
+	EXPECT_TRUE(
+		mm_vm_get_mode(&ptable, ipa_init(0), ipa_init(20), &read_mode));
+	EXPECT_THAT(read_mode, Eq(default_mode));
+
+	read_mode = 0;
+	EXPECT_TRUE(mm_vm_get_mode(&ptable, ipa_init(0x3c97'654d),
+				   ipa_init(0x3c97'e000), &read_mode));
+	EXPECT_THAT(read_mode, Eq(default_mode));
+
+	read_mode = 0;
+	EXPECT_TRUE(mm_vm_get_mode(&ptable, ipa_init(0x5f'ffff'ffff),
+				   ipa_init(0x1ff'ffff'ffff), &read_mode));
+	EXPECT_THAT(read_mode, Eq(default_mode));
+
+	mm_ptable_fini(&ptable, mode, &ppool);
+}
+
+/**
+ * Get the mode of a range comprised of individual pages which are either side
+ * of a root table boundary.
+ */
+TEST_F(mm, get_mode_pages_across_tables)
+{
+	constexpr int mode = MM_MODE_INVALID | MM_MODE_SHARED;
+	const paddr_t map_begin = pa_init(0x180'0000'0000 - PAGE_SIZE);
+	const paddr_t map_end = pa_add(map_begin, 2 * PAGE_SIZE);
+	struct mm_ptable ptable;
+	int read_mode;
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, map_begin, map_end, mode,
+				       nullptr, &ppool));
+
+	read_mode = 0;
+	EXPECT_TRUE(mm_vm_get_mode(&ptable, ipa_from_pa(map_begin),
+				   ipa_from_pa(pa_add(map_begin, PAGE_SIZE)),
+				   &read_mode));
+	EXPECT_THAT(read_mode, Eq(mode));
+
+	EXPECT_FALSE(mm_vm_get_mode(&ptable, ipa_init(0),
+				    ipa_from_pa(pa_add(map_begin, PAGE_SIZE)),
+				    &read_mode));
+
+	read_mode = 0;
+	EXPECT_TRUE(mm_vm_get_mode(&ptable, ipa_from_pa(map_begin),
+				   ipa_from_pa(map_end), &read_mode));
+	EXPECT_THAT(read_mode, Eq(mode));
+	mm_ptable_fini(&ptable, mode, &ppool);
+}
+
+/**
+ * Anything out of range fail to retrieve the mode.
+ */
+TEST_F(mm, get_mode_out_of_range)
+{
+	constexpr int mode = MM_MODE_UNOWNED;
+	struct mm_ptable ptable;
+	int read_mode;
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
+				       nullptr, &ppool));
+	EXPECT_FALSE(mm_vm_get_mode(&ptable, ipa_init(0),
+				    ipa_from_pa(pa_add(VM_MEM_END, 1)),
+				    &read_mode));
+	EXPECT_FALSE(mm_vm_get_mode(&ptable, ipa_from_pa(VM_MEM_END),
+				    ipa_from_pa(pa_add(VM_MEM_END, 1)),
+				    &read_mode));
+	EXPECT_FALSE(mm_vm_get_mode(&ptable, ipa_init(0x1'1234'1234'1234),
+				    ipa_init(2'0000'0000'0000), &read_mode));
 	mm_ptable_fini(&ptable, mode, &ppool);
 }
 

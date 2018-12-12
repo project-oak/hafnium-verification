@@ -253,6 +253,15 @@ out:
 }
 
 /**
+ * Check that the mode indicates memory that is valid, owned and exclusive.
+ */
+bool static api_mode_valid_owned_and_exclusive(int mode)
+{
+	return (mode & (MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED)) ==
+	       0;
+}
+
+/**
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
  */
@@ -264,6 +273,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
 	paddr_t pa_recv_end;
+	int mode;
 	int64_t ret;
 
 	/* Fail if addresses are not page-aligned. */
@@ -280,14 +290,17 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 		goto exit;
 	}
 
-	/*
-	 * TODO: Once memory sharing is implemented, we need to make sure that
-	 * these pages aren't and won't be shared.
-	 */
+	/* Ensure the pages are valid, owned and exclusive to the VM. */
+	if (!mm_vm_get_mode(&vm->ptable, send, ipa_add(send, PAGE_SIZE),
+			    &mode) ||
+	    !api_mode_valid_owned_and_exclusive(mode)) {
+		ret = -1;
+		goto exit;
+	}
 
-	/* Ensure the pages are accessible from the VM. */
-	if (!mm_vm_is_mapped(&vm->ptable, send, 0) ||
-	    !mm_vm_is_mapped(&vm->ptable, recv, 0)) {
+	if (!mm_vm_get_mode(&vm->ptable, recv, ipa_add(recv, PAGE_SIZE),
+			    &mode) ||
+	    !api_mode_valid_owned_and_exclusive(mode)) {
 		ret = -1;
 		goto exit;
 	}

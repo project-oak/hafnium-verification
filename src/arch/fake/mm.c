@@ -41,7 +41,7 @@
 
 pte_t arch_mm_absent_pte(uint8_t level)
 {
-	return ((uint64_t)(MM_MODE_INVALID | MM_MODE_UNOWNED)
+	return ((uint64_t)(MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED)
 		<< PTE_ATTR_MODE_SHIFT) >>
 	       PTE_LEVEL_SHIFT(level);
 }
@@ -103,8 +103,7 @@ paddr_t arch_mm_table_from_pte(pte_t pte, uint8_t level)
 
 uint64_t arch_mm_pte_attrs(pte_t pte, uint8_t level)
 {
-	return ((pte << PTE_LEVEL_SHIFT(level)) & PTE_ATTR_MODE_MASK) >>
-	       PTE_ATTR_MODE_SHIFT;
+	return (pte << PTE_LEVEL_SHIFT(level)) & PTE_ATTR_MODE_MASK;
 }
 
 uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
@@ -138,12 +137,19 @@ uint8_t arch_mm_root_table_count(int mode)
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
+	mode &= ~MM_MODE_NOINVALIDATE;
+
 	/* Stage-2 ignores the device mode. */
 	if (!(mode & MM_MODE_STAGE1)) {
 		mode &= ~MM_MODE_D;
 	}
 
 	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
+}
+
+int arch_mm_stage2_attrs_to_mode(uint64_t attrs)
+{
+	return attrs >> PTE_ATTR_MODE_SHIFT;
 }
 
 bool arch_mm_init(paddr_t table, bool first)

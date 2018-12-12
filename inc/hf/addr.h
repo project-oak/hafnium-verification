@@ -53,6 +53,14 @@ static inline uintpaddr_t pa_addr(paddr_t pa)
 }
 
 /**
+ * Advances a physical address.
+ */
+static inline paddr_t pa_add(paddr_t pa, size_t n)
+{
+	return pa_init(pa_addr(pa) + n);
+}
+
+/**
  * Initializes an intermeditate physical address.
  */
 static inline ipaddr_t ipa_init(uintvaddr_t v)
@@ -69,6 +77,14 @@ static inline uintpaddr_t ipa_addr(ipaddr_t ipa)
 }
 
 /**
+ * Advances an intermediate physical address.
+ */
+static inline ipaddr_t ipa_add(ipaddr_t ipa, size_t n)
+{
+	return ipa_init(ipa_addr(ipa) + n);
+}
+
+/**
  * Initializes a virtual address.
  */
 static inline vaddr_t va_init(uintvaddr_t v)
@@ -82,14 +98,6 @@ static inline vaddr_t va_init(uintvaddr_t v)
 static inline uintvaddr_t va_addr(vaddr_t va)
 {
 	return va.va;
-}
-
-/**
- * Advances a physical address.
- */
-static inline paddr_t pa_add(paddr_t pa, size_t n)
-{
-	return pa_init(pa_addr(pa) + n);
 }
 
 /**

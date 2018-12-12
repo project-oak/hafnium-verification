@@ -134,6 +134,11 @@ uint8_t arch_mm_root_table_count(int mode);
 uint64_t arch_mm_mode_to_attrs(int mode);
 
 /**
+ * Converts the stage-2 block attributes back to the corresponding mode.
+ */
+int arch_mm_stage2_attrs_to_mode(uint64_t attrs);
+
+/**
  * Initializes the arch specific memory management state.
  */
 bool arch_mm_init(paddr_t table, bool first);
