@@ -92,6 +92,25 @@ static size_t mm_entry_size(uint8_t level)
 }
 
 /**
+ * Gets the address of the start of the next block of the given size. The size
+ * must be a power of two.
+ */
+static ptable_addr_t mm_start_of_next_block(ptable_addr_t addr,
+					    size_t block_size)
+{
+	return (addr + block_size) & ~(block_size - 1);
+}
+
+/**
+ * Gets the physical address of the start of the next block of the given size.
+ * The size must be a power of two.
+ */
+static paddr_t mm_pa_start_of_next_block(paddr_t pa, size_t block_size)
+{
+	return pa_init((pa_addr(pa) + block_size) & ~(block_size - 1));
+}
+
+/**
  * For a given address, calculates the maximum (plus one) address that can be
  * represented by the same table at the given level.
  */
@@ -347,8 +366,8 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			}
 		}
 
-		begin = (begin + entry_size) & ~(entry_size - 1);
-		pa = pa_init((pa_addr(pa) + entry_size) & ~(entry_size - 1));
+		begin = mm_start_of_next_block(begin, entry_size);
+		pa = mm_pa_start_of_next_block(pa, entry_size);
 		pte++;
 	}
 
@@ -373,7 +392,7 @@ static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
 				  root_level - 1, flags)) {
 			return false;
 		}
-		begin = (begin + root_table_size) & ~(root_table_size - 1);
+		begin = mm_start_of_next_block(begin, root_table_size);
 		table++;
 	}
 
