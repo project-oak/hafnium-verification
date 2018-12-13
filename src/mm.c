@@ -807,22 +807,6 @@ bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode)
 }
 
 /**
- * Translates an intermediate physical address to a physical address. Addresses
- * are currently identity mapped so this is a simple type convertion. Returns
- * true if the address was mapped in the table and the address was converted.
- */
-bool mm_vm_translate(struct mm_ptable *t, ipaddr_t ipa, paddr_t *pa)
-{
-	bool mapped = mm_vm_is_mapped(t, ipa, 0);
-
-	if (mapped) {
-		*pa = pa_init(ipa_addr(ipa));
-	}
-
-	return mapped;
-}
-
-/**
  * Updates the hypervisor page table such that the given physical address range
  * is mapped into the address space at the corresponding address range in the
  * architecture-agnostic mode provided.

@@ -212,25 +212,25 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 	 * these pages aren't and won't be shared.
 	 */
 
-	/*
-	 * Convert the intermediate physical addresses to physical address
-	 * provided the address was acessible from the VM which ensures that the
-	 * caller isn't trying to use another VM's memory.
-	 */
-	if (!mm_vm_translate(&vm->ptable, send, &pa_send_begin) ||
-	    !mm_vm_translate(&vm->ptable, recv, &pa_recv_begin)) {
+	/* Ensure the pages are accessible from the VM. */
+	if (!mm_vm_is_mapped(&vm->ptable, send, 0) ||
+	    !mm_vm_is_mapped(&vm->ptable, recv, 0)) {
 		ret = -1;
 		goto exit;
 	}
+
+	/* Convert to physical addresses. */
+	pa_send_begin = pa_from_ipa(send);
+	pa_send_end = pa_add(pa_send_begin, PAGE_SIZE);
+
+	pa_recv_begin = pa_from_ipa(recv);
+	pa_recv_end = pa_add(pa_recv_begin, PAGE_SIZE);
 
 	/* Fail if the same page is used for the send and receive pages. */
 	if (pa_addr(pa_send_begin) == pa_addr(pa_recv_begin)) {
 		ret = -1;
 		goto exit;
 	}
-
-	pa_send_end = pa_add(pa_send_begin, PAGE_SIZE);
-	pa_recv_end = pa_add(pa_recv_begin, PAGE_SIZE);
 
 	/* Map the send page as read-only in the hypervisor address space. */
 	vm->mailbox.send = mm_identity_map(pa_send_begin, pa_send_end,
