@@ -167,8 +167,13 @@ static inline uint32_t hf_get_and_acknowledge_interrupt(void)
  * This doesn't cause the vCPU to actually be run immediately; it will be taken
  * when the vCPU is next run, which is up to the scheduler.
  *
- * Returns 0 on success, or -1 if the target VM or vCPU doesn't exist or
- * the interrupt ID is invalid.
+ * Returns:
+ *  - -1 on failure because the target VM or vCPU doesn't exist, the interrupt
+ *    ID is invalid, or the current VM is not allowed to inject interrupts to
+ *    the target VM.
+ *  - 0 on success if no further action is needed.
+ *  - 1 if it was called by the primary VM and the primary VM now needs to wake
+ *    up or kick the target vCPU.
  */
 static inline int64_t hf_inject_interrupt(uint32_t target_vm_id,
 					  uint32_t target_vcpu_idx,

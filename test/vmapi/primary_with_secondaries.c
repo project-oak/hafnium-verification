@@ -333,7 +333,7 @@ TEST(interrupts, inject_interrupt_twice)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 	/* Inject the interrupt and wait for a message. */
-	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -343,7 +343,7 @@ TEST(interrupts, inject_interrupt_twice)
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
 	/* Inject the interrupt again, and wait for the same message. */
-	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -369,7 +369,7 @@ TEST(interrupts, inject_two_interrupts)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 	/* Inject the interrupt and wait for a message. */
-	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -407,7 +407,7 @@ TEST(interrupts, inject_interrupt_message)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 	/* Inject the interrupt and wait for a message. */
-	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID);
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -426,5 +426,42 @@ TEST(interrupts, inject_interrupt_message)
 	EXPECT_EQ(memcmp(recv_page, expected_response_2,
 			 sizeof(expected_response_2)),
 		  0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
+ * Inject an interrupt which the target VM has not enabled, and then send a
+ * message telling it to enable that interrupt ID. It should then (and only
+ * then) send a message back.
+ */
+TEST(interrupts, inject_interrupt_disabled)
+{
+	const char expected_response[] = "Got IRQ 09.";
+	const char message[] = "Enable interrupt C";
+	struct hf_vcpu_run_return run_res;
+
+	/* Configure mailbox pages. */
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Inject the interrupt and expect not to get a message. */
+	hf_inject_interrupt(INTERRUPTIBLE_VM_ID, 0, EXTERNAL_INTERRUPT_ID_C);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(hf_mailbox_clear(), -1);
+
+	/*
+	 * Now send a message to the secondary to enable the interrupt ID, and
+	 * expect the response from the interrupt we sent before.
+	 */
+	memcpy(send_page, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(INTERRUPTIBLE_VM_ID, sizeof(message)), 0);
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(
+		memcmp(recv_page, expected_response, sizeof(expected_response)),
+		0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }

@@ -25,12 +25,19 @@
 #include "psci.h"
 #include "smc.h"
 
+#define HCR_EL2_VI (1u << 7)
+
 struct hvc_handler_return {
 	uintreg_t user_ret;
 	struct vcpu *new;
 };
 
 void cpu_entry(struct cpu *c);
+
+static inline struct vcpu *current(void)
+{
+	return (struct vcpu *)read_msr(tpidr_el2);
+}
 
 void irq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
@@ -201,6 +208,33 @@ static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
 	return true;
 }
 
+/**
+ * Sets or clears the VI bit in the HCR_EL2 register saved in the given
+ * arch_regs.
+ */
+static void set_virtual_interrupt(struct arch_regs *r, bool enable)
+{
+	if (enable) {
+		r->lazy.hcr_el2 |= HCR_EL2_VI;
+	} else {
+		r->lazy.hcr_el2 &= ~HCR_EL2_VI;
+	}
+}
+
+/**
+ * Sets or clears the VI bit in the HCR_EL2 register.
+ */
+static void set_virtual_interrupt_current(bool enable)
+{
+	uintreg_t hcr_el2 = read_msr(hcr_el2);
+	if (enable) {
+		hcr_el2 |= HCR_EL2_VI;
+	} else {
+		hcr_el2 &= ~HCR_EL2_VI;
+	}
+	write_msr(hcr_el2, hcr_el2);
+}
+
 struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 				      uintreg_t arg2, uintreg_t arg3)
 {
@@ -273,6 +307,24 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	default:
 		ret.user_ret = -1;
+	}
+
+	/* Set or clear VI bit. */
+	if (ret.new == NULL) {
+		/*
+		 * Not switching vCPUs, set the bit for the current vCPU
+		 * directly in the register.
+		 */
+		set_virtual_interrupt_current(
+			current()->interrupts.enabled_and_pending_count > 0);
+	} else {
+		/*
+		 * About to switch vCPUs, set the bit for the vCPU to which we
+		 * are switching in the saved copy of the register.
+		 */
+		set_virtual_interrupt(
+			&ret.new->regs,
+			ret.new->interrupts.enabled_and_pending_count > 0);
 	}
 
 	return ret;

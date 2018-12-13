@@ -52,6 +52,12 @@ struct interrupts {
 	uint32_t interrupt_enabled[HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS];
 	/** Bitfield keeping track of which interrupts are pending. */
 	uint32_t interrupt_pending[HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS];
+	/**
+	 * The number of interrupts which are currently both enabled and
+	 * pending. i.e. the number of bits set in interrupt_enable &
+	 * interrupt_pending.
+	 */
+	uint32_t enabled_and_pending_count;
 };
 
 struct retval_state {

@@ -77,19 +77,27 @@ void kmain(void)
 
 	exception_setup();
 	hf_enable_interrupt(SELF_INTERRUPT_ID, true);
-	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID, true);
+	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_A, true);
 	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_B, true);
 	arch_irq_enable();
 
 	/* Loop, echo messages back to the sender. */
 	for (;;) {
 		const char ping_message[] = "Ping";
+		const char enable_message[] = "Enable interrupt C";
 		received_message = mailbox_receive_retry();
-		if (received_message.vm_id == 0 && received_message.size == 5 &&
+		if (received_message.vm_id == HF_PRIMARY_VM_ID &&
+		    received_message.size == sizeof(ping_message) &&
 		    memcmp(recv_page, ping_message, sizeof(ping_message)) ==
 			    0) {
 			/* Interrupt ourselves */
 			hf_inject_interrupt(4, 0, SELF_INTERRUPT_ID);
+		} else if (received_message.vm_id == HF_PRIMARY_VM_ID &&
+			   received_message.size == sizeof(enable_message) &&
+			   memcmp(recv_page, enable_message,
+				  sizeof(enable_message)) == 0) {
+			/* Enable interrupt ID C. */
+			hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_C, true);
 		} else {
 			dlog("Got unexpected message from VM %d, size %d.\n",
 			     received_message.vm_id, received_message.size);
