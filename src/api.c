@@ -542,7 +542,7 @@ uint32_t api_get_and_acknowledge_interrupt(struct vcpu *current)
 }
 
 /**
- * Return wheher the current vCPU is allowed to inject an interrupt into the
+ * Returns whether the current vCPU is allowed to inject an interrupt into the
  * given VM and vCPU.
  */
 static inline bool is_injection_allowed(uint32_t target_vm_id,

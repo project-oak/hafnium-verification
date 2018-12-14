@@ -131,7 +131,7 @@ static inline int64_t hf_mailbox_clear(void)
  *
  * Returns 0 on success, or -1 if the intid is invalid.
  */
-static inline uint64_t hf_enable_interrupt(uint32_t intid, bool enable)
+static inline int64_t hf_enable_interrupt(uint32_t intid, bool enable)
 {
 	return hf_call(HF_ENABLE_INTERRUPT, intid, enable, 0);
 }
