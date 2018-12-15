@@ -75,9 +75,9 @@ static inline uint64_t hf_vcpu_run_return_encode(struct hf_vcpu_run_return res)
  */
 static inline struct hf_vcpu_run_return hf_vcpu_run_return_decode(uint64_t res)
 {
-	struct hf_vcpu_run_return ret;
-
-	ret.code = (enum hf_vcpu_run_code)(res & 0xff);
+	struct hf_vcpu_run_return ret = {
+		.code = (enum hf_vcpu_run_code)(res & 0xff),
+	};
 
 	/* Some codes include more data. */
 	switch (ret.code) {

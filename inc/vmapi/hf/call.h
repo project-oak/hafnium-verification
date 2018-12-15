@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include "hf/arch/cpu.h"
-
 #include "hf/abi.h"
 #include "hf/types.h"
 
@@ -141,7 +139,7 @@ static inline int64_t hf_enable_interrupt(uint32_t intid, bool enable)
  *
  * Returns HF_INVALID_INTID if there are no pending interrupts.
  */
-static inline uint32_t hf_get_and_acknowledge_interrupt()
+static inline uint32_t hf_get_and_acknowledge_interrupt(void)
 {
 	return hf_call(HF_GET_AND_ACKNOWLEDGE_INTERRUPT, 0, 0, 0);
 }
