@@ -26,22 +26,13 @@
 #include "vmapi/hf/call.h"
 
 #include "hftest.h"
-
-static alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
-static alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];
-static_assert(sizeof(send_page) == PAGE_SIZE, "Send page is not a page.");
-static_assert(sizeof(recv_page) == PAGE_SIZE, "Recv page is not a page.");
-
-static hf_ipaddr_t send_page_addr = (hf_ipaddr_t)send_page;
-static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
-
-#define STATE_VM_ID 1
+#include "primary_with_secondary.h"
 
 /**
  * Iterates trying to run vCPU of the secondary VM. Returns when a message
  * of non-zero length is received.
  */
-bool run_loop(void)
+static bool run_loop(struct mailbox_buffers *mb)
 {
 	struct hf_vcpu_run_return run_res;
 	bool ok = false;
@@ -49,7 +40,7 @@ bool run_loop(void)
 	for (;;) {
 		/* Run until it manages to schedule vCPU on this CPU. */
 		do {
-			run_res = hf_vcpu_run(STATE_VM_ID, 0);
+			run_res = hf_vcpu_run(SERVICE_VM0, 0);
 		} while (run_res.code == HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 		/* Break out if we received a message with non-zero length. */
@@ -64,7 +55,7 @@ bool run_loop(void)
 
 	/* Copies the contents of the received boolean to the return value. */
 	if (run_res.message.size == sizeof(ok)) {
-		memcpy(&ok, recv_page, sizeof(ok));
+		memcpy(&ok, mb->recv, sizeof(ok));
 	}
 
 	hf_mailbox_clear();
@@ -78,8 +69,7 @@ bool run_loop(void)
  */
 static void vm_cpu_entry(uintptr_t arg)
 {
-	(void)arg;
-	run_loop();
+	run_loop((struct mailbox_buffers *)arg);
 }
 
 /**
@@ -90,12 +80,16 @@ static void vm_cpu_entry(uintptr_t arg)
 TEST(vcpu_state, concurrent_save_restore)
 {
 	alignas(4096) static char stack[4096];
+	static struct mailbox_buffers mb;
 
-	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	mb = set_up_mailbox();
+
+	SERVICE_SELECT(SERVICE_VM0, "check_state", mb.send);
 
 	/* Start second vCPU. */
-	EXPECT_EQ(cpu_start(1, stack, sizeof(stack), vm_cpu_entry, 0), true);
+	ASSERT_TRUE(cpu_start(1, stack, sizeof(stack), vm_cpu_entry,
+			      (uintptr_t)&mb));
 
 	/* Run on a loop until the secondary VM is done. */
-	EXPECT_EQ(run_loop(), true);
+	EXPECT_TRUE(run_loop(&mb));
 }

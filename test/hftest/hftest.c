@@ -19,8 +19,11 @@
 #include <stdalign.h>
 #include <stdint.h>
 
+#include "hf/arch/vm/power_mgmt.h"
+
 #include "hf/fdt.h"
 #include "hf/memiter.h"
+#include "hf/std.h"
 
 alignas(4096) uint8_t kstack[4096];
 
@@ -28,6 +31,13 @@ HFTEST_ENABLE();
 
 extern struct hftest_test hftest_begin[];
 extern struct hftest_test hftest_end[];
+
+static struct hftest_context global_context;
+
+struct hftest_context *hftest_get_context(void)
+{
+	return &global_context;
+}
 
 static void json(void)
 {
@@ -62,9 +72,11 @@ static void json(void)
 			if (!tests_in_suite) {
 				HFTEST_LOG("      \"tests\": [");
 			}
-			/* It's easier to put the comma at the start of the line
+			/*
+			 * It's easier to put the comma at the start of the line
 			 * than the end even
-			 * though the JSON looks a bit funky. */
+			 * though the JSON looks a bit funky.
+			 */
 			HFTEST_LOG("       %c\"%s\"",
 				   tests_in_suite ? ',' : ' ', test->name);
 			++tests_in_suite;
@@ -78,37 +90,43 @@ static void json(void)
 	HFTEST_LOG("}");
 }
 
+static noreturn void abort(void)
+{
+	HFTEST_LOG("FAIL");
+	shutdown();
+}
+
 static void run_test(hftest_test_fn set_up, hftest_test_fn test,
 		     hftest_test_fn tear_down)
 {
-	struct hftest_context ctx = {
-		.failures = 0,
-	};
+	/* Prepare the context. */
+	struct hftest_context *ctx = hftest_get_context();
+	memset(ctx, 0, sizeof(*ctx));
+	ctx->abort = abort;
 
+	/* Run any set up functions. */
 	if (set_up) {
-		set_up(&ctx);
-		if (ctx.failures) {
-			goto fail;
+		set_up();
+		if (ctx->failures) {
+			abort();
 		}
 	}
 
-	test(&ctx);
-	if (ctx.failures) {
-		goto fail;
+	/* Run the test. */
+	test();
+	if (ctx->failures) {
+		abort();
 	}
 
+	/* Run any tear down functions. */
 	if (tear_down) {
-		tear_down(&ctx);
-		if (ctx.failures) {
-			goto fail;
+		tear_down();
+		if (ctx->failures) {
+			abort();
 		}
 	}
 
-	HFTEST_LOG("PASS");
-	return;
-
-fail:
-	HFTEST_LOG("FAIL");
+	HFTEST_LOG("FINISHED");
 }
 
 static void run(struct memiter *args)
@@ -151,8 +169,10 @@ static void run(struct memiter *args)
 		}
 
 		switch (test->kind) {
-		/* The first entries in the suite are the set up and tear down
-		 * functions. */
+		/*
+		 * The first entries in the suite are the set up and tear down
+		 * functions.
+		 */
 		case HFTEST_KIND_SET_UP:
 			suite_set_up = test->fn;
 			break;
@@ -167,13 +187,16 @@ static void run(struct memiter *args)
 				return;
 			}
 			break;
+		default:
+			/* Ignore other kinds. */
+			break;
 		}
 	}
 
 	HFTEST_LOG("Unable to find requested tests.");
 }
 
-void help(void)
+static void help(void)
 {
 	HFTEST_LOG("usage:");
 	HFTEST_LOG("");
@@ -193,7 +216,7 @@ void help(void)
 	HFTEST_LOG("    Run the named test from the named test suite.");
 }
 
-void main(const struct fdt_header *fdt)
+void kmain(const struct fdt_header *fdt)
 {
 	struct fdt_node n;
 	const char *bootargs;
@@ -240,9 +263,4 @@ void main(const struct fdt_header *fdt)
 	}
 
 	help();
-}
-
-void kmain(const struct fdt_header *fdt)
-{
-	main(fdt);
 }

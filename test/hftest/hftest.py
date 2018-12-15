@@ -35,12 +35,12 @@ import sys
 def qemu(image, initrd, args, log):
     qemu_args = [
         "timeout", "--foreground", "5s",
-        "./prebuilts/linux-x64/qemu/qemu-system-aarch64", "-M", "virt,gic_version=3", "-cpu",
-        "cortex-a57", "-smp", "4", "-m", "16M", "-machine", "virtualization=true",
+        "./prebuilts/linux-x64/qemu/qemu-system-aarch64", "-M", "virt,gic_version=3",
+        "-cpu", "cortex-a57", "-smp", "4", "-m", "16M", "-machine", "virtualization=true",
         "-nographic", "-nodefaults", "-serial", "stdio", "-kernel", image,
     ]
     if initrd:
-      qemu_args += ["-initrd", initrd]
+        qemu_args += ["-initrd", initrd]
     if args:
         qemu_args += ["-append", args]
     # Save the log to a file.
@@ -132,7 +132,8 @@ def Main():
                 sponge_log.write(out)
                 sponge_log.write("\r\n\r\n")
                 hftest_out = hftest_lines(out)
-                if hftest_out[-1] == "PASS":
+                if hftest_out[-1] == "FINISHED" and not any(
+                        l.startswith('Failure:') for l in hftest_out):
                     print("        PASS")
                 else:
                     failures_from_suite += 1

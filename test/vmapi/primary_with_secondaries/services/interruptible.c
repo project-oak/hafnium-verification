@@ -14,34 +14,21 @@
  * limitations under the License.
  */
 
-#include <stdalign.h>
-#include <stdint.h>
-
 #include "hf/arch/vm/interrupts_gicv3.h"
 
 #include "hf/dlog.h"
-#include "hf/mm.h"
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 
 #include "../msr.h"
-#include "constants.h"
+#include "hftest.h"
+#include "primary_with_secondary.h"
 
 /*
  * Secondary VM that sends messages in response to interrupts, and interrupts
  * itself when it receives a message.
  */
-
-alignas(4096) uint8_t kstack[4096];
-
-static alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
-static alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];
-
-static hf_ipaddr_t send_page_addr = (hf_ipaddr_t)send_page;
-static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
-
-static struct hf_mailbox_receive_return received_message;
 
 void irq_current(void)
 {
@@ -51,7 +38,7 @@ void irq_current(void)
 	dlog("IRQ %d from current\n", interrupt_id);
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
-	memcpy(send_page, buffer, size);
+	memcpy(SERVICE_SEND_BUFFER(), buffer, size);
 	hf_mailbox_send(HF_PRIMARY_VM_ID, size);
 }
 
@@ -71,9 +58,9 @@ struct hf_mailbox_receive_return mailbox_receive_retry()
 	return received;
 }
 
-void kmain(void)
+TEST_SERVICE(interruptible)
 {
-	hf_vm_configure(send_page_addr, recv_page_addr);
+	uint32_t this_vm_id = hf_vm_get_id();
 
 	exception_setup();
 	hf_enable_interrupt(SELF_INTERRUPT_ID, true);
@@ -81,20 +68,20 @@ void kmain(void)
 	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_B, true);
 	arch_irq_enable();
 
-	/* Loop, echo messages back to the sender. */
 	for (;;) {
 		const char ping_message[] = "Ping";
 		const char enable_message[] = "Enable interrupt C";
-		received_message = mailbox_receive_retry();
+		struct hf_mailbox_receive_return received_message =
+			mailbox_receive_retry();
 		if (received_message.vm_id == HF_PRIMARY_VM_ID &&
 		    received_message.size == sizeof(ping_message) &&
-		    memcmp(recv_page, ping_message, sizeof(ping_message)) ==
-			    0) {
+		    memcmp(SERVICE_RECV_BUFFER(), ping_message,
+			   sizeof(ping_message)) == 0) {
 			/* Interrupt ourselves */
-			hf_inject_interrupt(4, 0, SELF_INTERRUPT_ID);
+			hf_inject_interrupt(this_vm_id, 0, SELF_INTERRUPT_ID);
 		} else if (received_message.vm_id == HF_PRIMARY_VM_ID &&
 			   received_message.size == sizeof(enable_message) &&
-			   memcmp(recv_page, enable_message,
+			   memcmp(SERVICE_RECV_BUFFER(), enable_message,
 				  sizeof(enable_message)) == 0) {
 			/* Enable interrupt ID C. */
 			hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_C, true);

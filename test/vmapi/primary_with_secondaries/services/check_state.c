@@ -14,23 +14,13 @@
  * limitations under the License.
  */
 
-#include <stdalign.h>
-#include <stdint.h>
-
 #include "hf/arch/vm/state.h"
 
-#include "hf/mm.h"
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 
-alignas(4096) uint8_t kstack[4096];
-
-static alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
-static alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];
-
-static hf_ipaddr_t send_page_addr = (hf_ipaddr_t)send_page;
-static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
+#include "hftest.h"
 
 void send_with_retry(uint32_t vm_id, size_t size)
 {
@@ -42,24 +32,23 @@ void send_with_retry(uint32_t vm_id, size_t size)
 }
 
 /**
- * This VM repeatedly takes the following steps: sets the per-cpu pointer to
- * some value, makes a hypervisor call, check that the value is still what it
+ * This service repeatedly takes the following steps: sets the per-cpu pointer
+ * to some value, makes a hypervisor call, check that the value is still what it
  * was set to.
  *
  * This loop helps detect bugs where the hypervisor inadvertently destroys
  * state.
  *
- * At the end of its iterations, the VM reports the result to the primary VM,
- * which then fails or succeeds the test.
+ * At the end of its iterations, the service reports the result to the primary
+ * VM, which then fails or succeeds the test.
  */
-void kmain(void)
+TEST_SERVICE(check_state)
 {
 	size_t i;
 	bool ok = true;
 	static volatile uintptr_t expected;
 	static volatile uintptr_t actual;
 
-	hf_vm_configure(send_page_addr, recv_page_addr);
 	for (i = 0; i < 100000; i++) {
 		/*
 		 * We store the expected/actual values in volatile static
@@ -74,7 +63,7 @@ void kmain(void)
 	}
 
 	/* Send two replies, one for each physical CPU. */
-	memcpy(send_page, &ok, sizeof(ok));
+	memcpy(SERVICE_SEND_BUFFER(), &ok, sizeof(ok));
 	send_with_retry(HF_PRIMARY_VM_ID, sizeof(ok));
 	send_with_retry(HF_PRIMARY_VM_ID, sizeof(ok));
 }

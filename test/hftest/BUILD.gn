@@ -45,9 +45,16 @@ source_set("hftest_primary_vm") {
 source_set("hftest_secondary_vm") {
   testonly = true
 
+  public_configs = [ ":hftest_config" ]
+
+  sources = [
+    "hftest_service.c",
+  ]
+
   deps = [
     "//src:common",
     "//src:dlog",
+    "//src:memiter",
     "//src/arch/${plat_arch}:entry",
     "//src/arch/${plat_arch}/hftest:entry",
     "//src/arch/${plat_arch}/hftest:hf_call",

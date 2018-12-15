@@ -44,4 +44,3 @@ $HFTEST arch_test
 $HFTEST hafnium --initrd gicv3_test
 $HFTEST hafnium --initrd primary_only_test
 $HFTEST hafnium --initrd primary_with_secondaries_test
-$HFTEST hafnium --initrd primary_with_state_secondary_test

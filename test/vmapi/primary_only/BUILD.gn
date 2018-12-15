@@ -14,11 +14,21 @@
 
 import("//build/image/image.gni")
 
-group("vmapi") {
+# Tests with no secondary VMs.
+vm_kernel("primary_only_test_vm") {
   testonly = true
 
-  deps = [
-    "primary_only:primary_only_test",
-    "primary_with_secondaries:primary_with_secondaries_test",
+  sources = [
+    "primary_only.c",
   ]
+
+  deps = [
+    "//test/hftest:hftest_primary_vm",
+  ]
+}
+
+initrd("primary_only_test") {
+  testonly = true
+
+  primary_vm = ":primary_only_test_vm"
 }

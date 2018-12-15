@@ -13,12 +13,24 @@
 # limitations under the License.
 
 import("//build/image/image.gni")
+import("//build/toolchain/platform.gni")
 
-group("vmapi") {
+# Tests specific to GICv3.
+vm_kernel("gicv3_test_vm") {
   testonly = true
 
-  deps = [
-    "primary_only:primary_only_test",
-    "primary_with_secondaries:primary_with_secondaries_test",
+  sources = [
+    "gicv3.c",
   ]
+
+  deps = [
+    "//src/arch/${plat_arch}/hftest:interrupts_gicv3",
+    "//test/hftest:hftest_primary_vm",
+  ]
+}
+
+initrd("gicv3_test") {
+  testonly = true
+
+  primary_vm = ":gicv3_test_vm"
 }

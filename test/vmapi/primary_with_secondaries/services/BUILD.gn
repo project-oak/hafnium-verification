@@ -14,61 +14,10 @@
 
 import("//build/image/image.gni")
 
-vm_kernel("echo") {
+# Service to expose race conditions when running a vcpu.
+source_set("check_state") {
   testonly = true
-  public_configs = [ "//test/vmapi:config" ]
-
-  sources = [
-    "echo.c",
-  ]
-
-  deps = [
-    "//test/hftest:hftest_secondary_vm",
-  ]
-}
-
-vm_kernel("relay_a") {
-  testonly = true
-  public_configs = [ "//test/vmapi:config" ]
-
-  sources = [
-    "relay_a.c",
-  ]
-
-  deps = [
-    "//test/hftest:hftest_secondary_vm",
-  ]
-}
-
-vm_kernel("relay_b") {
-  testonly = true
-  public_configs = [ "//test/vmapi:config" ]
-
-  sources = [
-    "relay_b.c",
-  ]
-
-  deps = [
-    "//test/hftest:hftest_secondary_vm",
-  ]
-}
-
-vm_kernel("interruptible") {
-  testonly = true
-  public_configs = [ "//test/vmapi:config" ]
-
-  sources = [
-    "interruptible.c",
-  ]
-
-  deps = [
-    "//src/arch/aarch64/hftest:interrupts_gicv3",
-    "//test/hftest:hftest_secondary_vm",
-  ]
-}
-
-vm_kernel("check_state") {
-  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
 
   sources = [
     "check_state.c",
@@ -76,6 +25,65 @@ vm_kernel("check_state") {
 
   deps = [
     "//src/arch/aarch64/hftest:state",
+  ]
+}
+
+# Service to listen for messages and echo them back to the sender.
+source_set("echo") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "echo.c",
+  ]
+}
+
+# Service that can be interrupted.
+source_set("interruptible") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+
+  sources = [
+    "interruptible.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
+  ]
+}
+
+# Service to listen for messages and forward them on to another.
+source_set("relay") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "relay.c",
+  ]
+}
+
+# Group services together into VMs.
+
+vm_kernel("service_vm0") {
+  testonly = true
+
+  deps = [
+    ":check_state",
+    ":echo",
+    ":interruptible",
+    ":relay",
+    "//test/hftest:hftest_secondary_vm",
+  ]
+}
+
+vm_kernel("service_vm1") {
+  testonly = true
+
+  deps = [
+    ":relay",
     "//test/hftest:hftest_secondary_vm",
   ]
 }
