@@ -192,13 +192,14 @@ void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p)
 	/* TODO: Check for "reserved-memory" nodes. */
 }
 
-struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n)
+struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n,
+			   struct mpool *ppool)
 {
 	struct fdt_header *fdt;
 
 	/* Map the fdt header in. */
 	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_header_size()),
-			      MM_MODE_R);
+			      MM_MODE_R, ppool);
 	if (!fdt) {
 		dlog("Unable to map FDT header.\n");
 		return NULL;
@@ -211,7 +212,7 @@ struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n)
 
 	/* Map the rest of the fdt in. */
 	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)),
-			      MM_MODE_R);
+			      MM_MODE_R, ppool);
 	if (!fdt) {
 		dlog("Unable to map full FDT.\n");
 		goto fail;
@@ -220,17 +221,19 @@ struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n)
 	return fdt;
 
 fail:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0);
+	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0, ppool);
 	return NULL;
 }
 
-bool fdt_unmap(struct fdt_header *fdt)
+bool fdt_unmap(struct fdt_header *fdt, struct mpool *ppool)
 {
 	paddr_t fdt_addr = pa_from_va(va_from_ptr(fdt));
-	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), 0);
+	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), 0,
+			ppool);
 }
 
-bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
+bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
+	       struct mpool *ppool)
 {
 	struct fdt_header *fdt;
 	struct fdt_node n;
@@ -239,7 +242,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 
 	/* Map the fdt header in. */
 	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_header_size()),
-			      MM_MODE_R);
+			      MM_MODE_R, ppool);
 	if (!fdt) {
 		dlog("Unable to map FDT header.\n");
 		return false;
@@ -253,7 +256,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 	/* Map the fdt (+ a page) in r/w mode in preparation for updating it. */
 	fdt = mm_identity_map(fdt_addr,
 			      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE),
-			      MM_MODE_R | MM_MODE_W);
+			      MM_MODE_R | MM_MODE_W, ppool);
 	if (!fdt) {
 		dlog("Unable to map FDT in r/w mode.\n");
 		goto err_unmap_fdt_header;
@@ -298,13 +301,14 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p)
 out_unmap_fdt:
 	/* Unmap FDT. */
 	if (!mm_unmap(fdt_addr,
-		      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE), 0)) {
+		      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE), 0,
+		      ppool)) {
 		dlog("Unable to unmap writable FDT.\n");
 		return false;
 	}
 	return ret;
 
 err_unmap_fdt_header:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0);
+	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0, ppool);
 	return false;
 }

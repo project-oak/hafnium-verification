@@ -20,7 +20,6 @@
 #include <stdatomic.h>
 #include <stdint.h>
 
-#include "hf/alloc.h"
 #include "hf/dlog.h"
 #include "hf/layout.h"
 
@@ -48,11 +47,10 @@ static_assert(
 /* Keep macro alignment */
 /* clang-format off */
 
-#define MAP_FLAG_NOSYNC 0x01
-#define MAP_FLAG_COMMIT 0x02
-#define MAP_FLAG_UNMAP  0x04
-#define MAP_FLAG_NOBBM  0x08
-#define MAP_FLAG_STAGE1 0x10
+#define MAP_FLAG_COMMIT 0x01
+#define MAP_FLAG_UNMAP  0x02
+#define MAP_FLAG_NOBBM  0x04
+#define MAP_FLAG_STAGE1 0x08
 
 /* clang-format on */
 
@@ -131,16 +129,16 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
 }
 
 /**
- * Allocate a new page table.
+ * Allocates a new page table.
  */
-static struct mm_page_table *mm_alloc_page_tables(size_t count, bool nosync)
+static struct mm_page_table *mm_alloc_page_tables(size_t count,
+						  struct mpool *ppool)
 {
-	size_t size_and_align = count * sizeof(struct mm_page_table);
-	if (nosync) {
-		return halloc_aligned_nosync(size_and_align, size_and_align);
+	if (count == 1) {
+		return mpool_alloc(ppool);
 	}
 
-	return halloc_aligned(size_and_align, size_and_align);
+	return mpool_alloc_contiguous(ppool, count, count);
 }
 
 /**
@@ -160,7 +158,7 @@ static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end,
  * Frees all page-table-related memory associated with the given pte at the
  * given level, including any subtables recursively.
  */
-static void mm_free_page_pte(pte_t pte, uint8_t level)
+static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
 {
 	struct mm_page_table *table;
 	uint64_t i;
@@ -172,11 +170,11 @@ static void mm_free_page_pte(pte_t pte, uint8_t level)
 	/* Recursively free any subtables. */
 	table = mm_page_table_from_pa(arch_mm_table_from_pte(pte, level));
 	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
-		mm_free_page_pte(table->entries[i], level - 1);
+		mm_free_page_pte(table->entries[i], level - 1, ppool);
 	}
 
 	/* Free the table itself. */
-	hfree(table);
+	mpool_free(ppool, table);
 }
 
 /**
@@ -187,7 +185,7 @@ static void mm_free_page_pte(pte_t pte, uint8_t level)
  * TLBs, which may result in issues for example in cache coherency.
  */
 static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
-			     uint8_t level, int flags)
+			     uint8_t level, int flags, struct mpool *ppool)
 {
 	pte_t v = *pte;
 
@@ -206,7 +204,7 @@ static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 	*pte = new_pte;
 
 	/* Free pages that aren't in use anymore. */
-	mm_free_page_pte(v, level);
+	mm_free_page_pte(v, level, ppool);
 }
 
 /**
@@ -217,7 +215,8 @@ static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
  */
 static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 						   pte_t *pte, uint8_t level,
-						   int flags)
+						   int flags,
+						   struct mpool *ppool)
 {
 	struct mm_page_table *ntable;
 	pte_t v = *pte;
@@ -232,7 +231,7 @@ static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 	}
 
 	/* Allocate a new table. */
-	ntable = mm_alloc_page_tables(1, flags & MAP_FLAG_NOSYNC);
+	ntable = mm_alloc_page_tables(1, ppool);
 	if (ntable == NULL) {
 		dlog("Failed to allocate memory for page table\n");
 		return NULL;
@@ -261,7 +260,7 @@ static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 	/* Replace the pte entry, doing a break-before-make if needed. */
 	mm_replace_entry(begin, pte,
 			 arch_mm_table_pte(level, pa_init((uintpaddr_t)ntable)),
-			 level, flags);
+			 level, flags, ppool);
 
 	return ntable;
 }
@@ -293,7 +292,7 @@ static bool mm_page_table_is_empty(struct mm_page_table *table, uint8_t level)
  */
 static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 uint64_t attrs, struct mm_page_table *table,
-			 uint8_t level, int flags)
+			 uint8_t level, int flags, struct mpool *ppool)
 {
 	pte_t *pte = &table->entries[mm_index(begin, level)];
 	ptable_addr_t level_end = mm_level_end(begin, level);
@@ -330,15 +329,15 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 					      : arch_mm_block_pte(level, pa,
 								  attrs);
 				mm_replace_entry(begin, pte, new_pte, level,
-						 flags);
+						 flags, ppool);
 			}
 		} else {
 			/*
 			 * If the entry is already a subtable get it; otherwise
 			 * replace it with an equivalent subtable and get that.
 			 */
-			struct mm_page_table *nt =
-				mm_populate_table_pte(begin, pte, level, flags);
+			struct mm_page_table *nt = mm_populate_table_pte(
+				begin, pte, level, flags, ppool);
 			if (nt == NULL) {
 				return false;
 			}
@@ -348,7 +347,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			 * the subtable.
 			 */
 			if (!mm_map_level(begin, end, pa, attrs, nt, level - 1,
-					  flags)) {
+					  flags, ppool)) {
 				return false;
 			}
 
@@ -362,7 +361,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 			    mm_page_table_is_empty(nt, level - 1)) {
 				pte_t v = *pte;
 				*pte = arch_mm_absent_pte(level);
-				mm_free_page_pte(v, level);
+				mm_free_page_pte(v, level, ppool);
 			}
 		}
 
@@ -381,7 +380,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
  */
 static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
 			ptable_addr_t end, uint64_t attrs, uint8_t root_level,
-			int flags)
+			int flags, struct mpool *ppool)
 {
 	size_t root_table_size = mm_entry_size(root_level);
 	struct mm_page_table *table =
@@ -389,7 +388,7 @@ static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
 
 	while (begin < end) {
 		if (!mm_map_level(begin, end, pa_init(begin), attrs, table,
-				  root_level - 1, flags)) {
+				  root_level - 1, flags, ppool)) {
 			return false;
 		}
 		begin = mm_start_of_next_block(begin, root_table_size);
@@ -405,11 +404,11 @@ static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
  * provided.
  */
 static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
-				      paddr_t pa_end, int mode)
+				      paddr_t pa_end, int mode,
+				      struct mpool *ppool)
 {
 	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	int flags = (mode & MM_MODE_NOSYNC ? MAP_FLAG_NOSYNC : 0) |
-		    (mode & MM_MODE_NOINVALIDATE ? MAP_FLAG_NOBBM : 0) |
+	int flags = (mode & MM_MODE_NOINVALIDATE ? MAP_FLAG_NOBBM : 0) |
 		    (mode & MM_MODE_STAGE1 ? MAP_FLAG_STAGE1 : 0) |
 		    (mode & MM_MODE_INVALID && mode & MM_MODE_UNOWNED
 			     ? MAP_FLAG_UNMAP
@@ -439,9 +438,9 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 	 * state. In such a two-step implementation, the table may be left with
 	 * extra internal tables, but no different mapping on failure.
 	 */
-	if (!mm_map_root(t, begin, end, attrs, root_level, flags) ||
+	if (!mm_map_root(t, begin, end, attrs, root_level, flags, ppool) ||
 	    !mm_map_root(t, begin, end, attrs, root_level,
-			 flags | MAP_FLAG_COMMIT)) {
+			 flags | MAP_FLAG_COMMIT, ppool)) {
 		return false;
 	}
 
@@ -458,9 +457,10 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
  * into the address space with the architecture-agnostic mode provided.
  */
 static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
-				   paddr_t pa_end, int mode)
+				   paddr_t pa_end, int mode,
+				   struct mpool *ppool)
 {
-	return mm_ptable_identity_update(t, pa_begin, pa_end, mode);
+	return mm_ptable_identity_update(t, pa_begin, pa_end, mode, ppool);
 }
 
 /**
@@ -468,10 +468,11 @@ static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
  * mapped into the address space.
  */
 static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
-			    paddr_t pa_end, int mode)
+			    paddr_t pa_end, int mode, struct mpool *ppool)
 {
 	return mm_ptable_identity_update(
-		t, pa_begin, pa_end, mode | MM_MODE_UNOWNED | MM_MODE_INVALID);
+		t, pa_begin, pa_end, mode | MM_MODE_UNOWNED | MM_MODE_INVALID,
+		ppool);
 }
 
 /**
@@ -518,7 +519,8 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
  * absent entry with which it can be replaced. Note that `entry` will no longer
  * be valid after calling this function as the subtable will have been freed.
  */
-static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level)
+static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level,
+				    struct mpool *ppool)
 {
 	struct mm_page_table *table =
 		mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
@@ -528,7 +530,7 @@ static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level)
 	 * using mm_free_page_pte) because we know by this point that it
 	 * doesn't have any subtables of its own.
 	 */
-	hfree(table);
+	mpool_free(ppool, table);
 
 	/* Replace subtable with a single absent entry. */
 	return arch_mm_absent_pte(level);
@@ -540,7 +542,8 @@ static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level)
  * `entry` will no longer be valid after calling this function as the subtable
  * may have been freed.
  */
-static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level)
+static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level,
+				   struct mpool *ppool)
 {
 	struct mm_page_table *table;
 	uint64_t block_attrs;
@@ -553,22 +556,21 @@ static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level)
 	}
 
 	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
-	/*
-	 * Replace subtable with a single block, with equivalent
-	 * attributes.
-	 */
+
+	/* Replace subtable with a single block, with equivalent attributes. */
 	block_attrs = arch_mm_pte_attrs(table->entries[0], level - 1);
 	table_attrs = arch_mm_pte_attrs(entry, level);
 	combined_attrs =
 		arch_mm_combine_table_entry_attrs(table_attrs, block_attrs);
 	block_address = arch_mm_block_from_pte(table->entries[0], level - 1);
+
 	/* Free the subtable. */
-	hfree(table);
+	mpool_free(ppool, table);
+
 	/*
-	 * We can assume that the block is aligned properly
-	 * because all virtual addresses are aligned by
-	 * definition, and we have a 1-1 mapping from virtual to
-	 * physical addresses.
+	 * We can assume that the block is aligned properly because all virtual
+	 * addresses are aligned by definition, and we have a 1-1 mapping from
+	 * virtual to physical addresses.
 	 */
 	return arch_mm_block_pte(level, block_address, combined_attrs);
 }
@@ -577,7 +579,8 @@ static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level)
  * Defragment the given ptable entry by recursively replacing any tables with
  * block or absent entries where possible.
  */
-static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
+static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
+				    struct mpool *ppool)
 {
 	struct mm_page_table *table;
 	uint64_t i;
@@ -600,8 +603,8 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
 		/*
 		 * First try to defrag the entry, in case it is a subtable.
 		 */
-		table->entries[i] =
-			mm_ptable_defrag_entry(table->entries[i], level - 1);
+		table->entries[i] = mm_ptable_defrag_entry(table->entries[i],
+							   level - 1, ppool);
 
 		if (arch_mm_pte_is_present(table->entries[i], level - 1)) {
 			all_absent_so_far = false;
@@ -617,10 +620,10 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
 		}
 	}
 	if (identical_blocks_so_far) {
-		return mm_table_pte_to_block(entry, level);
+		return mm_table_pte_to_block(entry, level, ppool);
 	}
 	if (all_absent_so_far) {
-		return mm_table_pte_to_absent(entry, level);
+		return mm_table_pte_to_absent(entry, level, ppool);
 	}
 	return entry;
 }
@@ -629,7 +632,7 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level)
  * Defragments the given page table by converting page table references to
  * blocks whenever possible.
  */
-void mm_ptable_defrag(struct mm_ptable *t, int mode)
+void mm_ptable_defrag(struct mm_ptable *t, int mode, struct mpool *ppool)
 {
 	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
 	uint8_t level = arch_mm_max_level(mode);
@@ -644,7 +647,7 @@ void mm_ptable_defrag(struct mm_ptable *t, int mode)
 	for (i = 0; i < root_table_count; ++i) {
 		for (j = 0; j < MM_PTE_PER_PAGE; ++j) {
 			tables[i].entries[j] = mm_ptable_defrag_entry(
-				tables[i].entries[j], level);
+				tables[i].entries[j], level, ppool);
 		}
 	}
 }
@@ -705,14 +708,14 @@ static bool mm_ptable_is_mapped(struct mm_ptable *t, ptable_addr_t addr,
 /**
  * Initialises the given page table.
  */
-bool mm_ptable_init(struct mm_ptable *t, int mode)
+bool mm_ptable_init(struct mm_ptable *t, int mode, struct mpool *ppool)
 {
 	uint8_t i;
 	size_t j;
 	struct mm_page_table *tables;
 	uint8_t root_table_count = arch_mm_root_table_count(mode);
 
-	tables = mm_alloc_page_tables(root_table_count, mode & MM_MODE_NOSYNC);
+	tables = mm_alloc_page_tables(root_table_count, ppool);
 	if (tables == NULL) {
 		return false;
 	}
@@ -734,7 +737,7 @@ bool mm_ptable_init(struct mm_ptable *t, int mode)
 /**
  * Frees all memory associated with the give page table.
  */
-void mm_ptable_fini(struct mm_ptable *t, int mode)
+void mm_ptable_fini(struct mm_ptable *t, int mode, struct mpool *ppool)
 {
 	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
 	uint8_t level = arch_mm_max_level(mode);
@@ -744,11 +747,12 @@ void mm_ptable_fini(struct mm_ptable *t, int mode)
 
 	for (i = 0; i < root_table_count; ++i) {
 		for (j = 0; j < MM_PTE_PER_PAGE; ++j) {
-			mm_free_page_pte(tables[i].entries[j], level);
+			mm_free_page_pte(tables[i].entries[j], level, ppool);
 		}
 	}
 
-	hfree(tables);
+	mpool_add_chunk(ppool, tables,
+			sizeof(struct mm_page_table) * root_table_count);
 }
 
 /**
@@ -757,10 +761,10 @@ void mm_ptable_fini(struct mm_ptable *t, int mode)
  * architecture-agnostic mode provided.
  */
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
-			int mode, ipaddr_t *ipa)
+			int mode, ipaddr_t *ipa, struct mpool *ppool)
 {
-	bool success =
-		mm_ptable_identity_map(t, begin, end, mode & ~MM_MODE_STAGE1);
+	bool success = mm_ptable_identity_map(t, begin, end,
+					      mode & ~MM_MODE_STAGE1, ppool);
 
 	if (success && ipa != NULL) {
 		*ipa = ipa_from_pa(begin);
@@ -773,21 +777,24 @@ bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
  * Updates the VM's table such that the given physical address range is not
  * mapped in the address space.
  */
-bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode)
+bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode,
+		 struct mpool *ppool)
 {
-	return mm_ptable_unmap(t, begin, end, mode & ~MM_MODE_STAGE1);
+	return mm_ptable_unmap(t, begin, end, mode & ~MM_MODE_STAGE1, ppool);
 }
 
 /**
  * Unmaps the hypervisor pages from the given page table.
  */
-bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode)
+bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool)
 {
 	/* TODO: If we add pages dynamically, they must be included here too. */
-	return mm_vm_unmap(t, layout_text_begin(), layout_text_end(), mode) &&
-	       mm_vm_unmap(t, layout_rodata_begin(), layout_rodata_end(),
-			   mode) &&
-	       mm_vm_unmap(t, layout_data_begin(), layout_data_end(), mode);
+	return mm_vm_unmap(t, layout_text_begin(), layout_text_end(), mode,
+			   ppool) &&
+	       mm_vm_unmap(t, layout_rodata_begin(), layout_rodata_end(), mode,
+			   ppool) &&
+	       mm_vm_unmap(t, layout_data_begin(), layout_data_end(), mode,
+			   ppool);
 }
 
 /**
@@ -820,10 +827,10 @@ bool mm_vm_translate(struct mm_ptable *t, ipaddr_t ipa, paddr_t *pa)
  * is mapped into the address space at the corresponding address range in the
  * architecture-agnostic mode provided.
  */
-void *mm_identity_map(paddr_t begin, paddr_t end, int mode)
+void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
 {
-	if (mm_ptable_identity_map(&ptable, begin, end,
-				   mode | MM_MODE_STAGE1)) {
+	if (mm_ptable_identity_map(&ptable, begin, end, mode | MM_MODE_STAGE1,
+				   ppool)) {
 		return ptr_from_va(va_from_pa(begin));
 	}
 
@@ -834,15 +841,16 @@ void *mm_identity_map(paddr_t begin, paddr_t end, int mode)
  * Updates the hypervisor table such that the given physical address range is
  * not mapped in the address space.
  */
-bool mm_unmap(paddr_t begin, paddr_t end, int mode)
+bool mm_unmap(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
 {
-	return mm_ptable_unmap(&ptable, begin, end, mode | MM_MODE_STAGE1);
+	return mm_ptable_unmap(&ptable, begin, end, mode | MM_MODE_STAGE1,
+			       ppool);
 }
 
 /**
  * Initialises memory management for the hypervisor itself.
  */
-bool mm_init(void)
+bool mm_init(struct mpool *ppool)
 {
 	dlog_nosync("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
 		    pa_addr(layout_text_end()));
@@ -851,27 +859,27 @@ bool mm_init(void)
 	dlog_nosync("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
 		    pa_addr(layout_data_end()));
 
-	if (!mm_ptable_init(&ptable, MM_MODE_NOSYNC | MM_MODE_STAGE1)) {
+	if (!mm_ptable_init(&ptable, MM_MODE_STAGE1, ppool)) {
 		dlog_nosync("Unable to allocate memory for page table.\n");
 		return false;
 	}
 
 	/* Map page for uart. */
 	/* TODO: We may not want to map this. */
-	mm_ptable_identity_map(&ptable, pa_init(PL011_BASE),
-			       pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-			       MM_MODE_R | MM_MODE_W | MM_MODE_D |
-				       MM_MODE_NOSYNC | MM_MODE_STAGE1);
+	mm_ptable_identity_map(
+		&ptable, pa_init(PL011_BASE),
+		pa_add(pa_init(PL011_BASE), PAGE_SIZE),
+		MM_MODE_R | MM_MODE_W | MM_MODE_D | MM_MODE_STAGE1, ppool);
 
 	/* Map each section. */
-	mm_identity_map(layout_text_begin(), layout_text_end(),
-			MM_MODE_X | MM_MODE_NOSYNC);
+	mm_identity_map(layout_text_begin(), layout_text_end(), MM_MODE_X,
+			ppool);
 
-	mm_identity_map(layout_rodata_begin(), layout_rodata_end(),
-			MM_MODE_R | MM_MODE_NOSYNC);
+	mm_identity_map(layout_rodata_begin(), layout_rodata_end(), MM_MODE_R,
+			ppool);
 
 	mm_identity_map(layout_data_begin(), layout_data_end(),
-			MM_MODE_R | MM_MODE_W | MM_MODE_NOSYNC);
+			MM_MODE_R | MM_MODE_W, ppool);
 
 	return arch_mm_init(ptable.root, true);
 }
@@ -884,7 +892,7 @@ bool mm_cpu_init(void)
 /**
  * Defragments the hypervisor page table.
  */
-void mm_defrag(void)
+void mm_defrag(struct mpool *ppool)
 {
-	mm_ptable_defrag(&ptable, MM_MODE_STAGE1);
+	mm_ptable_defrag(&ptable, MM_MODE_STAGE1, ppool);
 }

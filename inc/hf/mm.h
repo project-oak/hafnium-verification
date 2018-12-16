@@ -24,6 +24,7 @@
 #include "hf/arch/mm.h"
 
 #include "hf/addr.h"
+#include "hf/mpool.h"
 
 /* Keep macro alignment */
 /* clang-format off */
@@ -71,24 +72,17 @@
 #define MM_MODE_SHARED  0x0040
 
 /**
- * This flag indicates that memory allocation must not use locks. This is
- * relevant in systems where interlocked operations are only available after
- * virtual memory is enabled.
- */
-#define MM_MODE_NOSYNC 0x0080
-
-/**
  * This flag indicates that the mapping is intended to be used in a first
  * stage translation table, which might have different encodings for the
  * attribute bits than the second stage table.
  */
-#define MM_MODE_STAGE1 0x0100
+#define MM_MODE_STAGE1 0x0080
 
 /**
  * This flag indicates that no TLB invalidations should be issued for the
  * changes in the page table.
  */
-#define MM_MODE_NOINVALIDATE 0x0200
+#define MM_MODE_NOINVALIDATE 0x0100
 
 /* clang-format on */
 
@@ -105,20 +99,22 @@ struct mm_ptable {
 	paddr_t root;
 };
 
-bool mm_ptable_init(struct mm_ptable *t, int mode);
-void mm_ptable_fini(struct mm_ptable *t, int mode);
+bool mm_ptable_init(struct mm_ptable *t, int mode, struct mpool *ppool);
+void mm_ptable_fini(struct mm_ptable *t, int mode, struct mpool *ppool);
 void mm_ptable_dump(struct mm_ptable *t, int mode);
-void mm_ptable_defrag(struct mm_ptable *t, int mode);
+void mm_ptable_defrag(struct mm_ptable *t, int mode, struct mpool *ppool);
 
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
-			int mode, ipaddr_t *ipa);
-bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode);
-bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode);
+			int mode, ipaddr_t *ipa, struct mpool *ppool);
+bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode,
+		 struct mpool *ppool);
+bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool);
 bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa, int mode);
 bool mm_vm_translate(struct mm_ptable *t, ipaddr_t ipa, paddr_t *pa);
 
-bool mm_init(void);
+bool mm_init(struct mpool *ppool);
 bool mm_cpu_init(void);
-void *mm_identity_map(paddr_t begin, paddr_t end, int mode);
-bool mm_unmap(paddr_t begin, paddr_t end, int mode);
-void mm_defrag(void);
+void *mm_identity_map(paddr_t begin, paddr_t end, int mode,
+		      struct mpool *ppool);
+bool mm_unmap(paddr_t begin, paddr_t end, int mode, struct mpool *ppool);
+void mm_defrag(struct mpool *ppool);

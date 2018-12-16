@@ -14,16 +14,15 @@
  * limitations under the License.
  */
 
-extern "C" {
-#include "hf/fdt_handler.h"
+#include <gmock/gmock.h>
 
-#include "hf/alloc.h"
+extern "C" {
 #include "hf/boot_params.h"
+#include "hf/fdt_handler.h"
+#include "hf/mpool.h"
 }
 
 #include <memory>
-
-#include <gmock/gmock.h>
 
 namespace
 {
@@ -95,19 +94,22 @@ constexpr uint8_t test_dtb[] = {
 
 TEST(fdt, find_memory_ranges)
 {
+	struct mpool ppool;
 	std::unique_ptr<uint8_t[]> test_heap(new uint8_t[TEST_HEAP_SIZE]);
-	halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
-	ASSERT_TRUE(mm_init());
+
+	mpool_init(&ppool, sizeof(struct mm_page_table));
+	mpool_add_chunk(&ppool, test_heap.get(), TEST_HEAP_SIZE);
+	ASSERT_TRUE(mm_init(&ppool));
 
 	struct fdt_header *fdt;
 	struct fdt_node n;
 	struct boot_params params = {};
 
-	fdt = fdt_map(pa_init((uintpaddr_t)&test_dtb), &n);
+	fdt = fdt_map(pa_init((uintpaddr_t)&test_dtb), &n, &ppool);
 	ASSERT_THAT(fdt, NotNull());
 	ASSERT_TRUE(fdt_find_child(&n, ""));
 	fdt_find_memory_ranges(&n, &params);
-	ASSERT_TRUE(fdt_unmap(fdt));
+	ASSERT_TRUE(fdt_unmap(fdt, &ppool));
 
 	EXPECT_THAT(params.mem_ranges_count, Eq(3));
 	EXPECT_THAT(pa_addr(params.mem_ranges[0].begin), Eq(0x00000000));

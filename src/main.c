@@ -18,7 +18,6 @@
 #include <stddef.h>
 #include <stdnoreturn.h>
 
-#include "hf/alloc.h"
 #include "hf/api.h"
 #include "hf/boot_params.h"
 #include "hf/cpio.h"
@@ -26,12 +25,15 @@
 #include "hf/dlog.h"
 #include "hf/load.h"
 #include "hf/mm.h"
+#include "hf/mpool.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"
 
-char ptable_buf[PAGE_SIZE * HEAP_PAGES];
+alignas(sizeof(
+	struct mm_page_table)) char ptable_buf[sizeof(struct mm_page_table) *
+					       HEAP_PAGES];
 
 /**
  * Blocks the hypervisor.
@@ -67,17 +69,23 @@ static void one_time_init(void)
 	struct memiter cpio;
 	void *initrd;
 	size_t i;
+	struct mpool ppool;
 
 	dlog_nosync("Initialising hafnium\n");
 
-	cpu_module_init();
-	halloc_init((size_t)ptable_buf, sizeof(ptable_buf));
+	mpool_init(&ppool, sizeof(struct mm_page_table));
+	mpool_add_chunk(&ppool, ptable_buf, sizeof(ptable_buf));
 
-	if (!mm_init()) {
+	cpu_module_init();
+
+	if (!mm_init(&ppool)) {
 		panic("mm_init failed");
 	}
 
-	if (!plat_get_boot_params(&params)) {
+	/* Enable locks now that mm is initialised. */
+	mpool_enable_locks();
+
+	if (!plat_get_boot_params(&params, &ppool)) {
 		panic("unable to retrieve boot params");
 	}
 
@@ -92,7 +100,7 @@ static void one_time_init(void)
 
 	/* Map initrd in, and initialise cpio parser. */
 	initrd = mm_identity_map(params.initrd_begin, params.initrd_end,
-				 MM_MODE_R);
+				 MM_MODE_R, &ppool);
 	if (!initrd) {
 		panic("unable to map initrd in");
 	}
@@ -101,7 +109,7 @@ static void one_time_init(void)
 		     pa_addr(params.initrd_end) - pa_addr(params.initrd_begin));
 
 	/* Load all VMs. */
-	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd)) {
+	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd, &ppool)) {
 		panic("unable to load primary VM");
 	}
 
@@ -112,16 +120,19 @@ static void one_time_init(void)
 	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
 	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
 	update.reserved_ranges_count = 0;
-	if (!load_secondary(&cpio, &params, &update)) {
+	if (!load_secondary(&cpio, &params, &update, &ppool)) {
 		panic("unable to load secondary VMs");
 	}
 
 	/* Prepare to run by updating bootparams as seen by primary VM. */
-	if (!plat_update_boot_params(&update)) {
+	if (!plat_update_boot_params(&update, &ppool)) {
 		panic("plat_update_boot_params failed");
 	}
 
-	mm_defrag();
+	mm_defrag(&ppool);
+
+	/* Initialise the API page pool. ppool will be empty from now on. */
+	api_init(&ppool);
 
 	dlog("Hafnium initialisation completed\n");
 }

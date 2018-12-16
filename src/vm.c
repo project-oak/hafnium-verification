@@ -25,7 +25,7 @@
 static struct vm vms[MAX_VMS];
 static uint32_t vm_count;
 
-bool vm_init(uint32_t vcpu_count, struct vm **new_vm)
+bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 {
 	uint32_t i;
 	struct vm *vm;
@@ -50,7 +50,7 @@ bool vm_init(uint32_t vcpu_count, struct vm **new_vm)
 	++vm_count;
 	*new_vm = vm;
 
-	return mm_ptable_init(&vm->ptable, 0);
+	return mm_ptable_init(&vm->ptable, 0, ppool);
 }
 
 uint32_t vm_get_count(void)

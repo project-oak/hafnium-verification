@@ -38,12 +38,13 @@
  * disabled. When switching to the partitions, the caching is initially disabled
  * so the data must be available without the cache.
  */
-static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
+static bool copy_to_unmapped(paddr_t to, const void *from, size_t size,
+			     struct mpool *ppool)
 {
 	paddr_t to_end = pa_add(to, size);
 	void *ptr;
 
-	ptr = mm_identity_map(to, to_end, MM_MODE_W);
+	ptr = mm_identity_map(to, to_end, MM_MODE_W, ppool);
 	if (!ptr) {
 		return false;
 	}
@@ -51,7 +52,7 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size)
 	memcpy(ptr, from, size);
 	arch_mm_write_back_dcache(ptr, size);
 
-	mm_unmap(to, to_end, 0);
+	mm_unmap(to, to_end, 0, ppool);
 
 	return true;
 }
@@ -106,7 +107,7 @@ static bool find_file(const struct memiter *cpio, const char *name,
  * Loads the primary VM.
  */
 bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
-		  struct memiter *initrd)
+		  struct memiter *initrd, struct mpool *ppool)
 {
 	struct memiter it;
 	paddr_t primary_begin = layout_primary_begin();
@@ -117,7 +118,8 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 	}
 
 	dlog("Copying primary to %p\n", pa_addr(primary_begin));
-	if (!copy_to_unmapped(primary_begin, it.next, it.limit - it.next)) {
+	if (!copy_to_unmapped(primary_begin, it.next, it.limit - it.next,
+			      ppool)) {
 		dlog("Unable to relocate kernel for primary vm.\n");
 		return false;
 	}
@@ -130,7 +132,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 	{
 		struct vm *vm;
 
-		if (!vm_init(MAX_CPUS, &vm)) {
+		if (!vm_init(MAX_CPUS, ppool, &vm)) {
 			dlog("Unable to initialise primary vm\n");
 			return false;
 		}
@@ -147,13 +149,13 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 			    pa_init(UINT64_C(1024) * 1024 * 1024 * 1024),
 			    MM_MODE_R | MM_MODE_W | MM_MODE_X |
 				    MM_MODE_NOINVALIDATE,
-			    NULL)) {
+			    NULL, ppool)) {
 			dlog("Unable to initialise memory for primary vm\n");
 			return false;
 		}
 
-		if (!mm_vm_unmap_hypervisor(&vm->ptable,
-					    MM_MODE_NOINVALIDATE)) {
+		if (!mm_vm_unmap_hypervisor(&vm->ptable, MM_MODE_NOINVALIDATE,
+					    ppool)) {
 			dlog("Unable to unmap hypervisor from primary vm\n");
 			return false;
 		}
@@ -244,7 +246,7 @@ bool update_reserved_ranges(struct boot_params_update *update,
  */
 bool load_secondary(const struct memiter *cpio,
 		    const struct boot_params *params,
-		    struct boot_params_update *update)
+		    struct boot_params_update *update, struct mpool *ppool)
 {
 	struct vm *primary;
 	struct memiter it;
@@ -313,12 +315,12 @@ bool load_secondary(const struct memiter *cpio,
 		}
 
 		if (!copy_to_unmapped(secondary_mem_begin, kernel.next,
-				      kernel.limit - kernel.next)) {
+				      kernel.limit - kernel.next, ppool)) {
 			dlog("Unable to copy kernel\n");
 			continue;
 		}
 
-		if (!vm_init(cpu, &vm)) {
+		if (!vm_init(cpu, ppool, &vm)) {
 			dlog("Unable to initialise VM\n");
 			continue;
 		}
@@ -329,21 +331,22 @@ bool load_secondary(const struct memiter *cpio,
 				   pa_add(pa_init(PL011_BASE), PAGE_SIZE),
 				   MM_MODE_R | MM_MODE_W | MM_MODE_D |
 					   MM_MODE_NOINVALIDATE,
-				   NULL);
+				   NULL, ppool);
 
 		/* Grant the VM access to the memory. */
 		if (!mm_vm_identity_map(&vm->ptable, secondary_mem_begin,
 					secondary_mem_end,
 					MM_MODE_R | MM_MODE_W | MM_MODE_X |
 						MM_MODE_NOINVALIDATE,
-					&secondary_entry)) {
+					&secondary_entry, ppool)) {
 			dlog("Unable to initialise memory\n");
 			continue;
 		}
 
 		/* Deny the primary VM access to this memory. */
 		if (!mm_vm_unmap(&primary->ptable, secondary_mem_begin,
-				 secondary_mem_end, MM_MODE_NOINVALIDATE)) {
+				 secondary_mem_end, MM_MODE_NOINVALIDATE,
+				 ppool)) {
 			dlog("Unable to unmap secondary VM from primary VM\n");
 			return false;
 		}

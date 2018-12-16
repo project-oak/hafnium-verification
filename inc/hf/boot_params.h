@@ -21,6 +21,7 @@
 #include "hf/arch/cpu.h"
 
 #include "hf/mm.h"
+#include "hf/mpool.h"
 
 #define MAX_MEM_RANGES 20
 
@@ -44,5 +45,5 @@ struct boot_params_update {
 	paddr_t initrd_end;
 };
 
-bool plat_get_boot_params(struct boot_params *p);
-bool plat_update_boot_params(struct boot_params_update *p);
+bool plat_get_boot_params(struct boot_params *p, struct mpool *ppool);
+bool plat_update_boot_params(struct boot_params_update *p, struct mpool *ppool);

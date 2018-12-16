@@ -14,20 +14,19 @@
  * limitations under the License.
  */
 
-extern "C" {
-#include "hf/mm.h"
+#include <gmock/gmock.h>
 
+extern "C" {
 #include "hf/arch/mm.h"
 
-#include "hf/alloc.h"
+#include "hf/mm.h"
+#include "hf/mpool.h"
 }
 
 #include <limits>
 #include <memory>
 #include <span>
 #include <vector>
-
-#include <gmock/gmock.h>
 
 namespace
 {
@@ -87,10 +86,14 @@ class mm : public ::testing::Test
 		 * sanitizers are more effective.
 		 */
 		test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
-		halloc_init((size_t)test_heap.get(), TEST_HEAP_SIZE);
+		mpool_init(&ppool, sizeof(struct mm_page_table));
+		mpool_add_chunk(&ppool, test_heap.get(), TEST_HEAP_SIZE);
 	}
 
 	std::unique_ptr<uint8_t[]> test_heap;
+
+       protected:
+	struct mpool ppool;
 };
 
 /**
@@ -100,11 +103,11 @@ TEST_F(mm, ptable_init_empty)
 {
 	constexpr int mode = MM_MODE_STAGE1;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(1), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -114,11 +117,11 @@ TEST_F(mm, ptable_init_concatenated_empty)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -130,9 +133,9 @@ TEST_F(mm, map_first_page)
 	const paddr_t page_begin = pa_init(0);
 	const paddr_t page_end = pa_add(page_begin, PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, page_begin, page_end, mode,
-				       nullptr));
+				       nullptr, &ppool));
 
 	auto tables = get_ptable(ptable, mode);
 	EXPECT_THAT(tables, SizeIs(4));
@@ -160,7 +163,7 @@ TEST_F(mm, map_first_page)
 	EXPECT_THAT(pa_addr(arch_mm_block_from_pte(table_l0[0], TOP_LEVEL - 2)),
 		    Eq(pa_addr(page_begin)));
 
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -174,9 +177,9 @@ TEST_F(mm, map_round_to_page)
 	const paddr_t map_end = pa_add(map_begin, 268);
 	ipaddr_t ipa = ipa_init(-1);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, map_begin, map_end, mode, &ipa));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, map_begin, map_end, mode, &ipa,
+				       &ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(pa_addr(map_begin)));
 
 	auto tables = get_ptable(ptable, mode);
@@ -207,7 +210,7 @@ TEST_F(mm, map_round_to_page)
 						   TOP_LEVEL - 2)),
 		    Eq(0x200'0000'0000 - PAGE_SIZE));
 
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -219,9 +222,9 @@ TEST_F(mm, map_across_tables)
 	const paddr_t map_begin = pa_init(0x80'0000'0000 - PAGE_SIZE);
 	const paddr_t map_end = pa_add(map_begin, 2 * PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, map_begin, map_end, mode, nullptr));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, map_begin, map_end, mode,
+				       nullptr, &ppool));
 
 	auto tables = get_ptable(ptable, mode);
 	EXPECT_THAT(tables, SizeIs(4));
@@ -270,7 +273,7 @@ TEST_F(mm, map_across_tables)
 		pa_addr(arch_mm_block_from_pte(table1_l0[0], TOP_LEVEL - 2)),
 		Eq(pa_addr(pa_add(map_begin, PAGE_SIZE))));
 
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -280,9 +283,9 @@ TEST_F(mm, map_all_at_top_level)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	auto tables = get_ptable(ptable, mode);
 	EXPECT_THAT(
 		tables,
@@ -297,7 +300,7 @@ TEST_F(mm, map_all_at_top_level)
 				<< "i=" << i << " j=" << j;
 		}
 	}
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -309,17 +312,17 @@ TEST_F(mm, map_already_mapped)
 	constexpr int mode = 0;
 	ipaddr_t ipa = ipa_init(-1);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), pa_init(PAGE_SIZE),
-				       mode, &ipa));
+				       mode, &ipa, &ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(0));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -331,14 +334,14 @@ TEST_F(mm, map_reverse_range)
 	constexpr int mode = 0;
 	ipaddr_t ipa = ipa_init(-1);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0x1234'5678),
-				       pa_init(0x5000), mode, &ipa));
+				       pa_init(0x5000), mode, &ipa, &ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(0x1234'5678));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -353,12 +356,12 @@ TEST_F(mm, map_reverse_range_quirk)
 	constexpr int mode = 0;
 	ipaddr_t ipa = ipa_init(-1);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(20), pa_init(10), mode,
-				       &ipa));
+				       &ipa, &ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(20));
 	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa, mode));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -373,15 +376,16 @@ TEST_F(mm, map_last_address_quirk)
 	constexpr int mode = 0;
 	ipaddr_t ipa = ipa_init(-1);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(
 		&ptable, pa_init(0),
-		pa_init(std::numeric_limits<uintpaddr_t>::max()), mode, &ipa));
+		pa_init(std::numeric_limits<uintpaddr_t>::max()), mode, &ipa,
+		&ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(0));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -392,15 +396,15 @@ TEST_F(mm, map_clamp_to_range)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0),
 				       pa_init(0xf32'0000'0000'0000), mode,
-				       nullptr));
+				       nullptr, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -412,14 +416,15 @@ TEST_F(mm, map_ignore_out_of_range)
 	constexpr int mode = 0;
 	ipaddr_t ipa = ipa_init(-1);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(mm_vm_identity_map(
-		&ptable, VM_MEM_END, pa_init(0xf0'0000'0000'0000), mode, &ipa));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, VM_MEM_END,
+				       pa_init(0xf0'0000'0000'0000), mode, &ipa,
+				       &ppool));
 	EXPECT_THAT(ipa_addr(ipa), Eq(pa_addr(VM_MEM_END)));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, 0);
+	mm_ptable_fini(&ptable, 0, &ppool);
 }
 
 /**
@@ -432,16 +437,16 @@ TEST_F(mm, map_block_replaces_table)
 	const paddr_t page_begin = pa_init(34567 * PAGE_SIZE);
 	const paddr_t page_end = pa_add(page_begin, PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, page_begin, page_end, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -454,12 +459,12 @@ TEST_F(mm, map_does_not_defrag)
 	const paddr_t page_begin = pa_init(12000 * PAGE_SIZE);
 	const paddr_t page_end = pa_add(page_begin, PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, page_begin, page_end, mode));
+				       nullptr, &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, page_begin, page_end, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, page_begin, page_end, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	EXPECT_THAT(get_ptable(ptable, mode),
 		    AllOf(SizeIs(4),
 			  Each(Each(Truly(std::bind(arch_mm_pte_is_present, _1,
@@ -468,7 +473,7 @@ TEST_F(mm, map_does_not_defrag)
 				  arch_mm_pte_is_block, _1, TOP_LEVEL)))),
 			  Contains(Contains(Truly(std::bind(
 				  arch_mm_pte_is_table, _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -478,12 +483,12 @@ TEST_F(mm, vm_unmap_hypervisor_not_mapped)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	EXPECT_TRUE(mm_vm_unmap_hypervisor(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	EXPECT_TRUE(mm_vm_unmap_hypervisor(&ptable, mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -493,13 +498,13 @@ TEST_F(mm, unmap_not_mapped)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	EXPECT_TRUE(
-		mm_vm_unmap(&ptable, pa_init(12345), pa_init(987652), mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	EXPECT_TRUE(mm_vm_unmap(&ptable, pa_init(12345), pa_init(987652), mode,
+				&ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -513,16 +518,16 @@ TEST_F(mm, unmap_all)
 	const paddr_t l1_begin = pa_init(3 * mm_entry_size(1));
 	const paddr_t l1_end = pa_add(l1_begin, 5 * mm_entry_size(1));
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, l1_begin, l1_end, mode, nullptr));
-	EXPECT_TRUE(mm_vm_unmap(&ptable, pa_init(0), VM_MEM_END, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr,
+				       &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, l1_begin, l1_end, mode, nullptr,
+				       &ppool));
+	EXPECT_TRUE(mm_vm_unmap(&ptable, pa_init(0), VM_MEM_END, mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -534,15 +539,15 @@ TEST_F(mm, unmap_round_to_page)
 	const paddr_t map_begin = pa_init(0x160'0000'0000 + PAGE_SIZE);
 	const paddr_t map_end = pa_add(map_begin, PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, map_begin, map_end, mode, nullptr));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, map_begin, map_end, mode,
+				       nullptr, &ppool));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, pa_add(map_begin, 93),
-				pa_add(map_begin, 99), mode));
+				pa_add(map_begin, 99), mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -554,14 +559,14 @@ TEST_F(mm, unmap_across_tables)
 	const paddr_t map_begin = pa_init(0x180'0000'0000 - PAGE_SIZE);
 	const paddr_t map_end = pa_add(map_begin, 2 * PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, map_begin, map_end, mode, nullptr));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, map_begin, map_end, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, map_begin, map_end, mode,
+				       nullptr, &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, map_begin, map_end, mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -571,16 +576,16 @@ TEST_F(mm, unmap_out_of_range)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, VM_MEM_END, pa_init(0x4000'0000'0000),
-				mode));
+				mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -591,16 +596,16 @@ TEST_F(mm, unmap_reverse_range)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, pa_init(0x80'a000'0000), pa_init(27),
-				mode));
+				mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -616,15 +621,15 @@ TEST_F(mm, unmap_reverse_range_quirk)
 	const paddr_t page_begin = pa_init(0x180'0000'0000);
 	const paddr_t page_end = pa_add(page_begin, PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, page_begin, page_end, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	ASSERT_TRUE(mm_vm_unmap(&ptable, pa_add(page_begin, 100),
-				pa_add(page_begin, 50), mode));
+				pa_add(page_begin, 50), mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -638,17 +643,18 @@ TEST_F(mm, unmap_last_address_quirk)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
-	ASSERT_TRUE(mm_vm_unmap(
-		&ptable, pa_init(0),
-		pa_init(std::numeric_limits<uintpaddr_t>::max()), mode));
+				       nullptr, &ppool));
+	ASSERT_TRUE(
+		mm_vm_unmap(&ptable, pa_init(0),
+			    pa_init(std::numeric_limits<uintpaddr_t>::max()),
+			    mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -662,17 +668,17 @@ TEST_F(mm, unmap_does_not_defrag)
 	const paddr_t l1_begin = pa_init(666 * mm_entry_size(1));
 	const paddr_t l1_end = pa_add(l1_begin, 5 * mm_entry_size(1));
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, l1_begin, l1_end, mode, nullptr));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, l0_begin, l0_end, mode));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, l1_begin, l1_end, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr,
+				       &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, l1_begin, l1_end, mode, nullptr,
+				       &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, l0_begin, l0_end, mode, &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, l1_begin, l1_end, mode, &ppool));
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, MM_MODE_STAGE1);
+	mm_ptable_fini(&ptable, MM_MODE_STAGE1, &ppool);
 }
 
 /**
@@ -682,11 +688,11 @@ TEST_F(mm, is_mapped_empty)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0), mode));
 	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x8123'2344), mode));
 	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_init(0x1e0'0000'0073), mode));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -696,13 +702,13 @@ TEST_F(mm, is_mapped_all)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0), mode));
 	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0xf247'a7b3), mode));
 	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_init(0x1ff'7bfa'983b), mode));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -714,14 +720,14 @@ TEST_F(mm, is_mapped_page)
 	const paddr_t page_begin = pa_init(0x100'0000'0000);
 	const paddr_t page_end = pa_add(page_begin, PAGE_SIZE);
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, page_begin, page_end, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	EXPECT_TRUE(mm_vm_is_mapped(&ptable, ipa_from_pa(page_begin), mode));
 	EXPECT_TRUE(mm_vm_is_mapped(
 		&ptable, ipa_from_pa(pa_add(page_begin, 127)), mode));
 	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_from_pa(page_end), mode));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -731,16 +737,16 @@ TEST_F(mm, is_mapped_out_of_range)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
+				       nullptr, &ppool));
 	EXPECT_FALSE(mm_vm_is_mapped(&ptable, ipa_from_pa(VM_MEM_END), mode));
 	EXPECT_FALSE(
 		mm_vm_is_mapped(&ptable, ipa_init(0x1000'adb7'8123), mode));
 	EXPECT_FALSE(mm_vm_is_mapped(
 		&ptable, ipa_init(std::numeric_limits<uintpaddr_t>::max()),
 		mode));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -750,12 +756,12 @@ TEST_F(mm, defrag_empty)
 {
 	constexpr int mode = 0;
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	mm_ptable_defrag(&ptable, mode);
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	mm_ptable_defrag(&ptable, mode, &ppool);
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -770,18 +776,18 @@ TEST_F(mm, defrag_empty_subtables)
 	const paddr_t l1_begin = pa_init(3 * mm_entry_size(1));
 	const paddr_t l1_end = pa_add(l1_begin, 5 * mm_entry_size(1));
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr));
-	ASSERT_TRUE(
-		mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, l0_begin, l0_end, mode));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, l1_begin, l1_end, mode));
-	mm_ptable_defrag(&ptable, 0);
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr,
+				       &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, l0_begin, l0_end, mode, nullptr,
+				       &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, l0_begin, l0_end, mode, &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, l1_begin, l1_end, mode, &ppool));
+	mm_ptable_defrag(&ptable, 0, &ppool);
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(arch_mm_absent_pte(TOP_LEVEL)))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 /**
@@ -795,18 +801,20 @@ TEST_F(mm, defrag_block_subtables)
 	const paddr_t middle = pa_add(begin, 67 * PAGE_SIZE);
 	const paddr_t end = pa_add(begin, 4 * mm_entry_size(1));
 	struct mm_ptable ptable;
-	ASSERT_TRUE(mm_ptable_init(&ptable, mode));
+	ASSERT_TRUE(mm_ptable_init(&ptable, mode, &ppool));
 	ASSERT_TRUE(mm_vm_identity_map(&ptable, pa_init(0), VM_MEM_END, mode,
-				       nullptr));
-	ASSERT_TRUE(mm_vm_unmap(&ptable, begin, end, mode));
-	ASSERT_TRUE(mm_vm_identity_map(&ptable, begin, middle, mode, nullptr));
-	ASSERT_TRUE(mm_vm_identity_map(&ptable, middle, end, mode, nullptr));
-	mm_ptable_defrag(&ptable, 0);
+				       nullptr, &ppool));
+	ASSERT_TRUE(mm_vm_unmap(&ptable, begin, end, mode, &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, begin, middle, mode, nullptr,
+				       &ppool));
+	ASSERT_TRUE(mm_vm_identity_map(&ptable, middle, end, mode, nullptr,
+				       &ppool));
+	mm_ptable_defrag(&ptable, 0, &ppool);
 	EXPECT_THAT(
 		get_ptable(ptable, mode),
 		AllOf(SizeIs(4), Each(Each(Truly(std::bind(arch_mm_pte_is_block,
 							   _1, TOP_LEVEL))))));
-	mm_ptable_fini(&ptable, mode);
+	mm_ptable_fini(&ptable, mode, &ppool);
 }
 
 } /* namespace */
