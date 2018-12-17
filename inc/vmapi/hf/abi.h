@@ -19,10 +19,42 @@
 #include "hf/types.h"
 
 enum hf_vcpu_run_code {
+	/**
+	 * The vCPU has yielded, forcibly or voluntarily. The scheduler should
+	 * call `hf_vcpu_run` again sometime soon.
+	 */
 	HF_VCPU_RUN_YIELD,
+
+	/**
+	 * The vCPU is blocked waiting for an interrupt. The scheduler should
+	 * take it off the run queue and not call `hf_vcpu_run` until it has
+	 * injected an interrupt, sent it a message, or got a
+	 * `HF_VCPU_RUN_WAKE_UP` for it from another vCPU.
+	 */
 	HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+
+	/**
+	 * The vCPU would like `hf_vcpu_run` to be called on another vCPU,
+	 * specified by `hf_vcpu_run_return.wake_up`. The scheduler should
+	 * either wake the vCPU in question up if it is blocked, or preempt and
+	 * re-run it if it is already running somewhere. This gives Hafnium a
+	 * chance to update any CPU state which might have changed.
+	 */
 	HF_VCPU_RUN_WAKE_UP,
+
+	/**
+	 * A new message is available for the scheduler VM, as specified by
+	 * `hf_vcpu_run_return.message`.
+	 */
 	HF_VCPU_RUN_MESSAGE,
+
+	/**
+	 * Like `HF_VCPU_RUN_WAIT_FOR_INTERRUPT`, but for a limited amount of
+	 * time, specified by `hf_vcpu_run_return.sleep`. After at least that
+	 * amount of time has passed, or any of the events listed for
+	 * `HF_VCPU_RUN_WAIT_FOR_INTERRUPT` occur, the scheduler should call
+	 * `hf_vcpu_run` on it again.
+	 */
 	HF_VCPU_RUN_SLEEP,
 };
 
