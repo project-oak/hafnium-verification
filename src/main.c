@@ -31,7 +31,7 @@
 
 #include "vmapi/hf/call.h"
 
-alignas(sizeof(
+alignas(alignof(
 	struct mm_page_table)) char ptable_buf[sizeof(struct mm_page_table) *
 					       HEAP_PAGES];
 

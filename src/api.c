@@ -38,7 +38,7 @@ static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
 	      "Currently, a page is mapped for the send and receive buffers so "
 	      "the maximum request is the size of a page.");
 
-static struct mpool api_ppool;
+static struct mpool api_page_pool;
 
 /**
  * Initialies the API page pool by taking ownership of the contents of the given
@@ -46,7 +46,7 @@ static struct mpool api_ppool;
  */
 void api_init(struct mpool *ppool)
 {
-	mpool_init_from(&api_ppool, ppool);
+	mpool_init_from(&api_page_pool, ppool);
 }
 
 /**
@@ -234,7 +234,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 
 	/* Map the send page as read-only in the hypervisor address space. */
 	vm->mailbox.send = mm_identity_map(pa_send_begin, pa_send_end,
-					   MM_MODE_R, &api_ppool);
+					   MM_MODE_R, &api_page_pool);
 	if (!vm->mailbox.send) {
 		ret = -1;
 		goto exit;
@@ -245,10 +245,10 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 	 * failure, unmap the send page before returning.
 	 */
 	vm->mailbox.recv = mm_identity_map(pa_recv_begin, pa_recv_end,
-					   MM_MODE_W, &api_ppool);
+					   MM_MODE_W, &api_page_pool);
 	if (!vm->mailbox.recv) {
 		vm->mailbox.send = NULL;
-		mm_unmap(pa_send_begin, pa_send_end, 0, &api_ppool);
+		mm_unmap(pa_send_begin, pa_send_end, 0, &api_page_pool);
 		ret = -1;
 		goto exit;
 	}
