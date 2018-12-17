@@ -501,7 +501,7 @@ static void mm_dump_table_recursive(struct mm_page_table *table, uint8_t level,
 }
 
 /**
- * Write the given table to the debug log.
+ * Writes the given table to the debug log.
  */
 void mm_ptable_dump(struct mm_ptable *t, int mode)
 {
@@ -515,9 +515,9 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
 }
 
 /**
- * Given the table PTE entries are all have identical attributes, return the
- * single entry with which it can be replaced. Note that the table PTE will no
- * longer be valid after calling this function as the table may have been freed.
+ * Given the table PTE entries all have identical attributes, returns the single
+ * entry with which it can be replaced. Note that the table PTE will no longer
+ * be valid after calling this function as the table may have been freed.
  *
  * If the table is freed, the memory is freed directly rather than calling
  * `mm_free_page_pte()` as it is known to not have subtables.
@@ -557,7 +557,7 @@ static pte_t mm_merge_table_pte(pte_t table_pte, uint8_t level,
 }
 
 /**
- * Defragment the given PTE by recursively replacing any tables with blocks or
+ * Defragments the given PTE by recursively replacing any tables with blocks or
  * absent entries where possible.
  */
 static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
