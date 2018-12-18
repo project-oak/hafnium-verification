@@ -217,6 +217,10 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 	}
 
 	switch ((uint32_t)arg0 & ~PSCI_CONVENTION_MASK) {
+	case HF_VM_GET_ID:
+		ret.user_ret = api_vm_get_id(current());
+		break;
+
 	case HF_VM_GET_COUNT:
 		ret.user_ret = api_vm_get_count();
 		break;
@@ -228,6 +232,11 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 	case HF_VCPU_RUN:
 		ret.user_ret = hf_vcpu_run_return_encode(
 			api_vcpu_run(arg1, arg2, current(), &ret.new));
+		break;
+
+	case HF_VCPU_YIELD:
+		ret.user_ret = 0;
+		ret.new = api_yield(current());
 		break;
 
 	case HF_VM_CONFIGURE:

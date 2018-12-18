@@ -101,6 +101,14 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 }
 
 /**
+ * Returns the ID of the VM.
+ */
+int64_t api_vm_get_id(const struct vcpu *current)
+{
+	return current->vm->id;
+}
+
+/**
  * Returns the number of VMs configured to run.
  */
 int64_t api_vm_get_count(void)

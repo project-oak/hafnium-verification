@@ -82,6 +82,14 @@ void next_permutation(char *s, size_t len)
 }
 
 /**
+ * Confirms the primary VM has the primary ID.
+ */
+TEST(hf_vm_get_id, primary_has_primary_id)
+{
+	EXPECT_EQ(hf_vm_get_id(), HF_PRIMARY_VM_ID);
+}
+
+/**
  * Confirm there are 4 secondary VMs as well as this primary VM.
  */
 TEST(hf_vm_get_count, four_secondary_vms)

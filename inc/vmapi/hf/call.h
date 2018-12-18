@@ -23,16 +23,18 @@
 /* clang-format off */
 
 /* TODO: Define constants below according to spec. */
-#define HF_VCPU_RUN                      0xff00
+#define HF_VM_GET_ID                     0xff00
 #define HF_VM_GET_COUNT                  0xff01
 #define HF_VCPU_GET_COUNT                0xff02
-#define HF_VM_CONFIGURE                  0xff03
-#define HF_MAILBOX_SEND                  0xff04
-#define HF_MAILBOX_RECEIVE               0xff05
-#define HF_MAILBOX_CLEAR                 0xff06
-#define HF_ENABLE_INTERRUPT              0xff07
-#define HF_GET_AND_ACKNOWLEDGE_INTERRUPT 0xff08
-#define HF_INJECT_INTERRUPT              0xff09
+#define HF_VCPU_RUN                      0xff03
+#define HF_VCPU_YIELD                    0xff04
+#define HF_VM_CONFIGURE                  0xff05
+#define HF_MAILBOX_SEND                  0xff06
+#define HF_MAILBOX_RECEIVE               0xff07
+#define HF_MAILBOX_CLEAR                 0xff08
+#define HF_ENABLE_INTERRUPT              0xff09
+#define HF_GET_AND_ACKNOWLEDGE_INTERRUPT 0xff0a
+#define HF_INJECT_INTERRUPT              0xff0b
 
 /** The amount of data that can be sent to a mailbox. */
 #define HF_MAILBOX_SIZE 4096
@@ -46,15 +48,11 @@
 int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 
 /**
- * Runs the given vcpu of the given vm.
- *
- * Returns an hf_vcpu_run_return struct telling the scheduler what to do next.
+ * Returns the VM's own ID.
  */
-static inline struct hf_vcpu_run_return hf_vcpu_run(uint32_t vm_id,
-						    uint32_t vcpu_idx)
+static inline uint32_t hf_vm_get_id()
 {
-	return hf_vcpu_run_return_decode(
-		hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0));
+	return hf_call(HF_VM_GET_ID, 0, 0, 0);
 }
 
 /**
@@ -74,6 +72,26 @@ static inline int64_t hf_vcpu_get_count(uint32_t vm_id)
 }
 
 /**
+ * Runs the given vcpu of the given vm.
+ *
+ * Returns an hf_vcpu_run_return struct telling the scheduler what to do next.
+ */
+static inline struct hf_vcpu_run_return hf_vcpu_run(uint32_t vm_id,
+						    uint32_t vcpu_idx)
+{
+	return hf_vcpu_run_return_decode(
+		hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0));
+}
+
+/**
+ * Hints that the vcpu is willing to yield its current use of the physical CPU.
+ */
+static inline void hf_vcpu_yield(void)
+{
+	hf_call(HF_VCPU_YIELD, 0, 0, 0);
+}
+
+/**
  * Configures the pages to send/receive data through. The pages must not be
  * shared.
  *
@@ -88,11 +106,11 @@ static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
  * Copies data from the sender's send buffer to the recipient's receive buffer.
  *
  * Returns -1 on failure, and on success either:
- * - 0, if the caller is a secondary VM
- * - the ID of the vCPU to run to receive the message, if the caller is the
- * primary VM.
- * - HF_INVALID_VCPU if the caller is the primary VM and no vCPUs on the target
- * VM are currently waiting to receive a message.
+ *  - 0, if the caller is a secondary VM
+ *  - the ID of the vCPU to run to receive the message, if the caller is the
+ *    primary VM.
+ *  - HF_INVALID_VCPU if the caller is the primary VM and no vCPUs on the target
+ *    VM are currently waiting to receive a message.
  */
 static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size)
 {
