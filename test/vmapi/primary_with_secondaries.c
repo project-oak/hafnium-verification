@@ -416,10 +416,12 @@ TEST(interrupts, inject_interrupt_message)
 		0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
+	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
 	/* Now send a message to the secondary. */
 	memcpy(send_page, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(INTERRUPTIBLE_VM_ID, sizeof(message)),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(INTERRUPTIBLE_VM_ID, sizeof(message)), 0);
 	run_res = hf_vcpu_run(INTERRUPTIBLE_VM_ID, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
