@@ -10,7 +10,7 @@ to members of `hafnium-admin@prod`.
 ## Getting the source code
 
 ``` shell
-git clone --recurse-submodules sso://hafnium/hafnium && (cd hafnium && f=`git rev-parse --git-dir`/hooks/commit-msg ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f)
+git clone --recurse-submodules https://hafnium.googlesource.com/hafnium && (cd hafnium && f=`git rev-parse --git-dir`/hooks/commit-msg ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f)
 ```
 
 To upload a commit for review:

@@ -1,15 +1,15 @@
 [submodule "prebuilts"]
 	path = prebuilts
-	url = sso://hafnium/hafnium/prebuilts
+	url = https://hafnium.googlesource.com/hafnium/prebuilts
 	shallow = true
 [submodule "driver/linux"]
 	path = driver/linux
-	url = sso://hafnium/hafnium/driver/linux
+	url = https://hafnium.googlesource.com/hafnium/driver/linux
 [submodule "project/reference"]
 	path = project/reference
-	url = sso://hafnium/hafnium/project/reference
+	url = https://hafnium.googlesource.com/hafnium/project/reference
 	shallow = true
 [submodule "third_party/googletest"]
 	path = third_party/googletest
-	url = sso://hafnium/hafnium/third_party/googletest
+	url = https://hafnium.googlesource.com/hafnium/third_party/googletest
 	shallow = true

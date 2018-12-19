@@ -29,6 +29,11 @@ if [ -v KOKORO_JOB_NAME ]
 then
 	# Server
 	cd git/hafnium
+
+	# Initialize submodules manually as https:// isn't supported by the
+	# initial checkout.
+	git submodule init
+	git submodule update
 else
 	# Local
 	echo "Testing kokoro build locally..."
