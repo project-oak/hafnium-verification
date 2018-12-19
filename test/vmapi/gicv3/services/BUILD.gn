@@ -14,6 +14,14 @@
 
 import("//build/image/image.gni")
 
+source_set("common") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+  sources = [
+    "common.c",
+  ]
+}
+
 # Service which loops forever.
 source_set("busy") {
   testonly = true
@@ -21,10 +29,25 @@ source_set("busy") {
 
   sources = [
     "busy.c",
-    "common.c",
   ]
 
   deps = [
+    ":common",
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
+  ]
+}
+
+# Service which uses timers.
+source_set("timer") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "timer.c",
+  ]
+
+  deps = [
+    ":common",
     "//src/arch/aarch64/hftest:interrupts_gicv3",
   ]
 }
@@ -36,6 +59,7 @@ vm_kernel("gicv3_service_vm0") {
 
   deps = [
     ":busy",
+    ":timer",
     "//test/hftest:hftest_secondary_vm",
   ]
 }

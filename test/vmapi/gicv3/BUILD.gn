@@ -15,12 +15,18 @@
 import("//build/image/image.gni")
 import("//build/toolchain/platform.gni")
 
+config("config") {
+  include_dirs = [ "inc" ]
+}
+
 # Tests specific to GICv3.
 vm_kernel("gicv3_test_vm") {
   testonly = true
+  public_configs = [ ":config" ]
 
   sources = [
     "gicv3.c",
+    "timer_secondary.c",
   ]
 
   deps = [

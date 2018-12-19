@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "gicv3.h"
+
 #include "hf/arch/cpu.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
 
@@ -26,22 +28,13 @@
 #include "../msr.h"
 #include "hftest.h"
 
-#define PPI_IRQ_BASE 16
-#define PHYSICAL_TIMER_IRQ (PPI_IRQ_BASE + 14)
-#define VIRTUAL_TIMER_IRQ (PPI_IRQ_BASE + 11)
-#define HYPERVISOR_TIMER_IRQ (PPI_IRQ_BASE + 10)
+alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
+alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];
 
-#define NANOS_PER_UNIT 1000000000
+hf_ipaddr_t send_page_addr = (hf_ipaddr_t)send_page;
+hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
 
-#define SERVICE_VM0 1
-
-static alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
-static alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];
-
-static hf_ipaddr_t send_page_addr = (hf_ipaddr_t)send_page;
-static hf_ipaddr_t recv_page_addr = (hf_ipaddr_t)recv_page;
-
-static volatile uint32_t last_interrupt_id = 0;
+volatile uint32_t last_interrupt_id = 0;
 
 static void irq(void)
 {

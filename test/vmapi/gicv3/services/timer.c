@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Google LLC
+ * Copyright 2019 Google LLC
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "hf/arch/vm/timer.h"
+
 #include "hf/arch/cpu.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
 
@@ -22,20 +24,25 @@
 
 #include "vmapi/hf/call.h"
 
+#include "common.h"
 #include "hftest.h"
-#include "primary_with_secondary.h"
 
 /*
- * Secondary VM that sends messages in response to interrupts, and interrupts
- * itself when it receives a message.
+ * Secondary VM that sets timers in response to messages, and sends messages
+ * back when they fire.
  */
 
-static void irq(void)
+static volatile bool timer_fired = false;
+
+static void irq_current(void)
 {
 	uint32_t interrupt_id = hf_interrupt_get();
 	char buffer[] = "Got IRQ xx.";
 	int size = sizeof(buffer);
 	dlog("secondary IRQ %d from current\n", interrupt_id);
+	if (interrupt_id == HF_VIRTUAL_TIMER_INTID) {
+		timer_fired = true;
+	}
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
 	memcpy(SERVICE_SEND_BUFFER(), buffer, size);
@@ -43,49 +50,50 @@ static void irq(void)
 	dlog("secondary IRQ %d ended\n", interrupt_id);
 }
 
-/**
- * Try to receive a message from the mailbox, blocking if necessary, and
- * retrying if interrupted.
- */
-struct hf_mailbox_receive_return mailbox_receive_retry()
+TEST_SERVICE(timer)
 {
-	struct hf_mailbox_receive_return received = {
-		.vm_id = HF_INVALID_VM_ID,
-		.size = 0,
-	};
-	while (received.vm_id == HF_INVALID_VM_ID && received.size == 0) {
-		received = hf_mailbox_receive(true);
-	}
-	return received;
-}
-
-TEST_SERVICE(interruptible)
-{
-	uint32_t this_vm_id = hf_vm_get_id();
-
-	exception_setup(irq);
-	hf_interrupt_enable(SELF_INTERRUPT_ID, true);
-	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_A, true);
-	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_B, true);
+	exception_setup(irq_current);
+	hf_interrupt_enable(HF_VIRTUAL_TIMER_INTID, true);
 	arch_irq_enable();
 
 	for (;;) {
-		const char ping_message[] = "Ping";
-		const char enable_message[] = "Enable interrupt C";
+		const char timer_wfi_message[] = "WFI  xxxxxxx";
 		struct hf_mailbox_receive_return received_message =
 			mailbox_receive_retry();
 		if (received_message.vm_id == HF_PRIMARY_VM_ID &&
-		    received_message.size == sizeof(ping_message) &&
-		    memcmp(SERVICE_RECV_BUFFER(), ping_message,
-			   sizeof(ping_message)) == 0) {
-			/* Interrupt ourselves */
-			hf_interrupt_inject(this_vm_id, 0, SELF_INTERRUPT_ID);
-		} else if (received_message.vm_id == HF_PRIMARY_VM_ID &&
-			   received_message.size == sizeof(enable_message) &&
-			   memcmp(SERVICE_RECV_BUFFER(), enable_message,
-				  sizeof(enable_message)) == 0) {
-			/* Enable interrupt ID C. */
-			hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_C, true);
+		    received_message.size == sizeof(timer_wfi_message)) {
+			/*
+			 * Start a timer to send the message back: enable it and
+			 * set it for the requested number of ticks.
+			 */
+			char *message = SERVICE_RECV_BUFFER();
+			bool wfi = memcmp(message, timer_wfi_message, 5) == 0;
+			int32_t ticks = (message[5] - '0') * 1000000 +
+					(message[6] - '0') * 100000 +
+					(message[7] - '0') * 10000 +
+					(message[8] - '0') * 1000 +
+					(message[9] - '0') * 100 +
+					(message[10] - '0') * 10 +
+					(message[11] - '0');
+			dlog("Starting timer for %d ticks.\n", ticks);
+			if (wfi) {
+				arch_irq_disable();
+			}
+			timer_set(ticks);
+			timer_start();
+			dlog("Waiting for timer...\n");
+			if (wfi) {
+				/* WFI until the timer fires. */
+				interrupt_wait();
+				arch_irq_enable();
+			} else {
+				/* Busy wait until the timer fires. */
+				while (!timer_fired) {
+				}
+			}
+			EXPECT_TRUE(timer_fired);
+			timer_fired = false;
+			dlog("Done waiting.\n");
 		} else {
 			dlog("Got unexpected message from VM %d, size %d.\n",
 			     received_message.vm_id, received_message.size);
