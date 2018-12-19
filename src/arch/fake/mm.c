@@ -132,12 +132,17 @@ uint8_t arch_mm_max_level(int mode)
 
 uint8_t arch_mm_root_table_count(int mode)
 {
-	/* Stage 1 has no concatenated tables but stage 2 has 4 of them. */
+	/* Stage-1 has no concatenated tables but stage 2 has 4 of them. */
 	return (mode & MM_MODE_STAGE1) ? 1 : 4;
 }
 
 uint64_t arch_mm_mode_to_attrs(int mode)
 {
+	/* Stage-2 ignores the device mode. */
+	if (!(mode & MM_MODE_STAGE1)) {
+		mode &= ~MM_MODE_D;
+	}
+
 	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
 }
 

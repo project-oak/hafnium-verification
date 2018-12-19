@@ -83,12 +83,6 @@
 
 #define STAGE2_MEMATTR_NORMAL(outer, inner) ((((outer) << 2) | (inner)) << 2)
 
-/* The following stage-2 memory attributes for device memory. */
-#define STAGE2_MEMATTR_DEVICE_nGnRnE (UINT64_C(0) << 2)
-#define STAGE2_MEMATTR_DEVICE_nGnRE  (UINT64_C(1) << 2)
-#define STAGE2_MEMATTR_DEVICE_nGRE   (UINT64_C(2) << 2)
-#define STAGE2_MEMATTR_DEVICE_GRE    (UINT64_C(3) << 2)
-
 #define STAGE2_ACCESS_READ  UINT64_C(1)
 #define STAGE2_ACCESS_WRITE UINT64_C(2)
 
@@ -360,14 +354,11 @@ uint64_t arch_mm_mode_to_attrs(int mode)
 
 		/*
 		 * Define the memory attribute bits, using the "neutral" values
-		 * for either device or normal memory.
+		 * which give the stage-1 attributes full control of the
+		 * attributes.
 		 */
-		if (mode & MM_MODE_D) {
-			attrs |= STAGE2_MEMATTR_DEVICE_GRE;
-		} else {
-			attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK,
-						       STAGE2_WRITEBACK);
-		}
+		attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK,
+					       STAGE2_WRITEBACK);
 
 		/* Define the ownership bit. */
 		if (!(mode & MM_MODE_UNOWNED)) {

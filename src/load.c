@@ -329,8 +329,7 @@ bool load_secondary(const struct memiter *cpio,
 		/* Grant VM access to uart. */
 		mm_vm_identity_map(&vm->ptable, pa_init(PL011_BASE),
 				   pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-				   MM_MODE_R | MM_MODE_W | MM_MODE_D |
-					   MM_MODE_NOINVALIDATE,
+				   MM_MODE_R | MM_MODE_W | MM_MODE_NOINVALIDATE,
 				   NULL, ppool);
 
 		/* Grant the VM access to the memory. */
