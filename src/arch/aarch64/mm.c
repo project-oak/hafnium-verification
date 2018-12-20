@@ -426,21 +426,19 @@ bool arch_mm_init(paddr_t table, bool first)
 
 	/* Check that 4KB granules are supported. */
 	if ((features >> 28) & 0xf) {
-		dlog_nosync("4KB granules are not supported\n");
+		dlog("4KB granules are not supported\n");
 		return false;
 	}
 
 	/* Check the physical address range. */
 	if (!pa_bits) {
-		dlog_nosync(
-			"Unsupported value of id_aa64mmfr0_el1.PARange: %x\n",
-			features & 0xf);
+		dlog("Unsupported value of id_aa64mmfr0_el1.PARange: %x\n",
+		     features & 0xf);
 		return false;
 	}
 
 	if (first) {
-		dlog_nosync("Supported bits in physical address: %d\n",
-			    pa_bits);
+		dlog("Supported bits in physical address: %d\n", pa_bits);
 	}
 
 	/*

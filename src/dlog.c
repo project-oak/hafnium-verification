@@ -36,6 +36,16 @@
 
 /* clang-format on */
 
+static bool dlog_lock_enabled = false;
+
+/**
+ * Enables the lock protecting the serial device.
+ */
+void dlog_enable_lock(void)
+{
+	dlog_lock_enabled = true;
+}
+
 /**
  * Prints a raw string to the debug log and returns its length.
  */
@@ -176,16 +186,19 @@ static const char *parse_flags(const char *p, int *flags)
 }
 
 /**
- * Same as "dlog_nosync", except that arguments are passed as a va_list. This
- * must only be used before the MMU has been initialized so that the atomic
- * operations needed for locking are operational.
+ * Same as "dlog", except that arguments are passed as a va_list
  */
-void vdlog_nosync(const char *fmt, va_list args)
+void vdlog(const char *fmt, va_list args)
 {
+	static struct spinlock sl = SPINLOCK_INIT;
 	const char *p;
 	size_t w;
 	int flags;
 	char buf[2];
+
+	if (dlog_lock_enabled) {
+		sl_lock(&sl);
+	}
 
 	for (p = fmt; *p; p++) {
 		switch (*p) {
@@ -280,32 +293,10 @@ void vdlog_nosync(const char *fmt, va_list args)
 			break;
 		}
 	}
-}
 
-/**
- * Prints the given format string to the debug log without locking. This must
- * only be used before the MMU has been initialized so that the atomic
- * operations needed for locking are operational.
- */
-void dlog_nosync(const char *fmt, ...)
-{
-	va_list args;
-
-	va_start(args, fmt);
-	vdlog_nosync(fmt, args);
-	va_end(args);
-}
-
-/**
- * Same as "dlog", except that arguments are passed as a va_list.
- */
-void vdlog(const char *fmt, va_list args)
-{
-	static struct spinlock sl = SPINLOCK_INIT;
-
-	sl_lock(&sl);
-	vdlog_nosync(fmt, args);
-	sl_unlock(&sl);
+	if (dlog_lock_enabled) {
+		sl_unlock(&sl);
+	}
 }
 
 /**

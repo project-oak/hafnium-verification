@@ -836,15 +836,15 @@ bool mm_unmap(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
  */
 bool mm_init(struct mpool *ppool)
 {
-	dlog_nosync("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
-		    pa_addr(layout_text_end()));
-	dlog_nosync("rodata: 0x%x - 0x%x\n", pa_addr(layout_rodata_begin()),
-		    pa_addr(layout_rodata_end()));
-	dlog_nosync("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
-		    pa_addr(layout_data_end()));
+	dlog("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
+	     pa_addr(layout_text_end()));
+	dlog("rodata: 0x%x - 0x%x\n", pa_addr(layout_rodata_begin()),
+	     pa_addr(layout_rodata_end()));
+	dlog("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
+	     pa_addr(layout_data_end()));
 
 	if (!mm_ptable_init(&ptable, MM_MODE_STAGE1, ppool)) {
-		dlog_nosync("Unable to allocate memory for page table.\n");
+		dlog("Unable to allocate memory for page table.\n");
 		return false;
 	}
 

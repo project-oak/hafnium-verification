@@ -46,13 +46,13 @@ noreturn void panic(const char *fmt, ...)
 
 	/* TODO: Block all CPUs. */
 
-	dlog_nosync("Panic: ");
+	dlog("Panic: ");
 
 	va_start(args, fmt);
-	vdlog_nosync(fmt, args);
+	vdlog(fmt, args);
 	va_end(args);
 
-	dlog_nosync("\n");
+	dlog("\n");
 
 	for (;;) {
 	}
@@ -71,7 +71,7 @@ static void one_time_init(void)
 	size_t i;
 	struct mpool ppool;
 
-	dlog_nosync("Initialising hafnium\n");
+	dlog("Initialising hafnium\n");
 
 	mpool_init(&ppool, sizeof(struct mm_page_table));
 	mpool_add_chunk(&ppool, ptable_buf, sizeof(ptable_buf));
@@ -83,6 +83,7 @@ static void one_time_init(void)
 	}
 
 	/* Enable locks now that mm is initialised. */
+	dlog_enable_lock();
 	mpool_enable_locks();
 
 	if (!plat_get_boot_params(&params, &ppool)) {
