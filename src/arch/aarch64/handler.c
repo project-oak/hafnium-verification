@@ -39,6 +39,61 @@ static inline struct vcpu *current(void)
 	return (struct vcpu *)read_msr(tpidr_el2);
 }
 
+/**
+ * Saves the state of per-vCPU peripherals, such as the virtual timer, and
+ * informs the arch-independent sections that registers have been saved.
+ */
+void complete_saving_state(struct vcpu *vcpu)
+{
+	vcpu->regs.lazy.cntv_cval_el0 = read_msr(cntv_cval_el0);
+	vcpu->regs.lazy.cntv_ctl_el0 = read_msr(cntv_ctl_el0);
+
+	api_regs_state_saved(vcpu);
+
+	/*
+	 * If switching away from the primary, copy the current EL0 virtual
+	 * timer registers to the corresponding EL2 physical timer registers.
+	 * This is used to emulate the virtual timer for the primary in case it
+	 * should fire while the secondary is running.
+	 */
+	if (vcpu->vm->id == HF_PRIMARY_VM_ID) {
+		/*
+		 * Clear timer control register before copying compare value, to
+		 * avoid a spurious timer interrupt. This could be a problem if
+		 * the interrupt is configured as edge-triggered, as it would
+		 * then be latched in.
+		 */
+		write_msr(cnthp_ctl_el2, 0);
+		write_msr(cnthp_cval_el2, read_msr(cntv_cval_el0));
+		write_msr(cnthp_ctl_el2, read_msr(cntv_ctl_el0));
+	}
+}
+
+/**
+ * Restores the state of per-vCPU peripherals, such as the virtual timer.
+ */
+void begin_restoring_state(struct vcpu *vcpu)
+{
+	/*
+	 * Clear timer control register before restoring compare value, to avoid
+	 * a spurious timer interrupt. This could be a problem if the interrupt
+	 * is configured as edge-triggered, as it would then be latched in.
+	 */
+	write_msr(cntv_ctl_el0, 0);
+	write_msr(cntv_cval_el0, vcpu->regs.lazy.cntv_cval_el0);
+	write_msr(cntv_ctl_el0, vcpu->regs.lazy.cntv_ctl_el0);
+
+	/*
+	 * If we are switching (back) to the primary, disable the EL2 physical
+	 * timer which was being used to emulate the EL0 virtual timer, as the
+	 * virtual timer is now running for the primary again.
+	 */
+	if (vcpu->vm->id == HF_PRIMARY_VM_ID) {
+		write_msr(cnthp_ctl_el2, 0);
+		write_msr(cnthp_cval_el2, 0);
+	}
+}
+
 void irq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	(void)elr;

@@ -311,9 +311,12 @@ vcpu_switch:
 	/* Save new vcpu pointer in non-volatile register. */
 	mov x19, x0
 
-	/* Inform the arch-independent sections that regs have been saved. */
+	/*
+	 * Save peripheral registers, and inform the arch-independent sections
+	 * that registers have been saved.
+	 */
 	mov x0, x1
-	bl api_regs_state_saved
+	bl complete_saving_state
 	mov x0, x19
 
 	/* Intentional fallthrough. */
@@ -321,6 +324,11 @@ vcpu_switch:
 vcpu_restore_all_and_run:
 	/* Update pointer to current vcpu. */
 	msr tpidr_el2, x0
+
+	/* Restore peripheral registers. */
+	mov x19, x0
+	bl begin_restoring_state
+	mov x0, x19
 
 	/* Restore lazy registers. */
 	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 0]

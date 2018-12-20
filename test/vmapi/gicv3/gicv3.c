@@ -28,6 +28,7 @@
 #define PPI_IRQ_BASE 16
 #define PHYSICAL_TIMER_IRQ (PPI_IRQ_BASE + 14)
 #define VIRTUAL_TIMER_IRQ (PPI_IRQ_BASE + 11)
+#define HYPERVISOR_TIMER_IRQ (PPI_IRQ_BASE + 10)
 
 #define NANOS_PER_UNIT 1000000000
 
@@ -251,6 +252,14 @@ TEST(busy_secondary, virtual_timer)
 	interrupt_enable(VIRTUAL_TIMER_IRQ, true);
 	interrupt_set_priority(VIRTUAL_TIMER_IRQ, 0x80);
 	interrupt_set_edge_triggered(VIRTUAL_TIMER_IRQ, true);
+	/*
+	 * Hypervisor timer IRQ is needed for Hafnium to return control to the
+	 * primary if the (emulated) virtual timer fires while the secondary is
+	 * running.
+	 */
+	interrupt_enable(HYPERVISOR_TIMER_IRQ, true);
+	interrupt_set_priority(HYPERVISOR_TIMER_IRQ, 0x80);
+	interrupt_set_edge_triggered(HYPERVISOR_TIMER_IRQ, true);
 	interrupt_set_priority_mask(0xff);
 	arch_irq_enable();
 
