@@ -41,6 +41,7 @@ source_set("arch") {
     "barriers.c",
     "cpu.c",
     "mm.c",
+    "timer.c",
   ]
 }
 

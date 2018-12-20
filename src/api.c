@@ -19,6 +19,7 @@
 #include <assert.h>
 
 #include "hf/arch/cpu.h"
+#include "hf/arch/timer.h"
 
 #include "hf/dlog.h"
 #include "hf/mm.h"
@@ -67,6 +68,16 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 {
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
 	struct vcpu *next = &primary->vcpus[cpu_index(current->cpu)];
+
+	/*
+	 * If the secondary is blocked but has a timer running, sleep until the
+	 * timer fires rather than indefinitely.
+	 */
+	if (primary_ret.code == HF_VCPU_RUN_WAIT_FOR_INTERRUPT &&
+	    arch_timer_enabled_current()) {
+		primary_ret.code = HF_VCPU_RUN_SLEEP;
+		primary_ret.sleep.ns = arch_timer_remaining_ns_current();
+	}
 
 	/* Set the return value for the primary VM's call to HF_VCPU_RUN. */
 	arch_regs_set_retval(&next->regs,
@@ -222,11 +233,149 @@ static struct wait_entry *api_fetch_waiter(struct vm_locked locked_vm)
 }
 
 /**
+ * Assuming that the arguments have already been checked by the caller, injects
+ * a virtual interrupt of the given ID into the given target vCPU. This doesn't
+ * cause the vCPU to actually be run immediately; it will be taken when the vCPU
+ * is next run, which is up to the scheduler.
+ *
+ * Returns:
+ *  - 0 on success if no further action is needed.
+ *  - 1 if it was called by the primary VM and the primary VM now needs to wake
+ *    up or kick the target vCPU.
+ */
+static int64_t internal_interrupt_inject(struct vm *target_vm,
+					 struct vcpu *target_vcpu,
+					 uint32_t intid, struct vcpu *current,
+					 struct vcpu **next)
+{
+	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
+	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
+	bool need_vm_lock;
+	int64_t ret = 0;
+
+	sl_lock(&target_vcpu->lock);
+	/*
+	 * If we need the target_vm lock we need to release the target_vcpu lock
+	 * first to maintain the correct order of locks. In-between releasing
+	 * and acquiring it again the state of the vCPU could change in such a
+	 * way that we don't actually need to touch the target_vm after all, but
+	 * that's alright: we'll take the target_vm lock anyway, but it's safe,
+	 * just perhaps a little slow in this unusual case. The reverse is not
+	 * possible: if need_vm_lock is false, we don't release the target_vcpu
+	 * lock until we are done, so nothing should change in such as way that
+	 * we need the VM lock after all.
+	 */
+	need_vm_lock =
+		(target_vcpu->interrupts.interrupt_enabled[intid_index] &
+		 ~target_vcpu->interrupts.interrupt_pending[intid_index] &
+		 intid_mask) &&
+		target_vcpu->state == vcpu_state_blocked_mailbox;
+	if (need_vm_lock) {
+		sl_unlock(&target_vcpu->lock);
+		sl_lock(&target_vm->lock);
+		sl_lock(&target_vcpu->lock);
+	}
+
+	/*
+	 * We only need to change state and (maybe) trigger a virtual IRQ if it
+	 * is enabled and was not previously pending. Otherwise we can skip
+	 * everything except setting the pending bit.
+	 *
+	 * If you change this logic make sure to update the need_vm_lock logic
+	 * above to match.
+	 */
+	if (!(target_vcpu->interrupts.interrupt_enabled[intid_index] &
+	      ~target_vcpu->interrupts.interrupt_pending[intid_index] &
+	      intid_mask)) {
+		goto out;
+	}
+
+	/* Increment the count. */
+	target_vcpu->interrupts.enabled_and_pending_count++;
+
+	/*
+	 * Only need to update state if there was not already an
+	 * interrupt enabled and pending.
+	 */
+	if (target_vcpu->interrupts.enabled_and_pending_count != 1) {
+		goto out;
+	}
+
+	if (target_vcpu->state == vcpu_state_blocked_interrupt) {
+		target_vcpu->state = vcpu_state_ready;
+	} else if (target_vcpu->state == vcpu_state_blocked_mailbox) {
+		/*
+		 * need_vm_lock must be true if this path is taken, so if you
+		 * change the condition here or those leading up to it make sure
+		 * to update the need_vm_lock logic above to match.
+		 */
+
+		/* Take target vCPU out of mailbox recv_waiter list. */
+		/*
+		 * TODO: Consider using a doubly-linked list for the receive
+		 * waiter list to avoid the linear search here.
+		 */
+		struct vcpu **previous_next_pointer =
+			&target_vm->mailbox.recv_waiter;
+		while (*previous_next_pointer != NULL &&
+		       *previous_next_pointer != target_vcpu) {
+			/*
+			 * TODO(qwandor): Do we need to lock the vCPUs somehow
+			 * while we walk the linked list, or is the VM lock
+			 * enough?
+			 */
+			previous_next_pointer =
+				&(*previous_next_pointer)->mailbox_next;
+		}
+		if (*previous_next_pointer == NULL) {
+			dlog("Target VCPU state is vcpu_state_blocked_mailbox "
+			     "but is not in VM mailbox waiter list. This "
+			     "should never happen.\n");
+		} else {
+			*previous_next_pointer = target_vcpu->mailbox_next;
+		}
+
+		target_vcpu->state = vcpu_state_ready;
+	}
+
+	if (current->vm->id == HF_PRIMARY_VM_ID) {
+		/*
+		 * If the call came from the primary VM, let it know that it
+		 * should run or kick the target vCPU.
+		 */
+		ret = 1;
+	} else if (current != target_vcpu && next != NULL) {
+		/*
+		 * Switch to the primary so that it can switch to the target, or
+		 * kick it if it is already running on a different physical CPU.
+		 */
+		struct hf_vcpu_run_return ret = {
+			.code = HF_VCPU_RUN_WAKE_UP,
+			.wake_up.vm_id = target_vm->id,
+			.wake_up.vcpu = target_vcpu - target_vm->vcpus,
+		};
+		*next = api_switch_to_primary(current, ret, vcpu_state_ready);
+	}
+
+out:
+	/* Either way, make it pending. */
+	target_vcpu->interrupts.interrupt_pending[intid_index] |= intid_mask;
+
+	sl_unlock(&target_vcpu->lock);
+	if (need_vm_lock) {
+		sl_unlock(&target_vm->lock);
+	}
+
+	return ret;
+}
+
+/**
  * Prepares the vcpu to run by updating its state and fetching whether a return
  * value needs to be forced onto the vCPU.
  */
 static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
-				 struct retval_state *vcpu_retval)
+				 struct retval_state *vcpu_retval,
+				 struct hf_vcpu_run_return *run_ret)
 {
 	bool ret;
 
@@ -242,10 +391,63 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 		goto out;
 	}
 
-	if (vcpu->state != vcpu_state_ready) {
+	/*
+	 * Wait until the registers become available. Care must be taken when
+	 * looping on this: it shouldn't be done while holding other locks to
+	 * avoid deadlocks.
+	 */
+	while (!vcpu->regs_available) {
+		if (vcpu->state == vcpu_state_running) {
+			/*
+			 * vCPU is running on another pCPU.
+			 *
+			 * It's ok to not return HF_VCPU_RUN_SLEEP here because
+			 * the other physical CPU that is currently running this
+			 * vcpu will return HF_VCPU_RUN_SLEEP if neeed. The
+			 * default return value is
+			 * HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no need to set it
+			 * explicitly.
+			 */
+			ret = false;
+			goto out;
+		}
+
+		sl_unlock(&vcpu->lock);
+		sl_lock(&vcpu->lock);
+	}
+
+	switch (vcpu->state) {
+	case vcpu_state_running:
+	case vcpu_state_off:
+	case vcpu_state_aborted:
 		ret = false;
 		goto out;
+	case vcpu_state_blocked_interrupt:
+	case vcpu_state_blocked_mailbox:
+		if (arch_timer_pending(&vcpu->regs)) {
+			break;
+		}
+
+		/*
+		 * The vCPU is not ready to run, return the appropriate code to
+		 * the primary which called vcpu_run.
+		 */
+		if (arch_timer_enabled(&vcpu->regs)) {
+			run_ret->code = HF_VCPU_RUN_SLEEP;
+			run_ret->sleep.ns =
+				arch_timer_remaining_ns(&vcpu->regs);
+		}
+
+		ret = false;
+		goto out;
+	case vcpu_state_ready:
+		break;
 	}
+	/*
+	 * If we made it to here then either the state was vcpu_state_ready or
+	 * the timer is pending, so the vCPU should run to handle the timer
+	 * firing.
+	 */
 
 	vcpu->cpu = current->cpu;
 	vcpu->state = vcpu_state_running;
@@ -254,16 +456,6 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	*vcpu_retval = vcpu->retval;
 	if (vcpu_retval->force) {
 		vcpu->retval.force = false;
-	}
-
-	/*
-	 * Wait until the registers become available. Care must be taken when
-	 * looping on this: it shouldn't be done while holding other locks to
-	 * avoid deadlocks.
-	 */
-	while (!vcpu->regs_available) {
-		sl_unlock(&vcpu->lock);
-		sl_lock(&vcpu->lock);
 	}
 
 	/*
@@ -317,9 +509,29 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 
 	/* Update state if allowed. */
 	vcpu = &vm->vcpus[vcpu_idx];
-	if (!api_vcpu_prepare_run(current, vcpu, &vcpu_retval)) {
-		ret.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
+	if (!api_vcpu_prepare_run(current, vcpu, &vcpu_retval, &ret)) {
 		goto out;
+	}
+
+	/*
+	 * Inject timer interrupt if timer has expired. It's safe to access
+	 * vcpu->regs here because api_vcpu_prepare_run already made sure that
+	 * regs_available was true (and then set it to false) before returning
+	 * true.
+	 */
+	if (arch_timer_pending(&vcpu->regs)) {
+		/* Make virtual timer interrupt pending. */
+		internal_interrupt_inject(vm, vcpu, HF_VIRTUAL_TIMER_INTID,
+					  vcpu, NULL);
+
+		/*
+		 * Set the mask bit so the hardware interrupt doesn't fire
+		 * again. Ideally we wouldn't do this because it affects what
+		 * the secondary vCPU sees, but if we don't then we end up with
+		 * a loop of the interrupt firing each time we try to return to
+		 * the secondary vCPU.
+		 */
+		arch_timer_mask(&vcpu->regs);
 	}
 
 	/* Switch to the vcpu. */
@@ -956,12 +1168,8 @@ int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 			     uint32_t intid, struct vcpu *current,
 			     struct vcpu **next)
 {
-	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
-	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
 	struct vcpu *target_vcpu;
 	struct vm *target_vm = vm_get(target_vm_id);
-	bool need_vm_lock;
-	int64_t ret = 0;
 
 	if (intid >= HF_NUM_INTIDS) {
 		return -1;
@@ -984,121 +1192,8 @@ int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 
 	dlog("Injecting IRQ %d for VM %d VCPU %d from VM %d VCPU %d\n", intid,
 	     target_vm_id, target_vcpu_idx, current->vm->id, current->cpu->id);
-
-	sl_lock(&target_vcpu->lock);
-	/*
-	 * If we need the target_vm lock we need to release the target_vcpu lock
-	 * first to maintain the correct order of locks. In-between releasing
-	 * and acquiring it again the state of the vCPU could change in such a
-	 * way that we don't actually need to touch the target_vm after all, but
-	 * that's alright: we'll take the target_vm lock anyway, but it's safe,
-	 * just perhaps a little slow in this unusual case. The reverse is not
-	 * possible: if need_vm_lock is false, we don't release the target_vcpu
-	 * lock until we are done, so nothing should change in such as way that
-	 * we need the VM lock after all.
-	 */
-	need_vm_lock =
-		(target_vcpu->interrupts.interrupt_enabled[intid_index] &
-		 ~target_vcpu->interrupts.interrupt_pending[intid_index] &
-		 intid_mask) &&
-		target_vcpu->state == vcpu_state_blocked_mailbox;
-	if (need_vm_lock) {
-		sl_unlock(&target_vcpu->lock);
-		sl_lock(&target_vm->lock);
-		sl_lock(&target_vcpu->lock);
-	}
-
-	/*
-	 * We only need to change state and (maybe) trigger a virtual IRQ if it
-	 * is enabled and was not previously pending. Otherwise we can skip
-	 * everything except setting the pending bit.
-	 *
-	 * If you change this logic make sure to update the need_vm_lock logic
-	 * above to match.
-	 */
-	if (!(target_vcpu->interrupts.interrupt_enabled[intid_index] &
-	      ~target_vcpu->interrupts.interrupt_pending[intid_index] &
-	      intid_mask)) {
-		goto out;
-	}
-
-	/* Increment the count. */
-	target_vcpu->interrupts.enabled_and_pending_count++;
-
-	/*
-	 * Only need to update state if there was not already an interrupt
-	 * enabled and pending.
-	 */
-	if (target_vcpu->interrupts.enabled_and_pending_count != 1) {
-		goto out;
-	}
-
-	if (target_vcpu->state == vcpu_state_blocked_interrupt) {
-		target_vcpu->state = vcpu_state_ready;
-	} else if (target_vcpu->state == vcpu_state_blocked_mailbox) {
-		/*
-		 * If you change this logic make sure to update the need_vm_lock
-		 * logic above to match.
-		 */
-		target_vcpu->state = vcpu_state_ready;
-
-		/* Take target vCPU out of mailbox recv_waiter list. */
-		/*
-		 * TODO: Consider using a doubly-linked list for the receive
-		 *       waiter list to avoid the linear search here.
-		 */
-		struct vcpu **previous_next_pointer =
-			&target_vm->mailbox.recv_waiter;
-		while (*previous_next_pointer != NULL &&
-		       *previous_next_pointer != target_vcpu) {
-			/*
-			 * TODO(qwandor): Do we need to lock the vCPUs somehow
-			 * while we walk the linked list, or is the VM lock
-			 * enough?
-			 */
-			previous_next_pointer =
-				&(*previous_next_pointer)->mailbox_next;
-		}
-
-		if (*previous_next_pointer == NULL) {
-			dlog("Target VCPU state is vcpu_state_blocked_mailbox "
-			     "but is not in VM mailbox waiter list. This "
-			     "should never happen.\n");
-		} else {
-			*previous_next_pointer = target_vcpu->mailbox_next;
-		}
-	}
-
-	if (current->vm->id == HF_PRIMARY_VM_ID) {
-		/*
-		 * If the call came from the primary VM, let it know that it
-		 * should run or kick the target vCPU.
-		 */
-		ret = 1;
-	} else if (current != target_vcpu) {
-		/*
-		 * Switch to the primary so that it can switch to the target, or
-		 * kick it if it is already running on a different physical CPU.
-		 */
-		struct hf_vcpu_run_return ret = {
-			.code = HF_VCPU_RUN_WAKE_UP,
-			.wake_up.vm_id = target_vm_id,
-			.wake_up.vcpu = target_vcpu_idx,
-		};
-
-		*next = api_switch_to_primary(current, ret, vcpu_state_ready);
-	}
-
-out:
-	/* Either way, make it pending. */
-	target_vcpu->interrupts.interrupt_pending[intid_index] |= intid_mask;
-
-	sl_unlock(&target_vcpu->lock);
-	if (need_vm_lock) {
-		sl_unlock(&target_vm->lock);
-	}
-
-	return ret;
+	return internal_interrupt_inject(target_vm, target_vcpu, intid, current,
+					 next);
 }
 
 /**

@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include "hf/arch/cpu.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
 
 #include "hf/std.h"

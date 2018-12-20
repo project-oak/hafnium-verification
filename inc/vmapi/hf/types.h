@@ -51,3 +51,6 @@ typedef uintptr_t hf_ipaddr_t;
 
 /** Interrupt ID indicating a mailbox is writable. */
 #define HF_MAILBOX_WRITABLE_INTID 2
+
+/** The virtual interrupt ID used for the virtual timer. */
+#define HF_VIRTUAL_TIMER_INTID 3
