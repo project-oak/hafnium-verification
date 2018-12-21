@@ -50,7 +50,7 @@ int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 /**
  * Returns the VM's own ID.
  */
-static inline uint32_t hf_vm_get_id()
+static inline uint32_t hf_vm_get_id(void)
 {
 	return hf_call(HF_VM_GET_ID, 0, 0, 0);
 }
