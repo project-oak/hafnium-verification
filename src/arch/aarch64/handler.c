@@ -362,6 +362,8 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		if (esr & 1) {
 			return NULL;
 		}
+		/* Skip the WFI instruction. */
+		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
 		return api_wait_for_interrupt(current());
 
 	case 0x24: /* EC = 100100, Data abort. */
