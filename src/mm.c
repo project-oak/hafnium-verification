@@ -515,35 +515,15 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
 }
 
 /**
- * Given that `entry` is a subtable but its entries are all absent, return the
- * absent entry with which it can be replaced. Note that `entry` will no longer
- * be valid after calling this function as the subtable will have been freed.
+ * Given the table PTE entries are all have identical attributes, return the
+ * single entry with which it can be replaced. Note that the table PTE will no
+ * longer be valid after calling this function as the table may have been freed.
+ *
+ * If the table is freed, the memory is freed directly rather than calling
+ * `mm_free_page_pte()` as it is known to not have subtables.
  */
-static pte_t mm_table_pte_to_absent(pte_t entry, uint8_t level,
-				    struct mpool *ppool)
-{
-	struct mm_page_table *table =
-		mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
-
-	/*
-	 * Free the subtable. This is safe to do directly (rather than
-	 * using mm_free_page_pte) because we know by this point that it
-	 * doesn't have any subtables of its own.
-	 */
-	mpool_free(ppool, table);
-
-	/* Replace subtable with a single absent entry. */
-	return arch_mm_absent_pte(level);
-}
-
-/**
- * Given that `entry` is a subtable and its entries are all identical, return
- * the single block entry with which it can be replaced if possible. Note that
- * `entry` will no longer be valid after calling this function as the subtable
- * may have been freed.
- */
-static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level,
-				   struct mpool *ppool)
+static pte_t mm_merge_table_pte(pte_t table_pte, uint8_t level,
+				struct mpool *ppool)
 {
 	struct mm_page_table *table;
 	uint64_t block_attrs;
@@ -551,33 +531,34 @@ static pte_t mm_table_pte_to_block(pte_t entry, uint8_t level,
 	uint64_t combined_attrs;
 	paddr_t block_address;
 
-	if (!arch_mm_is_block_allowed(level)) {
-		return entry;
+	table = mm_page_table_from_pa(arch_mm_table_from_pte(table_pte, level));
+
+	if (!arch_mm_pte_is_present(table->entries[0], level - 1)) {
+		/* Free the table and return an absent entry. */
+		mpool_free(ppool, table);
+		return arch_mm_absent_pte(level);
 	}
 
-	table = mm_page_table_from_pa(arch_mm_table_from_pte(entry, level));
+	/* Might not be possible to merge the table into a single block. */
+	if (!arch_mm_is_block_allowed(level)) {
+		return table_pte;
+	}
 
-	/* Replace subtable with a single block, with equivalent attributes. */
+	/* Replace table with a single block, with equivalent attributes. */
 	block_attrs = arch_mm_pte_attrs(table->entries[0], level - 1);
-	table_attrs = arch_mm_pte_attrs(entry, level);
+	table_attrs = arch_mm_pte_attrs(table_pte, level);
 	combined_attrs =
 		arch_mm_combine_table_entry_attrs(table_attrs, block_attrs);
 	block_address = arch_mm_block_from_pte(table->entries[0], level - 1);
 
-	/* Free the subtable. */
+	/* Free the table and return a block. */
 	mpool_free(ppool, table);
-
-	/*
-	 * We can assume that the block is aligned properly because all virtual
-	 * addresses are aligned by definition, and we have a 1-1 mapping from
-	 * virtual to physical addresses.
-	 */
 	return arch_mm_block_pte(level, block_address, combined_attrs);
 }
 
 /**
- * Defragment the given ptable entry by recursively replacing any tables with
- * block or absent entries where possible.
+ * Defragment the given PTE by recursively replacing any tables with blocks or
+ * absent entries where possible.
  */
 static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
 				    struct mpool *ppool)
@@ -585,8 +566,6 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
 	struct mm_page_table *table;
 	uint64_t i;
 	uint64_t attrs;
-	bool identical_blocks_so_far = true;
-	bool all_absent_so_far = true;
 
 	if (!arch_mm_pte_is_table(entry, level)) {
 		return entry;
@@ -596,36 +575,25 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
 
 	/*
 	 * Check if all entries are blocks with the same flags or are all
-	 * absent.
+	 * absent. It assumes addresses are contiguous due to identity mapping.
 	 */
 	attrs = arch_mm_pte_attrs(table->entries[0], level);
 	for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
-		/*
-		 * First try to defrag the entry, in case it is a subtable.
-		 */
+		/* First try to defrag the entry, in case it is a subtable. */
 		table->entries[i] = mm_ptable_defrag_entry(table->entries[i],
 							   level - 1, ppool);
 
-		if (arch_mm_pte_is_present(table->entries[i], level - 1)) {
-			all_absent_so_far = false;
-		}
-
 		/*
-		 * If the entry is a block, check that the flags are the same as
-		 * what we have so far.
+		 * If the entry isn't a block or has different attributes then
+		 * it isn't possible to defragment it.
 		 */
 		if (!arch_mm_pte_is_block(table->entries[i], level - 1) ||
 		    arch_mm_pte_attrs(table->entries[i], level) != attrs) {
-			identical_blocks_so_far = false;
+			return entry;
 		}
 	}
-	if (identical_blocks_so_far) {
-		return mm_table_pte_to_block(entry, level, ppool);
-	}
-	if (all_absent_so_far) {
-		return mm_table_pte_to_absent(entry, level, ppool);
-	}
-	return entry;
+
+	return mm_merge_table_pte(entry, level, ppool);
 }
 
 /**
