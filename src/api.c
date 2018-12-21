@@ -273,36 +273,15 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
 	paddr_t pa_recv_end;
-	int mode;
+	int orig_send_mode;
+	int orig_recv_mode;
+	struct mpool local_page_pool;
 	int64_t ret;
 
 	/* Fail if addresses are not page-aligned. */
 	if ((ipa_addr(send) & (PAGE_SIZE - 1)) ||
 	    (ipa_addr(recv) & (PAGE_SIZE - 1))) {
 		return -1;
-	}
-
-	sl_lock(&vm->lock);
-
-	/* We only allow these to be setup once. */
-	if (vm->mailbox.send || vm->mailbox.recv) {
-		ret = -1;
-		goto exit;
-	}
-
-	/* Ensure the pages are valid, owned and exclusive to the VM. */
-	if (!mm_vm_get_mode(&vm->ptable, send, ipa_add(send, PAGE_SIZE),
-			    &mode) ||
-	    !api_mode_valid_owned_and_exclusive(mode)) {
-		ret = -1;
-		goto exit;
-	}
-
-	if (!mm_vm_get_mode(&vm->ptable, recv, ipa_add(recv, PAGE_SIZE),
-			    &mode) ||
-	    !api_mode_valid_owned_and_exclusive(mode)) {
-		ret = -1;
-		goto exit;
 	}
 
 	/* Convert to physical addresses. */
@@ -314,16 +293,67 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 
 	/* Fail if the same page is used for the send and receive pages. */
 	if (pa_addr(pa_send_begin) == pa_addr(pa_recv_begin)) {
-		ret = -1;
-		goto exit;
+		return -1;
+	}
+
+	sl_lock(&vm->lock);
+
+	/* We only allow these to be setup once. */
+	if (vm->mailbox.send || vm->mailbox.recv) {
+		goto fail;
+	}
+
+	/*
+	 * Ensure the pages are valid, owned and exclusive to the VM and that
+	 * the VM has the required access to the memory.
+	 */
+	if (!mm_vm_get_mode(&vm->ptable, send, ipa_add(send, PAGE_SIZE),
+			    &orig_send_mode) ||
+	    !api_mode_valid_owned_and_exclusive(orig_send_mode) ||
+	    (orig_send_mode & MM_MODE_R) == 0 ||
+	    (orig_send_mode & MM_MODE_W) == 0) {
+		goto fail;
+	}
+
+	if (!mm_vm_get_mode(&vm->ptable, recv, ipa_add(recv, PAGE_SIZE),
+			    &orig_recv_mode) ||
+	    !api_mode_valid_owned_and_exclusive(orig_recv_mode) ||
+	    (orig_recv_mode & MM_MODE_R) == 0) {
+		goto fail;
+	}
+
+	/*
+	 * Create a local pool so any freed memory can't be used by another
+	 * thread. This is to ensure the original mapping can be restored if any
+	 * stage of the process fails.
+	 */
+	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
+
+	/* Take memory ownership away from the VM and mark as shared. */
+	if (!mm_vm_identity_map(
+		    &vm->ptable, pa_send_begin, pa_send_end,
+		    MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R | MM_MODE_W,
+		    NULL, &local_page_pool)) {
+		goto fail_free_pool;
+	}
+
+	if (!mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
+				MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R,
+				NULL, &local_page_pool)) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_ptable_defrag(&vm->ptable, 0, &local_page_pool);
+		goto fail_undo_send;
 	}
 
 	/* Map the send page as read-only in the hypervisor address space. */
 	vm->mailbox.send = mm_identity_map(pa_send_begin, pa_send_end,
-					   MM_MODE_R, &api_page_pool);
+					   MM_MODE_R, &local_page_pool);
 	if (!vm->mailbox.send) {
-		ret = -1;
-		goto exit;
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(&local_page_pool);
+		goto fail_undo_send_and_recv;
 	}
 
 	/*
@@ -331,17 +361,41 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 	 * failure, unmap the send page before returning.
 	 */
 	vm->mailbox.recv = mm_identity_map(pa_recv_begin, pa_recv_end,
-					   MM_MODE_W, &api_page_pool);
+					   MM_MODE_W, &local_page_pool);
 	if (!vm->mailbox.recv) {
-		vm->mailbox.send = NULL;
-		mm_unmap(pa_send_begin, pa_send_end, 0, &api_page_pool);
-		ret = -1;
-		goto exit;
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(&local_page_pool);
+		goto fail_undo_all;
 	}
 
 	/* TODO: Notify any waiters. */
 
 	ret = 0;
+	goto exit;
+
+	/*
+	 * The following mappings will not require more memory than is available
+	 * in the local pool.
+	 */
+fail_undo_all:
+	vm->mailbox.send = NULL;
+	mm_unmap(pa_send_begin, pa_send_end, 0, &local_page_pool);
+
+fail_undo_send_and_recv:
+	mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
+			   orig_recv_mode, NULL, &local_page_pool);
+
+fail_undo_send:
+	mm_vm_identity_map(&vm->ptable, pa_send_begin, pa_send_end,
+			   orig_send_mode, NULL, &local_page_pool);
+
+fail_free_pool:
+	mpool_fini(&local_page_pool);
+
+fail:
+	ret = -1;
+
 exit:
 	sl_unlock(&vm->lock);
 
