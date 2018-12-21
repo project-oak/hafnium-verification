@@ -234,7 +234,7 @@ TEST(mpool, alloc_contiguous)
 {
 	struct mpool p;
 	constexpr size_t entry_size = 16;
-	constexpr size_t entries_per_chunk = 10;
+	constexpr size_t entries_per_chunk = 12;
 	constexpr size_t chunk_count = 10;
 	std::vector<std::unique_ptr<char[]>> chunks;
 	std::vector<uintptr_t> allocs;
