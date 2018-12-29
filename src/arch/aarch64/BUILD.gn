@@ -38,6 +38,8 @@ source_set("aarch64") {
 # Implementation of the arch interface for aarch64.
 source_set("arch") {
   sources = [
+    "barriers.c",
+    "cpu.c",
     "mm.c",
   ]
 }
@@ -61,6 +63,10 @@ source_set("putchar") {
   if (arch_aarch64_use_pl011) {
     sources = [
       "pl011.c",
+    ]
+
+    deps = [
+      ":arch",
     ]
   }
 }

@@ -16,17 +16,20 @@
 
 #pragma once
 
-static inline void dmb(void)
-{
-	__asm__ volatile("dmb sy");
-}
+/**
+ * Ensures all explicit memory accesses before this point are completed before
+ * any later memory accesses are performed.
+ */
+void dmb(void);
 
-static inline void dsb(void)
-{
-	__asm__ volatile("dsb sy");
-}
+/**
+ * Ensure all explicit memory access and management instructions have completed
+ * before continuing.
+ */
+void dsb(void);
 
-static inline void isb(void)
-{
-	__asm__ volatile("isb");
-}
+/**
+ * Flushes the instruction pipeline so that instructions are fetched from
+ * memory.
+ */
+void isb(void);

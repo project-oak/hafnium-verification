@@ -16,6 +16,27 @@
 
 #pragma once
 
-#include "hf/cpu.h"
+#include <stdbool.h>
+#include <stdint.h>
 
-void arch_putchar(char c);
+#define PAGE_BITS 12
+#define PAGE_LEVEL_BITS 9
+
+/** The type of a page table entry (PTE). */
+typedef uint64_t pte_t;
+
+/** Integer type large enough to hold a physical address. */
+typedef uintptr_t uintpaddr_t;
+
+/** Integer type large enough to hold a virtual address. */
+typedef uintptr_t uintvaddr_t;
+
+/** The integer large corresponding to the native register size. */
+typedef uint64_t uintreg_t;
+
+/** Type to represent the register state of a VM.  */
+struct arch_regs {
+	uintreg_t r[5];
+	uintreg_t vcpu_index;
+	bool virtual_interrupt;
+};

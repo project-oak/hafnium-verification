@@ -19,7 +19,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "hf/arch.h"
+#include "hf/arch/console.h"
+
 #include "hf/spinlock.h"
 #include "hf/std.h"
 

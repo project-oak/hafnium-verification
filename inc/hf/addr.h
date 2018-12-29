@@ -19,7 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "hf/arch/addr.h"
+#include "hf/arch/types.h"
 
 /** An opaque type for a physical address. */
 typedef struct {
