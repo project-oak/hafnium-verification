@@ -13,3 +13,7 @@
 	path = third_party/googletest
 	url = https://hafnium.googlesource.com/hafnium/third_party/googletest
 	shallow = true
+[submodule "third_party/linux"]
+	path = third_party/linux
+	url = https://hafnium.googlesource.com/hafnium/third_party/linux
+	shallow = true

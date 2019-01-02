@@ -43,8 +43,18 @@ fi
 # Step 1: make sure it builds.
 #
 
-# Check the build works.
+# Check the hypervisor builds.
 make
+
+# Check the Linux kernel module builds.
+(
+export ARCH=arm64 &&
+export CROSS_COMPILE=aarch64-linux-gnu- &&
+make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8} \
+     -C third_party/linux defconfig modules_prepare &&
+cd driver/linux &&
+make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8}
+)
 
 #
 # Step 2: make sure it works.
