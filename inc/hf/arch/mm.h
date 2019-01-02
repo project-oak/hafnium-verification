@@ -36,7 +36,7 @@
 pte_t arch_mm_absent_pte(uint8_t level);
 
 /**
- * Createa a table PTE.
+ * Creates a table PTE.
  */
 pte_t arch_mm_table_pte(uint8_t level, paddr_t pa);
 
@@ -46,7 +46,7 @@ pte_t arch_mm_table_pte(uint8_t level, paddr_t pa);
 pte_t arch_mm_block_pte(uint8_t level, paddr_t pa, uint64_t attrs);
 
 /**
- * Chceks whether a block is allowed at the given level of the page table.
+ * Checks whether a block is allowed at the given level of the page table.
  */
 bool arch_mm_is_block_allowed(uint8_t level);
 
@@ -81,33 +81,33 @@ bool arch_mm_pte_is_table(pte_t pte, uint8_t level);
 paddr_t arch_mm_clear_pa(paddr_t pa);
 
 /**
- * Extracts the start address if the PTE range.
+ * Extracts the start address of the PTE range.
  */
 paddr_t arch_mm_block_from_pte(pte_t pte, uint8_t level);
 
 /**
- * Extracts the address of the table referenced by the PTE/.
+ * Extracts the address of the table referenced by the PTE.
  */
 paddr_t arch_mm_table_from_pte(pte_t pte, uint8_t level);
 
 /**
- * Extracts the atrobutes of the PTE.
+ * Extracts the attributes of the PTE.
  */
 uint64_t arch_mm_pte_attrs(pte_t pte, uint8_t level);
 
 /**
- * Merge the attributes of a block into those of its containing table.
+ * Merges the attributes of a block into those of its containing table.
  */
 uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
 					   uint64_t block_attrs);
 
 /**
- * Invalidates hte given range of stage-1 TLB.
+ * Invalidates the given range of stage-1 TLB.
  */
 void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end);
 
 /**
- * Invalidates hte given range of stage-2 TLB.
+ * Invalidates the given range of stage-2 TLB.
  */
 void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end);
 
@@ -118,7 +118,7 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end);
 void arch_mm_write_back_dcache(void *base, size_t size);
 
 /**
- * Gets teh maximum level allowed in the page table for the given mode.
+ * Gets the maximum level allowed in the page table for the given mode.
  */
 uint8_t arch_mm_max_level(int mode);
 
@@ -134,6 +134,6 @@ uint8_t arch_mm_root_table_count(int mode);
 uint64_t arch_mm_mode_to_attrs(int mode);
 
 /**
- * Initialized the arch specific memory management state.
+ * Initializes the arch specific memory management state.
  */
 bool arch_mm_init(paddr_t table, bool first);

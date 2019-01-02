@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "hf/arch/barriers.h"
+
 void dmb(void)
 {
 	__asm__ volatile("dmb sy");

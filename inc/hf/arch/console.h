@@ -16,5 +16,5 @@
 
 #pragma once
 
-/** Put a single character on the console. */
+/** Puts a single character on the console. */
 void arch_putchar(char c);

@@ -18,7 +18,7 @@
 
 #include <stddef.h>
 
-#include <hf/arch/cpu.h>
+#include "hf/arch/cpu.h"
 
 #define read_msr(name)                                          \
 	__extension__({                                         \

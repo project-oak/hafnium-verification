@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <hf/arch/cpu.h>
+#include "hf/arch/cpu.h"
 
 void arch_irq_disable(void)
 {

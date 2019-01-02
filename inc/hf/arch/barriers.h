@@ -23,7 +23,7 @@
 void dmb(void);
 
 /**
- * Ensure all explicit memory access and management instructions have completed
+ * Ensures all explicit memory access and management instructions have completed
  * before continuing.
  */
 void dsb(void);
