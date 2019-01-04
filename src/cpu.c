@@ -47,6 +47,7 @@ void cpu_module_init(void)
 	/* Initialize all CPUs. */
 	for (i = 0; i < MAX_CPUS; i++) {
 		struct cpu *c = &cpus[i];
+
 		cpu_init(c);
 		c->id = i; /* TODO: Initialize ID based on fdt. */
 		c->stack_bottom = &callstacks[i][STACK_SIZE];
@@ -96,6 +97,7 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 	if (!prev) {
 		struct vm *vm = vm_get(HF_PRIMARY_VM_ID);
 		struct vcpu *vcpu = &vm->vcpus[cpu_index(c)];
+
 		arch_regs_set_pc_arg(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);
 	}

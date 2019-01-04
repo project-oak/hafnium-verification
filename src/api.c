@@ -41,8 +41,8 @@ static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
 static struct mpool api_page_pool;
 
 /**
- * Initialies the API page pool by taking ownership of the contents of the given
- * page pool.
+ * Initialises the API page pool by taking ownership of the contents of the
+ * given page pool.
  */
 void api_init(struct mpool *ppool)
 {
@@ -84,6 +84,7 @@ struct vcpu *api_yield(struct vcpu *current)
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_YIELD,
 	};
+
 	return api_switch_to_primary(current, ret, vcpu_state_ready);
 }
 
@@ -96,6 +97,7 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
 	};
+
 	return api_switch_to_primary(current, ret,
 				     vcpu_state_blocked_interrupt);
 }
@@ -174,8 +176,8 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 
 	/*
 	 * Wait until the registers become available. Care must be taken when
-	 * looping on this: it shouldn't be done while holding other locks
-	 * to avoid deadlocks.
+	 * looping on this: it shouldn't be done while holding other locks to
+	 * avoid deadlocks.
 	 */
 	while (!vcpu->regs_available) {
 		sl_unlock(&vcpu->lock);
@@ -395,6 +397,7 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 			.code = HF_VCPU_RUN_MESSAGE,
 			.message.size = size,
 		};
+
 		*next = api_switch_to_primary(current, primary_ret,
 					      vcpu_state_ready);
 		ret = 0;
@@ -445,6 +448,7 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
 			.wake_up.vm_id = to->id,
 			.wake_up.vcpu = vcpu,
 		};
+
 		*next = api_switch_to_primary(current, primary_ret,
 					      vcpu_state_ready);
 		ret = 0;
@@ -506,6 +510,7 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 		struct hf_vcpu_run_return run_return = {
 			.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
 		};
+
 		*next = api_switch_to_primary(current, run_return,
 					      vcpu_state_blocked_mailbox);
 	}
@@ -550,6 +555,7 @@ int64_t api_enable_interrupt(uint32_t intid, bool enable, struct vcpu *current)
 {
 	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
 	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
+
 	if (intid >= HF_NUM_INTIDS) {
 		return -1;
 	}
@@ -603,6 +609,7 @@ uint32_t api_get_and_acknowledge_interrupt(struct vcpu *current)
 		uint32_t enabled_and_pending =
 			current->interrupts.interrupt_enabled[i] &
 			current->interrupts.interrupt_pending[i];
+
 		if (enabled_and_pending != 0) {
 			uint8_t bit_index = ctz(enabled_and_pending);
 			/*
@@ -629,6 +636,7 @@ static inline bool is_injection_allowed(uint32_t target_vm_id,
 					struct vcpu *current)
 {
 	uint32_t current_vm_id = current->vm->id;
+
 	/*
 	 * The primary VM is allowed to inject interrupts into any VM. Secondary
 	 * VMs are only allowed to inject interrupts into their own vCPUs.
@@ -664,16 +672,20 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 	if (intid >= HF_NUM_INTIDS) {
 		return -1;
 	}
+
 	if (target_vm == NULL) {
 		return -1;
 	}
+
 	if (target_vcpu_idx >= target_vm->vcpu_count) {
 		/* The requested vcpu must exist. */
 		return -1;
 	}
+
 	if (!is_injection_allowed(target_vm_id, current)) {
 		return -1;
 	}
+
 	target_vcpu = &target_vm->vcpus[target_vcpu_idx];
 
 	dlog("Injecting IRQ %d for VM %d VCPU %d from VM %d VCPU %d\n", intid,
@@ -754,6 +766,7 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 			previous_next_pointer =
 				&(*previous_next_pointer)->mailbox_next;
 		}
+
 		if (*previous_next_pointer == NULL) {
 			dlog("Target VCPU state is vcpu_state_blocked_mailbox "
 			     "but is not in VM mailbox waiter list. This "
@@ -779,6 +792,7 @@ int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 			.wake_up.vm_id = target_vm_id,
 			.wake_up.vcpu = target_vcpu_idx,
 		};
+
 		*next = api_switch_to_primary(current, ret, vcpu_state_ready);
 	}
 

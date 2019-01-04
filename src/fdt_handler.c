@@ -157,6 +157,7 @@ void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p)
 	do {
 		const char *data;
 		uint32_t size;
+
 		if (!fdt_read_property(&n, "device_type", &data, &size) ||
 		    size != sizeof("memory") ||
 		    memcmp(data, "memory", sizeof("memory")) != 0 ||
@@ -228,6 +229,7 @@ fail:
 bool fdt_unmap(struct fdt_header *fdt, struct mpool *ppool)
 {
 	paddr_t fdt_addr = pa_from_va(va_from_ptr(fdt));
+
 	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), 0,
 			ppool);
 }

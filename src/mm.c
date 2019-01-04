@@ -115,6 +115,7 @@ static paddr_t mm_pa_start_of_next_block(paddr_t pa, size_t block_size)
 static ptable_addr_t mm_level_end(ptable_addr_t addr, uint8_t level)
 {
 	size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS;
+
 	return ((addr >> offset) + 1) << offset;
 }
 
@@ -125,6 +126,7 @@ static ptable_addr_t mm_level_end(ptable_addr_t addr, uint8_t level)
 static size_t mm_index(ptable_addr_t addr, uint8_t level)
 {
 	ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
+
 	return v & ((UINT64_C(1) << PAGE_LEVEL_BITS) - 1);
 }
 
@@ -483,6 +485,7 @@ static void mm_dump_table_recursive(struct mm_page_table *table, uint8_t level,
 				    int max_level)
 {
 	uint64_t i;
+
 	for (i = 0; i < MM_PTE_PER_PAGE; i++) {
 		if (!arch_mm_pte_is_present(table->entries[i], level)) {
 			continue;
@@ -509,6 +512,7 @@ void mm_ptable_dump(struct mm_ptable *t, int mode)
 	int max_level = arch_mm_max_level(mode);
 	uint8_t root_table_count = arch_mm_root_table_count(mode);
 	uint8_t i;
+
 	for (i = 0; i < root_table_count; ++i) {
 		mm_dump_table_recursive(&tables[i], max_level, max_level);
 	}
@@ -695,8 +699,10 @@ bool mm_ptable_init(struct mm_ptable *t, int mode, struct mpool *ppool)
 		}
 	}
 
-	/* TODO: halloc could return a virtual or physical address if mm not
-	 * enabled? */
+	/*
+	 * TODO: halloc could return a virtual or physical address if mm not
+	 * enabled?
+	 */
 	t->root = pa_init((uintpaddr_t)tables);
 
 	return true;

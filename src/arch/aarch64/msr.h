@@ -27,9 +27,5 @@
 		__v;                                            \
 	})
 
-#define write_msr(name, value)                                \
-	do {                                                  \
-		__asm__ volatile("msr " #name ", %x0"         \
-				 :                            \
-				 : "rZ"((uintreg_t)(value))); \
-	} while (0)
+#define write_msr(name, value) \
+	__asm__ volatile("msr " #name ", %x0" : : "rZ"((uintreg_t)(value)))

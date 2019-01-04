@@ -151,6 +151,7 @@ struct vcpu *cpu_main(struct cpu *c)
 	 * by only touching the variable from cpu 0.
 	 */
 	static volatile bool inited = false;
+
 	if (cpu_index(c) == 0 && !inited) {
 		inited = true;
 		one_time_init();

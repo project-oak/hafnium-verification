@@ -123,6 +123,7 @@ void mpool_fini(struct mpool *p)
 	entry = p->entry_list;
 	while (entry != NULL) {
 		void *ptr = entry;
+
 		entry = entry->next;
 		mpool_free(p->fallback, ptr);
 	}
@@ -132,6 +133,7 @@ void mpool_fini(struct mpool *p)
 	while (chunk != NULL) {
 		void *ptr = chunk;
 		size_t size = (uintptr_t)chunk->limit - (uintptr_t)chunk;
+
 		chunk = chunk->next_chunk;
 		mpool_add_chunk(p->fallback, ptr, size);
 	}
@@ -193,6 +195,7 @@ static void *mpool_alloc_no_fallback(struct mpool *p)
 	mpool_lock(p);
 	if (p->entry_list != NULL) {
 		struct mpool_entry *entry = p->entry_list;
+
 		p->entry_list = entry->next;
 		ret = entry;
 		goto exit;

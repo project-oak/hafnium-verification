@@ -128,6 +128,7 @@ pte_t arch_mm_table_pte(uint8_t level, paddr_t pa)
 pte_t arch_mm_block_pte(uint8_t level, paddr_t pa, uint64_t attrs)
 {
 	pte_t pte = pa_addr(pa) | attrs;
+
 	if (level == 0) {
 		/* A level 0 'block' is actually a page entry. */
 		pte |= PTE_LEVEL0_BLOCK;
@@ -287,10 +288,12 @@ void arch_mm_write_back_dcache(void *base, size_t size)
 	uint16_t line_size = 1 << ((read_msr(CTR_EL0) >> 16) & 0xf);
 	uintptr_t line_begin = (uintptr_t)base & ~(line_size - 1);
 	uintptr_t end = (uintptr_t)base + size;
+
 	while (line_begin < end) {
 		__asm__ volatile("dc cvac, %0" : : "r"(line_begin));
 		line_begin += line_size;
 	}
+
 	__asm__ volatile("dsb sy");
 }
 

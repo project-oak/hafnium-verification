@@ -22,6 +22,7 @@
 paddr_t layout_text_begin(void)
 {
 	extern uint8_t text_begin[];
+
 	return pa_init((uintpaddr_t)text_begin);
 }
 
@@ -31,6 +32,7 @@ paddr_t layout_text_begin(void)
 paddr_t layout_text_end(void)
 {
 	extern uint8_t text_end[];
+
 	return pa_init((uintpaddr_t)text_end);
 }
 
@@ -40,6 +42,7 @@ paddr_t layout_text_end(void)
 paddr_t layout_rodata_begin(void)
 {
 	extern uint8_t rodata_begin[];
+
 	return pa_init((uintpaddr_t)rodata_begin);
 }
 
@@ -49,6 +52,7 @@ paddr_t layout_rodata_begin(void)
 paddr_t layout_rodata_end(void)
 {
 	extern uint8_t rodata_end[];
+
 	return pa_init((uintpaddr_t)rodata_end);
 }
 
@@ -58,6 +62,7 @@ paddr_t layout_rodata_end(void)
 paddr_t layout_data_begin(void)
 {
 	extern uint8_t data_begin[];
+
 	return pa_init((uintpaddr_t)data_begin);
 }
 
@@ -67,6 +72,7 @@ paddr_t layout_data_begin(void)
 paddr_t layout_data_end(void)
 {
 	extern uint8_t data_end[];
+
 	return pa_init((uintpaddr_t)data_end);
 }
 
@@ -76,6 +82,7 @@ paddr_t layout_data_end(void)
 paddr_t layout_initrd_begin(void)
 {
 	extern uint8_t initrd_begin[];
+
 	return pa_init((uintpaddr_t)initrd_begin);
 }
 
@@ -85,6 +92,7 @@ paddr_t layout_initrd_begin(void)
 paddr_t layout_initrd_end(void)
 {
 	extern uint8_t initrd_end[];
+
 	return pa_init((uintpaddr_t)initrd_end);
 }
 
@@ -94,6 +102,7 @@ paddr_t layout_initrd_end(void)
 paddr_t layout_fdt_begin(void)
 {
 	extern uint8_t fdt_begin[];
+
 	return pa_init((uintpaddr_t)fdt_begin);
 }
 
@@ -103,6 +112,7 @@ paddr_t layout_fdt_begin(void)
 paddr_t layout_fdt_end(void)
 {
 	extern uint8_t fdt_end[];
+
 	return pa_init((uintpaddr_t)fdt_end);
 }
 
@@ -112,6 +122,7 @@ paddr_t layout_fdt_end(void)
 paddr_t layout_bin_end(void)
 {
 	extern uint8_t bin_end[];
+
 	return pa_init((uintpaddr_t)bin_end);
 }
 
@@ -124,5 +135,6 @@ paddr_t layout_primary_begin(void)
 {
 	/* TODO: This is a hack. We must read the alignment from the binary. */
 	paddr_t bin_end = layout_bin_end();
+
 	return pa_init((pa_addr(bin_end) + 0x80000 - 1) & ~(0x80000 - 1));
 }

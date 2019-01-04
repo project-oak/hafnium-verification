@@ -222,6 +222,7 @@ void vdlog(const char *fmt, va_list args)
 			/* Read minimum width from arguments. */
 			if (w == 0 && p[1] == '*') {
 				int v = va_arg(args, int);
+
 				if (v >= 0) {
 					w = v;
 				} else {
@@ -235,6 +236,7 @@ void vdlog(const char *fmt, va_list args)
 			switch (p[1]) {
 			case 's': {
 				char *str = va_arg(args, char *);
+
 				print_string(str, str, w, flags, ' ');
 				p++;
 			} break;
@@ -242,6 +244,7 @@ void vdlog(const char *fmt, va_list args)
 			case 'd':
 			case 'i': {
 				int v = va_arg(args, int);
+
 				if (v < 0) {
 					flags |= FLAG_NEG;
 					v = -v;

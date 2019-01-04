@@ -27,7 +27,7 @@
 
 extern uint8_t vector_table_el1;
 
-void exception_setup()
+void exception_setup(void)
 {
 	/* Set exception vector table. */
 	write_msr(VBAR_EL1, &vector_table_el1);
@@ -35,7 +35,7 @@ void exception_setup()
 	write_msr(ICC_CTLR_EL1, 0);
 }
 
-void interrupt_gic_setup()
+void interrupt_gic_setup(void)
 {
 	GICD_CTLR = 1u << 4    /* Enable affinity routing. */
 		    | 1u << 1; /* Enable group 1 non-secure interrupts. */
@@ -75,6 +75,7 @@ void interrupt_enable(uint32_t intid, bool enable)
 void interrupt_enable_all(bool enable)
 {
 	uint32_t i;
+
 	if (enable) {
 		GICR_ISENABLER0 = 0xffffffff;
 		for (i = 0; i < 32; ++i) {
@@ -101,6 +102,7 @@ void interrupt_set_priority(uint32_t intid, uint8_t priority)
 void interrupt_set_edge_triggered(uint32_t intid, bool edge_triggered)
 {
 	uint32_t bit = 1u << (intid % 16 * 2 + 1);
+
 	if (intid < 32) {
 		if (edge_triggered) {
 			GICR_ICFGR(intid / 16) |= bit;
@@ -124,10 +126,11 @@ void interrupt_send_sgi(uint8_t intid, bool irm, uint8_t affinity3,
 		((uint64_t)target_list) | ((uint64_t)affinity1 << 16) |
 		(((uint64_t)intid & 0x0f) << 24) | ((uint64_t)affinity2 << 32) |
 		((uint64_t)irm << 40) | ((uint64_t)affinity3 << 48);
+
 	write_msr(ICC_SGI1R_EL1, sgi_register);
 }
 
-uint32_t interrupt_get_and_acknowledge()
+uint32_t interrupt_get_and_acknowledge(void)
 {
 	return read_msr(ICC_IAR1_EL1);
 }
@@ -150,18 +153,14 @@ void sync_current_exception(uintreg_t esr, uintreg_t elr)
 		}
 
 		dlog("\n");
-		for (;;) {
-			/* do nothing */
-		}
+		break;
 
 	default:
 		dlog("Unknown current sync exception pc=0x%x, esr=0x%x, "
 		     "ec=0x%x\n",
 		     elr, esr, esr >> 26);
-		for (;;) {
-			/* do nothing */
-		}
 	}
+
 	for (;;) {
 		/* do nothing */
 	}

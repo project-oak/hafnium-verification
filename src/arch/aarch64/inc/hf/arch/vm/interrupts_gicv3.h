@@ -44,8 +44,8 @@
 #define GICR_ISACTIVER0 (*(volatile uint32_t *)(SGI_BASE + 0x0300))
 #define GICR_ICFGR(n) (((volatile uint32_t *)(SGI_BASE + 0x0c00))[n])
 
-void exception_setup();
-void interrupt_gic_setup();
+void exception_setup(void);
+void interrupt_gic_setup(void);
 void interrupt_enable(uint32_t intid, bool enable);
 void interrupt_enable_all(bool enable);
 void interrupt_set_priority_mask(uint8_t min_priority);
@@ -54,5 +54,5 @@ void interrupt_set_edge_triggered(uint32_t intid, bool edge_triggered);
 void interrupt_send_sgi(uint8_t intid, bool irm, uint8_t affinity3,
 			uint8_t affinity2, uint8_t affinity1,
 			uint16_t target_list);
-uint32_t interrupt_get_and_acknowledge();
+uint32_t interrupt_get_and_acknowledge(void);
 void interrupt_end(uint32_t intid);

@@ -89,18 +89,14 @@ void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 		}
 
 		dlog("\n");
-		for (;;) {
-			/* do nothing */
-		}
+		break;
 
 	default:
 		dlog("Unknown current sync exception pc=0x%x, esr=0x%x, "
 		     "ec=0x%x\n",
 		     elr, esr, esr >> 26);
-		for (;;) {
-			/* do nothing */
-		}
 	}
+
 	for (;;) {
 		/* do nothing */
 	}
@@ -227,6 +223,7 @@ static void set_virtual_interrupt(struct arch_regs *r, bool enable)
 static void set_virtual_interrupt_current(bool enable)
 {
 	uintreg_t hcr_el2 = read_msr(hcr_el2);
+
 	if (enable) {
 		hcr_el2 |= HCR_EL2_VI;
 	} else {
@@ -244,6 +241,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	if (current()->vm->id == HF_PRIMARY_VM_ID) {
 		int32_t psci_ret;
+
 		if (psci_handler(arg0, arg1, arg2, arg3, &psci_ret)) {
 			ret.user_ret = psci_ret;
 			return ret;
@@ -382,6 +380,7 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		for (;;) {
 			/* do nothing */
 		}
+		break;
 
 	case 0x20: /* EC = 100000, Instruction abort. */
 		dlog("Lower instruction abort: pc=0x%x, esr=0x%x, ec=0x%x, "
@@ -400,6 +399,7 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		for (;;) {
 			/* do nothing */
 		}
+		break;
 
 	case 0x17: /* EC = 010111, SMC instruction. */
 		if (vcpu->vm->id != HF_PRIMARY_VM_ID ||

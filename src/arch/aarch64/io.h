@@ -29,8 +29,10 @@ static inline uint32_t io_read(uintptr_t addr)
 static inline uint32_t io_read_mb(uintptr_t addr)
 {
 	uint32_t v = io_read(addr);
+
 	dsb();
 	isb();
+
 	return v;
 }
 

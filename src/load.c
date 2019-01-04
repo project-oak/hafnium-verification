@@ -177,8 +177,10 @@ bool carve_out_mem_range(struct mem_range *mem_ranges, size_t mem_ranges_count,
 {
 	size_t i;
 
-	/* TODO(b/116191358): Consider being cleverer about how we pack VMs
-	 * together, with a non-greedy algorithm. */
+	/*
+	 * TODO(b/116191358): Consider being cleverer about how we pack VMs
+	 * together, with a non-greedy algorithm.
+	 */
 	for (i = 0; i < mem_ranges_count; ++i) {
 		if (size_to_find <=
 		    pa_addr(mem_ranges[i].end) - pa_addr(mem_ranges[i].begin)) {

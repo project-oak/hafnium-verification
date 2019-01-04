@@ -354,6 +354,7 @@ void fdt_dump(struct fdt_header *hdr)
 			depth++;
 			while (fdt_next_property(&t, &name, &buf, &size)) {
 				uint32_t i;
+
 				dlog("%*sproperty: \"%s\" (", 2 * depth, "",
 				     name);
 				for (i = 0; i < size; i++) {

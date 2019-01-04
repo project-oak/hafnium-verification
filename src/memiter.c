@@ -59,9 +59,11 @@ static void memiter_skip_space(struct memiter *it)
 bool memiter_iseq(const struct memiter *it, const char *str)
 {
 	size_t len = strlen(str);
+
 	if (len != it->limit - it->next) {
 		return false;
 	}
+
 	return memcmp(it->next, str, len) == 0;
 }
 
@@ -126,9 +128,12 @@ bool memiter_parse_uint(struct memiter *it, uint64_t *value)
 bool memiter_advance(struct memiter *it, size_t v)
 {
 	const char *p = it->next + v;
+
 	if (p < it->next || p > it->limit) {
 		return false;
 	}
+
 	it->next = p;
+
 	return true;
 }

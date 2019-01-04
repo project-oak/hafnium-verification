@@ -44,6 +44,7 @@ struct cpu_start_state {
 void vm_cpu_entry(struct cpu_start_state *s)
 {
 	struct cpu_start_state local = *(volatile struct cpu_start_state *)s;
+
 	sl_unlock(&s->lock);
 
 	local.entry(local.arg);
@@ -59,8 +60,8 @@ void vm_cpu_entry(struct cpu_start_state *s)
 bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
 	       void (*entry)(uintptr_t arg), uintptr_t arg)
 {
-	struct cpu_start_state s;
 	void vm_cpu_entry_raw(uintptr_t arg);
+	struct cpu_start_state s;
 
 	/* Initialise the temporary state we'll hold on the stack. */
 	sl_init(&s.lock);
