@@ -31,7 +31,7 @@ typedef uintptr_t uintpaddr_t;
 /** Integer type large enough to hold a virtual address. */
 typedef uintptr_t uintvaddr_t;
 
-/** The integer large corresponding to the native register size. */
+/** The integer corresponding to the native register size. */
 typedef uint64_t uintreg_t;
 
 /** Type to represent the register state of a VM.  */

@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "hf/arch/types.h"
+
 #include "hf/addr.h"
 
 /**
