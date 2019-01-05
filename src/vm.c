@@ -42,7 +42,7 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 	vm->vcpu_count = vcpu_count;
 	vm->mailbox.state = mailbox_state_empty;
 
-	if (!mm_ptable_init(&vm->ptable, 0, ppool)) {
+	if (!mm_vm_init(&vm->ptable, ppool)) {
 		return false;
 	}
 

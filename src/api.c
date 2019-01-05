@@ -342,7 +342,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 				NULL, &local_page_pool)) {
 		/* TODO: partial defrag of failed range. */
 		/* Recover any memory consumed in failed mapping. */
-		mm_ptable_defrag(&vm->ptable, 0, &local_page_pool);
+		mm_vm_defrag(&vm->ptable, &local_page_pool);
 		goto fail_undo_send;
 	}
 

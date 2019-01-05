@@ -23,10 +23,9 @@
  * to memory. The flags are shifted to avoid equality of modes and attributes.
  */
 #define PTE_ATTR_MODE_SHIFT 48
-#define PTE_ATTR_MODE_MASK                                               \
-	((uint64_t)(MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_D |      \
-		    MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED | \
-		    MM_MODE_STAGE1)                                      \
+#define PTE_ATTR_MODE_MASK                                              \
+	((uint64_t)(MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_D |     \
+		    MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED) \
 	 << PTE_ATTR_MODE_SHIFT)
 
 /* The bit to distinguish a table from a block is the highest of the page bits.
@@ -122,27 +121,38 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 	/* There's no modelling of the stage-2 TLB. */
 }
 
-uint8_t arch_mm_max_level(int mode)
+uint8_t arch_mm_stage1_max_level(void)
 {
-	/* All modes have 3 levels in the page table. */
-	(void)mode;
 	return 2;
 }
 
-uint8_t arch_mm_root_table_count(int mode)
+uint8_t arch_mm_stage2_max_level(void)
 {
-	/* Stage-1 has no concatenated tables but stage 2 has 4 of them. */
-	return (mode & MM_MODE_STAGE1) ? 1 : 4;
+	return 2;
 }
 
-uint64_t arch_mm_mode_to_attrs(int mode)
+uint8_t arch_mm_stage1_root_table_count(void)
+{
+	return 1;
+}
+
+uint8_t arch_mm_stage2_root_table_count(void)
+{
+	/* Stage-2 has many concatenated page tables. */
+	return 4;
+}
+
+uint64_t arch_mm_mode_to_stage1_attrs(int mode)
 {
 	mode &= ~MM_MODE_NOINVALIDATE;
 
+	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
+}
+
+uint64_t arch_mm_mode_to_stage2_attrs(int mode)
+{
 	/* Stage-2 ignores the device mode. */
-	if (!(mode & MM_MODE_STAGE1)) {
-		mode &= ~MM_MODE_D;
-	}
+	mode &= ~MM_MODE_NOINVALIDATE & ~MM_MODE_D;
 
 	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
 }

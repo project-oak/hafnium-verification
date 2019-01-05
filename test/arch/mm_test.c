@@ -52,8 +52,7 @@ TEST(arch_mm, block_allowed_at_level0)
  */
 TEST(arch_mm, max_level_stage1)
 {
-	int mode = MM_MODE_STAGE1;
-	uint8_t max_level = arch_mm_max_level(mode);
+	uint8_t max_level = arch_mm_stage1_max_level();
 	EXPECT_GE(max_level, MAX_LEVEL_LOWER_BOUND);
 	EXPECT_LE(max_level, MAX_LEVEL_UPPER_BOUND);
 }
@@ -86,7 +85,8 @@ EXPAND_LEVEL_TESTS
 	TEST(arch_mm, invalid_block_properties_level##lvl)                    \
 	{                                                                     \
 		uint8_t level = lvl;                                          \
-		uint64_t attrs = arch_mm_mode_to_attrs(MM_MODE_INVALID);      \
+		uint64_t attrs =                                              \
+			arch_mm_mode_to_stage2_attrs(MM_MODE_INVALID);        \
 		pte_t block_pte;                                              \
                                                                               \
 		/* Test doesn't apply if a block is not allowed. */           \
@@ -112,7 +112,7 @@ EXPAND_LEVEL_TESTS
 	TEST(arch_mm, valid_block_properties_level##lvl)               \
 	{                                                              \
 		uint8_t level = lvl;                                   \
-		uint64_t attrs = arch_mm_mode_to_attrs(0);             \
+		uint64_t attrs = arch_mm_mode_to_stage2_attrs(0);      \
 		pte_t block_pte;                                       \
                                                                        \
 		/* Test doesn't apply if a block is not allowed. */    \
@@ -174,21 +174,21 @@ EXPAND_LEVEL_TESTS
 		}                                                            \
                                                                              \
 		addr = pa_init(0);                                           \
-		attrs = arch_mm_mode_to_attrs(0);                            \
+		attrs = arch_mm_mode_to_stage2_attrs(0);                     \
 		block_pte = arch_mm_block_pte(level, addr, attrs);           \
 		EXPECT_EQ(arch_mm_pte_attrs(block_pte, level), attrs);       \
 		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte, level)), \
 			  pa_addr(addr));                                    \
                                                                              \
 		addr = pa_init(PAGE_SIZE * 17);                              \
-		attrs = arch_mm_mode_to_attrs(MM_MODE_INVALID);              \
+		attrs = arch_mm_mode_to_stage2_attrs(MM_MODE_INVALID);       \
 		block_pte = arch_mm_block_pte(level, addr, attrs);           \
 		EXPECT_EQ(arch_mm_pte_attrs(block_pte, level), attrs);       \
 		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte, level)), \
 			  pa_addr(addr));                                    \
                                                                              \
 		addr = pa_init(PAGE_SIZE * 500);                             \
-		attrs = arch_mm_mode_to_attrs(MM_MODE_R | MM_MODE_W);        \
+		attrs = arch_mm_mode_to_stage2_attrs(MM_MODE_R | MM_MODE_W); \
 		block_pte = arch_mm_block_pte(level, addr, attrs);           \
 		EXPECT_EQ(arch_mm_pte_attrs(block_pte, level), attrs);       \
 		EXPECT_EQ(pa_addr(arch_mm_block_from_pte(block_pte, level)), \

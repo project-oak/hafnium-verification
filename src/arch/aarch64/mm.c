@@ -298,81 +298,89 @@ void arch_mm_write_back_dcache(void *base, size_t size)
 	__asm__ volatile("dsb sy");
 }
 
-uint64_t arch_mm_mode_to_attrs(int mode)
+uint64_t arch_mm_mode_to_stage1_attrs(int mode)
 {
 	uint64_t attrs = 0;
+
+	attrs |= STAGE1_AF | STAGE1_SH(OUTER_SHAREABLE);
+
+	/* Define the execute bits. */
+	if (!(mode & MM_MODE_X)) {
+		attrs |= STAGE1_XN;
+	}
+
+	/* Define the read/write bits. */
+	if (mode & MM_MODE_W) {
+		attrs |= STAGE1_AP(STAGE1_READWRITE);
+	} else {
+		attrs |= STAGE1_AP(STAGE1_READONLY);
+	}
+
+	/* Define the memory attribute bits. */
+	if (mode & MM_MODE_D) {
+		attrs |= STAGE1_ATTRINDX(STAGE1_DEVICEINDX);
+	} else {
+		attrs |= STAGE1_ATTRINDX(STAGE1_NORMALINDX);
+	}
 
 	/* Define the valid bit. */
 	if (!(mode & MM_MODE_INVALID)) {
 		attrs |= PTE_VALID;
 	}
 
-	if (mode & MM_MODE_STAGE1) {
-		attrs |= STAGE1_AF | STAGE1_SH(OUTER_SHAREABLE);
+	return attrs;
+}
 
-		/* Define the execute bits. */
-		if (!(mode & MM_MODE_X)) {
-			attrs |= STAGE1_XN;
-		}
+uint64_t arch_mm_mode_to_stage2_attrs(int mode)
+{
+	uint64_t attrs = 0;
+	uint64_t access = 0;
 
-		/* Define the read/write bits. */
-		if (mode & MM_MODE_W) {
-			attrs |= STAGE1_AP(STAGE1_READWRITE);
-		} else {
-			attrs |= STAGE1_AP(STAGE1_READONLY);
-		}
+	/*
+	 * Non-shareable is the "neutral" share mode, i.e., the
+	 * shareability attribute of stage 1 will determine the actual
+	 * attribute.
+	 */
+	attrs |= STAGE2_AF | STAGE2_SH(NON_SHAREABLE);
 
-		/* Define the memory attribute bits. */
-		if (mode & MM_MODE_D) {
-			attrs |= STAGE1_ATTRINDX(STAGE1_DEVICEINDX);
-		} else {
-			attrs |= STAGE1_ATTRINDX(STAGE1_NORMALINDX);
-		}
+	/* Define the read/write bits. */
+	if (mode & MM_MODE_R) {
+		access |= STAGE2_ACCESS_READ;
+	}
+
+	if (mode & MM_MODE_W) {
+		access |= STAGE2_ACCESS_WRITE;
+	}
+
+	attrs |= STAGE2_S2AP(access);
+
+	/* Define the execute bits. */
+	if (mode & MM_MODE_X) {
+		attrs |= STAGE2_XN(STAGE2_EXECUTE_ALL);
 	} else {
-		uint64_t access = 0;
+		attrs |= STAGE2_XN(STAGE2_EXECUTE_NONE);
+	}
 
-		/*
-		 * Non-shareable is the "neutral" share mode, i.e., the
-		 * shareability attribute of stage 1 will determine the actual
-		 * attribute.
-		 */
-		attrs |= STAGE2_AF | STAGE2_SH(NON_SHAREABLE);
+	/*
+	 * Define the memory attribute bits, using the "neutral" values
+	 * which give the stage-1 attributes full control of the
+	 * attributes.
+	 */
+	attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK, STAGE2_WRITEBACK);
 
-		/* Define the read/write bits. */
-		if (mode & MM_MODE_R) {
-			access |= STAGE2_ACCESS_READ;
-		}
+	/* Define the ownership bit. */
+	if (!(mode & MM_MODE_UNOWNED)) {
+		attrs |= STAGE2_SW_OWNED;
+	}
 
-		if (mode & MM_MODE_W) {
-			access |= STAGE2_ACCESS_WRITE;
-		}
+	/* Define the exclusivity bit. */
+	if (!(mode & MM_MODE_SHARED)) {
+		attrs |= STAGE2_SW_EXCLUSIVE;
+	}
 
-		attrs |= STAGE2_S2AP(access);
-
-		/* Define the execute bits. */
-		if (mode & MM_MODE_X) {
-			attrs |= STAGE2_XN(STAGE2_EXECUTE_ALL);
-		} else {
-			attrs |= STAGE2_XN(STAGE2_EXECUTE_NONE);
-		}
-
-		/*
-		 * Define the memory attribute bits, using the "neutral" values
-		 * which give the stage-1 attributes full control of the
-		 * attributes.
-		 */
-		attrs |= STAGE2_MEMATTR_NORMAL(STAGE2_WRITEBACK,
-					       STAGE2_WRITEBACK);
-
-		/* Define the ownership bit. */
-		if (!(mode & MM_MODE_UNOWNED)) {
-			attrs |= STAGE2_SW_OWNED;
-		}
-
-		/* Define the exclusivity bit. */
-		if (!(mode & MM_MODE_SHARED)) {
-			attrs |= STAGE2_SW_EXCLUSIVE;
-		}
+	/* Define the valid bit. */
+	if (!(mode & MM_MODE_INVALID)) {
+		attrs |= PTE_VALID;
 	}
 
 	return attrs;
@@ -410,39 +418,29 @@ int arch_mm_stage2_attrs_to_mode(uint64_t attrs)
 	return mode;
 }
 
-/**
- * Determines the maximum level supported by the given mode.
- */
-uint8_t arch_mm_max_level(int mode)
+uint8_t arch_mm_stage1_max_level(void)
 {
-	if (mode & MM_MODE_STAGE1) {
-		/*
-		 * For stage 1 we hard-code this to 2 for now so that we can
-		 * save one page table level at the expense of limiting the
-		 * physical memory to 512GB.
-		 */
-		return 2;
-	}
+	/*
+	 * For stage 1 we hard-code this to 2 for now so that we can
+	 * save one page table level at the expense of limiting the
+	 * physical memory to 512GB.
+	 */
+	return 2;
+}
 
+uint8_t arch_mm_stage2_max_level(void)
+{
 	return mm_s2_max_level;
 }
 
-/**
- * Determines the number of concatenated tables at the root of the page table
- * for the given mode.
- *
- * Tables are concatenated at the root to avoid introducing another level in the
- * page table meaning the table is shallow and wide. Each level is an extra
- * memory access when walking the table so keeping it shallow reducing the
- * memory accesses to aid performance.
- */
-uint8_t arch_mm_root_table_count(int mode)
+uint8_t arch_mm_stage1_root_table_count(void)
 {
-	if (mode & MM_MODE_STAGE1) {
-		/* Stage 1 doesn't concatenate tables. */
-		return 1;
-	}
+	/* Stage 1 doesn't concatenate tables. */
+	return 1;
+}
 
+uint8_t arch_mm_stage2_root_table_count(void)
+{
 	return mm_s2_root_table_count;
 }
 

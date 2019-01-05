@@ -47,10 +47,10 @@ static_assert(
 /* Keep macro alignment */
 /* clang-format off */
 
-#define MAP_FLAG_COMMIT 0x01
-#define MAP_FLAG_UNMAP  0x02
-#define MAP_FLAG_NOBBM  0x04
-#define MAP_FLAG_STAGE1 0x08
+#define MM_FLAG_COMMIT       0x01
+#define MM_FLAG_UNMAP        0x02
+#define MM_FLAG_NOINVALIDATE 0x04
+#define MM_FLAG_STAGE1       0x08
 
 /* clang-format on */
 
@@ -144,12 +144,29 @@ static struct mm_page_table *mm_alloc_page_tables(size_t count,
 }
 
 /**
+ * Returns the maximum level in the page table given the flags.
+ */
+static uint8_t mm_max_level(int flags)
+{
+	return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_max_level()
+					: arch_mm_stage2_max_level();
+}
+
+/**
+ * Returns the number of root-level tables given the flags.
+ */
+static uint8_t mm_root_table_count(int flags)
+{
+	return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_root_table_count()
+					: arch_mm_stage2_root_table_count();
+}
+
+/**
  * Invalidates the TLB for the given address range.
  */
-static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end,
-			      bool stage1)
+static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end, int flags)
 {
-	if (stage1) {
+	if (flags & MM_FLAG_STAGE1) {
 		arch_mm_invalidate_stage1_range(va_init(begin), va_init(end));
 	} else {
 		arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
@@ -180,6 +197,58 @@ static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
 }
 
 /**
+ * Initialises the given page table.
+ */
+static bool mm_ptable_init(struct mm_ptable *t, int flags, struct mpool *ppool)
+{
+	uint8_t i;
+	size_t j;
+	struct mm_page_table *tables;
+	uint8_t root_table_count = mm_root_table_count(flags);
+
+	tables = mm_alloc_page_tables(root_table_count, ppool);
+	if (tables == NULL) {
+		return false;
+	}
+
+	for (i = 0; i < root_table_count; i++) {
+		for (j = 0; j < MM_PTE_PER_PAGE; j++) {
+			tables[i].entries[j] =
+				arch_mm_absent_pte(mm_max_level(flags));
+		}
+	}
+
+	/*
+	 * TODO: halloc could return a virtual or physical address if mm not
+	 * enabled?
+	 */
+	t->root = pa_init((uintpaddr_t)tables);
+
+	return true;
+}
+
+/**
+ * Frees all memory associated with the give page table.
+ */
+static void mm_ptable_fini(struct mm_ptable *t, int flags, struct mpool *ppool)
+{
+	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
+	uint8_t level = mm_max_level(flags);
+	uint8_t root_table_count = mm_root_table_count(flags);
+	uint8_t i;
+	uint64_t j;
+
+	for (i = 0; i < root_table_count; ++i) {
+		for (j = 0; j < MM_PTE_PER_PAGE; ++j) {
+			mm_free_page_pte(tables[i].entries[j], level, ppool);
+		}
+	}
+
+	mpool_add_chunk(ppool, tables,
+			sizeof(struct mm_page_table) * root_table_count);
+}
+
+/**
  * Replaces a page table entry with the given value. If both old and new values
  * are valid, it performs a break-before-make sequence where it first writes an
  * invalid value to the PTE, flushes the TLB, then writes the actual new value.
@@ -195,11 +264,10 @@ static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 	 * We need to do the break-before-make sequence if both values are
 	 * present, and if it hasn't been inhibited by the NOBBM flag.
 	 */
-	if (!(flags & MAP_FLAG_NOBBM) && arch_mm_pte_is_valid(v, level) &&
+	if (!(flags & MM_FLAG_NOINVALIDATE) && arch_mm_pte_is_valid(v, level) &&
 	    arch_mm_pte_is_valid(new_pte, level)) {
 		*pte = arch_mm_absent_pte(level);
-		mm_invalidate_tlb(begin, begin + mm_entry_size(level),
-				  flags & MAP_FLAG_STAGE1);
+		mm_invalidate_tlb(begin, begin + mm_entry_size(level), flags);
 	}
 
 	/* Assign the new pte. */
@@ -286,7 +354,7 @@ static bool mm_page_table_is_empty(struct mm_page_table *table, uint8_t level)
 /**
  * Updates the page table at the given level to map the given address range to a
  * physical range using the provided (architecture-specific) attributes. Or if
- * MAP_FLAG_UNMAP is set, unmap the given range instead.
+ * MM_FLAG_UNMAP is set, unmap the given range instead.
  *
  * This function calls itself recursively if it needs to update additional
  * levels, but the recursion is bound by the maximum number of levels in a page
@@ -299,8 +367,8 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 	pte_t *pte = &table->entries[mm_index(begin, level)];
 	ptable_addr_t level_end = mm_level_end(begin, level);
 	size_t entry_size = mm_entry_size(level);
-	bool commit = flags & MAP_FLAG_COMMIT;
-	bool unmap = flags & MAP_FLAG_UNMAP;
+	bool commit = flags & MM_FLAG_COMMIT;
+	bool unmap = flags & MM_FLAG_UNMAP;
 
 	/* Cap end so that we don't go over the current level max. */
 	if (end > level_end) {
@@ -378,7 +446,7 @@ static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
 /**
  * Updates the page table from the root to map the given address range to a
  * physical range using the provided (architecture-specific) attributes. Or if
- * MAP_FLAG_UNMAP is set, unmap the given range instead.
+ * MM_FLAG_UNMAP is set, unmap the given range instead.
  */
 static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
 			ptable_addr_t end, uint64_t attrs, uint8_t root_level,
@@ -406,18 +474,12 @@ static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
  * provided.
  */
 static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
-				      paddr_t pa_end, int mode,
+				      paddr_t pa_end, uint64_t attrs, int flags,
 				      struct mpool *ppool)
 {
-	uint64_t attrs = arch_mm_mode_to_attrs(mode);
-	int flags = (mode & MM_MODE_NOINVALIDATE ? MAP_FLAG_NOBBM : 0) |
-		    (mode & MM_MODE_STAGE1 ? MAP_FLAG_STAGE1 : 0) |
-		    (mode & MM_MODE_INVALID && mode & MM_MODE_UNOWNED
-			     ? MAP_FLAG_UNMAP
-			     : 0);
-	uint8_t root_level = arch_mm_max_level(mode) + 1;
+	uint8_t root_level = mm_max_level(flags) + 1;
 	ptable_addr_t ptable_end =
-		arch_mm_root_table_count(mode) * mm_entry_size(root_level);
+		mm_root_table_count(flags) * mm_entry_size(root_level);
 	ptable_addr_t end = mm_round_up_to_page(pa_addr(pa_end));
 	ptable_addr_t begin = pa_addr(arch_mm_clear_pa(pa_begin));
 
@@ -442,39 +504,16 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 	 */
 	if (!mm_map_root(t, begin, end, attrs, root_level, flags, ppool) ||
 	    !mm_map_root(t, begin, end, attrs, root_level,
-			 flags | MAP_FLAG_COMMIT, ppool)) {
+			 flags | MM_FLAG_COMMIT, ppool)) {
 		return false;
 	}
 
 	/* Invalidate the tlb. */
-	if (!(mode & MM_MODE_NOINVALIDATE)) {
-		mm_invalidate_tlb(begin, end, (mode & MM_MODE_STAGE1) != 0);
+	if (!(flags & MM_FLAG_NOINVALIDATE)) {
+		mm_invalidate_tlb(begin, end, flags);
 	}
 
 	return true;
-}
-
-/**
- * Updates the given table such that the given physical address range is mapped
- * into the address space with the architecture-agnostic mode provided.
- */
-static bool mm_ptable_identity_map(struct mm_ptable *t, paddr_t pa_begin,
-				   paddr_t pa_end, int mode,
-				   struct mpool *ppool)
-{
-	return mm_ptable_identity_update(t, pa_begin, pa_end, mode, ppool);
-}
-
-/**
- * Updates the given table such that the given physical address range is not
- * mapped into the address space.
- */
-static bool mm_ptable_unmap(struct mm_ptable *t, paddr_t pa_begin,
-			    paddr_t pa_end, int mode, struct mpool *ppool)
-{
-	return mm_ptable_identity_update(
-		t, pa_begin, pa_end, mode | MM_MODE_UNOWNED | MM_MODE_INVALID,
-		ppool);
 }
 
 /**
@@ -506,11 +545,11 @@ static void mm_dump_table_recursive(struct mm_page_table *table, uint8_t level,
 /**
  * Writes the given table to the debug log.
  */
-void mm_ptable_dump(struct mm_ptable *t, int mode)
+static void mm_ptable_dump(struct mm_ptable *t, int flags)
 {
 	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
-	int max_level = arch_mm_max_level(mode);
-	uint8_t root_table_count = arch_mm_root_table_count(mode);
+	uint8_t max_level = mm_max_level(flags);
+	uint8_t root_table_count = mm_root_table_count(flags);
 	uint8_t i;
 
 	for (i = 0; i < root_table_count; ++i) {
@@ -604,11 +643,12 @@ static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
  * Defragments the given page table by converting page table references to
  * blocks whenever possible.
  */
-void mm_ptable_defrag(struct mm_ptable *t, int mode, struct mpool *ppool)
+static void mm_ptable_defrag(struct mm_ptable *t, int flags,
+			     struct mpool *ppool)
 {
 	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
-	uint8_t level = arch_mm_max_level(mode);
-	uint8_t root_table_count = arch_mm_root_table_count(mode);
+	uint8_t level = mm_max_level(flags);
+	uint8_t root_table_count = mm_root_table_count(flags);
 	uint8_t i;
 	uint64_t j;
 
@@ -688,12 +728,12 @@ static bool mm_ptable_get_attrs_level(struct mm_page_table *table,
 static bool mm_vm_get_attrs(struct mm_ptable *t, ptable_addr_t begin,
 			    ptable_addr_t end, uint64_t *attrs)
 {
-	int mode = 0;
-	uint8_t max_level = arch_mm_max_level(mode);
+	int flags = 0;
+	uint8_t max_level = mm_max_level(flags);
 	uint8_t root_level = max_level + 1;
 	size_t root_table_size = mm_entry_size(root_level);
 	ptable_addr_t ptable_end =
-		arch_mm_root_table_count(mode) * mm_entry_size(root_level);
+		mm_root_table_count(flags) * mm_entry_size(root_level);
 	struct mm_page_table *table;
 	bool got_attrs = false;
 
@@ -720,56 +760,14 @@ static bool mm_vm_get_attrs(struct mm_ptable *t, ptable_addr_t begin,
 	return got_attrs;
 }
 
-/**
- * Initialises the given page table.
- */
-bool mm_ptable_init(struct mm_ptable *t, int mode, struct mpool *ppool)
+bool mm_vm_init(struct mm_ptable *t, struct mpool *ppool)
 {
-	uint8_t i;
-	size_t j;
-	struct mm_page_table *tables;
-	uint8_t root_table_count = arch_mm_root_table_count(mode);
-
-	tables = mm_alloc_page_tables(root_table_count, ppool);
-	if (tables == NULL) {
-		return false;
-	}
-
-	for (i = 0; i < root_table_count; i++) {
-		for (j = 0; j < MM_PTE_PER_PAGE; j++) {
-			tables[i].entries[j] =
-				arch_mm_absent_pte(arch_mm_max_level(mode));
-		}
-	}
-
-	/*
-	 * TODO: halloc could return a virtual or physical address if mm not
-	 * enabled?
-	 */
-	t->root = pa_init((uintpaddr_t)tables);
-
-	return true;
+	return mm_ptable_init(t, 0, ppool);
 }
 
-/**
- * Frees all memory associated with the give page table.
- */
-void mm_ptable_fini(struct mm_ptable *t, int mode, struct mpool *ppool)
+void mm_vm_fini(struct mm_ptable *t, struct mpool *ppool)
 {
-	struct mm_page_table *tables = mm_page_table_from_pa(t->root);
-	uint8_t level = arch_mm_max_level(mode);
-	uint8_t root_table_count = arch_mm_root_table_count(mode);
-	uint8_t i;
-	uint64_t j;
-
-	for (i = 0; i < root_table_count; ++i) {
-		for (j = 0; j < MM_PTE_PER_PAGE; ++j) {
-			mm_free_page_pte(tables[i].entries[j], level, ppool);
-		}
-	}
-
-	mpool_add_chunk(ppool, tables,
-			sizeof(struct mm_page_table) * root_table_count);
+	mm_ptable_fini(t, 0, ppool);
 }
 
 /**
@@ -780,8 +778,10 @@ void mm_ptable_fini(struct mm_ptable *t, int mode, struct mpool *ppool)
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 			int mode, ipaddr_t *ipa, struct mpool *ppool)
 {
-	bool success = mm_ptable_identity_map(t, begin, end,
-					      mode & ~MM_MODE_STAGE1, ppool);
+	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0);
+	bool success = mm_ptable_identity_update(
+		t, begin, end, arch_mm_mode_to_stage2_attrs(mode), flags,
+		ppool);
 
 	if (success && ipa != NULL) {
 		*ipa = ipa_from_pa(begin);
@@ -791,13 +791,19 @@ bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 }
 
 /**
- * Updates the VM's table such that the given physical address range is not
- * mapped in the address space.
+ * Updates the VM's table such that the given physical address range has no
+ * connection to the VM.
  */
 bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode,
 		 struct mpool *ppool)
 {
-	return mm_ptable_unmap(t, begin, end, mode & ~MM_MODE_STAGE1, ppool);
+	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0) |
+		    MM_FLAG_UNMAP;
+	return mm_ptable_identity_update(
+		t, begin, end,
+		arch_mm_mode_to_stage2_attrs(MM_MODE_UNOWNED | MM_MODE_INVALID |
+					     MM_MODE_SHARED),
+		flags, ppool);
 }
 
 /**
@@ -812,6 +818,22 @@ bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool)
 			   ppool) &&
 	       mm_vm_unmap(t, layout_data_begin(), layout_data_end(), mode,
 			   ppool);
+}
+
+/**
+ * Write the given page table of a VM to the debug log.
+ */
+void mm_vm_dump(struct mm_ptable *t)
+{
+	mm_ptable_dump(t, 0);
+}
+
+/**
+ * Defragments the VM page table.
+ */
+void mm_vm_defrag(struct mm_ptable *t, struct mpool *ppool)
+{
+	mm_ptable_defrag(t, 0, ppool);
 }
 
 /**
@@ -841,8 +863,12 @@ bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
  */
 void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
 {
-	if (mm_ptable_identity_map(&ptable, begin, end, mode | MM_MODE_STAGE1,
-				   ppool)) {
+	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0) |
+		    MM_FLAG_STAGE1;
+
+	if (mm_ptable_identity_update(&ptable, begin, end,
+				      arch_mm_mode_to_stage1_attrs(mode), flags,
+				      ppool)) {
 		return ptr_from_va(va_from_pa(begin));
 	}
 
@@ -855,8 +881,13 @@ void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
  */
 bool mm_unmap(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
 {
-	return mm_ptable_unmap(&ptable, begin, end, mode | MM_MODE_STAGE1,
-			       ppool);
+	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0) |
+		    MM_FLAG_STAGE1 | MM_FLAG_UNMAP;
+	return mm_ptable_identity_update(
+		&ptable, begin, end,
+		arch_mm_mode_to_stage1_attrs(MM_MODE_UNOWNED | MM_MODE_INVALID |
+					     MM_MODE_SHARED),
+		flags, ppool);
 }
 
 /**
@@ -871,17 +902,16 @@ bool mm_init(struct mpool *ppool)
 	dlog("data: 0x%x - 0x%x\n", pa_addr(layout_data_begin()),
 	     pa_addr(layout_data_end()));
 
-	if (!mm_ptable_init(&ptable, MM_MODE_STAGE1, ppool)) {
+	if (!mm_ptable_init(&ptable, MM_FLAG_STAGE1, ppool)) {
 		dlog("Unable to allocate memory for page table.\n");
 		return false;
 	}
 
 	/* Map page for uart. */
 	/* TODO: We may not want to map this. */
-	mm_ptable_identity_map(
-		&ptable, pa_init(PL011_BASE),
-		pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-		MM_MODE_R | MM_MODE_W | MM_MODE_D | MM_MODE_STAGE1, ppool);
+	mm_identity_map(pa_init(PL011_BASE),
+			pa_add(pa_init(PL011_BASE), PAGE_SIZE),
+			MM_MODE_R | MM_MODE_W | MM_MODE_D, ppool);
 
 	/* Map each section. */
 	mm_identity_map(layout_text_begin(), layout_text_end(), MM_MODE_X,
@@ -906,5 +936,5 @@ bool mm_cpu_init(void)
  */
 void mm_defrag(struct mpool *ppool)
 {
-	mm_ptable_defrag(&ptable, MM_MODE_STAGE1, ppool);
+	mm_ptable_defrag(&ptable, MM_FLAG_STAGE1, ppool);
 }

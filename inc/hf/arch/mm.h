@@ -118,20 +118,39 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end);
 void arch_mm_write_back_dcache(void *base, size_t size);
 
 /**
- * Gets the maximum level allowed in the page table for the given mode.
+ * Gets the maximum level allowed in the page table for stage-1.
  */
-uint8_t arch_mm_max_level(int mode);
+uint8_t arch_mm_stage1_max_level(void);
 
 /**
- * Gets the number of concatenated page tables used at the root for the given
- * mode.
+ * Gets the maximum level allowed in the page table for stage-2.
  */
-uint8_t arch_mm_root_table_count(int mode);
+uint8_t arch_mm_stage2_max_level(void);
 
 /**
- * Converts the mode into attributes for a block PTE.
+ * Gets the number of concatenated page tables used at the root for stage-1.
+ *
+ * Tables are concatenated at the root to avoid introducing another level in the
+ * page table meaning the table is shallow and wide. Each level is an extra
+ * memory access when walking the table so keeping it shallow reduces the memory
+ * accesses to aid performance.
  */
-uint64_t arch_mm_mode_to_attrs(int mode);
+uint8_t arch_mm_stage1_root_table_count(void);
+
+/**
+ * Gets the number of concatenated page tables used at the root for stage-2.
+ */
+uint8_t arch_mm_stage2_root_table_count(void);
+
+/**
+ * Converts the mode into stage-1 attributes for a block PTE.
+ */
+uint64_t arch_mm_mode_to_stage1_attrs(int mode);
+
+/**
+ * Converts the mode into stage-2 attributes for a block PTE.
+ */
+uint64_t arch_mm_mode_to_stage2_attrs(int mode);
 
 /**
  * Converts the stage-2 block attributes back to the corresponding mode.
