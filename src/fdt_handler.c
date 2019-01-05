@@ -222,7 +222,7 @@ struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n,
 	return fdt;
 
 fail:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0, ppool);
+	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), ppool);
 	return NULL;
 }
 
@@ -230,8 +230,7 @@ bool fdt_unmap(struct fdt_header *fdt, struct mpool *ppool)
 {
 	paddr_t fdt_addr = pa_from_va(va_from_ptr(fdt));
 
-	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), 0,
-			ppool);
+	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), ppool);
 }
 
 bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
@@ -303,7 +302,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 out_unmap_fdt:
 	/* Unmap FDT. */
 	if (!mm_unmap(fdt_addr,
-		      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE), 0,
+		      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE),
 		      ppool)) {
 		dlog("Unable to unmap writable FDT.\n");
 		return false;
@@ -311,6 +310,6 @@ out_unmap_fdt:
 	return ret;
 
 err_unmap_fdt_header:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), 0, ppool);
+	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), ppool);
 	return false;
 }

@@ -380,7 +380,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 	 */
 fail_undo_all:
 	vm->mailbox.send = NULL;
-	mm_unmap(pa_send_begin, pa_send_end, 0, &local_page_pool);
+	mm_unmap(pa_send_begin, pa_send_end, &local_page_pool);
 
 fail_undo_send_and_recv:
 	mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,

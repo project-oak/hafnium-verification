@@ -52,7 +52,7 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size,
 	memcpy(ptr, from, size);
 	arch_mm_write_back_dcache(ptr, size);
 
-	mm_unmap(to, to_end, 0, ppool);
+	mm_unmap(to, to_end, ppool);
 
 	return true;
 }
@@ -147,15 +147,12 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 		if (!mm_vm_identity_map(
 			    &vm->ptable, pa_init(0),
 			    pa_init(UINT64_C(1024) * 1024 * 1024 * 1024),
-			    MM_MODE_R | MM_MODE_W | MM_MODE_X |
-				    MM_MODE_NOINVALIDATE,
-			    NULL, ppool)) {
+			    MM_MODE_R | MM_MODE_W | MM_MODE_X, NULL, ppool)) {
 			dlog("Unable to initialise memory for primary vm\n");
 			return false;
 		}
 
-		if (!mm_vm_unmap_hypervisor(&vm->ptable, MM_MODE_NOINVALIDATE,
-					    ppool)) {
+		if (!mm_vm_unmap_hypervisor(&vm->ptable, ppool)) {
 			dlog("Unable to unmap hypervisor from primary vm\n");
 			return false;
 		}
@@ -331,14 +328,12 @@ bool load_secondary(const struct memiter *cpio,
 		/* Grant VM access to uart. */
 		mm_vm_identity_map(&vm->ptable, pa_init(PL011_BASE),
 				   pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-				   MM_MODE_R | MM_MODE_W | MM_MODE_NOINVALIDATE,
-				   NULL, ppool);
+				   MM_MODE_R | MM_MODE_W, NULL, ppool);
 
 		/* Grant the VM access to the memory. */
 		if (!mm_vm_identity_map(&vm->ptable, secondary_mem_begin,
 					secondary_mem_end,
-					MM_MODE_R | MM_MODE_W | MM_MODE_X |
-						MM_MODE_NOINVALIDATE,
+					MM_MODE_R | MM_MODE_W | MM_MODE_X,
 					&secondary_entry, ppool)) {
 			dlog("Unable to initialise memory\n");
 			continue;
@@ -346,8 +341,7 @@ bool load_secondary(const struct memiter *cpio,
 
 		/* Deny the primary VM access to this memory. */
 		if (!mm_vm_unmap(&primary->ptable, secondary_mem_begin,
-				 secondary_mem_end, MM_MODE_NOINVALIDATE,
-				 ppool)) {
+				 secondary_mem_end, ppool)) {
 			dlog("Unable to unmap secondary VM from primary VM\n");
 			return false;
 		}

@@ -49,12 +49,22 @@ static_assert(
 
 #define MM_FLAG_COMMIT       0x01
 #define MM_FLAG_UNMAP        0x02
-#define MM_FLAG_NOINVALIDATE 0x04
-#define MM_FLAG_STAGE1       0x08
+#define MM_FLAG_STAGE1       0x04
 
 /* clang-format on */
 
 static struct mm_ptable ptable;
+
+static bool mm_stage2_invalidate = false;
+
+/**
+ * After calling this function, modifications to stage-2 page tables will use
+ * break-before-make and invalidate the TLB for the affected range.
+ */
+void mm_vm_enable_invalidation(void)
+{
+	mm_stage2_invalidate = true;
+}
 
 /**
  * Get the page table from the physical address.
@@ -264,7 +274,8 @@ static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 	 * We need to do the break-before-make sequence if both values are
 	 * present, and if it hasn't been inhibited by the NOBBM flag.
 	 */
-	if (!(flags & MM_FLAG_NOINVALIDATE) && arch_mm_pte_is_valid(v, level) &&
+	if (((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) &&
+	    arch_mm_pte_is_valid(v, level) &&
 	    arch_mm_pte_is_valid(new_pte, level)) {
 		*pte = arch_mm_absent_pte(level);
 		mm_invalidate_tlb(begin, begin + mm_entry_size(level), flags);
@@ -509,7 +520,7 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 	}
 
 	/* Invalidate the tlb. */
-	if (!(flags & MM_FLAG_NOINVALIDATE)) {
+	if ((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) {
 		mm_invalidate_tlb(begin, end, flags);
 	}
 
@@ -778,7 +789,7 @@ void mm_vm_fini(struct mm_ptable *t, struct mpool *ppool)
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 			int mode, ipaddr_t *ipa, struct mpool *ppool)
 {
-	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0);
+	int flags = 0;
 	bool success = mm_ptable_identity_update(
 		t, begin, end, arch_mm_mode_to_stage2_attrs(mode), flags,
 		ppool);
@@ -794,30 +805,26 @@ bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
  * Updates the VM's table such that the given physical address range has no
  * connection to the VM.
  */
-bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode,
+bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end,
 		 struct mpool *ppool)
 {
-	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0) |
-		    MM_FLAG_UNMAP;
 	return mm_ptable_identity_update(
 		t, begin, end,
 		arch_mm_mode_to_stage2_attrs(MM_MODE_UNOWNED | MM_MODE_INVALID |
 					     MM_MODE_SHARED),
-		flags, ppool);
+		MM_FLAG_UNMAP, ppool);
 }
 
 /**
  * Unmaps the hypervisor pages from the given page table.
  */
-bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool)
+bool mm_vm_unmap_hypervisor(struct mm_ptable *t, struct mpool *ppool)
 {
 	/* TODO: If we add pages dynamically, they must be included here too. */
-	return mm_vm_unmap(t, layout_text_begin(), layout_text_end(), mode,
+	return mm_vm_unmap(t, layout_text_begin(), layout_text_end(), ppool) &&
+	       mm_vm_unmap(t, layout_rodata_begin(), layout_rodata_end(),
 			   ppool) &&
-	       mm_vm_unmap(t, layout_rodata_begin(), layout_rodata_end(), mode,
-			   ppool) &&
-	       mm_vm_unmap(t, layout_data_begin(), layout_data_end(), mode,
-			   ppool);
+	       mm_vm_unmap(t, layout_data_begin(), layout_data_end(), ppool);
 }
 
 /**
@@ -863,12 +870,9 @@ bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
  */
 void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
 {
-	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0) |
-		    MM_FLAG_STAGE1;
-
 	if (mm_ptable_identity_update(&ptable, begin, end,
-				      arch_mm_mode_to_stage1_attrs(mode), flags,
-				      ppool)) {
+				      arch_mm_mode_to_stage1_attrs(mode),
+				      MM_FLAG_STAGE1, ppool)) {
 		return ptr_from_va(va_from_pa(begin));
 	}
 
@@ -879,15 +883,13 @@ void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
  * Updates the hypervisor table such that the given physical address range is
  * not mapped in the address space.
  */
-bool mm_unmap(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
+bool mm_unmap(paddr_t begin, paddr_t end, struct mpool *ppool)
 {
-	int flags = (mode & MM_MODE_NOINVALIDATE ? MM_FLAG_NOINVALIDATE : 0) |
-		    MM_FLAG_STAGE1 | MM_FLAG_UNMAP;
 	return mm_ptable_identity_update(
 		&ptable, begin, end,
 		arch_mm_mode_to_stage1_attrs(MM_MODE_UNOWNED | MM_MODE_INVALID |
 					     MM_MODE_SHARED),
-		flags, ppool);
+		MM_FLAG_STAGE1 | MM_FLAG_UNMAP, ppool);
 }
 
 /**

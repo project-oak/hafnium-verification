@@ -71,12 +71,6 @@
 #define MM_MODE_UNOWNED 0x0020
 #define MM_MODE_SHARED  0x0040
 
-/**
- * This flag indicates that no TLB invalidations should be issued for the
- * changes in the page table.
- */
-#define MM_MODE_NOINVALIDATE 0x0080
-
 /* clang-format on */
 
 struct mm_page_table {
@@ -92,13 +86,15 @@ struct mm_ptable {
 	paddr_t root;
 };
 
+void mm_vm_enable_invalidation(void);
+
 bool mm_vm_init(struct mm_ptable *t, struct mpool *ppool);
 void mm_vm_fini(struct mm_ptable *t, struct mpool *ppool);
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
 			int mode, ipaddr_t *ipa, struct mpool *ppool);
-bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end, int mode,
+bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end,
 		 struct mpool *ppool);
-bool mm_vm_unmap_hypervisor(struct mm_ptable *t, int mode, struct mpool *ppool);
+bool mm_vm_unmap_hypervisor(struct mm_ptable *t, struct mpool *ppool);
 void mm_vm_defrag(struct mm_ptable *t, struct mpool *ppool);
 void mm_vm_dump(struct mm_ptable *t);
 bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
@@ -108,5 +104,5 @@ bool mm_init(struct mpool *ppool);
 bool mm_cpu_init(void);
 void *mm_identity_map(paddr_t begin, paddr_t end, int mode,
 		      struct mpool *ppool);
-bool mm_unmap(paddr_t begin, paddr_t end, int mode, struct mpool *ppool);
+bool mm_unmap(paddr_t begin, paddr_t end, struct mpool *ppool);
 void mm_defrag(struct mpool *ppool);

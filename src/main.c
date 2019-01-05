@@ -135,6 +135,9 @@ static void one_time_init(void)
 	/* Initialise the API page pool. ppool will be empty from now on. */
 	api_init(&ppool);
 
+	/* Enable TLB invalidation for VM page table updates. */
+	mm_vm_enable_invalidation();
+
 	dlog("Hafnium initialisation completed\n");
 }
 

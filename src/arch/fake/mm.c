@@ -144,15 +144,13 @@ uint8_t arch_mm_stage2_root_table_count(void)
 
 uint64_t arch_mm_mode_to_stage1_attrs(int mode)
 {
-	mode &= ~MM_MODE_NOINVALIDATE;
-
 	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
 }
 
 uint64_t arch_mm_mode_to_stage2_attrs(int mode)
 {
 	/* Stage-2 ignores the device mode. */
-	mode &= ~MM_MODE_NOINVALIDATE & ~MM_MODE_D;
+	mode &= ~MM_MODE_D;
 
 	return ((uint64_t)mode << PTE_ATTR_MODE_SHIFT) & PTE_ATTR_MODE_MASK;
 }
