@@ -330,10 +330,9 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 struct vcpu *irq_lower(void)
 {
-	/* TODO: Only switch if we know the interrupt was not for the secondary
-	 * VM. */
+	/* TODO: Only switch when the interrupt isn't for the current VM. */
 	/* Switch back to primary VM, interrupts will be handled there. */
-	return api_yield(current());
+	return api_preempt(current());
 }
 
 struct vcpu *fiq_lower(void)

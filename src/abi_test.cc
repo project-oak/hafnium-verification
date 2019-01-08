@@ -49,13 +49,33 @@ struct hf_mailbox_receive_return dirty_mailbox_receive_return()
 }
 
 /**
+ * Encode a preempted response without leaking.
+ */
+TEST(abi, hf_vcpu_run_return_encode_preempted)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_PREEMPTED;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0));
+}
+
+/**
+ * Decode a preempted response ignoring the irrelevant bits.
+ */
+TEST(abi, hf_vcpu_run_return_decode_preempted)
+{
+	struct hf_vcpu_run_return res =
+		hf_vcpu_run_return_decode(0x1a1a1a1a2b2b2b00);
+	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_PREEMPTED));
+}
+
+/**
  * Encode a yield response without leaking.
  */
 TEST(abi, hf_vcpu_run_return_encode_yield)
 {
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_YIELD;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(1));
 }
 
 /**
@@ -64,7 +84,7 @@ TEST(abi, hf_vcpu_run_return_encode_yield)
 TEST(abi, hf_vcpu_run_return_decode_yield)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1a1a1a1a2b2b2b00);
+		hf_vcpu_run_return_decode(0x1a1a1a1a2b2b2b01);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_YIELD));
 }
 
@@ -75,7 +95,7 @@ TEST(abi, hf_vcpu_run_return_encode_wait_for_interrupt)
 {
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(1));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(2));
 }
 
 /**
@@ -84,7 +104,7 @@ TEST(abi, hf_vcpu_run_return_encode_wait_for_interrupt)
 TEST(abi, hf_vcpu_run_return_decode_wait_for_interrupt)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1234abcdbadb0101);
+		hf_vcpu_run_return_decode(0x1234abcdbadb0102);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_WAIT_FOR_INTERRUPT));
 }
 
@@ -97,7 +117,7 @@ TEST(abi, hf_vcpu_run_return_encode_wake_up)
 	res.code = HF_VCPU_RUN_WAKE_UP;
 	res.wake_up.vm_id = 0x12345678;
 	res.wake_up.vcpu = 0xabcd;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x12345678abcd0002));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x12345678abcd0003));
 }
 
 /**
@@ -106,7 +126,7 @@ TEST(abi, hf_vcpu_run_return_encode_wake_up)
 TEST(abi, hf_vcpu_run_return_decode_wake_up)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0xbeefd00df00daf02);
+		hf_vcpu_run_return_decode(0xbeefd00df00daf03);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_WAKE_UP));
 	EXPECT_THAT(res.wake_up.vm_id, Eq(0xbeefd00d));
 	EXPECT_THAT(res.wake_up.vcpu, Eq(0xf00d));
@@ -120,7 +140,7 @@ TEST(abi, hf_vcpu_run_return_encode_message)
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_MESSAGE;
 	res.message.size = 0xdeadbeef;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xdeadbeef00000003));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xdeadbeef00000004));
 }
 
 /**
@@ -129,7 +149,7 @@ TEST(abi, hf_vcpu_run_return_encode_message)
 TEST(abi, hf_vcpu_run_return_decode_message)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1123581314916203);
+		hf_vcpu_run_return_decode(0x1123581314916204);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_MESSAGE));
 	EXPECT_THAT(res.message.size, Eq(0x11235813));
 }
@@ -142,7 +162,7 @@ TEST(abi, hf_vcpu_run_return_encode_sleep)
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_SLEEP;
 	res.sleep.ns = 0xcafed00dfeeded;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xcafed00dfeeded04));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xcafed00dfeeded05));
 }
 
 /**
@@ -154,7 +174,7 @@ TEST(abi, hf_vcpu_run_return_encode_sleep_too_long)
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_SLEEP;
 	res.sleep.ns = 0xcc88888888888888;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x8888888888888804));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x8888888888888805));
 }
 
 /**
@@ -163,7 +183,7 @@ TEST(abi, hf_vcpu_run_return_encode_sleep_too_long)
 TEST(abi, hf_vcpu_run_return_decode_sleep)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1a2b3c4d5e6f7704);
+		hf_vcpu_run_return_decode(0x1a2b3c4d5e6f7705);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_SLEEP));
 	EXPECT_THAT(res.sleep.ns, Eq(0x1a2b3c4d5e6f77));
 }

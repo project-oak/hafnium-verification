@@ -76,8 +76,21 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 }
 
 /**
- * Returns to the primary vm leaving the current vcpu ready to be scheduled
- * again.
+ * Returns to the primary vm and signals that the vcpu still has work to do so.
+ */
+struct vcpu *api_preempt(struct vcpu *current)
+{
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_PREEMPTED,
+	};
+
+	return api_switch_to_primary(current, ret, vcpu_state_ready);
+}
+
+/**
+ * Returns to the primary vm to allow this cpu to be used for other tasks as the
+ * vcpu does not have work to do at this moment. The current vcpu is marked as
+ * ready to be scheduled again.
  */
 struct vcpu *api_yield(struct vcpu *current)
 {
@@ -240,10 +253,16 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 		goto out;
 	}
 
+	/* Switch to the vcpu. */
 	*next = vcpu;
-	ret.code = HF_VCPU_RUN_YIELD;
 
-	/* Update return value if one was injected. */
+	/*
+	 * Set a placeholder return code to the scheduler. This will be
+	 * overwritten when the switch back to the primary occurs.
+	 */
+	ret.code = HF_VCPU_RUN_PREEMPTED;
+
+	/* Update return value for the next vcpu if one was injected. */
 	if (vcpu_retval.force) {
 		arch_regs_set_retval(&vcpu->regs, vcpu_retval.value);
 	}

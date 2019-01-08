@@ -38,8 +38,9 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 						     struct vcpu **next);
 int64_t api_mailbox_clear(const struct vcpu *current);
 
-struct vcpu *api_wait_for_interrupt(struct vcpu *current);
+struct vcpu *api_preempt(struct vcpu *current);
 struct vcpu *api_yield(struct vcpu *current);
+struct vcpu *api_wait_for_interrupt(struct vcpu *current);
 
 int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current);
 uint32_t api_interrupt_get(struct vcpu *current);
