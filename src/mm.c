@@ -272,7 +272,7 @@ static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 
 	/*
 	 * We need to do the break-before-make sequence if both values are
-	 * present, and if it hasn't been inhibited by the NOBBM flag.
+	 * present and the TLB is being invalidated.
 	 */
 	if (((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) &&
 	    arch_mm_pte_is_valid(v, level) &&
