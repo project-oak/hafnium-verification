@@ -290,16 +290,16 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		ret.user_ret = api_mailbox_clear(current());
 		break;
 
-	case HF_ENABLE_INTERRUPT:
-		ret.user_ret = api_enable_interrupt(arg1, arg2, current());
+	case HF_INTERRUPT_ENABLE:
+		ret.user_ret = api_interrupt_enable(arg1, arg2, current());
 		break;
 
-	case HF_GET_AND_ACKNOWLEDGE_INTERRUPT:
-		ret.user_ret = api_get_and_acknowledge_interrupt(current());
+	case HF_INTERRUPT_GET:
+		ret.user_ret = api_interrupt_get(current());
 		break;
 
-	case HF_INJECT_INTERRUPT:
-		ret.user_ret = api_inject_interrupt(arg1, arg2, arg3, current(),
+	case HF_INTERRUPT_INJECT:
+		ret.user_ret = api_interrupt_inject(arg1, arg2, arg3, current(),
 						    &ret.new);
 		break;
 

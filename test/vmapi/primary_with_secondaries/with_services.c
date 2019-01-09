@@ -207,7 +207,7 @@ TEST(interrupts, inject_interrupt_twice)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 	/* Inject the interrupt and wait for a message. */
-	hf_inject_interrupt(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -216,7 +216,7 @@ TEST(interrupts, inject_interrupt_twice)
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
 	/* Inject the interrupt again, and wait for the same message. */
-	hf_inject_interrupt(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -242,7 +242,7 @@ TEST(interrupts, inject_two_interrupts)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 	/* Inject the interrupt and wait for a message. */
-	hf_inject_interrupt(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -251,7 +251,7 @@ TEST(interrupts, inject_two_interrupts)
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
 	/* Inject a different interrupt and wait for a different message. */
-	hf_inject_interrupt(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_B);
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_B);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
@@ -280,7 +280,7 @@ TEST(interrupts, inject_interrupt_message)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 
 	/* Inject the interrupt and wait for a message. */
-	hf_inject_interrupt(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -318,7 +318,7 @@ TEST(interrupts, inject_interrupt_disabled)
 	SERVICE_SELECT(SERVICE_VM0, "interruptible", mb.send);
 
 	/* Inject the interrupt and expect not to get a message. */
-	hf_inject_interrupt(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_C);
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_C);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 	EXPECT_EQ(hf_mailbox_clear(), -1);

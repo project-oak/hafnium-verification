@@ -32,7 +32,7 @@
 
 void irq_current(void)
 {
-	uint32_t interrupt_id = hf_get_and_acknowledge_interrupt();
+	uint32_t interrupt_id = hf_interrupt_get();
 	char buffer[] = "Got IRQ xx.";
 	int size = sizeof(buffer);
 	dlog("IRQ %d from current\n", interrupt_id);
@@ -63,9 +63,9 @@ TEST_SERVICE(interruptible)
 	uint32_t this_vm_id = hf_vm_get_id();
 
 	exception_setup();
-	hf_enable_interrupt(SELF_INTERRUPT_ID, true);
-	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_A, true);
-	hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_B, true);
+	hf_interrupt_enable(SELF_INTERRUPT_ID, true);
+	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_A, true);
+	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_B, true);
 	arch_irq_enable();
 
 	for (;;) {
@@ -78,13 +78,13 @@ TEST_SERVICE(interruptible)
 		    memcmp(SERVICE_RECV_BUFFER(), ping_message,
 			   sizeof(ping_message)) == 0) {
 			/* Interrupt ourselves */
-			hf_inject_interrupt(this_vm_id, 0, SELF_INTERRUPT_ID);
+			hf_interrupt_inject(this_vm_id, 0, SELF_INTERRUPT_ID);
 		} else if (received_message.vm_id == HF_PRIMARY_VM_ID &&
 			   received_message.size == sizeof(enable_message) &&
 			   memcmp(SERVICE_RECV_BUFFER(), enable_message,
 				  sizeof(enable_message)) == 0) {
 			/* Enable interrupt ID C. */
-			hf_enable_interrupt(EXTERNAL_INTERRUPT_ID_C, true);
+			hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_C, true);
 		} else {
 			dlog("Got unexpected message from VM %d, size %d.\n",
 			     received_message.vm_id, received_message.size);

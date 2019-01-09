@@ -618,7 +618,7 @@ int64_t api_mailbox_clear(const struct vcpu *current)
  *
  * Returns 0 on success, or -1 if the intid is invalid.
  */
-int64_t api_enable_interrupt(uint32_t intid, bool enable, struct vcpu *current)
+int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current)
 {
 	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
 	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
@@ -662,7 +662,7 @@ int64_t api_enable_interrupt(uint32_t intid, bool enable, struct vcpu *current)
  * acknowledges it (i.e. marks it as no longer pending). Returns
  * HF_INVALID_INTID if there are no pending interrupts.
  */
-uint32_t api_get_and_acknowledge_interrupt(struct vcpu *current)
+uint32_t api_interrupt_get(struct vcpu *current)
 {
 	uint8_t i;
 	uint32_t first_interrupt = HF_INVALID_INTID;
@@ -725,7 +725,7 @@ static inline bool is_injection_allowed(uint32_t target_vm_id,
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick the target vCPU.
  */
-int64_t api_inject_interrupt(uint32_t target_vm_id, uint32_t target_vcpu_idx,
+int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 			     uint32_t intid, struct vcpu *current,
 			     struct vcpu **next)
 {

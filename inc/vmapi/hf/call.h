@@ -23,18 +23,18 @@
 /* clang-format off */
 
 /* TODO: Define constants below according to spec. */
-#define HF_VM_GET_ID                     0xff00
-#define HF_VM_GET_COUNT                  0xff01
-#define HF_VCPU_GET_COUNT                0xff02
-#define HF_VCPU_RUN                      0xff03
-#define HF_VCPU_YIELD                    0xff04
-#define HF_VM_CONFIGURE                  0xff05
-#define HF_MAILBOX_SEND                  0xff06
-#define HF_MAILBOX_RECEIVE               0xff07
-#define HF_MAILBOX_CLEAR                 0xff08
-#define HF_ENABLE_INTERRUPT              0xff09
-#define HF_GET_AND_ACKNOWLEDGE_INTERRUPT 0xff0a
-#define HF_INJECT_INTERRUPT              0xff0b
+#define HF_VM_GET_ID        0xff00
+#define HF_VM_GET_COUNT     0xff01
+#define HF_VCPU_GET_COUNT   0xff02
+#define HF_VCPU_RUN         0xff03
+#define HF_VCPU_YIELD       0xff04
+#define HF_VM_CONFIGURE     0xff05
+#define HF_MAILBOX_SEND     0xff06
+#define HF_MAILBOX_RECEIVE  0xff07
+#define HF_MAILBOX_CLEAR    0xff08
+#define HF_INTERRUPT_ENABLE 0xff09
+#define HF_INTERRUPT_GET    0xff0a
+#define HF_INTERRUPT_INJECT 0xff0b
 
 /** The amount of data that can be sent to a mailbox. */
 #define HF_MAILBOX_SIZE 4096
@@ -147,9 +147,9 @@ static inline int64_t hf_mailbox_clear(void)
  *
  * Returns 0 on success, or -1 if the intid is invalid.
  */
-static inline int64_t hf_enable_interrupt(uint32_t intid, bool enable)
+static inline int64_t hf_interrupt_enable(uint32_t intid, bool enable)
 {
-	return hf_call(HF_ENABLE_INTERRUPT, intid, enable, 0);
+	return hf_call(HF_INTERRUPT_ENABLE, intid, enable, 0);
 }
 
 /**
@@ -157,9 +157,9 @@ static inline int64_t hf_enable_interrupt(uint32_t intid, bool enable)
  *
  * Returns HF_INVALID_INTID if there are no pending interrupts.
  */
-static inline uint32_t hf_get_and_acknowledge_interrupt(void)
+static inline uint32_t hf_interrupt_get(void)
 {
-	return hf_call(HF_GET_AND_ACKNOWLEDGE_INTERRUPT, 0, 0, 0);
+	return hf_call(HF_INTERRUPT_GET, 0, 0, 0);
 }
 
 /**
@@ -175,10 +175,10 @@ static inline uint32_t hf_get_and_acknowledge_interrupt(void)
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick the target vCPU.
  */
-static inline int64_t hf_inject_interrupt(uint32_t target_vm_id,
+static inline int64_t hf_interrupt_inject(uint32_t target_vm_id,
 					  uint32_t target_vcpu_idx,
 					  uint32_t intid)
 {
-	return hf_call(HF_INJECT_INTERRUPT, target_vm_id, target_vcpu_idx,
+	return hf_call(HF_INTERRUPT_INJECT, target_vm_id, target_vcpu_idx,
 		       intid);
 }
