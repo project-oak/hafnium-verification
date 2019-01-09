@@ -23,18 +23,20 @@
 /* clang-format off */
 
 /* TODO: Define constants below according to spec. */
-#define HF_VM_GET_ID        0xff00
-#define HF_VM_GET_COUNT     0xff01
-#define HF_VCPU_GET_COUNT   0xff02
-#define HF_VCPU_RUN         0xff03
-#define HF_VCPU_YIELD       0xff04
-#define HF_VM_CONFIGURE     0xff05
-#define HF_MAILBOX_SEND     0xff06
-#define HF_MAILBOX_RECEIVE  0xff07
-#define HF_MAILBOX_CLEAR    0xff08
-#define HF_INTERRUPT_ENABLE 0xff09
-#define HF_INTERRUPT_GET    0xff0a
-#define HF_INTERRUPT_INJECT 0xff0b
+#define HF_VM_GET_ID            0xff00
+#define HF_VM_GET_COUNT         0xff01
+#define HF_VCPU_GET_COUNT       0xff02
+#define HF_VCPU_RUN             0xff03
+#define HF_VCPU_YIELD           0xff04
+#define HF_VM_CONFIGURE         0xff05
+#define HF_MAILBOX_SEND         0xff06
+#define HF_MAILBOX_RECEIVE      0xff07
+#define HF_MAILBOX_CLEAR        0xff08
+#define HF_MAILBOX_WRITABLE_GET 0xff09
+#define HF_MAILBOX_WAITER_GET   0xff0a
+#define HF_INTERRUPT_ENABLE     0xff0b
+#define HF_INTERRUPT_GET        0xff0c
+#define HF_INTERRUPT_INJECT     0xff0d
 
 /** The amount of data that can be sent to a mailbox. */
 #define HF_MAILBOX_SIZE 4096
@@ -95,7 +97,11 @@ static inline void hf_vcpu_yield(void)
  * Configures the pages to send/receive data through. The pages must not be
  * shared.
  *
- * Returns 0 on success or -1 or failure.
+ * Returns:
+ *  - -1 on failure.
+ *  - 0 on success if no further action is needed.
+ *  - 1 if it was called by the primary VM and the primary VM now needs to wake
+ *    up or kick waiters.
  */
 static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
 {
@@ -137,12 +143,44 @@ static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
 /**
  * Clears the caller's mailbox so a new message can be received.
  *
- * Returns 0 on success, or -1 if the mailbox hasn't been read or is already
- * empty.
+ * Returns:
+ *  - -1 on failure, if the mailbox hasn't been read or is already empty.
+ *  - 0 on success if no further action is needed.
+ *  - 1 if it was called by the primary VM and the primary VM now needs to wake
+ *    up or kick waiters. Waiters should be retrieved by calling
+ *    hf_mailbox_waiter_get.
  */
 static inline int64_t hf_mailbox_clear(void)
 {
 	return hf_call(HF_MAILBOX_CLEAR, 0, 0, 0);
+}
+
+/**
+ * Retrieves the next VM whose mailbox became writable. For a VM to be notified
+ * by this function, the caller must have called api_mailbox_send before with
+ * the notify argument set to true, and this call must have failed because the
+ * mailbox was not available.
+ *
+ * It should be called repeatedly to retreive a list of VMs.
+ *
+ * Returns -1 if no VM became writable, or the id of the VM whose mailbox
+ * became writable.
+ */
+static inline int64_t hf_mailbox_writable_get(void)
+{
+	return hf_call(HF_MAILBOX_WRITABLE_GET, 0, 0, 0);
+}
+
+/**
+ * Retrieves the next VM waiting to be notified that the mailbox of the
+ * specified VM became writable. Only primary VMs are allowed to call this.
+ *
+ * Returns -1 if there are no waiters, or the VM id of the next waiter
+ * otherwise.
+ */
+static inline int64_t hf_mailbox_waiter_get(uint32_t vm_id)
+{
+	return hf_call(HF_MAILBOX_WAITER_GET, vm_id, 0, 0);
 }
 
 /**

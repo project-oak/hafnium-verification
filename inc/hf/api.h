@@ -29,14 +29,16 @@ int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current);
 struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 				       const struct vcpu *current,
 				       struct vcpu **next);
-int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
-			 const struct vcpu *current);
+int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
+			 struct vcpu **next);
 int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
 			 struct vcpu *current, struct vcpu **next);
 struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 						     struct vcpu *current,
 						     struct vcpu **next);
-int64_t api_mailbox_clear(const struct vcpu *current);
+int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next);
+int64_t api_mailbox_writable_get(const struct vcpu *current);
+int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current);
 
 struct vcpu *api_preempt(struct vcpu *current);
 struct vcpu *api_yield(struct vcpu *current);

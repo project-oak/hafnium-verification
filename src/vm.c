@@ -38,12 +38,23 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 
 	memset(vm, 0, sizeof(*vm));
 
+	list_init(&vm->mailbox.waiter_list);
+	list_init(&vm->mailbox.ready_list);
+	sl_init(&vm->lock);
+
 	vm->id = vm_count;
 	vm->vcpu_count = vcpu_count;
 	vm->mailbox.state = mailbox_state_empty;
 
 	if (!mm_vm_init(&vm->ptable, ppool)) {
 		return false;
+	}
+
+	/* Initialise waiter entries. */
+	for (i = 0; i < MAX_VMS; i++) {
+		vm->wentry[i].waiting_vm = vm;
+		list_init(&vm->wentry[i].wait_links);
+		list_init(&vm->wentry[i].ready_links);
 	}
 
 	/* Do basic initialization of vcpus. */
@@ -70,6 +81,25 @@ struct vm *vm_get(uint32_t id)
 	}
 
 	return &vms[id];
+}
+
+/**
+ * Locks the given VM and updates `locked` to hold the newly locked vm.
+ */
+void vm_lock(struct vm *vm, struct vm_locked *locked)
+{
+	sl_lock(&vm->lock);
+	locked->vm = vm;
+}
+
+/**
+ * Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
+ * the fact that the VM is no longer locked.
+ */
+void vm_unlock(struct vm_locked *locked)
+{
+	sl_unlock(&locked->vm->lock);
+	locked->vm = NULL;
 }
 
 /* TODO: Shall we use index or id here? */

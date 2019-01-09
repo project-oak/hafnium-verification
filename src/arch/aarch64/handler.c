@@ -273,7 +273,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	case HF_VM_CONFIGURE:
 		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2),
-						current());
+						current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_SEND:
@@ -287,7 +287,15 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		break;
 
 	case HF_MAILBOX_CLEAR:
-		ret.user_ret = api_mailbox_clear(current());
+		ret.user_ret = api_mailbox_clear(current(), &ret.new);
+		break;
+
+	case HF_MAILBOX_WRITABLE_GET:
+		ret.user_ret = api_mailbox_writable_get(current());
+		break;
+
+	case HF_MAILBOX_WAITER_GET:
+		ret.user_ret = api_mailbox_waiter_get(arg1, current());
 		break;
 
 	case HF_INTERRUPT_ENABLE:

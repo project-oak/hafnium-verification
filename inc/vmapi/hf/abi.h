@@ -64,6 +64,13 @@ enum hf_vcpu_run_code {
 	 * `hf_vcpu_run` on it again.
 	 */
 	HF_VCPU_RUN_SLEEP,
+
+	/**
+	 * The vCPU has made the mailbox writable and there are pending waiters.
+	 * The scheduler MUST call hf_mailbox_waiter_get() repeatedly and notify
+	 * all waiters by injecting an HF_MAILBOX_WRITABLE_INTID interrupt.
+	 */
+	HF_VCPU_RUN_NOTIFY_WAITERS,
 };
 
 struct hf_vcpu_run_return {

@@ -17,6 +17,7 @@
 #pragma once
 
 #include "hf/cpu.h"
+#include "hf/list.h"
 #include "hf/mm.h"
 #include "hf/mpool.h"
 
@@ -31,6 +32,23 @@ enum mailbox_state {
 	mailbox_state_read,
 };
 
+struct wait_entry {
+	/** The VM that is waiting for a mailbox to become writable. */
+	struct vm *waiting_vm;
+
+	/**
+	 * Links used to add entry to a VM's waiter_list. This is protected by
+	 * the notifying VM's lock.
+	 */
+	struct list_entry wait_links;
+
+	/**
+	 * Links used to add entry to a VM's ready_list. This is protected by
+	 * the waiting VM's lock.
+	 */
+	struct list_entry ready_links;
+};
+
 struct mailbox {
 	enum mailbox_state state;
 	uint32_t recv_from_id;
@@ -38,6 +56,20 @@ struct mailbox {
 	void *recv;
 	const void *send;
 	struct vcpu *recv_waiter;
+
+	/**
+	 * List of wait_entry structs representing VMs that want to be notified
+	 * when the mailbox becomes writable. Once the mailbox does become
+	 * writable, the entry is removed from this list and added to the
+	 * waiting VM's ready_list.
+	 */
+	struct list_entry waiter_list;
+
+	/**
+	 * List of wait_entry structs representing VMs whose mailboxes became
+	 * writable since the owner of the mailbox registers for notification.
+	 */
+	struct list_entry ready_list;
 };
 
 struct vm {
@@ -48,9 +80,19 @@ struct vm {
 	struct vcpu vcpus[MAX_CPUS];
 	struct mm_ptable ptable;
 	struct mailbox mailbox;
+
+	/** Wait entries to be used when waiting on other VM mailboxes. */
+	struct wait_entry wentry[MAX_VMS];
+};
+
+/** Encapsulates a VM whose lock is held. */
+struct vm_locked {
+	struct vm *vm;
 };
 
 bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm);
 uint32_t vm_get_count(void);
 struct vm *vm_get(uint32_t id);
 void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg);
+void vm_lock(struct vm *vm, struct vm_locked *locked);
+void vm_unlock(struct vm_locked *locked);

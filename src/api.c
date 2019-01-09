@@ -164,6 +164,28 @@ void api_regs_state_saved(struct vcpu *vcpu)
 }
 
 /**
+ * Retrieves the next waiter and removes it from the wait list if the VM's
+ * mailbox is in a writable state.
+ */
+static struct wait_entry *api_fetch_waiter(struct vm_locked locked_vm)
+{
+	struct wait_entry *entry;
+	struct vm *vm = locked_vm.vm;
+
+	if (vm->mailbox.state != mailbox_state_empty ||
+	    vm->mailbox.recv == NULL || list_empty(&vm->mailbox.waiter_list)) {
+		/* The mailbox is not writable or there are no waiters. */
+		return NULL;
+	}
+
+	/* Remove waiter from the wait list. */
+	entry = CONTAINER_OF(vm->mailbox.waiter_list.next, struct wait_entry,
+			     wait_links);
+	list_remove(&entry->wait_links);
+	return entry;
+}
+
+/**
  * Prepares the vcpu to run by updating its state and fetching whether a return
  * value needs to be forced onto the vCPU.
  */
@@ -281,13 +303,53 @@ static bool api_mode_valid_owned_and_exclusive(int mode)
 }
 
 /**
+ * Determines the value to be returned by api_vm_configure and api_mailbox_clear
+ * after they've succeeded. If a secondary VM is running and there are waiters,
+ * it also switches back to the primary VM for it to wake waiters up.
+ */
+static int64_t api_waiter_result(struct vm_locked locked_vm,
+				 struct vcpu *current, struct vcpu **next)
+{
+	struct vm *vm = locked_vm.vm;
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_NOTIFY_WAITERS,
+	};
+
+	if (list_empty(&vm->mailbox.waiter_list)) {
+		/* No waiters, nothing else to do. */
+		return 0;
+	}
+
+	if (vm->id == HF_PRIMARY_VM_ID) {
+		/* The caller is the primary VM. Tell it to wake up waiters. */
+		return 1;
+	}
+
+	/*
+	 * Switch back to the primary VM, informing it that there are waiters
+	 * that need to be notified.
+	 */
+	*next = api_switch_to_primary(current, ret, vcpu_state_ready);
+
+	return 0;
+}
+
+/**
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
+ *
+ * Returns:
+ *  - -1 on failure.
+ *  - 0 on success if no further action is needed.
+ *  - 1 if it was called by the primary VM and the primary VM now needs to wake
+ *    up or kick waiters. Waiters should be retrieved by calling
+ *    hf_mailbox_waiter_get.
  */
-int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
-			 const struct vcpu *current)
+int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
+			 struct vcpu **next)
 {
 	struct vm *vm = current->vm;
+	struct vm_locked locked;
 	paddr_t pa_send_begin;
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
@@ -315,7 +377,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 		return -1;
 	}
 
-	sl_lock(&vm->lock);
+	vm_lock(vm, &locked);
 
 	/* We only allow these to be setup once. */
 	if (vm->mailbox.send || vm->mailbox.recv) {
@@ -388,9 +450,8 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 		goto fail_undo_all;
 	}
 
-	/* TODO: Notify any waiters. */
-
-	ret = 0;
+	/* Tell caller about waiters, if any. */
+	ret = api_waiter_result(locked, current, next);
 	goto exit;
 
 	/*
@@ -416,7 +477,7 @@ fail:
 	ret = -1;
 
 exit:
-	sl_unlock(&vm->lock);
+	vm_unlock(&locked);
 
 	return ret;
 }
@@ -436,8 +497,6 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
 	const void *from_buf;
 	uint16_t vcpu;
 	int64_t ret;
-
-	(void)notify;
 
 	/* Limit the size of transfer. */
 	if (size > HF_MAILBOX_SIZE) {
@@ -471,7 +530,20 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
 
 	if (to->mailbox.state != mailbox_state_empty ||
 	    to->mailbox.recv == NULL) {
-		/* Fail if the target isn't currently ready to receive data. */
+		/*
+		 * Fail if the target isn't currently ready to receive data,
+		 * setting up for notification if requested.
+		 */
+		if (notify) {
+			struct wait_entry *entry = &current->vm->wentry[vm_id];
+
+			/* Append waiter only if it's not there yet. */
+			if (list_empty(&entry->wait_links)) {
+				list_append(&to->mailbox.waiter_list,
+					    &entry->wait_links);
+			}
+		}
+
 		ret = -1;
 		goto out;
 	}
@@ -612,27 +684,110 @@ out:
 }
 
 /**
- * Clears the caller's mailbox so that a new message can be received. The caller
- * must have copied out all data they wish to preserve as new messages will
- * overwrite the old and will arrive asynchronously.
+ * Retrieves the next VM whose mailbox became writable. For a VM to be notified
+ * by this function, the caller must have called api_mailbox_send before with
+ * the notify argument set to true, and this call must have failed because the
+ * mailbox was not available.
+ *
+ * It should be called repeatedly to retrieve a list of VMs.
+ *
+ * Returns -1 if no VM became writable, or the id of the VM whose mailbox
+ * became writable.
  */
-int64_t api_mailbox_clear(const struct vcpu *current)
+int64_t api_mailbox_writable_get(const struct vcpu *current)
 {
 	struct vm *vm = current->vm;
+	struct wait_entry *entry;
 	int64_t ret;
 
 	sl_lock(&vm->lock);
+	if (list_empty(&vm->mailbox.ready_list)) {
+		ret = -1;
+		goto exit;
+	}
+
+	entry = CONTAINER_OF(vm->mailbox.ready_list.next, struct wait_entry,
+			     ready_links);
+	list_remove(&entry->ready_links);
+	ret = entry - vm->wentry;
+
+exit:
+	sl_unlock(&vm->lock);
+	return ret;
+}
+
+/**
+ * Retrieves the next VM waiting to be notified that the mailbox of the
+ * specified VM became writable. Only primary VMs are allowed to call this.
+ *
+ * Returns -1 if there are no waiters, or the VM id of the next waiter
+ * otherwise.
+ */
+int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current)
+{
+	struct vm *vm;
+	struct vm_locked locked;
+	struct wait_entry *entry;
+	struct vm *waiting_vm;
+
+	/* Only primary VMs are allowed to call this function. */
+	if (current->vm->id != HF_PRIMARY_VM_ID) {
+		return -1;
+	}
+
+	vm = vm_get(vm_id);
+	if (vm == NULL) {
+		return -1;
+	}
+
+	/* Check if there are outstanding notifications from given vm. */
+	vm_lock(vm, &locked);
+	entry = api_fetch_waiter(locked);
+	vm_unlock(&locked);
+
+	if (entry == NULL) {
+		return -1;
+	}
+
+	/* Enqueue notification to waiting VM. */
+	waiting_vm = entry->waiting_vm;
+
+	sl_lock(&waiting_vm->lock);
+	if (list_empty(&entry->ready_links)) {
+		list_append(&waiting_vm->mailbox.ready_list,
+			    &entry->ready_links);
+	}
+	sl_unlock(&waiting_vm->lock);
+
+	return waiting_vm->id;
+}
+
+/**
+ * Clears the caller's mailbox so that a new message can be received. The caller
+ * must have copied out all data they wish to preserve as new messages will
+ * overwrite the old and will arrive asynchronously.
+ *
+ * Returns:
+ *  - -1 on failure, if the mailbox hasn't been read or is already empty.
+ *  - 0 on success if no further action is needed.
+ *  - 1 if it was called by the primary VM and the primary VM now needs to wake
+ *    up or kick waiters. Waiters should be retrieved by calling
+ *    hf_mailbox_waiter_get.
+ */
+int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next)
+{
+	struct vm *vm = current->vm;
+	struct vm_locked locked;
+	int64_t ret;
+
+	vm_lock(vm, &locked);
 	if (vm->mailbox.state == mailbox_state_read) {
-		ret = 0;
+		ret = api_waiter_result(locked, current, next);
 		vm->mailbox.state = mailbox_state_empty;
 	} else {
 		ret = -1;
 	}
-	sl_unlock(&vm->lock);
-
-	if (ret == 0) {
-		/* TODO: Notify waiters, if any. */
-	}
+	vm_unlock(&locked);
 
 	return ret;
 }

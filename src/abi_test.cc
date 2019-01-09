@@ -211,4 +211,24 @@ TEST(abi, hf_mailbox_receive_return_decode)
 	EXPECT_THAT(res.size, Eq(0x8badf00d));
 }
 
+/**
+ * Encode a 'notify waiters' response without leaking.
+ */
+TEST(abi, hf_vcpu_run_return_encode_interrupt)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_NOTIFY_WAITERS;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(6));
+}
+
+/**
+ * Decode a 'notify waiters' response ignoring the irrelevant bits.
+ */
+TEST(abi, hf_vcpu_run_return_decode_interrupt)
+{
+	struct hf_vcpu_run_return res =
+		hf_vcpu_run_return_decode(0x1a1a1a1a2b2b2b06);
+	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_NOTIFY_WAITERS));
+}
+
 } /* namespace */
