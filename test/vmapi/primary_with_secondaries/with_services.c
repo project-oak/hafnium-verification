@@ -77,7 +77,7 @@ TEST(mailbox, echo)
 
 	/* Set the message, echo it and check it didn't change. */
 	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message)), 0);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
@@ -105,7 +105,8 @@ TEST(mailbox, repeated_echo)
 		/* Set the message, echo it and check it didn't change. */
 		next_permutation(message, sizeof(message) - 1);
 		memcpy(mb.send, message, sizeof(message));
-		EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message)), 0);
+		EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false),
+			  0);
 		run_res = hf_vcpu_run(SERVICE_VM0, 0);
 		EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 		EXPECT_EQ(run_res.message.size, sizeof(message));
@@ -143,7 +144,8 @@ TEST(mailbox, relay)
 		memcpy(chain, message, sizeof(message));
 		EXPECT_EQ(hf_mailbox_send(
 				  SERVICE_VM0,
-				  sizeof(message) + (2 * sizeof(uint32_t))),
+				  sizeof(message) + (2 * sizeof(uint32_t)),
+				  false),
 			  0);
 	}
 
@@ -181,7 +183,7 @@ TEST(interrupts, interrupt_self)
 
 	/* Set the message, echo it and wait for a response. */
 	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message)), 0);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
@@ -293,7 +295,7 @@ TEST(interrupts, inject_interrupt_message)
 
 	/* Now send a message to the secondary. */
 	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message)), 0);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
@@ -328,7 +330,7 @@ TEST(interrupts, inject_interrupt_disabled)
 	 * expect the response from the interrupt we sent before.
 	 */
 	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message)), 0);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));

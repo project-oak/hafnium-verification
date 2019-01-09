@@ -27,7 +27,7 @@ void send_with_retry(uint32_t vm_id, size_t size)
 	int64_t res;
 
 	do {
-		res = hf_mailbox_send(vm_id, size);
+		res = hf_mailbox_send(vm_id, size, false);
 	} while (res == -1);
 }
 

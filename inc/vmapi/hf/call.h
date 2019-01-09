@@ -105,6 +105,9 @@ static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
 /**
  * Copies data from the sender's send buffer to the recipient's receive buffer.
  *
+ * If the recipient's receive buffer is busy, it can optionally register the
+ * caller to be notified when the recipient's receive buffer becomes available.
+ *
  * Returns -1 on failure, and on success either:
  *  - 0, if the caller is a secondary VM
  *  - the ID of the vCPU to run to receive the message, if the caller is the
@@ -112,9 +115,9 @@ static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
  *  - HF_INVALID_VCPU if the caller is the primary VM and no vCPUs on the target
  *    VM are currently waiting to receive a message.
  */
-static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size)
+static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size, bool notify)
 {
-	return hf_call(HF_MAILBOX_SEND, vm_id, size, 0);
+	return hf_call(HF_MAILBOX_SEND, vm_id, size, notify);
 }
 
 /**

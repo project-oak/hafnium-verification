@@ -255,7 +255,7 @@ union hftest_any {
                                                                               \
 		/* Send the selected service to run and let it be handled. */ \
 		memcpy(send_buffer, service, strlen(service));                \
-		ASSERT_EQ(hf_mailbox_send(vm_id, strlen(service)), 0);        \
+		ASSERT_EQ(hf_mailbox_send(vm_id, strlen(service), false), 0); \
 		run_res = hf_vcpu_run(vm_id, 0);                              \
 		ASSERT_EQ(run_res.code, HF_VCPU_RUN_YIELD);                   \
 	} while (0)

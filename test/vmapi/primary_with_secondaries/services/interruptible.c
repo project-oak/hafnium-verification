@@ -39,7 +39,7 @@ void irq_current(void)
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
 	memcpy(SERVICE_SEND_BUFFER(), buffer, size);
-	hf_mailbox_send(HF_PRIMARY_VM_ID, size);
+	hf_mailbox_send(HF_PRIMARY_VM_ID, size, false);
 }
 
 /**

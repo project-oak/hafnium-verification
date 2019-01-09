@@ -405,15 +405,20 @@ exit:
 /**
  * Copies data from the sender's send buffer to the recipient's receive buffer
  * and notifies the recipient.
+ *
+ * If the recipient's receive buffer is busy, it can optionally register the
+ * caller to be notified when the recipient's receive buffer becomes available.
  */
-int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
-			 struct vcpu **next)
+int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
+			 struct vcpu *current, struct vcpu **next)
 {
 	struct vm *from = current->vm;
 	struct vm *to;
 	const void *from_buf;
 	uint16_t vcpu;
 	int64_t ret;
+
+	(void)notify;
 
 	/* Limit the size of transfer. */
 	if (size > HF_MAILBOX_SIZE) {

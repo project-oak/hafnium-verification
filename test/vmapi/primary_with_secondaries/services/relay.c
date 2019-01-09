@@ -48,6 +48,6 @@ TEST_SERVICE(relay)
 		/* Send the message to the next stage. */
 		memcpy(SERVICE_SEND_BUFFER(), next_message, next_message_size);
 		hf_mailbox_clear();
-		hf_mailbox_send(next_vm_id, next_message_size);
+		hf_mailbox_send(next_vm_id, next_message_size, false);
 	}
 }

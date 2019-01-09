@@ -27,6 +27,6 @@ TEST_SERVICE(echo)
 		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
 		memcpy(SERVICE_SEND_BUFFER(), SERVICE_RECV_BUFFER(), res.size);
 		hf_mailbox_clear();
-		hf_mailbox_send(res.vm_id, res.size);
+		hf_mailbox_send(res.vm_id, res.size, false);
 	}
 }

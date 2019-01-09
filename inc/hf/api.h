@@ -31,9 +31,8 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 				       struct vcpu **next);
 int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv,
 			 const struct vcpu *current);
-
-int64_t api_mailbox_send(uint32_t vm_id, size_t size, struct vcpu *current,
-			 struct vcpu **next);
+int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
+			 struct vcpu *current, struct vcpu **next);
 struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 						     struct vcpu *current,
 						     struct vcpu **next);

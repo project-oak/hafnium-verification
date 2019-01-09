@@ -278,7 +278,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	case HF_MAILBOX_SEND:
 		ret.user_ret =
-			api_mailbox_send(arg1, arg2, current(), &ret.new);
+			api_mailbox_send(arg1, arg2, arg3, current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_RECEIVE:
