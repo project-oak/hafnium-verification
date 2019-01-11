@@ -19,9 +19,11 @@
 void *memset(void *s, int c, size_t n)
 {
 	char *p = (char *)s;
+
 	while (n--) {
 		*p++ = c;
 	}
+
 	return s;
 }
 
@@ -31,9 +33,11 @@ void *memset(void *s, int c, size_t n)
 size_t strlen(const char *str)
 {
 	const char *p = str;
+
 	while (*p) {
 		p++;
 	}
+
 	return p - str;
 }
 

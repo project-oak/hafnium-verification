@@ -274,7 +274,7 @@ out:
 /**
  * Check that the mode indicates memory that is valid, owned and exclusive.
  */
-bool static api_mode_valid_owned_and_exclusive(int mode)
+static bool api_mode_valid_owned_and_exclusive(int mode)
 {
 	return (mode & (MM_MODE_INVALID | MM_MODE_UNOWNED | MM_MODE_SHARED)) ==
 	       0;

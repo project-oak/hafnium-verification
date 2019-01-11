@@ -93,6 +93,7 @@ struct hf_mailbox_receive_return {
 static inline uint64_t hf_vcpu_run_return_encode(struct hf_vcpu_run_return res)
 {
 	uint64_t ret = res.code & 0xff;
+
 	switch (res.code) {
 	case HF_VCPU_RUN_WAKE_UP:
 		ret |= (uint64_t)res.wake_up.vm_id << 32;
@@ -107,6 +108,7 @@ static inline uint64_t hf_vcpu_run_return_encode(struct hf_vcpu_run_return res)
 	default:
 		break;
 	}
+
 	return ret;
 }
 

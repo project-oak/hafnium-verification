@@ -76,6 +76,7 @@ struct vm *vm_get(uint32_t id)
 void vm_start_vcpu(struct vm *vm, size_t index, ipaddr_t entry, uintreg_t arg)
 {
 	struct vcpu *vcpu = &vm->vcpus[index];
+
 	if (index < vm->vcpu_count) {
 		arch_regs_set_pc_arg(&vcpu->regs, entry, arg);
 		vcpu_on(vcpu);

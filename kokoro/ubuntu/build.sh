@@ -84,6 +84,8 @@ then
 	exit 1
 fi
 
+make checkpatch
+
 #
 # Step 5: make sure there's not lint.
 #

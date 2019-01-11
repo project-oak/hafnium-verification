@@ -19,6 +19,9 @@ GN ?= $(PREBUILTS)/gn/gn
 NINJA ?= $(PREBUILTS)/ninja/ninja
 export PATH := $(PREBUILTS)/clang/bin:$(PATH)
 
+CHECKPATCH := $(PWD)/third_party/linux/scripts/checkpatch.pl \
+	--ignore BRACES,SPDX_LICENSE_TAG,VOLATILE,SPLIT_STRING,AVOID_EXTERNS,USE_SPINLOCK_T,NEW_TYPEDEFS,INITIALISED_STATIC,FILE_PATH_CHANGES,EMBEDDED_FUNCTION_NAME --quiet
+
 # Select the project to build.
 PROJECT ?= reference
 
@@ -49,6 +52,13 @@ format:
 	@find test/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
 	@find project/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
 	@find . \( -name \*.gn -o -name \*.gni \) | xargs -n1 $(GN) format
+
+.PHONY: checkpatch
+checkpatch:
+	@find src/ -name \*.c -o -name \*.h | xargs $(CHECKPATCH) -f
+	@find inc/ -name \*.c -o -name \*.h | xargs $(CHECKPATCH) -f
+	# TODO: enable for test/
+	@find project/ -name \*.c -o -name \*.h | xargs $(CHECKPATCH) -f
 
 # see .clang-tidy.
 .PHONY: tidy

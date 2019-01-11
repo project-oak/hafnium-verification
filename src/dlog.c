@@ -53,9 +53,11 @@ void dlog_enable_lock(void)
 static size_t print_raw_string(const char *str)
 {
 	const char *c = str;
+
 	while (*c != '\0') {
 		arch_putchar(*c++);
 	}
+
 	return c - str;
 }
 

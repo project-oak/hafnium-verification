@@ -72,6 +72,7 @@ static void fdt_tokenizer_align(struct fdt_tokenizer *t)
 static bool fdt_tokenizer_uint32(struct fdt_tokenizer *t, uint32_t *res)
 {
 	const char *next = t->cur + sizeof(*res);
+
 	if (next > t->end) {
 		return false;
 	}
@@ -99,6 +100,7 @@ static bool fdt_tokenizer_bytes(struct fdt_tokenizer *t, const char **res,
 				size_t size)
 {
 	const char *next = t->cur + size;
+
 	if (next > t->end) {
 		return false;
 	}
@@ -113,6 +115,7 @@ static bool fdt_tokenizer_bytes(struct fdt_tokenizer *t, const char **res,
 static bool fdt_tokenizer_str(struct fdt_tokenizer *t, const char **res)
 {
 	const char *p;
+
 	for (p = t->cur; p < t->end; p++) {
 		if (!*p) {
 			/* Found the end of the string. */
@@ -221,6 +224,7 @@ static void fdt_skip_properties(struct fdt_tokenizer *t)
 	const char *name;
 	const char *buf;
 	uint32_t size;
+
 	while (fdt_next_property(t, &name, &buf, &size)) {
 		/* do nothing */
 	}
@@ -396,6 +400,7 @@ void fdt_add_mem_reservation(struct fdt_header *hdr, uint64_t addr,
 	/* TODO: Clean this up. */
 	uint8_t *begin = (uint8_t *)hdr + be32toh(hdr->off_mem_rsvmap);
 	struct fdt_reserve_entry *e = (struct fdt_reserve_entry *)begin;
+
 	hdr->totalsize = htobe32(be32toh(hdr->totalsize) +
 				 sizeof(struct fdt_reserve_entry));
 	hdr->off_dt_struct = htobe32(be32toh(hdr->off_dt_struct) +
