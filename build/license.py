@@ -21,10 +21,12 @@ style.
 """
 
 import argparse
+import datetime
+import re
 import sys
 
 
-apache2 = """{comment} Copyright 2018 Google LLC
+apache2 = """{comment} Copyright {year} Google LLC
 {comment}
 {comment} Licensed under the Apache License, Version 2.0 (the "License");
 {comment} you may not use this file except in compliance with the License.
@@ -44,12 +46,14 @@ def Main():
     parser.add_argument("--style", choices=["c", "hash"], required=True)
     args = parser.parse_args()
     header = "/*\n" if args.style == "c" else ""
-    header += apache2.format(comment=" *" if args.style == "c" else "#")
+    year = str(datetime.datetime.now().year)
+    header += apache2.format(comment=" *" if args.style == "c" else "#", year=year)
     header += "\n */" if args.style == "c" else ""
     header += "\n\n"
+    header_regex = re.escape(header).replace(year, r"\d\d\d\d")
     with open(args.file, "r") as f:
         contents = f.read()
-        if header in contents:
+        if re.search(header_regex, contents):
             return
     with open(args.file, "w") as f:
         f.write(header)
