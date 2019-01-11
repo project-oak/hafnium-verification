@@ -38,6 +38,23 @@ source_set("echo") {
   ]
 }
 
+# Echo service that waits for recipient to become writable.
+source_set("echo_with_notification") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+
+  sources = [
+    "echo_with_notification.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
+  ]
+}
+
 # Service that can be interrupted.
 source_set("interruptible") {
   testonly = true
@@ -73,6 +90,7 @@ vm_kernel("service_vm0") {
   deps = [
     ":check_state",
     ":echo",
+    ":echo_with_notification",
     ":interruptible",
     ":relay",
     "//test/hftest:hftest_secondary_vm",

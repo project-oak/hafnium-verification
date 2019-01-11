@@ -166,6 +166,145 @@ TEST(mailbox, relay)
 }
 
 /**
+ * Send a message before the secondary VM is configured, but do not register
+ * for notification. Ensure we're not notified.
+ */
+TEST(mailbox, no_primary_to_secondary_notification_on_configure)
+{
+	struct hf_vcpu_run_return run_res;
+
+	set_up_mailbox();
+
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), -1);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
+}
+
+/**
+ * Send a message before the secondary VM is configured, and receive a
+ * notification when it configures.
+ */
+TEST(mailbox, secondary_to_primary_notification_on_configure)
+{
+	struct hf_vcpu_run_return run_res;
+
+	set_up_mailbox();
+
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, true), -1);
+
+	/*
+	 * Run first VM for it to configure itself. It should result in
+	 * notifications having to be issued.
+	 */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_NOTIFY_WAITERS);
+
+	/* A single waiter is returned. */
+	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), HF_PRIMARY_VM_ID);
+	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
+
+	/* Send should succeed now, though no vCPU is blocked waiting for it. */
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), HF_INVALID_VCPU);
+}
+
+/**
+ * Causes secondary VM to send two messages to primary VM. The second message
+ * will reach the mailbox while it's not writable. Checks that notifications are
+ * properly delivered when mailbox is cleared.
+ */
+TEST(mailbox, primary_to_secondary)
+{
+	char message[] = "not ready echo";
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+
+	SERVICE_SELECT(SERVICE_VM0, "echo_with_notification", mb.send);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Send a message to echo service, and get response back. */
+	memcpy(mb.send, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+
+	/* Let secondary VM continue running so that it will wait again. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Without clearing our mailbox, send message again. */
+	reverse(message, strlen(message));
+	memcpy(mb.send, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Clear the mailbox. We expect to be told there are pending waiters. */
+	EXPECT_EQ(hf_mailbox_clear(), 1);
+
+	/* Retrieve two waiters. */
+	EXPECT_EQ(hf_mailbox_waiter_get(HF_PRIMARY_VM_ID), SERVICE_VM0);
+	EXPECT_EQ(hf_mailbox_waiter_get(HF_PRIMARY_VM_ID), -1);
+
+	/*
+	 * Inject interrupt into VM and let it run again. We should receive
+	 * the echoed message.
+	 */
+	EXPECT_EQ(
+		hf_interrupt_inject(SERVICE_VM0, 0, HF_MAILBOX_WRITABLE_INTID),
+		1);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+}
+
+/**
+ * Sends two messages to secondary VM without letting it run, so second message
+ * won't go through. Ensure that a notification is delivered when secondary VM
+ * clears the mailbox.
+ */
+TEST(mailbox, secondary_to_primary_notification)
+{
+	const char message[] = "not ready echo";
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+
+	SERVICE_SELECT(SERVICE_VM0, "echo_with_notification", mb.send);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+
+	/* Send a message to echo service twice. The second should fail. */
+	memcpy(mb.send, message, sizeof(message));
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), true), -1);
+
+	/* Receive a reply for the first message. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+
+	/* Run VM again so that it clears its mailbox. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_NOTIFY_WAITERS);
+
+	/* Retrieve two waiters. */
+	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), HF_PRIMARY_VM_ID);
+	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
+
+	/* Send should succeed now, though no vCPU is blocked waiting for it. */
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), HF_INVALID_VCPU);
+}
+
+/**
  * Send a message to the interruptible VM, which will interrupt itself to send a
  * response back.
  */

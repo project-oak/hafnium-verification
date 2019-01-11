@@ -30,7 +30,7 @@
  * itself when it receives a message.
  */
 
-void irq_current(void)
+static void irq(void)
 {
 	uint32_t interrupt_id = hf_interrupt_get();
 	char buffer[] = "Got IRQ xx.";
@@ -62,7 +62,7 @@ TEST_SERVICE(interruptible)
 {
 	uint32_t this_vm_id = hf_vm_get_id();
 
-	exception_setup();
+	exception_setup(irq);
 	hf_interrupt_enable(SELF_INTERRUPT_ID, true);
 	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_A, true);
 	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_B, true);

@@ -26,9 +26,19 @@
 #include "../msr.h"
 
 extern uint8_t vector_table_el1;
+static void (*irq_callback)(void);
 
-void exception_setup(void)
+void irq_current(void)
 {
+	if (irq_callback != NULL) {
+		irq_callback();
+	}
+}
+
+void exception_setup(void (*irq)(void))
+{
+	irq_callback = irq;
+
 	/* Set exception vector table. */
 	write_msr(VBAR_EL1, &vector_table_el1);
 
@@ -164,4 +174,9 @@ void sync_current_exception(uintreg_t esr, uintreg_t elr)
 	for (;;) {
 		/* do nothing */
 	}
+}
+
+void interrupt_wait(void)
+{
+	__asm__ volatile("wfi");
 }

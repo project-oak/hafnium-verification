@@ -29,19 +29,19 @@
 
 static volatile uint32_t last_interrupt_id = 0;
 
-void system_setup()
-{
-	exception_setup();
-	interrupt_gic_setup();
-}
-
-void irq_current(void)
+static void irq(void)
 {
 	uint32_t interrupt_id = interrupt_get_and_acknowledge();
 	dlog("IRQ %d from current\n", interrupt_id);
 	last_interrupt_id = interrupt_id;
 	interrupt_end(interrupt_id);
 	dlog("IRQ %d ended\n", interrupt_id);
+}
+
+void system_setup()
+{
+	exception_setup(irq);
+	interrupt_gic_setup();
 }
 
 /* Check that system registers are configured as we expect on startup. */
