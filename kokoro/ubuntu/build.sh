@@ -46,16 +46,6 @@ fi
 # Check the hypervisor builds.
 make
 
-# Check the Linux kernel module builds.
-(
-export ARCH=arm64 &&
-export CROSS_COMPILE=aarch64-linux-gnu- &&
-make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8} \
-     -C third_party/linux defconfig modules_prepare &&
-cd driver/linux &&
-make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8}
-)
-
 #
 # Step 2: make sure it works.
 #
@@ -107,3 +97,14 @@ then
 	echo "Run \`make license\' locally to fix this."
 	exit 1
 fi
+
+# Step 7: make sure the Linux driver builds and maintains style.
+(
+export ARCH=arm64 &&
+export CROSS_COMPILE=aarch64-linux-gnu- &&
+make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8} \
+     -C third_party/linux defconfig modules_prepare &&
+cd driver/linux &&
+make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8} &&
+make checkpatch
+)
