@@ -18,8 +18,8 @@ import("//build/toolchain/platform.gni")
 config("compiler_defaults") {
   cflags = [
     "-g",
-    "-O2",
     "-Wall",
+    "-O2",
 
     #"-Wextra",
     "-Wpedantic",

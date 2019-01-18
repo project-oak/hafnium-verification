@@ -15,6 +15,9 @@
 declare_args() {
   # Set by arch toolchain. Prefix for binutils tools.
   tool_prefix = ""
+
+  # Enable link time optimizations
+  use_lto = true
 }
 
 # Template for embedded toolchains; there is no support for C++ or libraries.
@@ -26,8 +29,12 @@ template("embedded_cc_toolchain") {
 
     # Collect extra flags from the toolchain.
     extra_defines = ""
-    extra_cflags = "-flto -ffunction-sections -fdata-sections"
-    extra_ldflags = "--gc-sections -pie"
+    extra_cflags = "-ffunction-sections -fdata-sections"
+    if (use_lto) {
+      extra_cflags += " -flto"
+    }
+    extra_ldflags = "-pie --gc-sections"
+
     if (defined(invoker.extra_defines)) {
       extra_defines += " ${invoker.extra_defines}"
     }
@@ -147,6 +154,10 @@ template("embedded_clang_bfd_toolchain") {
                              "extra_ldflags",
                            ])
     extra_cflags += " -target ${invoker.target} -fcolor-diagnostics"
+    extra_ldflags += " --fatal-warnings"
+    if (use_lto) {
+      extra_ldflags += " -O2 -lto-O2 --icf=all"
+    }
 
     toolchain_args = {
       tool_prefix = invoker.tool_prefix
