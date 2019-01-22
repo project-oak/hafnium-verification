@@ -162,7 +162,7 @@ static inline int64_t hf_mailbox_clear(void)
  * the notify argument set to true, and this call must have failed because the
  * mailbox was not available.
  *
- * It should be called repeatedly to retreive a list of VMs.
+ * It should be called repeatedly to retrieve a list of VMs.
  *
  * Returns -1 if no VM became writable, or the id of the VM whose mailbox
  * became writable.
@@ -176,8 +176,8 @@ static inline int64_t hf_mailbox_writable_get(void)
  * Retrieves the next VM waiting to be notified that the mailbox of the
  * specified VM became writable. Only primary VMs are allowed to call this.
  *
- * Returns -1 if there are no waiters, or the VM id of the next waiter
- * otherwise.
+ * Returns -1 on failure or if there are no waiters; the VM id of the next
+ * waiter otherwise.
  */
 static inline int64_t hf_mailbox_waiter_get(uint32_t vm_id)
 {

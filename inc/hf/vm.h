@@ -82,7 +82,7 @@ struct vm {
 	struct mailbox mailbox;
 
 	/** Wait entries to be used when waiting on other VM mailboxes. */
-	struct wait_entry wentry[MAX_VMS];
+	struct wait_entry wait_entries[MAX_VMS];
 };
 
 /** Encapsulates a VM whose lock is held. */

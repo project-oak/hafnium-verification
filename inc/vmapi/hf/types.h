@@ -47,7 +47,7 @@ typedef uintptr_t hf_ipaddr_t;
 #define HF_INVALID_INTID 0xffffffff
 
 /** Interrupt ID indicating the mailbox is readable. */
-#define HF_MAILBOX_READBLE_INTID 1
+#define HF_MAILBOX_READABLE_INTID 1
 
 /** Interrupt ID indicating a mailbox is writable. */
 #define HF_MAILBOX_WRITABLE_INTID 2

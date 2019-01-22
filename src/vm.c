@@ -52,9 +52,9 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 
 	/* Initialise waiter entries. */
 	for (i = 0; i < MAX_VMS; i++) {
-		vm->wentry[i].waiting_vm = vm;
-		list_init(&vm->wentry[i].wait_links);
-		list_init(&vm->wentry[i].ready_links);
+		vm->wait_entries[i].waiting_vm = vm;
+		list_init(&vm->wait_entries[i].wait_links);
+		list_init(&vm->wait_entries[i].ready_links);
 	}
 
 	/* Do basic initialization of vcpus. */

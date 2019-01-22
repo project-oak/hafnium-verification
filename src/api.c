@@ -540,7 +540,8 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
 		 * setting up for notification if requested.
 		 */
 		if (notify) {
-			struct wait_entry *entry = &current->vm->wentry[vm_id];
+			struct wait_entry *entry =
+				&current->vm->wait_entries[vm_id];
 
 			/* Append waiter only if it's not there yet. */
 			if (list_empty(&entry->wait_links)) {
@@ -714,7 +715,7 @@ int64_t api_mailbox_writable_get(const struct vcpu *current)
 	entry = CONTAINER_OF(vm->mailbox.ready_list.next, struct wait_entry,
 			     ready_links);
 	list_remove(&entry->ready_links);
-	ret = entry - vm->wentry;
+	ret = entry - vm->wait_entries;
 
 exit:
 	sl_unlock(&vm->lock);
@@ -725,8 +726,8 @@ exit:
  * Retrieves the next VM waiting to be notified that the mailbox of the
  * specified VM became writable. Only primary VMs are allowed to call this.
  *
- * Returns -1 if there are no waiters, or the VM id of the next waiter
- * otherwise.
+ * Returns -1 on failure or if there are no waiters; the VM id of the next
+ * waiter otherwise.
  */
 int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current)
 {

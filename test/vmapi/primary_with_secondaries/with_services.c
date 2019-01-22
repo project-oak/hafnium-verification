@@ -248,7 +248,7 @@ TEST(mailbox, primary_to_secondary)
 	/* Clear the mailbox. We expect to be told there are pending waiters. */
 	EXPECT_EQ(hf_mailbox_clear(), 1);
 
-	/* Retrieve two waiters. */
+	/* Retrieve a single waiter. */
 	EXPECT_EQ(hf_mailbox_waiter_get(HF_PRIMARY_VM_ID), SERVICE_VM0);
 	EXPECT_EQ(hf_mailbox_waiter_get(HF_PRIMARY_VM_ID), -1);
 
@@ -296,7 +296,7 @@ TEST(mailbox, secondary_to_primary_notification)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_NOTIFY_WAITERS);
 
-	/* Retrieve two waiters. */
+	/* Retrieve a single waiter. */
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), HF_PRIMARY_VM_ID);
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
 
