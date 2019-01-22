@@ -40,6 +40,7 @@ struct arch_regs {
 	uintreg_t pc;
 	uintreg_t spsr;
 
+	/* TODO: We need to save virtual timer state. */
 	struct {
 		uintreg_t vmpidr_el2;
 		uintreg_t csselr_el1;
@@ -68,7 +69,5 @@ struct arch_regs {
 		uintreg_t cptr_el2;
 		uintreg_t cnthctl_el2;
 		uintreg_t vttbr_el2;
-		uintreg_t cntv_cval_el0;
-		uintreg_t cntv_ctl_el0;
 	} lazy;
 };
