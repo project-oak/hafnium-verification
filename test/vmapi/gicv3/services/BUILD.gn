@@ -1,4 +1,4 @@
-# Copyright 2018 Google LLC
+# Copyright 2019 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,30 +13,29 @@
 # limitations under the License.
 
 import("//build/image/image.gni")
-import("//build/toolchain/platform.gni")
 
-# Tests specific to GICv3.
-vm_kernel("gicv3_test_vm") {
+# Service which loops forever.
+source_set("busy") {
   testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
 
   sources = [
-    "gicv3.c",
+    "busy.c",
+    "common.c",
   ]
 
   deps = [
-    "//src/arch/${plat_arch}/hftest:interrupts_gicv3",
-    "//test/hftest:hftest_primary_vm",
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
   ]
 }
 
-initrd("gicv3_test") {
+# Group services together into VMs.
+
+vm_kernel("gicv3_service_vm0") {
   testonly = true
 
-  primary_vm = ":gicv3_test_vm"
-  secondary_vms = [ [
-        "1048576",
-        "1",
-        "services0",
-        "//test/vmapi/gicv3/services:gicv3_service_vm0",
-      ] ]
+  deps = [
+    ":busy",
+    "//test/hftest:hftest_secondary_vm",
+  ]
 }
