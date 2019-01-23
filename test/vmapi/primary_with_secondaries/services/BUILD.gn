@@ -62,6 +62,16 @@ source_set("memory") {
   ]
 }
 
+# Services related to aborting VMs.
+source_set("abort") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "abort.c",
+  ]
+}
+
 # Service that can be interrupted.
 source_set("interruptible") {
   testonly = true
@@ -95,6 +105,7 @@ vm_kernel("service_vm0") {
   testonly = true
 
   deps = [
+    ":abort",
     ":check_state",
     ":echo",
     ":echo_with_notification",

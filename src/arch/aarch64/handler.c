@@ -344,8 +344,15 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 struct vcpu *irq_lower(void)
 {
-	/* TODO: Only switch when the interrupt isn't for the current VM. */
-	/* Switch back to primary VM, interrupts will be handled there. */
+	/*
+	 * Switch back to primary VM, interrupts will be handled there.
+	 *
+	 * If the VM has aborted, this vCPU will be aborted when the scheduler
+	 * tries to run it again. This means the interrupt will not be delayed
+	 * by the aborted VM.
+	 *
+	 * TODO: Only switch when the interrupt isn't for the current VM.
+	 */
 	return api_preempt(current());
 }
 
@@ -357,9 +364,7 @@ struct vcpu *fiq_lower(void)
 struct vcpu *serr_lower(void)
 {
 	dlog("SERR from lower\n");
-	for (;;) {
-		/* do nothing */
-	}
+	return api_abort(current());
 }
 
 struct vcpu *sync_lower_exception(uintreg_t esr)
@@ -375,7 +380,7 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		}
 		/* Skip the WFI instruction. */
 		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
-		return api_wait_for_interrupt(current());
+		return api_wait_for_interrupt(vcpu);
 
 	case 0x24: /* EC = 100100, Data abort. */
 		dlog("Lower data abort: pc=0x%x, esr=0x%x, ec=0x%x, vmid=%u, "
@@ -390,9 +395,6 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		}
 
 		dlog("\n");
-		for (;;) {
-			/* do nothing */
-		}
 		break;
 
 	case 0x20: /* EC = 100000, Instruction abort. */
@@ -409,9 +411,6 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 
 		dlog(", vttbr_el2=0x%x", read_msr(vttbr_el2));
 		dlog("\n");
-		for (;;) {
-			/* do nothing */
-		}
 		break;
 
 	case 0x17: /* EC = 010111, SMC instruction. */
@@ -424,18 +423,16 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 
 		/* Skip the SMC instruction. */
 		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
-		break;
+		vcpu->regs.r[0] = ret;
+		return NULL;
 
 	default:
 		dlog("Unknown lower sync exception pc=0x%x, esr=0x%x, "
 		     "ec=0x%x\n",
 		     vcpu->regs.pc, esr, esr >> 26);
-		for (;;) {
-			/* do nothing */
-		}
+		break;
 	}
 
-	vcpu->regs.r[0] = ret;
-
-	return NULL;
+	/* The exception wasn't handled so abort the VM. */
+	return api_abort(vcpu);
 }

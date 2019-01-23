@@ -27,7 +27,7 @@ int64_t api_vm_get_id(const struct vcpu *current);
 int64_t api_vm_get_count(void);
 int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current);
 struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
-				       const struct vcpu *current,
+				       struct vcpu *current,
 				       struct vcpu **next);
 int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 			 struct vcpu **next);
@@ -45,6 +45,7 @@ int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
 struct vcpu *api_preempt(struct vcpu *current);
 struct vcpu *api_yield(struct vcpu *current);
 struct vcpu *api_wait_for_interrupt(struct vcpu *current);
+struct vcpu *api_abort(struct vcpu *current);
 
 int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current);
 uint32_t api_interrupt_get(struct vcpu *current);

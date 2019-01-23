@@ -189,6 +189,46 @@ TEST(abi, hf_vcpu_run_return_decode_sleep)
 }
 
 /**
+ * Encode a 'notify waiters' response without leaking.
+ */
+TEST(abi, hf_vcpu_run_return_encode_notify_waiters)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_NOTIFY_WAITERS;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(6));
+}
+
+/**
+ * Decode a 'notify waiters' response ignoring the irrelevant bits.
+ */
+TEST(abi, hf_vcpu_run_return_decode_notify_waiters)
+{
+	struct hf_vcpu_run_return res =
+		hf_vcpu_run_return_decode(0x1a1a1a1a2b2b2b06);
+	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_NOTIFY_WAITERS));
+}
+
+/**
+ * Encode an aborted response without leaking.
+ */
+TEST(abi, hf_vcpu_run_return_encode_aborted)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_ABORTED;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(7));
+}
+
+/**
+ * Decode an aborted response ignoring the irrelevant bits.
+ */
+TEST(abi, hf_vcpu_run_return_decode_aborted)
+{
+	struct hf_vcpu_run_return res =
+		hf_vcpu_run_return_decode(0x31dbac4810fbc507);
+	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_ABORTED));
+}
+
+/**
  * Encode a mailbox receive response without leaking.
  */
 TEST(abi, hf_mailbox_receive_return_encode)
@@ -209,26 +249,6 @@ TEST(abi, hf_mailbox_receive_return_decode)
 		hf_mailbox_receive_return_decode(0X8badf00d00ddba11);
 	EXPECT_THAT(res.vm_id, Eq(0X00ddba11));
 	EXPECT_THAT(res.size, Eq(0x8badf00d));
-}
-
-/**
- * Encode a 'notify waiters' response without leaking.
- */
-TEST(abi, hf_vcpu_run_return_encode_interrupt)
-{
-	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
-	res.code = HF_VCPU_RUN_NOTIFY_WAITERS;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(6));
-}
-
-/**
- * Decode a 'notify waiters' response ignoring the irrelevant bits.
- */
-TEST(abi, hf_vcpu_run_return_decode_interrupt)
-{
-	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1a1a1a1a2b2b2b06);
-	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_NOTIFY_WAITERS));
 }
 
 } /* namespace */

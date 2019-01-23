@@ -45,6 +45,9 @@ enum vcpu_state {
 
 	/** The vcpu is waiting for an interrupt. */
 	vcpu_state_blocked_interrupt,
+
+	/** The vcpu has aborted. */
+	vcpu_state_aborted,
 };
 
 struct interrupts {

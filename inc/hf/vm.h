@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <stdatomic.h>
+
 #include "hf/cpu.h"
 #include "hf/list.h"
 #include "hf/mm.h"
@@ -83,6 +85,8 @@ struct vm {
 
 	/** Wait entries to be used when waiting on other VM mailboxes. */
 	struct wait_entry wait_entries[MAX_VMS];
+
+	atomic_bool aborting;
 };
 
 /** Encapsulates a VM whose lock is held. */

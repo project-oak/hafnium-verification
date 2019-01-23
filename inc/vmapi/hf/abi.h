@@ -24,14 +24,14 @@ enum hf_vcpu_run_code {
 	 * scheduling quantum has not expired, the scheduler MUST call
 	 * `hf_vcpu_run` on the vCPU to allow it to continue.
 	 */
-	HF_VCPU_RUN_PREEMPTED,
+	HF_VCPU_RUN_PREEMPTED = 0,
 
 	/**
 	 * The vCPU has voluntarily yielded the CPU. The scheduler SHOULD take a
 	 * scheduling decision to give cycles to those that need them but MUST
 	 * call `hf_vcpu_run` on the vCPU at a later point.
 	 */
-	HF_VCPU_RUN_YIELD,
+	HF_VCPU_RUN_YIELD = 1,
 
 	/**
 	 * The vCPU is blocked waiting for an interrupt. The scheduler MUST take
@@ -39,7 +39,7 @@ enum hf_vcpu_run_code {
 	 * has injected an interrupt, sent it a message, or got a
 	 * `HF_VCPU_RUN_WAKE_UP` for it from another vCPU.
 	 */
-	HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+	HF_VCPU_RUN_WAIT_FOR_INTERRUPT = 2,
 
 	/**
 	 * The vCPU would like `hf_vcpu_run` to be called on another vCPU,
@@ -48,13 +48,13 @@ enum hf_vcpu_run_code {
 	 * re-run it if it is already running somewhere. This gives Hafnium a
 	 * chance to update any CPU state which might have changed.
 	 */
-	HF_VCPU_RUN_WAKE_UP,
+	HF_VCPU_RUN_WAKE_UP = 3,
 
 	/**
 	 * A new message is available for the scheduler VM, as specified by
 	 * `hf_vcpu_run_return.message`.
 	 */
-	HF_VCPU_RUN_MESSAGE,
+	HF_VCPU_RUN_MESSAGE = 4,
 
 	/**
 	 * Like `HF_VCPU_RUN_WAIT_FOR_INTERRUPT`, but for a limited amount of
@@ -63,14 +63,21 @@ enum hf_vcpu_run_code {
 	 * `HF_VCPU_RUN_WAIT_FOR_INTERRUPT` occur, the scheduler MUST call
 	 * `hf_vcpu_run` on it again.
 	 */
-	HF_VCPU_RUN_SLEEP,
+	HF_VCPU_RUN_SLEEP = 5,
 
 	/**
 	 * The vCPU has made the mailbox writable and there are pending waiters.
 	 * The scheduler MUST call hf_mailbox_waiter_get() repeatedly and notify
 	 * all waiters by injecting an HF_MAILBOX_WRITABLE_INTID interrupt.
 	 */
-	HF_VCPU_RUN_NOTIFY_WAITERS,
+	HF_VCPU_RUN_NOTIFY_WAITERS = 6,
+
+	/**
+	 * The vCPU has aborted triggering the whole VM to abort. The scheduler
+	 * MUST treat this as `HF_VCPU_RUN_WAIT_FOR_INTERRUPT` for this vCPU and
+	 * `HF_VCPU_RUN_WAKE_UP` for all the other vCPUs of the VM.
+	 */
+	HF_VCPU_RUN_ABORTED = 7,
 };
 
 struct hf_vcpu_run_return {
