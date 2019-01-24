@@ -156,7 +156,7 @@ void vcpu_off(struct vcpu *vcpu)
 	sl_unlock(&vcpu->lock);
 }
 
-size_t vcpu_index(struct vcpu *vcpu)
+size_t vcpu_index(const struct vcpu *vcpu)
 {
 	return vcpu - vcpu->vm->vcpus;
 }

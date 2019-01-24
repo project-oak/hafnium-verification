@@ -121,7 +121,7 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 }
 
 /**
- * Aborts the vCPU and triggers it's VM to abort fully.
+ * Aborts the vCPU and triggers its VM to abort fully.
  */
 struct vcpu *api_abort(struct vcpu *current)
 {
@@ -220,7 +220,7 @@ static struct wait_entry *api_fetch_waiter(struct vm_locked locked_vm)
  * Prepares the vcpu to run by updating its state and fetching whether a return
  * value needs to be forced onto the vCPU.
  */
-static bool api_vcpu_prepare_run(struct vcpu *current, struct vcpu *vcpu,
+static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 				 struct retval_state *vcpu_retval)
 {
 	bool ret;
@@ -279,7 +279,8 @@ out:
  * Runs the given vcpu of the given vm.
  */
 struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
-				       struct vcpu *current, struct vcpu **next)
+				       const struct vcpu *current,
+				       struct vcpu **next)
 {
 	struct vm *vm;
 	struct vcpu *vcpu;
