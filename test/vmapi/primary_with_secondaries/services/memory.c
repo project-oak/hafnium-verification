@@ -21,6 +21,8 @@
 
 #include "hftest.h"
 
+alignas(PAGE_SIZE) static uint8_t page[PAGE_SIZE];
+
 TEST_SERVICE(memory_increment)
 {
 	/* Loop, writing message to the shared memory. */
@@ -68,5 +70,53 @@ TEST_SERVICE(memory_return)
 			  0);
 		hf_mailbox_clear();
 		hf_mailbox_send(res.vm_id, 0, false);
+
+		/*
+		 * Try and access the memory which will cause a fault unless the
+		 * memory has been shared back again.
+		 */
+		ptr[0] = 123;
 	}
+}
+
+TEST_SERVICE(give_memory_and_fault)
+{
+	uint8_t *ptr = page;
+
+	/* Give memory to the primary. */
+	ASSERT_EQ(hf_share_memory(HF_PRIMARY_VM_ID, (hf_ipaddr_t)&page,
+				  PAGE_SIZE, HF_MEMORY_GIVE),
+		  0);
+
+	/*
+	 * TODO: the address of the memory will be part of the proper API. That
+	 *       API is still to be agreed on so the address is passed
+	 *       explicitly to test the mechanism.
+	 */
+	memcpy(SERVICE_SEND_BUFFER(), &ptr, sizeof(ptr));
+	EXPECT_EQ(hf_mailbox_send(HF_PRIMARY_VM_ID, sizeof(ptr), false), 0);
+
+	/* Try using the memory that isn't valid unless it's been returned.  */
+	page[16] = 123;
+}
+
+TEST_SERVICE(lend_memory_and_fault)
+{
+	uint8_t *ptr = page;
+
+	/* Lend memory to the primary. */
+	ASSERT_EQ(hf_share_memory(HF_PRIMARY_VM_ID, (hf_ipaddr_t)&page,
+				  PAGE_SIZE, HF_MEMORY_LEND),
+		  0);
+
+	/*
+	 * TODO: the address of the memory will be part of the proper API. That
+	 *       API is still to be agreed on so the address is passed
+	 *       explicitly to test the mechanism.
+	 */
+	memcpy(SERVICE_SEND_BUFFER(), &ptr, sizeof(ptr));
+	EXPECT_EQ(hf_mailbox_send(HF_PRIMARY_VM_ID, sizeof(ptr), false), 0);
+
+	/* Try using the memory that isn't valid unless it's been returned.  */
+	page[633] = 180;
 }

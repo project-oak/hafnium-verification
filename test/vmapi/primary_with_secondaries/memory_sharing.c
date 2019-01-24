@@ -115,7 +115,6 @@ TEST(memory_sharing, concurrent)
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(hf_mailbox_clear(), 0);
 
 	for (int i = 0; i < PAGE_SIZE; ++i) {
 		uint8_t value = i + 1;
@@ -153,10 +152,13 @@ TEST(memory_sharing, share_concurrently_and_get_back)
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(hf_mailbox_clear(), 0);
 	for (int i = 0; i < PAGE_SIZE; ++i) {
 		ASSERT_EQ(ptr[i], 0);
 	}
+
+	/* Observe the service faulting when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
 }
 
 /**
@@ -188,10 +190,13 @@ TEST(memory_sharing, give_and_get_back)
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(hf_mailbox_clear(), 0);
 	for (int i = 0; i < PAGE_SIZE; ++i) {
 		ASSERT_EQ(ptr[i], 0);
 	}
+
+	/* Observe the service faulting when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
 }
 
 /**
@@ -223,10 +228,13 @@ TEST(memory_sharing, lend_and_get_back)
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(hf_mailbox_clear(), 0);
 	for (int i = 0; i < PAGE_SIZE; ++i) {
 		ASSERT_EQ(ptr[i], 0);
 	}
+
+	/* Observe the service faulting when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
 }
 
 /**
@@ -257,11 +265,15 @@ TEST(memory_sharing, reshare_after_return)
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(hf_mailbox_clear(), 0);
 
 	/* Share the memory again after it has been returned. */
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	ASSERT_EQ(hf_share_memory(SERVICE_VM0, (hf_ipaddr_t)&page, PAGE_SIZE,
+				  HF_MEMORY_LEND),
+		  0);
+
+	/* Observe the service doesn't fault when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 }
 
 /**
@@ -292,10 +304,65 @@ TEST(memory_sharing, share_elsewhere_after_return)
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(hf_mailbox_clear(), 0);
 
 	/* Share the memory with a differnt VM after it has been returned. */
 	ASSERT_EQ(hf_share_memory(SERVICE_VM1, (hf_ipaddr_t)&page, PAGE_SIZE,
 				  HF_MEMORY_LEND),
 		  0);
+
+	/* Observe the service faulting when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/**
+ * After memory has been given, it is no longer accessible by the sharing VM.
+ */
+TEST(memory_sharing, give_memory_and_lose_access)
+{
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+	uint8_t *ptr;
+
+	SERVICE_SELECT(SERVICE_VM0, "give_memory_and_fault", mb.send);
+
+	/* Have the memory be given. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+
+	/* Check the memory was cleared. */
+	memcpy(&ptr, mb.recv, sizeof(ptr));
+	for (int i = 0; i < PAGE_SIZE; ++i) {
+		ASSERT_EQ(ptr[i], 0);
+	}
+
+	/* Observe the service fault when it tries to access it. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/**
+ * After memory has been lent, it is no longer accessible by the sharing VM.
+ */
+TEST(memory_sharing, lend_memory_and_lose_access)
+{
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+	uint8_t *ptr;
+
+	SERVICE_SELECT(SERVICE_VM0, "lend_memory_and_fault", mb.send);
+
+	/* Have the memory be lent. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+
+	/* Check the memory was cleared. */
+	memcpy(&ptr, mb.recv, sizeof(ptr));
+	for (int i = 0; i < PAGE_SIZE; ++i) {
+		ASSERT_EQ(ptr[i], 0);
+	}
+
+	/* Observe the service fault when it tries to access it. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
 }
