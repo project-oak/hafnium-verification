@@ -25,10 +25,11 @@ vm_kernel("primary_with_secondaries_test_vm") {
 
   sources = [
     "abort.c",
+    "interrupts.c",
+    "mailbox.c",
     "memory_sharing.c",
     "no_services.c",
     "run_race.c",
-    "with_services.c",
   ]
 
   sources += [ "util.c" ]
