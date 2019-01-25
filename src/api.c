@@ -229,8 +229,8 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 
 	if (atomic_load_explicit(&vcpu->vm->aborting, memory_order_relaxed)) {
 		if (vcpu->state != vcpu_state_aborted) {
-			dlog("Aborting VM %u vCPU %u\n", current->vm->id,
-			     vcpu_index(current));
+			dlog("Aborting VM %u vCPU %u\n", vcpu->vm->id,
+			     vcpu_index(vcpu));
 			vcpu->state = vcpu_state_aborted;
 		}
 		ret = false;
