@@ -87,7 +87,7 @@ TEST(hf_vcpu_run, cannot_run_absent_secondary)
 }
 
 /**
- * Confirm that yielding from the primary will still allow the test to complete.
+ * Yielding from the primary is a noop.
  */
 TEST(hf_vcpu_yield, yield_is_noop_for_primary)
 {

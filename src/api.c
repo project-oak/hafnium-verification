@@ -93,20 +93,6 @@ struct vcpu *api_preempt(struct vcpu *current)
 }
 
 /**
- * Returns to the primary vm to allow this cpu to be used for other tasks as the
- * vcpu does not have work to do at this moment. The current vcpu is marked as
- * ready to be scheduled again.
- */
-struct vcpu *api_yield(struct vcpu *current)
-{
-	struct hf_vcpu_run_return ret = {
-		.code = HF_VCPU_RUN_YIELD,
-	};
-
-	return api_switch_to_primary(current, ret, vcpu_state_ready);
-}
-
-/**
  * Puts the current vcpu in wait for interrupt mode, and returns to the primary
  * vm.
  */
@@ -118,6 +104,25 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 
 	return api_switch_to_primary(current, ret,
 				     vcpu_state_blocked_interrupt);
+}
+
+/**
+ * Returns to the primary vm to allow this cpu to be used for other tasks as the
+ * vcpu does not have work to do at this moment. The current vcpu is marked as
+ * ready to be scheduled again.
+ */
+struct vcpu *api_yield(struct vcpu *current)
+{
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_YIELD,
+	};
+
+	if (current->vm->id == HF_PRIMARY_VM_ID) {
+		/* Noop on the primary as it makes the scheduling decisions.  */
+		return NULL;
+	}
+
+	return api_switch_to_primary(current, ret, vcpu_state_ready);
 }
 
 /**

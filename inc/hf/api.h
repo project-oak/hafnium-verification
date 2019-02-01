@@ -43,8 +43,8 @@ int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
 			 enum hf_share share, struct vcpu *current);
 
 struct vcpu *api_preempt(struct vcpu *current);
-struct vcpu *api_yield(struct vcpu *current);
 struct vcpu *api_wait_for_interrupt(struct vcpu *current);
+struct vcpu *api_yield(struct vcpu *current);
 struct vcpu *api_abort(struct vcpu *current);
 
 int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current);
