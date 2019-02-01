@@ -61,6 +61,16 @@ static void next_permutation(char *s, size_t len)
 }
 
 /**
+ * Clearing an empty mailbox is a noop.
+ */
+TEST(mailbox, clear_empty)
+{
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
+
+/**
  * Send and receive the same message from the echo VM.
  */
 TEST(mailbox, echo)

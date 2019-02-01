@@ -145,7 +145,7 @@ static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
  * Clears the caller's mailbox so a new message can be received.
  *
  * Returns:
- *  - -1 on failure, if the mailbox hasn't been read or is already empty.
+ *  - -1 on failure, if the mailbox hasn't been read.
  *  - 0 on success if no further action is needed.
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick waiters. Waiters should be retrieved by calling

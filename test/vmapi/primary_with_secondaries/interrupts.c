@@ -181,7 +181,6 @@ TEST(interrupts, inject_interrupt_disabled)
 	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_C);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
-	EXPECT_EQ(hf_mailbox_clear(), -1);
 
 	/*
 	 * Now send a message to the secondary to enable the interrupt ID, and

@@ -1028,7 +1028,7 @@ int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current)
  * overwrite the old and will arrive asynchronously.
  *
  * Returns:
- *  - -1 on failure, if the mailbox hasn't been read or is already empty.
+ *  - -1 on failure, if the mailbox hasn't been read.
  *  - 0 on success if no further action is needed.
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick waiters. Waiters should be retrieved by calling
@@ -1041,11 +1041,19 @@ int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next)
 	int64_t ret;
 
 	vm_lock(vm, &locked);
-	if (vm->mailbox.state == mailbox_state_read) {
+	switch (vm->mailbox.state) {
+	case mailbox_state_empty:
+		ret = 0;
+		break;
+
+	case mailbox_state_received:
+		ret = -1;
+		break;
+
+	case mailbox_state_read:
 		ret = api_waiter_result(locked, current, next);
 		vm->mailbox.state = mailbox_state_empty;
-	} else {
-		ret = -1;
+		break;
 	}
 	vm_unlock(&locked);
 
