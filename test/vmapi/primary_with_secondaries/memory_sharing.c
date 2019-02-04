@@ -104,8 +104,7 @@ TEST(memory_sharing, concurrent)
 	 *       explicitly to test the mechanism.
 	 */
 	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_YIELD);
@@ -147,8 +146,7 @@ TEST(memory_sharing, share_concurrently_and_get_back)
 	 *       explicitly to test the mechanism.
 	 */
 	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -185,8 +183,7 @@ TEST(memory_sharing, give_and_get_back)
 	 *       explicitly to test the mechanism.
 	 */
 	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -223,8 +220,7 @@ TEST(memory_sharing, lend_and_get_back)
 	 *       explicitly to test the mechanism.
 	 */
 	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -260,8 +256,7 @@ TEST(memory_sharing, reshare_after_return)
 	 *       explicitly to test the mechanism.
 	 */
 	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -274,7 +269,8 @@ TEST(memory_sharing, reshare_after_return)
 
 	/* Observe the service doesn't fault when accessing the memory. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 }
 
 /**
@@ -299,8 +295,7 @@ TEST(memory_sharing, share_elsewhere_after_return)
 	 *       explicitly to test the mechanism.
 	 */
 	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false),
-		  HF_INVALID_VCPU);
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);

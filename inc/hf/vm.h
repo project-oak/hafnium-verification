@@ -57,7 +57,6 @@ struct mailbox {
 	int16_t recv_bytes;
 	void *recv;
 	const void *send;
-	struct vcpu *recv_waiter;
 
 	/**
 	 * List of wait_entry structs representing VMs that want to be notified

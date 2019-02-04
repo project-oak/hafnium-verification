@@ -36,34 +36,38 @@ enum hf_vcpu_run_code {
 	/**
 	 * The vCPU is blocked waiting for an interrupt. The scheduler MUST take
 	 * it off the run queue and not call `hf_vcpu_run` on the vCPU until it
-	 * has injected an interrupt, sent it a message, or got a
-	 * `HF_VCPU_RUN_WAKE_UP` for it from another vCPU.
+	 * has injected an interrupt, received `HF_VCPU_RUN_WAKE_UP` for it
+	 * from another vCPU or the timeout provided in
+	 * `hf_vcpu_run_return.sleep` is not `HF_SLEEP_INDEFINITE` and the
+	 * specified duration has expired.
 	 */
 	HF_VCPU_RUN_WAIT_FOR_INTERRUPT = 2,
 
 	/**
-	 * The vCPU would like `hf_vcpu_run` to be called on another vCPU,
-	 * specified by `hf_vcpu_run_return.wake_up`. The scheduler MUST
-	 * either wake the vCPU in question up if it is blocked, or preempt and
-	 * re-run it if it is already running somewhere. This gives Hafnium a
-	 * chance to update any CPU state which might have changed.
+	 * The vCPU is blocked waiting for a message. The scheduler MUST take it
+	 * off the run queue and not call `hf_vcpu_run` on the vCPU until it has
+	 * injected an interrupt, sent it a message, or received
+	 * `HF_VCPU_RUN_WAKE_UP` for it from another vCPU from another vCPU or
+	 * the timeout provided in `hf_vcpu_run_return.sleep` is not
+	 * `HF_SLEEP_INDEFINITE` and the specified duration has expired.
 	 */
-	HF_VCPU_RUN_WAKE_UP = 3,
+	HF_VCPU_RUN_WAIT_FOR_MESSAGE = 3,
 
 	/**
-	 * A new message is available for the scheduler VM, as specified by
-	 * `hf_vcpu_run_return.message`.
+	 * Hafnium would like `hf_vcpu_run` to be called on another vCPU,
+	 * specified by `hf_vcpu_run_return.wake_up`. The scheduler MUST either
+	 * wake the vCPU in question up if it is blocked, or preempt and re-run
+	 * it if it is already running somewhere. This gives Hafnium a chance to
+	 * update any CPU state which might have changed.
 	 */
-	HF_VCPU_RUN_MESSAGE = 4,
+	HF_VCPU_RUN_WAKE_UP = 4,
 
 	/**
-	 * Like `HF_VCPU_RUN_WAIT_FOR_INTERRUPT`, but for a limited amount of
-	 * time, specified by `hf_vcpu_run_return.sleep`. After at least that
-	 * amount of time has passed, or any of the events listed for
-	 * `HF_VCPU_RUN_WAIT_FOR_INTERRUPT` occur, the scheduler MUST call
-	 * `hf_vcpu_run` on it again.
+	 * A message has been sent by the vCPU. The scheduler MUST run a vCPU
+	 * from the recipient VM and priority SHOULD be given to those vCPUs
+	 * that are waiting for a message.
 	 */
-	HF_VCPU_RUN_SLEEP = 5,
+	HF_VCPU_RUN_MESSAGE = 5,
 
 	/**
 	 * The vCPU has made the mailbox writable and there are pending waiters.
@@ -88,6 +92,7 @@ struct hf_vcpu_run_return {
 			uint16_t vcpu;
 		} wake_up;
 		struct {
+			uint16_t vm_id;
 			uint32_t size;
 		} message;
 		struct {
@@ -135,8 +140,10 @@ static inline uint64_t hf_vcpu_run_return_encode(struct hf_vcpu_run_return res)
 		break;
 	case HF_VCPU_RUN_MESSAGE:
 		ret |= (uint64_t)res.message.size << 32;
+		ret |= (uint64_t)res.message.vm_id << 16;
 		break;
-	case HF_VCPU_RUN_SLEEP:
+	case HF_VCPU_RUN_WAIT_FOR_INTERRUPT:
+	case HF_VCPU_RUN_WAIT_FOR_MESSAGE:
 		ret |= res.sleep.ns << 8;
 		break;
 	default:
@@ -163,8 +170,10 @@ static inline struct hf_vcpu_run_return hf_vcpu_run_return_decode(uint64_t res)
 		break;
 	case HF_VCPU_RUN_MESSAGE:
 		ret.message.size = res >> 32;
+		ret.message.vm_id = (res >> 16) & 0xffff;
 		break;
-	case HF_VCPU_RUN_SLEEP:
+	case HF_VCPU_RUN_WAIT_FOR_INTERRUPT:
+	case HF_VCPU_RUN_WAIT_FOR_MESSAGE:
 		ret.sleep.ns = res >> 8;
 		break;
 	default:

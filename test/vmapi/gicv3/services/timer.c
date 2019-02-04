@@ -59,72 +59,74 @@ TEST_SERVICE(timer)
 	arch_irq_enable();
 
 	for (;;) {
-		const char timer_wfi_message[] = "WFI  xxxxxxx";
-		const char timer_wfe_message[] = "WFE  xxxxxxx";
-		const char timer_receive_message[] = "RECV xxxxxxx";
+		const char timer_wfi_message[] = "**** xxxxxxx";
+		char *message = SERVICE_RECV_BUFFER();
+		bool wfi, wfe, receive;
+		bool disable_interrupts;
+		uint32_t ticks;
 		struct hf_mailbox_receive_return received_message =
 			mailbox_receive_retry();
-		if (received_message.vm_id == HF_PRIMARY_VM_ID &&
-		    received_message.size == sizeof(timer_wfi_message)) {
-			/*
-			 * Start a timer to send the message back: enable it and
-			 * set it for the requested number of ticks.
-			 */
-			char *message = SERVICE_RECV_BUFFER();
-			bool wfi = memcmp(message, timer_wfi_message, 5) == 0;
-			bool wfe = memcmp(message, timer_wfe_message, 5) == 0;
-			bool receive =
-				memcmp(message, timer_receive_message, 5) == 0;
-			int32_t ticks = (message[5] - '0') * 1000000 +
-					(message[6] - '0') * 100000 +
-					(message[7] - '0') * 10000 +
-					(message[8] - '0') * 1000 +
-					(message[9] - '0') * 100 +
-					(message[10] - '0') * 10 +
-					(message[11] - '0');
-			dlog("Starting timer for %d ticks.\n", ticks);
-			if (wfi || receive) {
-				arch_irq_disable();
-			}
-			timer_set(ticks);
-			timer_start();
-			dlog("Waiting for timer...\n");
-			if (wfi) {
-				/* WFI until the timer fires. */
-				interrupt_wait();
-				arch_irq_enable();
-			} else if (wfe) {
-				/* WFE until the timer fires. */
-				while (!timer_fired) {
-					event_wait();
-				}
-			} else if (receive) {
-				/*
-				 * Block on hf_mailbox_receive until timer
-				 * fires.
-				 */
-				struct hf_mailbox_receive_return received =
-					hf_mailbox_receive(true);
-				/*
-				 * Expect to be interrupted, not to actually
-				 * receive a message.
-				 */
-				EXPECT_EQ(received.vm_id, HF_INVALID_VM_ID);
-				EXPECT_EQ(received.size, 0);
-				arch_irq_enable();
-			} else {
-				/* Busy wait until the timer fires. */
-				while (!timer_fired) {
-				}
-			}
-			EXPECT_TRUE(timer_fired);
-			timer_fired = false;
-			dlog("Done waiting.\n");
-		} else {
-			dlog("Got unexpected message from VM %d, size %d.\n",
+
+		if (received_message.vm_id != HF_PRIMARY_VM_ID ||
+		    received_message.size != sizeof(timer_wfi_message)) {
+			FAIL("Got unexpected message from VM %d, size %d.\n",
 			     received_message.vm_id, received_message.size);
-			FAIL("Unexpected message");
 		}
+
+		/*
+		 * Start a timer to send the message back: enable it and
+		 * set it for the requested number of ticks.
+		 */
+		wfi = memcmp(message, "WFI ", 4) == 0;
+		wfe = memcmp(message, "WFE ", 4) == 0;
+		receive = memcmp(message, "RECV", 4) == 0;
+		disable_interrupts = wfi || receive;
+		ticks = (message[5] - '0') * 1000000 +
+			(message[6] - '0') * 100000 +
+			(message[7] - '0') * 10000 + (message[8] - '0') * 1000 +
+			(message[9] - '0') * 100 + (message[10] - '0') * 10 +
+			(message[11] - '0');
+
 		hf_mailbox_clear();
+
+		dlog("Starting timer for %d ticks.\n", ticks);
+
+		if (disable_interrupts) {
+			arch_irq_disable();
+		}
+
+		timer_set(ticks);
+		timer_start();
+		dlog("Waiting for timer...\n");
+
+		/* Wait for the timer interrupt. */
+		if (wfi) {
+			interrupt_wait();
+		} else if (wfe) {
+			while (!timer_fired) {
+				event_wait();
+			}
+		} else if (receive) {
+			struct hf_mailbox_receive_return received =
+				hf_mailbox_receive(true);
+			/*
+			 * Expect to be interrupted, not to actually
+			 * receive a message.
+			 */
+			EXPECT_EQ(received.vm_id, HF_INVALID_VM_ID);
+			EXPECT_EQ(received.size, 0);
+		} else {
+			/* Busy wait until the timer fires. */
+			while (!timer_fired) {
+			}
+		}
+
+		if (disable_interrupts) {
+			arch_irq_enable();
+		}
+
+		EXPECT_TRUE(timer_fired);
+		timer_fired = false;
+		dlog("Done waiting.\n");
 	}
 }

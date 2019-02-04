@@ -36,15 +36,8 @@ static uint64_t ns_to_ticks(uint64_t ns)
 
 SET_UP(busy_secondary)
 {
-	struct hf_vcpu_run_return run_res;
-
 	system_setup();
-
-	/* Configure mailbox pages. */
 	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
-	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
-
 	SERVICE_SELECT(SERVICE_VM0, "busy", send_page);
 }
 
@@ -69,7 +62,8 @@ TEST(busy_secondary, virtual_timer)
 
 	/* Let the secondary get started and wait for our message. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Check that no interrupts are active or pending to start with. */
 	EXPECT_EQ(GICD_ISPENDR(0), 0);
@@ -123,7 +117,8 @@ TEST(busy_secondary, physical_timer)
 
 	/* Let the secondary get started and wait for our message. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Check that no interrupts are active or pending to start with. */
 	EXPECT_EQ(GICD_ISPENDR(0), 0);

@@ -41,7 +41,8 @@ static bool run_loop(struct mailbox_buffers *mb)
 		/* Run until it manages to schedule vCPU on this CPU. */
 		do {
 			run_res = hf_vcpu_run(SERVICE_VM0, 0);
-		} while (run_res.code == HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+		} while (run_res.code == HF_VCPU_RUN_WAIT_FOR_INTERRUPT &&
+			 run_res.sleep.ns == HF_SLEEP_INDEFINITE);
 
 		/* Break out if we received a message with non-zero length. */
 		if (run_res.code == HF_VCPU_RUN_MESSAGE &&

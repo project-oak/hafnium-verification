@@ -63,11 +63,6 @@ struct interrupts {
 	uint32_t enabled_and_pending_count;
 };
 
-struct retval_state {
-	uintptr_t value;
-	bool force;
-};
-
 struct vcpu_fault_info {
 	ipaddr_t ipaddr;
 	vaddr_t vaddr;
@@ -78,19 +73,18 @@ struct vcpu_fault_info {
 
 struct vcpu {
 	struct spinlock lock;
-	enum vcpu_state state;
-	struct cpu *cpu;
-	struct vm *vm;
-	struct vcpu *mailbox_next;
-	struct arch_regs regs;
-	struct interrupts interrupts;
 
 	/*
-	 * The following field is used to force a return value to be set the
-	 * next time a vCPU belonging to a secondary VM runs. For primary VMs,
-	 * 'regs' can be set directly.
+	 * The state is only changed in the context of the vCPU being run. This
+	 * ensures the scheduler can easily keep track of the vCPU state as
+	 * transitions are indicated by the return code from the run call.
 	 */
-	struct retval_state retval;
+	enum vcpu_state state;
+
+	struct cpu *cpu;
+	struct vm *vm;
+	struct arch_regs regs;
+	struct interrupts interrupts;
 
 	/*
 	 * Determine whether the 'regs' field is available for use. This is set

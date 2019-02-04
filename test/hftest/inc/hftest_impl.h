@@ -277,7 +277,8 @@ union hftest_any {
 		 * message.                                                   \
 		 */                                                           \
 		run_res = hf_vcpu_run(vm_id, 0);                              \
-		ASSERT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);      \
+		ASSERT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);        \
+		ASSERT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);             \
                                                                               \
 		/* Send the selected service to run and let it be handled. */ \
 		memcpy(send_buffer, service, strlen(service));                \

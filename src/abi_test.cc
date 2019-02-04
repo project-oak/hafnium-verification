@@ -95,7 +95,20 @@ TEST(abi, hf_vcpu_run_return_encode_wait_for_interrupt)
 {
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(2));
+	res.sleep.ns = HF_SLEEP_INDEFINITE;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xffffffffffffff02));
+}
+
+/**
+ * Encoding wait-for-interrupt response with too large sleep duration will drop
+ * the top octet.
+ */
+TEST(abi, hf_vcpu_run_return_encode_wait_for_interrupt_sleep_too_long)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
+	res.sleep.ns = 0xcc22888888888888;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x2288888888888802));
 }
 
 /**
@@ -106,6 +119,41 @@ TEST(abi, hf_vcpu_run_return_decode_wait_for_interrupt)
 	struct hf_vcpu_run_return res =
 		hf_vcpu_run_return_decode(0x1234abcdbadb0102);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_WAIT_FOR_INTERRUPT));
+	EXPECT_THAT(res.sleep.ns, Eq(0x1234abcdbadb01));
+}
+
+/**
+ * Encode wait-for-message response without leaking.
+ */
+TEST(abi, hf_vcpu_run_return_encode_wait_for_message)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_WAIT_FOR_MESSAGE;
+	res.sleep.ns = HF_SLEEP_INDEFINITE;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xffffffffffffff03));
+}
+
+/**
+ * Encoding wait-for-message response with too large sleep duration will drop
+ * the top octet.
+ */
+TEST(abi, hf_vcpu_run_return_encode_wait_for_message_sleep_too_long)
+{
+	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
+	res.code = HF_VCPU_RUN_WAIT_FOR_MESSAGE;
+	res.sleep.ns = 0xaa99777777777777;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x9977777777777703));
+}
+
+/**
+ * Decode a wait-for-message response ignoring the irrelevant bits.
+ */
+TEST(abi, hf_vcpu_run_return_decode_wait_for_message)
+{
+	struct hf_vcpu_run_return res =
+		hf_vcpu_run_return_decode(0x12347654badb0103);
+	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_WAIT_FOR_MESSAGE));
+	EXPECT_THAT(res.sleep.ns, Eq(0x12347654badb01));
 }
 
 /**
@@ -117,7 +165,7 @@ TEST(abi, hf_vcpu_run_return_encode_wake_up)
 	res.code = HF_VCPU_RUN_WAKE_UP;
 	res.wake_up.vm_id = 0x12345678;
 	res.wake_up.vcpu = 0xabcd;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x12345678abcd0003));
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x12345678abcd0004));
 }
 
 /**
@@ -126,7 +174,7 @@ TEST(abi, hf_vcpu_run_return_encode_wake_up)
 TEST(abi, hf_vcpu_run_return_decode_wake_up)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0xbeefd00df00daf03);
+		hf_vcpu_run_return_decode(0xbeefd00df00daf04);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_WAKE_UP));
 	EXPECT_THAT(res.wake_up.vm_id, Eq(0xbeefd00d));
 	EXPECT_THAT(res.wake_up.vcpu, Eq(0xf00d));
@@ -140,7 +188,8 @@ TEST(abi, hf_vcpu_run_return_encode_message)
 	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
 	res.code = HF_VCPU_RUN_MESSAGE;
 	res.message.size = 0xdeadbeef;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xdeadbeef00000004));
+	res.message.vm_id = 0xf007;
+	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xdeadbeeff0070005));
 }
 
 /**
@@ -149,43 +198,10 @@ TEST(abi, hf_vcpu_run_return_encode_message)
 TEST(abi, hf_vcpu_run_return_decode_message)
 {
 	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1123581314916204);
+		hf_vcpu_run_return_decode(0x1123581314916205);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_MESSAGE));
 	EXPECT_THAT(res.message.size, Eq(0x11235813));
-}
-
-/**
- * Encode sleep response without leaking.
- */
-TEST(abi, hf_vcpu_run_return_encode_sleep)
-{
-	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
-	res.code = HF_VCPU_RUN_SLEEP;
-	res.sleep.ns = 0xcafed00dfeeded;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0xcafed00dfeeded05));
-}
-
-/**
- * Encoding a sleep response with too large a sleep duration will drop the top
- * octet.
- */
-TEST(abi, hf_vcpu_run_return_encode_sleep_too_long)
-{
-	struct hf_vcpu_run_return res = dirty_vcpu_run_return();
-	res.code = HF_VCPU_RUN_SLEEP;
-	res.sleep.ns = 0xcc88888888888888;
-	EXPECT_THAT(hf_vcpu_run_return_encode(res), Eq(0x8888888888888805));
-}
-
-/**
- * Decode a sleep response.
- */
-TEST(abi, hf_vcpu_run_return_decode_sleep)
-{
-	struct hf_vcpu_run_return res =
-		hf_vcpu_run_return_decode(0x1a2b3c4d5e6f7705);
-	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_SLEEP));
-	EXPECT_THAT(res.sleep.ns, Eq(0x1a2b3c4d5e6f77));
+	EXPECT_THAT(res.message.vm_id, Eq(0x1491));
 }
 
 /**

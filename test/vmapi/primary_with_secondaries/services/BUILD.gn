@@ -82,6 +82,7 @@ source_set("interruptible") {
 
   sources = [
     "interruptible.c",
+    "interruptible_echo.c",
   ]
 
   deps = [

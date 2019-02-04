@@ -38,7 +38,9 @@ typedef uintptr_t hf_ipaddr_t;
 
 /* Invalid values for fields to indicate absence or errors. */
 #define HF_INVALID_VM_ID 0xffffffff
-#define HF_INVALID_VCPU 0xffff
+
+/* Sleep value for an indefinite period of time. */
+#define HF_SLEEP_INDEFINITE 0xffffffffffffff
 
 /** The number of virtual interrupt IDs which are supported. */
 #define HF_NUM_INTIDS 64

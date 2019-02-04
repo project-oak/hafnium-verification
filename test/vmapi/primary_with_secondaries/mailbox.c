@@ -82,7 +82,8 @@ TEST(mailbox, echo)
 	SERVICE_SELECT(SERVICE_VM0, "echo", mb.send);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Set the message, echo it and check it didn't change. */
 	memcpy(mb.send, message, sizeof(message));
@@ -109,7 +110,8 @@ TEST(mailbox, repeated_echo)
 	for (i = 0; i < 100; i++) {
 		/* Run secondary until it reaches the wait for messages. */
 		run_res = hf_vcpu_run(SERVICE_VM0, 0);
-		EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+		EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+		EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 		/* Set the message, echo it and check it didn't change. */
 		next_permutation(message, sizeof(message) - 1);
@@ -138,9 +140,11 @@ TEST(mailbox, relay)
 	SERVICE_SELECT(SERVICE_VM1, "relay", mb.send);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 	run_res = hf_vcpu_run(SERVICE_VM1, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/*
 	 * Build the message chain so the message is sent from here to
@@ -160,15 +164,16 @@ TEST(mailbox, relay)
 
 	/* Let SERVICE_VM0 forward the message. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAKE_UP);
-	EXPECT_EQ(run_res.wake_up.vm_id, SERVICE_VM1);
-	EXPECT_EQ(run_res.wake_up.vcpu, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.vm_id, SERVICE_VM1);
+	EXPECT_EQ(run_res.message.size, 0);
 
 	/* Let SERVICE_VM1 forward the message. */
 	run_res = hf_vcpu_run(SERVICE_VM1, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 
 	/* Ensure the message is in tact. */
+	EXPECT_EQ(run_res.message.vm_id, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
 	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
@@ -187,7 +192,8 @@ TEST(mailbox, no_primary_to_secondary_notification_on_configure)
 	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), -1);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
 }
@@ -215,8 +221,8 @@ TEST(mailbox, secondary_to_primary_notification_on_configure)
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), HF_PRIMARY_VM_ID);
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
 
-	/* Send should succeed now, though no vCPU is blocked waiting for it. */
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), HF_INVALID_VCPU);
+	/* Send should now succeed. */
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
 }
 
 /**
@@ -233,7 +239,8 @@ TEST(mailbox, primary_to_secondary)
 	SERVICE_SELECT(SERVICE_VM0, "echo_with_notification", mb.send);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send a message to echo service, and get response back. */
 	memcpy(mb.send, message, sizeof(message));
@@ -245,7 +252,8 @@ TEST(mailbox, primary_to_secondary)
 
 	/* Let secondary VM continue running so that it will wait again. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Without clearing our mailbox, send message again. */
 	reverse(message, strlen(message));
@@ -253,6 +261,7 @@ TEST(mailbox, primary_to_secondary)
 	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Clear the mailbox. We expect to be told there are pending waiters. */
 	EXPECT_EQ(hf_mailbox_clear(), 1);
@@ -288,7 +297,8 @@ TEST(mailbox, secondary_to_primary_notification)
 	SERVICE_SELECT(SERVICE_VM0, "echo_with_notification", mb.send);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
+	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send a message to echo service twice. The second should fail. */
 	memcpy(mb.send, message, sizeof(message));
@@ -309,6 +319,6 @@ TEST(mailbox, secondary_to_primary_notification)
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), HF_PRIMARY_VM_ID);
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
 
-	/* Send should succeed now, though no vCPU is blocked waiting for it. */
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), HF_INVALID_VCPU);
+	/* Send should now succeed. */
+	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
 }
