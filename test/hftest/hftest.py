@@ -84,7 +84,7 @@ def Main():
     initrd = None
     suite = args.image
     if args.initrd:
-        initrd = os.path.join(args.out, "initrd", args.initrd + ".img")
+        initrd = os.path.join(args.out, "obj", args.initrd, "initrd.img")
         suite += "_" + args.initrd
     log = os.path.join(args.log, suite)
     ensure_dir(log)

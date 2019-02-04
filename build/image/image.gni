@@ -107,7 +107,7 @@ template("vm_kernel") {
                              "sources",
                              "testonly",
                            ])
-    output_path = "vm"
+    output_path = rebase_path(".", root_out_dir, target_out_dir)
     image_name = target_name
   }
 }
@@ -121,18 +121,18 @@ template("initrd") {
     forward_variables_from(invoker, [ "testonly" ])
     script = "//build/image/generate_initrd.py"
 
-    initrd_base = "${root_out_dir}/initrd/${target_name}"
+    initrd_base = "${target_out_dir}/${target_name}/initrd"
     initrd_file = "${initrd_base}.img"
     initrd_staging = "${initrd_base}"
-    vm_dir = rebase_path("${root_out_dir}/vm/")
 
     deps = [
       invoker.primary_vm,
     ]
 
+    primary_vm_outputs = get_target_outputs(invoker.primary_vm)
     args = [
       "--primary_vm",
-      vm_dir + get_label_info(invoker.primary_vm, "name") + ".bin",
+      rebase_path(primary_vm_outputs[0]),
       "--staging",
       rebase_path(initrd_staging),
       "--output",
@@ -154,7 +154,8 @@ template("initrd") {
           vm[0],
           vm[1],
           vm[2],
-          vm_dir + get_label_info(vm[3], "name") + ".bin",
+          rebase_path(get_label_info(vm[3], "target_out_dir") + "/" +
+                      get_label_info(vm[3], "name") + ".bin"),
         ]
       }
     }

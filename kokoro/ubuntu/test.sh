@@ -42,6 +42,6 @@ $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
 
 # Run the tests with a timeout so they can't loop forever.
 $HFTEST arch_test
-$HFTEST hafnium --initrd gicv3_test
-$HFTEST hafnium --initrd primary_only_test
-$HFTEST hafnium --initrd primary_with_secondaries_test
+$HFTEST hafnium --initrd test/vmapi/gicv3/gicv3_test
+$HFTEST hafnium --initrd test/vmapi/primary_only/primary_only_test
+$HFTEST hafnium --initrd test/vmapi/primary_with_secondaries/primary_with_secondaries_test
