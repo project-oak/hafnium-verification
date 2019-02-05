@@ -61,6 +61,23 @@ source_set("hftest_hypervisor") {
   ]
 }
 
+# Testing framework for tests running under Linux in the primary VM.
+source_set("hftest_linux") {
+  testonly = true
+  public_configs = [ ":hftest_config" ]
+
+  sources = [
+    "linux_main.c",
+  ]
+
+  deps = [
+    ":common",
+    "//src:dlog",
+    "//src:memiter",
+    "//src/arch/${plat_arch}/hftest:power_mgmt",
+  ]
+}
+
 source_set("hftest_standalone") {
   visibility = [ ":*" ]
   testonly = true
@@ -68,16 +85,31 @@ source_set("hftest_standalone") {
   public_configs = [ ":hftest_config" ]
 
   sources = [
-    "hftest.c",
+    "standalone_main.c",
   ]
 
   deps = [
+    ":common",
     "//src:dlog",
     "//src:fdt",
     "//src:memiter",
     "//src/arch/${plat_arch}:entry",
-    "//src/arch/${plat_arch}:std",
     "//src/arch/${plat_arch}/hftest:entry",
     "//src/arch/${plat_arch}/hftest:power_mgmt",
+  ]
+}
+
+# Common code for hftest, whether it is running under Linux, under Hafnium in
+# the primary VM, or directly on the hardware.
+source_set("common") {
+  visibility = [ ":*" ]
+  testonly = true
+  public_configs = [ ":hftest_config" ]
+  sources = [
+    "hftest_common.c",
+  ]
+  deps = [
+    "//src:memiter",
+    "//src/arch/${plat_arch}:std",
   ]
 }

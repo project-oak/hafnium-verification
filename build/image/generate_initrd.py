@@ -39,15 +39,14 @@ def Main():
     parser.add_argument("--staging", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
+    staged_files = ["vmlinuz", "initrd.img"]
     # Prepare the primary VM image.
-    staged_files = ["vmlinuz"]
     shutil.copyfile(args.primary_vm, os.path.join(args.staging, "vmlinuz"))
-    # Prepare the primary VM's initrd. Currently, it just makes an empty one.
+    # Prepare the primary VM's initrd.
     if args.primary_vm_initrd:
-        raise NotImplementedError(
-            "This doesn't copy the primary VM's initrd yet")
-    with open(os.path.join(args.staging, "initrd.img"), "w") as vms_txt:
-        staged_files.append("initrd.img")
+        shutil.copyfile(args.primary_vm_initrd, os.path.join(args.staging, "initrd.img"))
+    else:
+        open(os.path.join(args.staging, "initrd.img"), "w").close()
     # Prepare the secondary VMs.
     with open(os.path.join(args.staging, "vms.txt"), "w") as vms_txt:
         staged_files.append("vms.txt")

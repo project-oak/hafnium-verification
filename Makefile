@@ -86,3 +86,10 @@ license:
 	@find build/ -name \*.py| xargs -n1 python build/license.py --style hash
 	@find test/ -name \*.py| xargs -n1 python build/license.py --style hash
 	@find . \( -name \*.gn -o -name \*.gni \) | xargs -n1 python build/license.py --style hash
+
+.PHONY: update-prebuilts
+update-prebuilts: prebuilts/linux-aarch64/linux/vmlinuz
+
+prebuilts/linux-aarch64/linux/vmlinuz: $(OUT_DIR)/build.ninja
+	@$(NINJA) -C $(OUT_DIR) "third_party:linux"
+	cp out/reference/obj/third_party/linux.bin $@

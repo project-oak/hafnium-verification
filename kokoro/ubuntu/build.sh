@@ -36,6 +36,15 @@ fi
 
 CLANG=${PWD}/prebuilts/linux-x64/clang/bin/clang
 
+# Kokoro does something weird that makes all files look dirty to git diff-index;
+# this fixes it so that the Linux build doesn't think it has a dirty tree for
+# building the Hafnium kernel module (and so end up with a version magic string
+# that doesn't match the prebuilt kernel).
+(
+	cd third_party/linux &&
+	git status
+)
+
 #
 # Step 1: make sure it builds.
 #
@@ -95,12 +104,11 @@ then
 	exit 1
 fi
 
-# Step 7: make sure the Linux driver builds and maintains style.
+# Step 7: make sure the Linux driver maintains style. It's already built as part
+# of the tests.
 (
 export ARCH=arm64 &&
 export CROSS_COMPILE=aarch64-linux-gnu- &&
-make CC=${CLANG} -C third_party/linux defconfig modules_prepare &&
 cd driver/linux &&
-make CC=${CLANG} &&
 make checkpatch
 )

@@ -112,10 +112,47 @@ template("vm_kernel") {
   }
 }
 
+# Build the initial RAM disk for the Linux VM.
+template("linux_initrd") {
+  initrd_base = "${target_out_dir}/${target_name}/initrd"
+  initrd_file = "${initrd_base}.img"
+  initrd_staging = "${initrd_base}"
+
+  copy("${target_name}__staging") {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "sources",
+                             "deps",
+                           ])
+    outputs = [
+      "${initrd_staging}/{{source_file_part}}",
+    ]
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+    script = "//build/image/generate_linux_initrd.py"
+    args = [
+      "--staging",
+      rebase_path(initrd_staging),
+      "--output",
+      rebase_path(initrd_file),
+    ]
+    deps = [
+      ":${target_name}__staging",
+    ]
+    outputs = [
+      initrd_file,
+    ]
+  }
+}
+
 # Build the initial RAM disk for the hypervisor.
 template("initrd") {
-  assert(defined(invoker.primary_vm),
-         "initrd() must specify a \"primary_vm\" value")
+  assert(
+      defined(invoker.primary_vm) || defined(invoker.primary_vm_prebuilt),
+      "initrd() must specify a \"primary_vm\" or \"primary_vm_prebuilt\" value")
 
   action(target_name) {
     forward_variables_from(invoker, [ "testonly" ])
@@ -125,19 +162,32 @@ template("initrd") {
     initrd_file = "${initrd_base}.img"
     initrd_staging = "${initrd_base}"
 
-    deps = [
-      invoker.primary_vm,
-    ]
+    deps = []
 
-    primary_vm_outputs = get_target_outputs(invoker.primary_vm)
+    if (defined(invoker.primary_vm_prebuilt)) {
+      primary_vm_output = invoker.primary_vm_prebuilt
+    } else {
+      primary_vm_output =
+          get_label_info(invoker.primary_vm, "target_out_dir") + "/" +
+          get_label_info(invoker.primary_vm, "name") + ".bin"
+      deps += [ invoker.primary_vm ]
+    }
     args = [
       "--primary_vm",
-      rebase_path(primary_vm_outputs[0]),
+      rebase_path(primary_vm_output),
       "--staging",
       rebase_path(initrd_staging),
       "--output",
       rebase_path(initrd_file),
     ]
+    if (defined(invoker.primary_initrd)) {
+      deps += [ invoker.primary_initrd ]
+      primary_initrd_outputs = get_target_outputs(invoker.primary_initrd)
+      args += [
+        "--primary_vm_initrd",
+        rebase_path(primary_initrd_outputs[0]),
+      ]
+    }
 
     # Add the info about the secondary VMs. The information about the VMs is
     # encoded in lists with the following elements:

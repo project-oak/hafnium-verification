@@ -1,4 +1,4 @@
-# Copyright 2018 The Hafnium Authors.
+# Copyright 2019 The Hafnium Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,35 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The root of the build redirects to a project build file so each project can
-# select the artifacts it needs to build.
-
-# The root of the build.
-group("root") {
-  deps = [
-    "//project/${project}:root",
+action("linux") {
+  script = "//build/make.py"
+  args = [
+    "--directory",
+    rebase_path("linux"),
+    "--out_file",
+    "hafnium.ko",
+    "--copy_out_file",
+    rebase_path("${target_out_dir}/linux/hafnium.ko"),
+    "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+    "ARCH=arm64",
+    "CROSS_COMPILE=aarch64-linux-gnu-",
   ]
-}
-
-# The root of the build for test artifacts.
-group("test_root") {
-  testonly = true
-
-  deps = [
-    "//project/${project}:test_root",
+  sources = [
+    "linux/Makefile",
+    "linux/hf_call.S",
+    "linux/main.c",
   ]
-}
-
-group("update_prebuilts") {
-  deps = [
-    "//third_party:linux",
+  outputs = [
+    "${target_out_dir}/linux/hafnium.ko",
   ]
-}
-
-group("default") {
-  testonly = true
   deps = [
-    ":root",
-    ":test_root",
+    "//third_party:linux_defconfig",
   ]
 }

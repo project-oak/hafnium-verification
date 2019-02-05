@@ -50,3 +50,47 @@ source_set("gtest_main") {
     ":gtest",
   ]
 }
+
+action("linux_defconfig") {
+  script = "//build/make.py"
+  args = [
+    "--directory",
+    rebase_path("linux"),
+    "--out_file",
+    ".config",
+    "--copy_out_file",
+    rebase_path("${target_out_dir}/.config"),
+    "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+    "ARCH=arm64",
+    "CROSS_COMPILE=aarch64-linux-gnu-",
+    "-j24",
+    "defconfig",
+    "modules_prepare",
+  ]
+  outputs = [
+    # We don't actually care about this, but GN requires us to have some output.
+    "${target_out_dir}/.config",
+  ]
+}
+
+action("linux") {
+  script = "//build/make.py"
+  args = [
+    "--directory",
+    rebase_path("linux"),
+    "--out_file",
+    "arch/arm64/boot/Image",
+    "--copy_out_file",
+    rebase_path("${target_out_dir}/linux.bin"),
+    "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+    "ARCH=arm64",
+    "CROSS_COMPILE=aarch64-linux-gnu-",
+    "-j24",
+  ]
+  outputs = [
+    "${target_out_dir}/linux.bin",
+  ]
+  deps = [
+    ":linux_defconfig",
+  ]
+}

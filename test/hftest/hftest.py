@@ -34,9 +34,9 @@ import sys
 
 def qemu(image, initrd, args, log):
     qemu_args = [
-        "timeout", "--foreground", "5s",
+        "timeout", "--foreground", "10s",
         "./prebuilts/linux-x64/qemu/qemu-system-aarch64", "-M", "virt,gic_version=3",
-        "-cpu", "cortex-a57", "-smp", "4", "-m", "16M", "-machine", "virtualization=true",
+        "-cpu", "cortex-a57", "-smp", "4", "-m", "64M", "-machine", "virtualization=true",
         "-nographic", "-nodefaults", "-serial", "stdio", "-kernel", image,
     ]
     if initrd:
@@ -78,6 +78,7 @@ def Main():
     parser.add_argument("--initrd")
     parser.add_argument("--suite")
     parser.add_argument("--test")
+    parser.add_argument("--vm_args")
     args = parser.parse_args()
     # Resolve some paths.
     image = os.path.join(args.out, args.image + ".bin")
@@ -86,13 +87,14 @@ def Main():
     if args.initrd:
         initrd = os.path.join(args.out, "obj", args.initrd, "initrd.img")
         suite += "_" + args.initrd
+    vm_args = args.vm_args or ""
     log = os.path.join(args.log, suite)
     ensure_dir(log)
     print("Logs saved under", log)
     log_file = os.path.join(log, "sponge_log.log")
     with open(log_file, "w") as sponge_log:
         # Query the tests in the image.
-        out = qemu(image, initrd, "json", os.path.join(log, "json.log"))
+        out = qemu(image, initrd, vm_args + " json", os.path.join(log, "json.log"))
         sponge_log.write(out)
         sponge_log.write("\r\n\r\n")
         hftest_json = "\n".join(hftest_lines(out))
@@ -127,7 +129,7 @@ def Main():
                 print("      RUN", test)
                 test_log = os.path.join(log,
                                         suite["name"] + "." + test + ".log")
-                out = qemu(image, initrd, "run {} {}".format(
+                out = qemu(image, initrd, vm_args + " run {} {}".format(
                     suite["name"], test), test_log)
                 sponge_log.write(out)
                 sponge_log.write("\r\n\r\n")

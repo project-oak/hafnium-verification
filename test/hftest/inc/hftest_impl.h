@@ -20,6 +20,8 @@
 
 #include "hf/arch/std.h"
 
+#define HFTEST_MAX_TESTS 50
+
 /*
  * Log with the HFTEST_LOG_PREFIX and a new line. The zero is added so there is
  * always at least one variadic argument.
@@ -58,6 +60,12 @@
 	hftest_test_fn_##suite_name##_##test_name
 #define HFTEST_SERVICE_FN(service_name) hftest_service_fn_##service_name
 
+#define HFTEST_SET_UP_CONSTRUCTOR(suite_name) hftest_set_up_ctor_##suite_name
+#define HFTEST_TEAR_DOWN_CONSTRUCTOR(suite_name) \
+	hftest_tear_down_ctor_##suite_name
+#define HFTEST_TEST_CONSTRUCTOR(suite_name, test_name) \
+	hftest_test_ctor_##suite_name##_##test_name
+
 /* Register test functions. */
 #define HFTEST_SET_UP(suite_name)                                           \
 	static void HFTEST_SET_UP_FN(suite_name)(void);                     \
@@ -68,6 +76,11 @@
 				.kind = HFTEST_KIND_SET_UP,                 \
 				.fn = HFTEST_SET_UP_FN(suite_name),         \
 	};                                                                  \
+	static void __attribute__((constructor))                            \
+		HFTEST_SET_UP_CONSTRUCTOR(suite_name)(void)                 \
+	{                                                                   \
+		hftest_register(HFTEST_SET_UP_STRUCT(suite_name));          \
+	}                                                                   \
 	static void HFTEST_SET_UP_FN(suite_name)(void)
 
 #define HFTEST_TEAR_DOWN(suite_name)                                           \
@@ -79,18 +92,28 @@
 				.kind = HFTEST_KIND_TEAR_DOWN,                 \
 				.fn = HFTEST_TEAR_DOWN_FN(suite_name),         \
 	};                                                                     \
+	static void __attribute__((constructor))                               \
+		HFTEST_TEAR_DOWN_CONSTRUCTOR(suite_name)(void)                 \
+	{                                                                      \
+		hftest_register(HFTEST_TEAR_DOWN_STRUCT(suite_name));          \
+	}                                                                      \
 	static void HFTEST_TEAR_DOWN_FN(suite_name)(void)
 
-#define HFTEST_TEST(suite_name, test_name)                             \
-	static void HFTEST_TEST_FN(suite_name, test_name)(void);       \
-	const struct hftest_test __attribute__((used)) __attribute__(  \
-		(section(HFTEST_TEST_SECTION(suite_name, test_name)))) \
-		HFTEST_TEST_STRUCT(suite_name, test_name) = {          \
-			.suite = #suite_name,                          \
-			.kind = HFTEST_KIND_TEST,                      \
-			.name = #test_name,                            \
-			.fn = HFTEST_TEST_FN(suite_name, test_name),   \
-	};                                                             \
+#define HFTEST_TEST(suite_name, test_name)                                  \
+	static void HFTEST_TEST_FN(suite_name, test_name)(void);            \
+	const struct hftest_test __attribute__((used)) __attribute__(       \
+		(section(HFTEST_TEST_SECTION(suite_name, test_name))))      \
+		HFTEST_TEST_STRUCT(suite_name, test_name) = {               \
+			.suite = #suite_name,                               \
+			.kind = HFTEST_KIND_TEST,                           \
+			.name = #test_name,                                 \
+			.fn = HFTEST_TEST_FN(suite_name, test_name),        \
+	};                                                                  \
+	static void __attribute__((constructor))                            \
+		HFTEST_TEST_CONSTRUCTOR(suite_name, test_name)(void)        \
+	{                                                                   \
+		hftest_register(HFTEST_TEST_STRUCT(suite_name, test_name)); \
+	}                                                                   \
 	static void HFTEST_TEST_FN(suite_name, test_name)(void)
 
 #define HFTEST_TEST_SERVICE(service_name)                                      \
@@ -264,3 +287,5 @@ union hftest_any {
 
 #define HFTEST_SERVICE_SEND_BUFFER() hftest_get_context()->send
 #define HFTEST_SERVICE_RECV_BUFFER() hftest_get_context()->recv
+
+void hftest_register(struct hftest_test test);

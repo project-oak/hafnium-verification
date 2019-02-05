@@ -1,4 +1,4 @@
-# Copyright 2018 The Hafnium Authors.
+# Copyright 2019 The Hafnium Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,35 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# The root of the build redirects to a project build file so each project can
-# select the artifacts it needs to build.
+# These components are only used by tests running until Linux VMs.
 
-# The root of the build.
-group("root") {
-  deps = [
-    "//project/${project}:root",
-  ]
-}
-
-# The root of the build for test artifacts.
-group("test_root") {
+# Shutdown the system.
+source_set("power_mgmt") {
   testonly = true
-
-  deps = [
-    "//project/${project}:test_root",
-  ]
-}
-
-group("update_prebuilts") {
-  deps = [
-    "//third_party:linux",
-  ]
-}
-
-group("default") {
-  testonly = true
-  deps = [
-    ":root",
-    ":test_root",
+  sources = [
+    "power_mgmt.c",
   ]
 }

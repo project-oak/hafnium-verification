@@ -1,0 +1,54 @@
+# Copyright 2019 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/image/image.gni")
+
+executable("test_binary") {
+  testonly = true
+  sources = [
+    "linux.c",
+  ]
+  deps = [
+    "//test/hftest:hftest_linux",
+  ]
+  output_name = "test_binary"
+}
+
+linux_initrd("linux_test_initrd") {
+  testonly = true
+  sources = [
+    get_label_info(":test_binary(//build/toolchain:aarch64_linux_clang)",
+                   "root_out_dir") + "/test_binary",
+    get_label_info("//driver:linux", "target_out_dir") + "/linux/hafnium.ko",
+  ]
+  deps = [
+    ":test_binary(//build/toolchain:aarch64_linux_clang)",
+    "//driver:linux",
+  ]
+}
+
+initrd("linux_test") {
+  testonly = true
+
+  primary_vm_prebuilt = "//prebuilts/linux-aarch64/linux/vmlinuz"
+  primary_initrd = ":linux_test_initrd"
+}
+
+group("linux") {
+  testonly = true
+
+  deps = [
+    ":linux_test",
+  ]
+}

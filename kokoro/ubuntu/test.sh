@@ -45,3 +45,4 @@ $HFTEST arch_test
 $HFTEST hafnium --initrd test/vmapi/gicv3/gicv3_test
 $HFTEST hafnium --initrd test/vmapi/primary_only/primary_only_test
 $HFTEST hafnium --initrd test/vmapi/primary_with_secondaries/primary_with_secondaries_test
+$HFTEST hafnium --initrd test/linux/linux_test --vm_args "rdinit=/test_binary --"
