@@ -16,6 +16,8 @@
 
 #include "hf/layout.h"
 
+#include "hf/std.h"
+
 /**
  * Get the address the .text section begins at.
  */
@@ -136,5 +138,5 @@ paddr_t layout_primary_begin(void)
 	/* TODO: This is a hack. We must read the alignment from the binary. */
 	paddr_t bin_end = layout_bin_end();
 
-	return pa_init((pa_addr(bin_end) + 0x80000 - 1) & ~(0x80000 - 1));
+	return pa_init(align_up(pa_addr(bin_end), 0x80000));
 }

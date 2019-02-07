@@ -286,8 +286,9 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 	}
 
 	/* Patch fdt to reserve primary VM memory. */
-	fdt_add_mem_reservation(fdt, pa_addr(layout_primary_begin()) & ~0xfffff,
-				0x80000);
+	fdt_add_mem_reservation(
+		fdt, align_down(pa_addr(layout_primary_begin()), 0x100000),
+		0x80000);
 
 	/* Patch fdt to reserve memory for secondary VMs. */
 	for (i = 0; i < p->reserved_ranges_count; ++i) {

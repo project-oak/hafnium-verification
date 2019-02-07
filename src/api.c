@@ -619,8 +619,8 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 	int64_t ret;
 
 	/* Fail if addresses are not page-aligned. */
-	if ((ipa_addr(send) & (PAGE_SIZE - 1)) ||
-	    (ipa_addr(recv) & (PAGE_SIZE - 1))) {
+	if (!is_aligned(ipa_addr(send), PAGE_SIZE) ||
+	    !is_aligned(ipa_addr(recv), PAGE_SIZE)) {
 		return -1;
 	}
 
@@ -1265,8 +1265,8 @@ int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
 	end = ipa_add(addr, size);
 
 	/* Fail if addresses are not page-aligned. */
-	if ((ipa_addr(begin) & (PAGE_SIZE - 1)) ||
-	    (ipa_addr(end) & (PAGE_SIZE - 1))) {
+	if (!is_aligned(ipa_addr(begin), PAGE_SIZE) ||
+	    !is_aligned(ipa_addr(end), PAGE_SIZE)) {
 		return -1;
 	}
 

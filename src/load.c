@@ -273,9 +273,8 @@ bool load_secondary(const struct memiter *cpio,
 
 	/* Round the last addresses down to the page size. */
 	for (i = 0; i < params->mem_ranges_count; ++i) {
-		mem_ranges_available[i].end =
-			pa_init(pa_addr(mem_ranges_available[i].end) &
-				~(PAGE_SIZE - 1));
+		mem_ranges_available[i].end = pa_init(align_down(
+			pa_addr(mem_ranges_available[i].end), PAGE_SIZE));
 	}
 
 	while (memiter_parse_uint(&it, &mem) && memiter_parse_uint(&it, &cpu) &&
