@@ -51,7 +51,7 @@ template("embedded_cc_toolchain") {
 
     tool("asm") {
       depfile = "{{output}}.d"
-      command = "${invoker.cc} -MMD -MF $depfile ${extra_defines} {{defines}} {{include_dirs}} {{asmflags}} -c {{source}} -o {{output}}"
+      command = "${invoker.cc} -MMD -MF $depfile ${extra_defines} {{defines}} {{include_dirs}} ${extra_cflags} {{asmflags}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "ASM {{output}}"
       outputs = [
@@ -93,23 +93,60 @@ template("embedded_clang_toolchain") {
          "\"target\" must be defined for ${target_name}.")
   assert(defined(invoker.tool_prefix),
          "\"tool_prefix\" must be defined for ${target_name}.")
+  assert(defined(invoker.extra_defines),
+         "\"extra_defines\" must be defined for ${target_name}")
+  assert(defined(invoker.extra_cflags),
+         "\"extra_cflags\" must be defined for ${target_name}")
+  assert(defined(invoker.extra_ldflags),
+         "\"extra_ldflags\" must be defined for ${target_name}")
 
   embedded_cc_toolchain(target_name) {
-    cc = "clang -target ${invoker.target} -fcolor-diagnostics"
-    ld = "ld.lld --color-diagnostics"
+    cc = "clang"
+    ld = "ld.lld"
 
-    extra_defines = ""
-    extra_cflags = ""
-    extra_ldflags = "-O2 -lto-O2 --icf=all --fatal-warnings"
-    if (defined(invoker.extra_defines)) {
-      extra_defines += " ${invoker.extra_defines}"
+    forward_variables_from(invoker,
+                           [
+                             "extra_defines",
+                             "extra_cflags",
+                             "extra_ldflags",
+                           ])
+    extra_cflags += " -target ${invoker.target} -fcolor-diagnostics"
+    extra_ldflags +=
+        " -O2 -lto-O2 --icf=all --fatal-warnings --color-diagnostics"
+
+    toolchain_args = {
+      tool_prefix = invoker.tool_prefix
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
     }
-    if (defined(invoker.extra_cflags)) {
-      extra_cflags += " ${invoker.extra_cflags}"
-    }
-    if (defined(invoker.extra_ldflags)) {
-      extra_ldflags += " ${invoker.extra_ldflags}"
-    }
+  }
+}
+
+# Specialize for mixed toolchain with clang and bfd linker.
+template("embedded_clang_bfd_toolchain") {
+  assert(defined(invoker.target),
+         "\"target\" must be defined for ${target_name}.")
+  assert(defined(invoker.tool_prefix),
+         "\"tool_prefix\" must be defined for ${target_name}.")
+  assert(defined(invoker.extra_defines),
+         "\"extra_defines\" must be defined for ${target_name}")
+  assert(defined(invoker.extra_cflags),
+         "\"extra_cflags\" must be defined for ${target_name}")
+  assert(defined(invoker.extra_ldflags),
+         "\"extra_ldflags\" must be defined for ${target_name}")
+
+  embedded_cc_toolchain(target_name) {
+    cc = "clang"
+    ld = "${invoker.tool_prefix}ld.bfd"
+
+    forward_variables_from(invoker,
+                           [
+                             "extra_defines",
+                             "extra_cflags",
+                             "extra_ldflags",
+                           ])
+    extra_cflags += " -target ${invoker.target} -fcolor-diagnostics"
 
     toolchain_args = {
       tool_prefix = invoker.tool_prefix
@@ -124,23 +161,25 @@ template("embedded_clang_toolchain") {
 template("embedded_gcc_toolchain") {
   assert(defined(invoker.tool_prefix),
          "\"tool_prefix\" must be defined for ${target_name}.")
+  assert(defined(invoker.extra_defines),
+         "\"extra_defines\" must be defined for ${target_name}.")
+  assert(defined(invoker.extra_cflags),
+         "\"extra_cflags\" must be defined for ${target_name}.")
+  assert(defined(invoker.extra_ldflags),
+         "\"extra_ldflags\" must be defined for ${target_name}.")
 
   embedded_cc_toolchain(target_name) {
-    cc = "${invoker.tool_prefix}gcc -fdiagnostics-color=always"
+    cc = "${invoker.tool_prefix}gcc"
     ld = "${invoker.tool_prefix}ld"
 
-    extra_defines = ""
-    extra_cflags = ""
-    extra_ldflags = ""
-    if (defined(invoker.extra_defines)) {
-      extra_defines += " ${invoker.extra_defines}"
-    }
-    if (defined(invoker.extra_cflags)) {
-      extra_cflags += " ${invoker.extra_cflags}"
-    }
-    if (defined(invoker.extra_ldflags)) {
-      extra_ldflags += " ${invoker.extra_ldflags}"
-    }
+    forward_variables_from(invoker,
+                           [
+                             "extra_defines",
+                             "extra_cflags",
+                             "extra_ldflags",
+                           ])
+
+    extra_cflags += " -fdiagnostics-color=always"
 
     toolchain_args = {
       tool_prefix = invoker.tool_prefix
@@ -166,6 +205,8 @@ template("embedded_platform_toolchain") {
          "\"max_cpus\" must be defined for ${target_name}.")
   assert(defined(invoker.max_vms),
          "\"max_vms\" must be defined for ${target_name}.")
+  assert(defined(invoker.platform_name),
+         "\"platform_name\" must be defined for ${target_name}.")
 
   defines = ""
   cflags = "-fno-stack-protector -fno-builtin -ffreestanding -fpic"
@@ -188,7 +229,26 @@ template("embedded_platform_toolchain") {
     extra_ldflags = ldflags
     toolchain_args = {
       use_platform = true
-      plat_name = invoker.target_name
+      plat_name = invoker.platform_name
+      plat_arch = invoker.arch
+      plat_heap_pages = invoker.heap_pages
+      plat_max_cpus = invoker.max_cpus
+      plat_max_vms = invoker.max_vms
+      if (defined(invoker.toolchain_args)) {
+        forward_variables_from(invoker.toolchain_args, "*")
+      }
+    }
+  }
+
+  embedded_clang_bfd_toolchain("${target_name}_clang_bfd") {
+    target = invoker.target
+    tool_prefix = invoker.tool_prefix
+    extra_defines = defines
+    extra_cflags = cflags
+    extra_ldflags = ldflags
+    toolchain_args = {
+      use_platform = true
+      plat_name = invoker.platform_name
       plat_arch = invoker.arch
       plat_heap_pages = invoker.heap_pages
       plat_max_cpus = invoker.max_cpus
@@ -206,7 +266,7 @@ template("embedded_platform_toolchain") {
     extra_ldflags = ldflags
     toolchain_args = {
       use_platform = true
-      plat_name = invoker.target_name
+      plat_name = invoker.platform_name
       plat_arch = invoker.arch
       plat_heap_pages = invoker.heap_pages
       plat_max_cpus = invoker.max_cpus
@@ -220,8 +280,12 @@ template("embedded_platform_toolchain") {
 
 # Specialize for different architectures.
 
-template("aarch64_toolchain") {
+template("aarch64_common_toolchain") {
   assert(defined(invoker.cpu), "\"cpu\" must be defiend for ${target_name}.")
+  assert(defined(invoker.target),
+         "\"target\" must be defined for ${target_name}")
+  assert(defined(invoker.tool_prefix),
+         "\"tool_prefix\" must be defined for ${target_name}")
   assert(defined(invoker.origin_address),
          "\"origin_address\" must be defined for ${target_name}.")
   assert(defined(invoker.use_pl011),
@@ -238,6 +302,8 @@ template("aarch64_toolchain") {
     assert(defined(invoker.gicr_base_address),
            "\"gicr_base_address\" must be defined for ${target_name}.")
   }
+  assert(defined(invoker.platform_name),
+         "\"platform_name\" must be defined for ${target_name}.")
 
   embedded_platform_toolchain(target_name) {
     forward_variables_from(invoker,
@@ -246,11 +312,17 @@ template("aarch64_toolchain") {
                              "heap_pages",
                              "max_cpus",
                              "max_vms",
+                             "platform_name",
+                             "extra_defines",
+                             "extra_ldflags",
                            ])
     arch = "aarch64"
-    target = "aarch64-none-eabi"
-    tool_prefix = "aarch64-linux-gnu-"  # TODO: this isn't right for bare metal but it works.
+    target = invoker.target
+    tool_prefix = invoker.tool_prefix
     extra_cflags = "-mcpu=${invoker.cpu} -mstrict-align"
+    if (defined(invoker.extra_cflags)) {
+      extra_cflags += " ${invoker.extra_cflags}"
+    }
 
     extra_defines = ""
     if (invoker.use_pl011) {
@@ -268,5 +340,14 @@ template("aarch64_toolchain") {
     toolchain_args = {
       arch_aarch64_use_pl011 = invoker.use_pl011
     }
+  }
+}
+
+template("aarch64_toolchain") {
+  aarch64_common_toolchain("${target_name}") {
+    forward_variables_from(invoker, "*")
+    target = "aarch64-none-eabi"
+    tool_prefix = "aarch64-linux-gnu-"  # TODO: this isn't right for bare metal but it works.
+    platform_name = target_name
   }
 }
