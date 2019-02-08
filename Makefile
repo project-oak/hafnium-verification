@@ -25,8 +25,8 @@ CHECKPATCH := $(PWD)/third_party/linux/scripts/checkpatch.pl \
 # Select the project to build.
 PROJECT ?= reference
 
-OUT ?= out
-OUT_DIR = out
+OUT ?= out/$(PROJECT)
+OUT_DIR = out/$(PROJECT)
 
 .PHONY: all
 all: $(OUT_DIR)/build.ninja

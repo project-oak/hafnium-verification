@@ -30,14 +30,17 @@ sudo apt install make binutils-aarch64-linux-gnu
 ```
 
 By default, the hypervisor is built with clang for a few target platforms along
-with tests.
+with tests. Each project in the `project` directory specifies a root
+configurations of the build. Adding a project is the preferred way to extend
+support to new platforms. The target project that is built is selected by the
+`PROJECT` make variable, the default project is 'reference'.
 
 ``` shell
-make
+make PROJECT=<project_name>
 ```
 
-The compiled image can be found under `out/`, for example the QEMU image is at
-at `out/qemu_aarch64_clang/hafnium.bin`.
+The compiled image can be found under `out/<project>`, for example the QEMU image is at
+at `out/reference/qemu_aarch64_clang/hafnium.bin`.
 
 ## Running on QEMU
 
@@ -45,7 +48,7 @@ You will need at least version 2.9 for QEMU. The following command line can be
 used to run Hafnium on it:
 
 ``` shell
-qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/qemu_aarch64_clang/hafnium.bin
+qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin
 ```
 
 Though it is admittedly not very useful because it doesn't have any virtual
@@ -56,7 +59,7 @@ The following command line will run Hafnium, with the RAM disk just created,
 which will then boot into the primary Linux VM:
 
 ``` shell
-qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
+qemu-system-aarch64 -M virt -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
 ```
 
 ## Running tests

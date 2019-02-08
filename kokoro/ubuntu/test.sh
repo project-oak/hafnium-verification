@@ -27,7 +27,8 @@ set -u
 set -x
 
 TIMEOUT="timeout --foreground"
-OUT="out"
+PROJECT="${PROJECT:-reference}"
+OUT="out/${PROJECT}"
 HFTEST="$TIMEOUT 30s ./test/hftest/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log"
 
 # Add prebuilt libc++ to the path.
