@@ -132,7 +132,7 @@ def Main():
                 sponge_log.write(out)
                 sponge_log.write("\r\n\r\n")
                 hftest_out = hftest_lines(out)
-                if hftest_out[-1] == "FINISHED" and not any(
+                if len(hftest_out) > 0 and hftest_out[-1] == "FINISHED" and not any(
                         l.startswith('Failure:') for l in hftest_out):
                     print("        PASS")
                 else:
