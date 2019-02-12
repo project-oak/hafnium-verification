@@ -24,19 +24,9 @@ source_set("hftest_primary_vm") {
 
   public_configs = [ ":hftest_config" ]
 
-  sources = [
-    "hftest.c",
-  ]
-
   deps = [
-    "//src:common",
-    "//src:dlog",
-    "//src:fdt",
-    "//src:memiter",
-    "//src/arch/${plat_arch}:entry",
-    "//src/arch/${plat_arch}/hftest:entry",
+    ":hftest_standalone",
     "//src/arch/${plat_arch}/hftest:hf_call",
-    "//src/arch/${plat_arch}/hftest:power_mgmt",
   ]
 }
 
@@ -64,6 +54,15 @@ source_set("hftest_secondary_vm") {
 
 # Testing framework for a hypervisor.
 source_set("hftest_hypervisor") {
+  testonly = true
+  public_configs = [ ":hftest_config" ]
+  deps = [
+    ":hftest_standalone",
+  ]
+}
+
+source_set("hftest_standalone") {
+  visibility = [ ":*" ]
   testonly = true
 
   public_configs = [ ":hftest_config" ]
