@@ -324,7 +324,6 @@ template("aarch64_common_toolchain") {
                              "max_cpus",
                              "max_vms",
                              "platform_name",
-                             "extra_defines",
                              "extra_ldflags",
                            ])
     arch = "aarch64"
@@ -336,6 +335,10 @@ template("aarch64_common_toolchain") {
     }
 
     extra_defines = ""
+    if (defined(invoker.extra_defines)) {
+      extra_defines += " ${invoker.extra_defines}"
+    }
+
     if (invoker.use_pl011) {
       assert(defined(invoker.pl011_base_address),
              "\"pl011_base_address\" must be defined for ${target_name}.")
