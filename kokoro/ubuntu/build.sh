@@ -34,6 +34,8 @@ else
 	echo "Testing kokoro build locally..."
 fi
 
+CLANG=${PWD}/prebuilts/linux-x64/clang/bin/clang
+
 #
 # Step 1: make sure it builds.
 #
@@ -97,9 +99,8 @@ fi
 (
 export ARCH=arm64 &&
 export CROSS_COMPILE=aarch64-linux-gnu- &&
-make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8} \
-     -C third_party/linux defconfig modules_prepare &&
+make CC=${CLANG} -C third_party/linux defconfig modules_prepare &&
 cd driver/linux &&
-make ${KOKORO_JOB_NAME+CC=${CROSS_COMPILE}gcc-4.8} &&
+make CC=${CLANG} &&
 make checkpatch
 )
