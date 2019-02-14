@@ -34,6 +34,20 @@ TEST(abort, data_abort)
 }
 
 /**
+ * Accessing partially unmapped memory aborts the VM.
+ */
+TEST(abort, straddling_data_abort)
+{
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+
+	SERVICE_SELECT(SERVICE_VM0, "straddling_data_abort", mb.send);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/**
  * Executing unmapped memory aborts the VM.
  */
 TEST(abort, instruction_abort)
@@ -42,6 +56,20 @@ TEST(abort, instruction_abort)
 	struct mailbox_buffers mb = set_up_mailbox();
 
 	SERVICE_SELECT(SERVICE_VM0, "instruction_abort", mb.send);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/**
+ * Executing partially unmapped memory aborts the VM.
+ */
+TEST(abort, straddling_instruction_abort)
+{
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+
+	SERVICE_SELECT(SERVICE_VM0, "straddling_instruction_abort", mb.send);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);

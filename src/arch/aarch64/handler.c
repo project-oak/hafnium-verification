@@ -422,10 +422,44 @@ struct vcpu *serr_lower(void)
 	return api_abort(current());
 }
 
+/**
+ * Initialises a fault info structure. It assumes that an FnV bit exists at
+ * bit offset 10 of the ESR, and that it is only valid when the bottom 6 bits of
+ * the ESR (the fault status code) are 010000; this is the case for both
+ * instruction and data aborts, but not necessarily for other exception reasons.
+ */
+static struct vcpu_fault_info fault_info_init(uintreg_t esr,
+					      const struct vcpu *vcpu, int mode,
+					      uint8_t size)
+{
+	uint32_t fsc = esr & 0x3f;
+	struct vcpu_fault_info r;
+
+	r.mode = mode;
+	r.size = size;
+	r.pc = va_init(vcpu->regs.pc);
+
+	/*
+	 * Check the FnV bit, which is only valid if dfsc/ifsc is 010000. It
+	 * indicates that we cannot rely on far_el2.
+	 */
+	if (fsc == 0x10 && esr & (1u << 10)) {
+		r.vaddr = va_init(0);
+		r.ipaddr = ipa_init(read_msr(hpfar_el2) << 8);
+	} else {
+		r.vaddr = va_init(read_msr(far_el2));
+		r.ipaddr = ipa_init((read_msr(hpfar_el2) << 8) |
+				    (read_msr(far_el2) & (PAGE_SIZE - 1)));
+	}
+
+	return r;
+}
+
 struct vcpu *sync_lower_exception(uintreg_t esr)
 {
 	struct vcpu *vcpu = current();
 	int32_t ret;
+	struct vcpu_fault_info info;
 
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
@@ -438,34 +472,30 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		return api_wait_for_interrupt(vcpu);
 
 	case 0x24: /* EC = 100100, Data abort. */
-		dlog("Lower data abort: pc=0x%x, esr=0x%x, ec=0x%x, vmid=%u, "
-		     "vcpu=%u",
-		     vcpu->regs.pc, esr, esr >> 26, vcpu->vm->id,
-		     vcpu_index(vcpu));
-		if (!(esr & (1u << 10))) { /* Check FnV bit. */
-			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
-			     read_msr(hpfar_el2) << 8);
-		} else {
-			dlog(", far=invalid");
-		}
+		/*
+		 * Determine the size based on the SAS bits, which are only
+		 * valid if the ISV bit is set. The WnR bit is used to decide
+		 * if it's a read or write.
+		 */
+		info = fault_info_init(
+			esr, vcpu, (esr & (1u << 6)) ? MM_MODE_W : MM_MODE_R,
+			(esr & (1u << 24)) ? (1u << ((esr >> 22) & 0x3)) : 0);
 
-		dlog("\n");
+		/* Call the platform-independent handler. */
+		if (vcpu_handle_page_fault(vcpu, &info)) {
+			return NULL;
+		}
 		break;
 
 	case 0x20: /* EC = 100000, Instruction abort. */
-		dlog("Lower instruction abort: pc=0x%x, esr=0x%x, ec=0x%x, "
-		     "vmdid=%u, vcpu=%u",
-		     vcpu->regs.pc, esr, esr >> 26, vcpu->vm->id,
-		     vcpu_index(vcpu));
-		if (!(esr & (1u << 10))) { /* Check FnV bit. */
-			dlog(", far=0x%x, hpfar=0x%x", read_msr(far_el2),
-			     read_msr(hpfar_el2) << 8);
-		} else {
-			dlog(", far=invalid");
-		}
+		/* Determine the size based on the IL bit. */
+		info = fault_info_init(esr, vcpu, MM_MODE_X,
+				       (esr & (1u << 25)) ? 4 : 2);
 
-		dlog(", vttbr_el2=0x%x", read_msr(vttbr_el2));
-		dlog("\n");
+		/* Call the platform-independent handler. */
+		if (vcpu_handle_page_fault(vcpu, &info)) {
+			return NULL;
+		}
 		break;
 
 	case 0x17: /* EC = 010111, SMC instruction. */

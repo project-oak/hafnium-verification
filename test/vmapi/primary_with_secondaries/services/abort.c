@@ -21,6 +21,8 @@
 
 #include "hftest.h"
 
+alignas(PAGE_SIZE) static uint8_t pages[2 * PAGE_SIZE];
+
 TEST_SERVICE(data_abort)
 {
 	/* Not using NULL so static analysis doesn't complain. */
@@ -28,9 +30,31 @@ TEST_SERVICE(data_abort)
 	*p = 12;
 }
 
+TEST_SERVICE(straddling_data_abort)
+{
+	/* Give some memory to the primary VM so that it's unmapped. */
+	ASSERT_EQ(hf_share_memory(HF_PRIMARY_VM_ID,
+				  (hf_ipaddr_t)(&pages[PAGE_SIZE]), PAGE_SIZE,
+				  HF_MEMORY_GIVE),
+		  0);
+	*(volatile uint64_t *)(&pages[PAGE_SIZE - 6]);
+}
+
 TEST_SERVICE(instruction_abort)
 {
 	/* Not using NULL so static analysis doesn't complain. */
 	int (*f)(void) = (int (*)(void))4;
+	f();
+}
+
+TEST_SERVICE(straddling_instruction_abort)
+{
+	int (*f)(void) = (int (*)(void))(&pages[PAGE_SIZE - 2]);
+
+	/* Give some memory to the primary VM so that it's unmapped. */
+	ASSERT_EQ(hf_share_memory(HF_PRIMARY_VM_ID,
+				  (hf_ipaddr_t)(&pages[PAGE_SIZE]), PAGE_SIZE,
+				  HF_MEMORY_GIVE),
+		  0);
 	f();
 }

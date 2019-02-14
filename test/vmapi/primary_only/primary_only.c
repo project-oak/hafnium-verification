@@ -111,7 +111,7 @@ static void vm_cpu_entry(uintptr_t arg)
 TEST(cpus, start)
 {
 	struct spinlock lock = SPINLOCK_INIT;
-	alignas(4096) static char other_stack[4096];
+	alignas(4096) static uint8_t other_stack[4096];
 
 	/* Start secondary while holding lock. */
 	sl_lock(&lock);

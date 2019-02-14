@@ -19,6 +19,7 @@ vm_kernel("primary_only_test_vm") {
   testonly = true
 
   sources = [
+    "faults.c",
     "primary_only.c",
   ]
 

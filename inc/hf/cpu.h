@@ -68,6 +68,14 @@ struct retval_state {
 	bool force;
 };
 
+struct vcpu_fault_info {
+	ipaddr_t ipaddr;
+	vaddr_t vaddr;
+	vaddr_t pc;
+	int mode;
+	uint8_t size;
+};
+
 struct vcpu {
 	struct spinlock lock;
 	enum vcpu_state state;
@@ -127,3 +135,6 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu *vcpu);
 void vcpu_off(struct vcpu *vcpu);
 size_t vcpu_index(const struct vcpu *vcpu);
+
+bool vcpu_handle_page_fault(const struct vcpu *current,
+			    struct vcpu_fault_info *f);
