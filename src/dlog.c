@@ -259,6 +259,7 @@ void vdlog(const char *fmt, va_list args)
 			case 'X':
 				flags |= FLAG_UPPER;
 				print_num(va_arg(args, size_t), 16, w, flags);
+				p++;
 				break;
 
 			case 'p':
