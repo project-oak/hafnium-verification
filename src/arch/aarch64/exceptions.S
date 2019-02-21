@@ -297,16 +297,20 @@ vcpu_switch:
 	mrs x21, sp_el1
 	stp x20, x21, [x1, #VCPU_LAZY + 16 * 10]
 
-	mrs x22, par_el1
-	mrs x23, hcr_el2
+	mrs x22, elr_el1
+	mrs x23, spsr_el1
 	stp x22, x23, [x1, #VCPU_LAZY + 16 * 11]
 
-	mrs x24, cptr_el2
-	mrs x25, cnthctl_el2
+	mrs x24, par_el1
+	mrs x25, hcr_el2
 	stp x24, x25, [x1, #VCPU_LAZY + 16 * 12]
 
-	mrs x26, vttbr_el2
-	str x26, [x1, #VCPU_LAZY + 16 * 13]
+	mrs x26, cptr_el2
+	mrs x27, cnthctl_el2
+	stp x26, x27, [x1, #VCPU_LAZY + 16 * 13]
+
+	mrs x28, vttbr_el2
+	str x28, [x1, #VCPU_LAZY + 16 * 14]
 
 	/* Save new vcpu pointer in non-volatile register. */
 	mov x19, x0
@@ -376,15 +380,19 @@ vcpu_restore_all_and_run:
 	msr sp_el1, x21
 
 	ldp x22, x23, [x0, #VCPU_LAZY + 16 * 11]
-	msr par_el1, x22
-	msr hcr_el2, x23
+	msr elr_el1, x22
+	msr spsr_el1, x23
 
 	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 12]
-	msr cptr_el2, x24
-	msr cnthctl_el2, x25
+	msr par_el1, x24
+	msr hcr_el2, x25
 
-	ldr x26, [x0, #VCPU_LAZY + 16 * 13]
-	msr vttbr_el2, x26
+	ldp x26, x27, [x0, #VCPU_LAZY + 16 * 13]
+	msr cptr_el2, x26
+	msr cnthctl_el2, x27
+
+	ldr x28, [x0, #VCPU_LAZY + 16 * 14]
+	msr vttbr_el2, x28
 
 	/* Restore non-volatile registers. */
 	ldp x19, x20, [x0, #VCPU_REGS + 8 * 19]
