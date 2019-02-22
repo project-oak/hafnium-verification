@@ -63,9 +63,9 @@ static inline paddr_t pa_add(paddr_t pa, size_t n)
 /**
  * Initializes an intermeditate physical address.
  */
-static inline ipaddr_t ipa_init(uintvaddr_t v)
+static inline ipaddr_t ipa_init(uintpaddr_t ipa)
 {
-	return (ipaddr_t){.ipa = v};
+	return (ipaddr_t){.ipa = ipa};
 }
 
 /**
