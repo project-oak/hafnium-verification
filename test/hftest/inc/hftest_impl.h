@@ -20,6 +20,8 @@
 
 #include "hf/arch/std.h"
 
+#include "hf/spci.h"
+
 #define HFTEST_MAX_TESTS 50
 
 /*
@@ -133,8 +135,8 @@ struct hftest_context {
 	noreturn void (*abort)(void);
 
 	/* These are used in services. */
-	void *send;
-	void *recv;
+	struct spci_message *send;
+	struct spci_message *recv;
 };
 
 struct hftest_context *hftest_get_context(void);
@@ -271,6 +273,7 @@ union hftest_any {
 #define HFTEST_SERVICE_SELECT(vm_id, service, send_buffer)                    \
 	do {                                                                  \
 		struct hf_vcpu_run_return run_res;                            \
+		uint32_t msg_length = strlen(service);                        \
                                                                               \
 		/*                                                            \
 		 * Let the service configure its mailbox and wait for a       \
@@ -281,8 +284,11 @@ union hftest_any {
 		ASSERT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);             \
                                                                               \
 		/* Send the selected service to run and let it be handled. */ \
-		memcpy(send_buffer, service, strlen(service));                \
-		ASSERT_EQ(hf_mailbox_send(vm_id, strlen(service), false), 0); \
+		memcpy(send_buffer->payload, service, msg_length);            \
+		spci_message_init(send_buffer, msg_length, vm_id,             \
+				  hf_vm_get_id());                            \
+                                                                              \
+		ASSERT_EQ(spci_msg_send(0), 0);                               \
 		run_res = hf_vcpu_run(vm_id, 0);                              \
 		ASSERT_EQ(run_res.code, HF_VCPU_RUN_YIELD);                   \
 	} while (0)

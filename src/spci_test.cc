@@ -14,26 +14,33 @@
  * limitations under the License.
  */
 
-#include "hf/arch/cpu.h"
-#include "hf/arch/vm/interrupts_gicv3.h"
-
-#include "hf/dlog.h"
-
-#include "vmapi/hf/call.h"
-
-#include "common.h"
-#include "hftest.h"
-
-/*
- * Secondary VM that loops forever after receiving a message.
- */
-
-TEST_SERVICE(busy)
-{
-	dlog("Secondary waiting for message...\n");
-	mailbox_receive_retry();
-	hf_mailbox_clear();
-	dlog("Secondary received message, looping forever.\n");
-	for (;;) {
-	}
+extern "C" {
+#include "vmapi/hf/spci.h"
 }
+
+#include <gmock/gmock.h>
+
+namespace
+{
+using ::testing::Eq;
+
+/**
+ * Ensure that spci_message_init is correctly setting the expected fields in the
+ * SPCI common message header.
+ */
+TEST(spci, spci_message_init)
+{
+	spci_message header;
+	spci_message compare_header = {
+		.flags = SPCI_MESSAGE_IMPDEF_MASK,
+		.length = 1,
+		.target_vm_id = 2,
+		.source_vm_id = 3,
+	};
+
+	memset(&header, 0xff, sizeof(header));
+	spci_message_init(&header, 1, 2, 3);
+
+	EXPECT_THAT(memcmp(&header, &compare_header, sizeof(header)), 0);
+}
+} /* namespace */

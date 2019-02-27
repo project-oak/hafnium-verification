@@ -17,6 +17,7 @@
 #include "util.h"
 
 #include "hf/mm.h"
+#include "hf/spci.h"
 
 #include "vmapi/hf/call.h"
 
@@ -34,7 +35,7 @@ struct mailbox_buffers set_up_mailbox(void)
 {
 	ASSERT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
 	return (struct mailbox_buffers){
-		.send = send_page,
-		.recv = recv_page,
+		.send = ((struct spci_message *)send_page),
+		.recv = ((struct spci_message *)recv_page),
 	};
 }

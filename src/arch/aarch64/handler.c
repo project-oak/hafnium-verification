@@ -21,6 +21,7 @@
 #include "hf/api.h"
 #include "hf/cpu.h"
 #include "hf/dlog.h"
+#include "hf/spci.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"
@@ -404,7 +405,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		}
 	}
 
-	switch ((uint32_t)arg0 & ~SMCCC_CONVENTION_MASK) {
+	switch ((uint32_t)arg0) {
 	case HF_VM_GET_ID:
 		ret.user_ret = api_vm_get_id(current());
 		break;
@@ -432,9 +433,8 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 						current(), &ret.new);
 		break;
 
-	case HF_MAILBOX_SEND:
-		ret.user_ret =
-			api_mailbox_send(arg1, arg2, arg3, current(), &ret.new);
+	case SPCI_MSG_SEND_32:
+		ret.user_ret = api_spci_msg_send(arg1, current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_RECEIVE:

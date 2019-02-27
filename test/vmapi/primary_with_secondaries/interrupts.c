@@ -42,12 +42,15 @@ TEST(interrupts, interrupt_self)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Set the message, echo it and wait for a response. */
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -74,7 +77,8 @@ TEST(interrupts, inject_interrupt_twice)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
@@ -83,7 +87,8 @@ TEST(interrupts, inject_interrupt_twice)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -110,7 +115,8 @@ TEST(interrupts, inject_two_interrupts)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
@@ -119,7 +125,7 @@ TEST(interrupts, inject_two_interrupts)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
-	EXPECT_EQ(memcmp(mb.recv, expected_response_2,
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response_2,
 			 sizeof(expected_response_2)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
@@ -149,7 +155,8 @@ TEST(interrupts, inject_interrupt_message)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 
@@ -158,12 +165,14 @@ TEST(interrupts, inject_interrupt_message)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Now send a message to the secondary. */
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response_2));
-	EXPECT_EQ(memcmp(mb.recv, expected_response_2,
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response_2,
 			 sizeof(expected_response_2)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
@@ -193,12 +202,15 @@ TEST(interrupts, inject_interrupt_disabled)
 	 * Now send a message to the secondary to enable the interrupt ID, and
 	 * expect the response from the interrupt we sent before.
 	 */
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -225,7 +237,8 @@ TEST(interrupts, pending_interrupt_no_blocking_receive)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -252,7 +265,8 @@ TEST(interrupts, pending_interrupt_wfi_not_trapped)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
-	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+	EXPECT_EQ(memcmp(mb.recv->payload, expected_response,
+			 sizeof(expected_response)),
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -273,12 +287,14 @@ TEST(interrupts, deliver_interrupt_and_message)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
-	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }

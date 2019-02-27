@@ -18,6 +18,8 @@
 #include "hf/arch/std.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
 
+#include "hf/spci.h"
+
 #include "vmapi/hf/call.h"
 
 #include "../msr.h"
@@ -51,11 +53,18 @@ TEST_SERVICE(echo_with_notification)
 
 	/* Loop, echo messages back to the sender. */
 	for (;;) {
-		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		hf_mailbox_receive(true);
 
-		memcpy(SERVICE_SEND_BUFFER(), SERVICE_RECV_BUFFER(), res.size);
-		while (hf_mailbox_send(res.vm_id, res.size, true) < 0) {
-			wait_for_vm(res.vm_id);
+		struct spci_message *send_buf = SERVICE_SEND_BUFFER();
+		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
+
+		memcpy(send_buf->payload, recv_buf->payload, recv_buf->length);
+		spci_message_init(send_buf, recv_buf->length,
+				  recv_buf->source_vm_id,
+				  recv_buf->target_vm_id);
+
+		while (spci_msg_send(SPCI_MSG_SEND_NOTIFY) != SPCI_SUCCESS) {
+			wait_for_vm(recv_buf->source_vm_id);
 		}
 
 		hf_mailbox_clear();

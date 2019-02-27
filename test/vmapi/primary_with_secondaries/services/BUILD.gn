@@ -125,6 +125,19 @@ source_set("wfi") {
   ]
 }
 
+# Service to receive messages in a secondary VM and ensure that the header fields are correctly set.
+source_set("spci_check") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+
+  sources = [
+    "spci_check.c",
+  ]
+}
+
 # Group services together into VMs.
 
 vm_kernel("service_vm0") {
@@ -139,6 +152,7 @@ vm_kernel("service_vm0") {
     ":memory",
     ":receive_block",
     ":relay",
+    ":spci_check",
     ":wfi",
     "//test/hftest:hftest_secondary_vm",
   ]

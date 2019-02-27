@@ -108,6 +108,7 @@ executable("unit_tests") {
     "fdt_test.cc",
     "mm_test.cc",
     "mpool_test.cc",
+    "spci_test.cc",
   ]
   sources += [ "layout_fake.c" ]
   cflags_cc = [

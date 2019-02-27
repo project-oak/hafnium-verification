@@ -20,6 +20,7 @@
 #include "hf/arch/std.h"
 
 #include "hf/memiter.h"
+#include "hf/spci.h"
 
 #include "vmapi/hf/call.h"
 
@@ -80,8 +81,9 @@ noreturn void kmain(void)
 {
 	struct memiter args;
 	hftest_test_fn service;
-	struct hf_mailbox_receive_return res;
 	struct hftest_context *ctx;
+
+	struct spci_message *recv_msg = (struct spci_message *)recv;
 
 	/* Prepare the context. */
 
@@ -89,8 +91,8 @@ noreturn void kmain(void)
 	hf_vm_configure(send_addr, recv_addr);
 
 	/* Receive the name of the service to run. */
-	res = hf_mailbox_receive(true);
-	memiter_init(&args, recv, res.size);
+	hf_mailbox_receive(true);
+	memiter_init(&args, recv_msg->payload, recv_msg->length);
 	service = find_service(&args);
 	hf_mailbox_clear();
 
@@ -108,8 +110,8 @@ noreturn void kmain(void)
 	ctx = hftest_get_context();
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->abort = abort;
-	ctx->send = send;
-	ctx->recv = recv;
+	ctx->send = (struct spci_message *)send;
+	ctx->recv = (struct spci_message *)recv;
 
 	/* Pause so the next time cycles are given the service will be run. */
 	hf_vcpu_yield();

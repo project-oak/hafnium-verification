@@ -17,6 +17,7 @@
 #pragma once
 
 #include "hf/abi.h"
+#include "hf/spci.h"
 #include "hf/types.h"
 
 /* Keep macro alignment */
@@ -29,7 +30,6 @@
 #define HF_VCPU_RUN             0xff03
 #define HF_VCPU_YIELD           0xff04
 #define HF_VM_CONFIGURE         0xff05
-#define HF_MAILBOX_SEND         0xff06
 #define HF_MAILBOX_RECEIVE      0xff07
 #define HF_MAILBOX_CLEAR        0xff08
 #define HF_MAILBOX_WRITABLE_GET 0xff09
@@ -115,11 +115,14 @@ static inline int64_t hf_vm_configure(hf_ipaddr_t send, hf_ipaddr_t recv)
  * If the recipient's receive buffer is busy, it can optionally register the
  * caller to be notified when the recipient's receive buffer becomes available.
  *
- * Returns -1 on failure and 0 on success.
+ * Returns SPCI_SUCCESS if the message is sent, an error code otherwise:
+ *  - INVALID_PARAMETER: one or more of the parameters do not conform.
+ *  - BUSY: the message could not be delivered either because the mailbox
+ *            was full or the target VM does not yet exist.
  */
-static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size, bool notify)
+static inline int64_t spci_msg_send(uint32_t attributes)
 {
-	return hf_call(HF_MAILBOX_SEND, vm_id, size, notify);
+	return hf_call(SPCI_MSG_SEND_32, attributes, 0, 0);
 }
 
 /**

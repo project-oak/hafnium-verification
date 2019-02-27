@@ -48,6 +48,9 @@ TEST_SERVICE(wfi)
 		interrupt_wait();
 	}
 
-	memcpy(SERVICE_SEND_BUFFER(), message, sizeof(message));
-	hf_mailbox_send(HF_PRIMARY_VM_ID, sizeof(message), false);
+	memcpy(SERVICE_SEND_BUFFER()->payload, message, sizeof(message));
+	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(message),
+			  HF_PRIMARY_VM_ID, hf_vm_get_id());
+
+	spci_msg_send(0);
 }

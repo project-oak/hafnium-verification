@@ -16,9 +16,11 @@
 
 #pragma once
 
+#include "vmapi/hf/spci.h"
+
 struct mailbox_buffers {
-	void *send;
-	void *recv;
+	struct spci_message *send;
+	struct spci_message *recv;
 };
 
 struct mailbox_buffers set_up_mailbox(void);

@@ -57,7 +57,7 @@ static bool run_loop(struct mailbox_buffers *mb)
 
 	/* Copies the contents of the received boolean to the return value. */
 	if (run_res.message.size == sizeof(ok)) {
-		memcpy(&ok, mb->recv, sizeof(ok));
+		memcpy(&ok, mb->recv->payload, sizeof(ok));
 	}
 
 	hf_mailbox_clear();

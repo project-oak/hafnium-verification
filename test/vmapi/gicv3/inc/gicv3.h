@@ -33,6 +33,9 @@ extern alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];
 extern hf_ipaddr_t send_page_addr;
 extern hf_ipaddr_t recv_page_addr;
 
+extern struct spci_message *send_buffer;
+extern struct spci_message *recv_buffer;
+
 extern volatile uint32_t last_interrupt_id;
 
 void system_setup();

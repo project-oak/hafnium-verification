@@ -18,6 +18,7 @@
 #include "hf/arch/vm/interrupts_gicv3.h"
 
 #include "hf/dlog.h"
+#include "hf/spci.h"
 
 #include "vmapi/hf/call.h"
 
@@ -50,6 +51,9 @@ TEST_SERVICE(receive_block)
 		EXPECT_EQ(res.size, 0);
 	}
 
-	memcpy(SERVICE_SEND_BUFFER(), message, sizeof(message));
-	hf_mailbox_send(HF_PRIMARY_VM_ID, sizeof(message), false);
+	memcpy(SERVICE_SEND_BUFFER()->payload, message, sizeof(message));
+	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(message),
+			  HF_PRIMARY_VM_ID, hf_vm_get_id());
+
+	spci_msg_send(0);
 }

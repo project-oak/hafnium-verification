@@ -36,18 +36,24 @@ TEST_SERVICE(relay)
 		uint32_t next_message_size;
 
 		/* Receive the message to relay. */
-		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
-		ASSERT_GE(res.size, sizeof(uint32_t));
+		hf_mailbox_receive(true);
 
 		/* Prepare to relay the message. */
-		chain = SERVICE_RECV_BUFFER();
+		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
+		struct spci_message *send_buf = SERVICE_SEND_BUFFER();
+		ASSERT_GE(recv_buf->length, sizeof(uint32_t));
+
+		chain = (uint32_t *)recv_buf->payload;
 		next_vm_id = le32toh(*chain);
 		next_message = chain + 1;
-		next_message_size = res.size - sizeof(uint32_t);
+		next_message_size = recv_buf->length - sizeof(uint32_t);
 
 		/* Send the message to the next stage. */
-		memcpy(SERVICE_SEND_BUFFER(), next_message, next_message_size);
+		memcpy(send_buf->payload, next_message, next_message_size);
+		spci_message_init(send_buf, next_message_size, next_vm_id,
+				  hf_vm_get_id());
+
 		hf_mailbox_clear();
-		hf_mailbox_send(next_vm_id, next_message_size, false);
+		spci_msg_send(0);
 	}
 }

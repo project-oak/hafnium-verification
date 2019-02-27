@@ -28,12 +28,16 @@ TEST_SERVICE(memory_increment)
 {
 	/* Loop, writing message to the shared memory. */
 	for (;;) {
-		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		hf_mailbox_receive(true);
 		uint8_t *ptr;
 		size_t i;
 
 		/* Check the memory was cleared. */
-		memcpy(&ptr, SERVICE_RECV_BUFFER(), sizeof(ptr));
+		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
+		memcpy(&ptr, recv_buf->payload, sizeof(ptr));
+		spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr),
+				  recv_buf->source_vm_id, hf_vm_get_id());
+
 		for (int i = 0; i < PAGE_SIZE; ++i) {
 			ASSERT_EQ(ptr[i], 0);
 		}
@@ -48,7 +52,7 @@ TEST_SERVICE(memory_increment)
 
 		/* Signal completion and reset. */
 		hf_mailbox_clear();
-		hf_mailbox_send(res.vm_id, 0, false);
+		spci_msg_send(0);
 	}
 }
 
@@ -56,21 +60,26 @@ TEST_SERVICE(memory_return)
 {
 	/* Loop, giving memory back to the sender. */
 	for (;;) {
-		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		hf_mailbox_receive(true);
 		uint8_t *ptr;
 
 		/* Check the memory was cleared. */
-		memcpy(&ptr, SERVICE_RECV_BUFFER(), sizeof(ptr));
+		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
+		memcpy(&ptr, recv_buf->payload, sizeof(ptr));
+		spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr),
+				  recv_buf->source_vm_id, hf_vm_get_id());
+
 		for (int i = 0; i < PAGE_SIZE; ++i) {
 			ASSERT_EQ(ptr[i], 0);
 		}
 
 		/* Give the memory back and notify the sender. */
-		ASSERT_EQ(hf_share_memory(res.vm_id, (hf_ipaddr_t)ptr,
-					  PAGE_SIZE, HF_MEMORY_GIVE),
+		ASSERT_EQ(hf_share_memory(recv_buf->source_vm_id,
+					  (hf_ipaddr_t)ptr, PAGE_SIZE,
+					  HF_MEMORY_GIVE),
 			  0);
 		hf_mailbox_clear();
-		hf_mailbox_send(res.vm_id, 0, false);
+		spci_msg_send(0);
 
 		/*
 		 * Try and access the memory which will cause a fault unless the
@@ -94,8 +103,10 @@ TEST_SERVICE(give_memory_and_fault)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(SERVICE_SEND_BUFFER(), &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(HF_PRIMARY_VM_ID, sizeof(ptr), false), 0);
+	memcpy(SERVICE_SEND_BUFFER()->payload, &ptr, sizeof(ptr));
+	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr), HF_PRIMARY_VM_ID,
+			  hf_vm_get_id());
+	EXPECT_EQ(spci_msg_send(0), 0);
 
 	/* Try using the memory that isn't valid unless it's been returned.  */
 	page[16] = 123;
@@ -115,8 +126,10 @@ TEST_SERVICE(lend_memory_and_fault)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(SERVICE_SEND_BUFFER(), &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(HF_PRIMARY_VM_ID, sizeof(ptr), false), 0);
+	memcpy(SERVICE_SEND_BUFFER()->payload, &ptr, sizeof(ptr));
+	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr), HF_PRIMARY_VM_ID,
+			  hf_vm_get_id());
+	EXPECT_EQ(spci_msg_send(0), 0);
 
 	/* Try using the memory that isn't valid unless it's been returned.  */
 	page[633] = 180;

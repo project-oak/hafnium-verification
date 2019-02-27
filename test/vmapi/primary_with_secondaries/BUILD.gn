@@ -30,6 +30,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
     "memory_sharing.c",
     "no_services.c",
     "run_race.c",
+    "spci.c",
   ]
 
   sources += [ "util.c" ]

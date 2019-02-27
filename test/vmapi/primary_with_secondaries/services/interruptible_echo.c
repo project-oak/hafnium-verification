@@ -39,6 +39,7 @@ TEST_SERVICE(interruptible_echo)
 
 	for (;;) {
 		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		struct spci_message *message = SERVICE_SEND_BUFFER();
 
 		/* Retry if interrupted but made visible with the yield. */
 		while (res.vm_id == HF_INVALID_VM_ID && res.size == 0) {
@@ -46,8 +47,12 @@ TEST_SERVICE(interruptible_echo)
 			res = hf_mailbox_receive(true);
 		}
 
-		memcpy(SERVICE_SEND_BUFFER(), SERVICE_RECV_BUFFER(), res.size);
+		memcpy(message->payload, SERVICE_RECV_BUFFER()->payload,
+		       res.size);
+		spci_message_init(message, res.size, HF_PRIMARY_VM_ID,
+				  SERVICE_VM0);
+
 		hf_mailbox_clear();
-		hf_mailbox_send(res.vm_id, res.size, false);
+		spci_msg_send(0);
 	}
 }

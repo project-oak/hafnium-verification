@@ -18,6 +18,8 @@
 
 #include "hf/arch/std.h"
 
+#include "hf/spci.h"
+
 #include "vmapi/hf/call.h"
 
 #include "hftest.h"
@@ -87,12 +89,14 @@ TEST(mailbox, echo)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Set the message, echo it and check it didn't change. */
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
-	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(mb.send->payload, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
 
@@ -116,13 +120,15 @@ TEST(mailbox, repeated_echo)
 
 		/* Set the message, echo it and check it didn't change. */
 		next_permutation(message, sizeof(message) - 1);
-		memcpy(mb.send, message, sizeof(message));
-		EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false),
-			  0);
+		memcpy(mb.send->payload, message, sizeof(message));
+		spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+				  HF_PRIMARY_VM_ID);
+		EXPECT_EQ(spci_msg_send(0), 0);
 		run_res = hf_vcpu_run(SERVICE_VM0, 0);
 		EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 		EXPECT_EQ(run_res.message.size, sizeof(message));
-		EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+		EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)),
+			  0);
 		EXPECT_EQ(hf_mailbox_clear(), 0);
 	}
 }
@@ -152,15 +158,15 @@ TEST(mailbox, relay)
 	 * SERVICE_VM0, then to SERVICE_VM1 and finally back to here.
 	 */
 	{
-		uint32_t *chain = mb.send;
+		uint32_t *chain = (uint32_t *)mb.send->payload;
 		*chain++ = htole32(SERVICE_VM1);
 		*chain++ = htole32(HF_PRIMARY_VM_ID);
 		memcpy(chain, message, sizeof(message));
-		EXPECT_EQ(hf_mailbox_send(
-				  SERVICE_VM0,
+
+		spci_message_init(mb.send,
 				  sizeof(message) + (2 * sizeof(uint32_t)),
-				  false),
-			  0);
+				  SERVICE_VM0, HF_PRIMARY_VM_ID);
+		EXPECT_EQ(spci_msg_send(0), 0);
 	}
 
 	/* Let SERVICE_VM0 forward the message. */
@@ -176,7 +182,7 @@ TEST(mailbox, relay)
 	/* Ensure the message is in tact. */
 	EXPECT_EQ(run_res.message.vm_id, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
-	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
 
@@ -188,15 +194,16 @@ TEST(mailbox, no_primary_to_secondary_notification_on_configure)
 {
 	struct hf_vcpu_run_return run_res;
 
-	set_up_mailbox();
-
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), -1);
+	struct mailbox_buffers mb = set_up_mailbox();
+	spci_message_init(mb.send, 0, SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_BUSY);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	spci_message_init(mb.send, 0, SERVICE_VM0, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 }
 
 /**
@@ -207,9 +214,10 @@ TEST(mailbox, secondary_to_primary_notification_on_configure)
 {
 	struct hf_vcpu_run_return run_res;
 
-	set_up_mailbox();
+	struct mailbox_buffers mb = set_up_mailbox();
 
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, true), -1);
+	spci_message_init(mb.send, 0, SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(SPCI_MSG_SEND_NOTIFY), SPCI_BUSY);
 
 	/*
 	 * Run first VM for it to configure itself. It should result in
@@ -223,7 +231,7 @@ TEST(mailbox, secondary_to_primary_notification_on_configure)
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
 
 	/* Send should now succeed. */
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 }
 
 /**
@@ -244,12 +252,14 @@ TEST(mailbox, primary_to_secondary)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send a message to echo service, and get response back. */
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
-	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 
 	/* Let secondary VM continue running so that it will wait again. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -258,8 +268,12 @@ TEST(mailbox, primary_to_secondary)
 
 	/* Without clearing our mailbox, send message again. */
 	reverse(message, strlen(message));
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+
+	/* Message should be dropped since the mailbox was not cleared. */
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_INTERRUPT);
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
@@ -281,7 +295,7 @@ TEST(mailbox, primary_to_secondary)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
-	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 }
 
 /**
@@ -302,15 +316,17 @@ TEST(mailbox, secondary_to_primary_notification)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send a message to echo service twice. The second should fail. */
-	memcpy(mb.send, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), true), -1);
+	memcpy(mb.send->payload, message, sizeof(message));
+	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
+			  HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
+	EXPECT_EQ(spci_msg_send(SPCI_MSG_SEND_NOTIFY), SPCI_BUSY);
 
 	/* Receive a reply for the first message. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.size, sizeof(message));
-	EXPECT_EQ(memcmp(mb.recv, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 
 	/* Run VM again so that it clears its mailbox. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -321,5 +337,5 @@ TEST(mailbox, secondary_to_primary_notification)
 	EXPECT_EQ(hf_mailbox_waiter_get(SERVICE_VM0), -1);
 
 	/* Send should now succeed. */
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, 0, false), 0);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 }

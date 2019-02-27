@@ -21,13 +21,13 @@
 
 #include "hftest.h"
 
-void send_with_retry(uint32_t vm_id, size_t size)
+void send_with_retry()
 {
 	int64_t res;
 
 	do {
-		res = hf_mailbox_send(vm_id, size, false);
-	} while (res == -1);
+		res = spci_msg_send(0);
+	} while (res != SPCI_SUCCESS);
 }
 
 /**
@@ -48,6 +48,9 @@ TEST_SERVICE(check_state)
 	static volatile uintptr_t expected;
 	static volatile uintptr_t actual;
 
+	spci_message_init(SERVICE_SEND_BUFFER(), 0, HF_PRIMARY_VM_ID,
+			  hf_vm_get_id());
+
 	for (i = 0; i < 100000; i++) {
 		/*
 		 * We store the expected/actual values in volatile static
@@ -56,13 +59,15 @@ TEST_SERVICE(check_state)
 		 */
 		expected = i;
 		per_cpu_ptr_set(expected);
-		send_with_retry(HF_PRIMARY_VM_ID, 0);
+		send_with_retry();
 		actual = per_cpu_ptr_get();
 		ok &= expected == actual;
 	}
 
 	/* Send two replies, one for each physical CPU. */
-	memcpy(SERVICE_SEND_BUFFER(), &ok, sizeof(ok));
-	send_with_retry(HF_PRIMARY_VM_ID, sizeof(ok));
-	send_with_retry(HF_PRIMARY_VM_ID, sizeof(ok));
+	memcpy(SERVICE_SEND_BUFFER()->payload, &ok, sizeof(ok));
+	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ok), HF_PRIMARY_VM_ID,
+			  hf_vm_get_id());
+	send_with_retry();
+	send_with_retry();
 }

@@ -19,6 +19,7 @@
 #include "hf/arch/vm/interrupts_gicv3.h"
 
 #include "hf/dlog.h"
+#include "hf/spci.h"
 
 #include "vmapi/hf/call.h"
 
@@ -38,7 +39,7 @@ SET_UP(busy_secondary)
 {
 	system_setup();
 	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
-	SERVICE_SELECT(SERVICE_VM0, "busy", send_page);
+	SERVICE_SELECT(SERVICE_VM0, "busy", send_buffer);
 }
 
 TEST(busy_secondary, virtual_timer)
@@ -78,8 +79,10 @@ TEST(busy_secondary, virtual_timer)
 
 	/* Let secondary start looping. */
 	dlog("Telling secondary to loop.\n");
-	memcpy(send_page, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(send_buffer->payload, message, sizeof(message));
+	spci_message_init(send_buffer, 0, SERVICE_VM0,
+			  recv_buffer->target_vm_id);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_PREEMPTED);
 
@@ -133,8 +136,10 @@ TEST(busy_secondary, physical_timer)
 
 	/* Let secondary start looping. */
 	dlog("Telling secondary to loop.\n");
-	memcpy(send_page, message, sizeof(message));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(message), false), 0);
+	memcpy(send_buffer->payload, message, sizeof(message));
+	spci_message_init(send_buffer, 0, SERVICE_VM0,
+			  recv_buffer->target_vm_id);
+	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_PREEMPTED);
 

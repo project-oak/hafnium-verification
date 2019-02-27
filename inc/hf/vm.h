@@ -22,6 +22,7 @@
 #include "hf/list.h"
 #include "hf/mm.h"
 #include "hf/mpool.h"
+#include "hf/spci.h"
 
 enum mailbox_state {
 	/** There is no message in the mailbox. */
@@ -55,8 +56,8 @@ struct mailbox {
 	enum mailbox_state state;
 	uint32_t recv_from_id;
 	int16_t recv_bytes;
-	void *recv;
-	const void *send;
+	struct spci_message *recv;
+	const struct spci_message *send;
 
 	/**
 	 * List of wait_entry structs representing VMs that want to be notified

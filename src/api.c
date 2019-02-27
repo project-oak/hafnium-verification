@@ -28,6 +28,7 @@
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"
+#include "vmapi/hf/spci.h"
 
 /*
  * To eliminate the risk of deadlocks, we define a partial order for the
@@ -729,43 +730,63 @@ exit:
  * If the recipient's receive buffer is busy, it can optionally register the
  * caller to be notified when the recipient's receive buffer becomes available.
  */
-int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
-			 struct vcpu *current, struct vcpu **next)
+int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
+			  struct vcpu **next)
 {
 	struct vm *from = current->vm;
 	struct vm *to;
-	const void *from_buf;
-	int64_t ret;
 	struct hf_vcpu_run_return primary_ret = {
 		.code = HF_VCPU_RUN_MESSAGE,
 	};
+	struct spci_message from_msg_replica;
+	struct spci_message *to_msg;
+	const struct spci_message *from_msg;
 
-	/* Limit the size of transfer. */
-	if (size > HF_MAILBOX_SIZE) {
-		return -1;
-	}
+	uint32_t size;
 
-	/* Disallow reflexive requests as this suggests an error in the VM. */
-	if (vm_id == from->id) {
-		return -1;
-	}
+	int64_t ret;
+	bool notify = (attributes & SPCI_MSG_SEND_NOTIFY_MASK) ==
+		      SPCI_MSG_SEND_NOTIFY;
 
-	/* Ensure the target VM exists. */
-	to = vm_get(vm_id);
-	if (to == NULL) {
-		return -1;
+	/*
+	 * Check that the sender has configured its send buffer. Copy the
+	 * message header. If the tx mailbox at from_msg is configured (i.e.
+	 * from_msg != NULL) then it can be safely accessed after releasing the
+	 * lock since the tx mailbox address can only be configured once.
+	 */
+	sl_lock(&from->lock);
+	from_msg = from->mailbox.send;
+	sl_unlock(&from->lock);
+
+	if (from_msg == NULL) {
+		return SPCI_INVALID_PARAMETERS;
 	}
 
 	/*
-	 * Check that the sender has configured its send buffer. It is safe to
-	 * use from_buf after releasing the lock because the buffer cannot be
-	 * modified once it's configured.
+	 * Note that the payload is not copied when the message header is.
 	 */
-	sl_lock(&from->lock);
-	from_buf = from->mailbox.send;
-	sl_unlock(&from->lock);
-	if (from_buf == NULL) {
-		return -1;
+	from_msg_replica = *from_msg;
+
+	/* Ensure source VM id corresponds to the current VM. */
+	if (from_msg_replica.source_vm_id != from->id) {
+		return SPCI_INVALID_PARAMETERS;
+	}
+
+	size = from_msg_replica.length;
+	/* Limit the size of transfer. */
+	if (size > HF_MAILBOX_SIZE - sizeof(struct spci_message)) {
+		return SPCI_INVALID_PARAMETERS;
+	}
+
+	/* Disallow reflexive requests as this suggests an error in the VM. */
+	if (from_msg_replica.target_vm_id == from->id) {
+		return SPCI_INVALID_PARAMETERS;
+	}
+
+	/* Ensure the target VM exists. */
+	to = vm_get(from_msg_replica.target_vm_id);
+	if (to == NULL) {
+		return SPCI_INVALID_PARAMETERS;
 	}
 
 	sl_lock(&to->lock);
@@ -778,7 +799,8 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
 		 */
 		if (notify) {
 			struct wait_entry *entry =
-				&current->vm->wait_entries[vm_id];
+				&current->vm->wait_entries
+					 [from_msg_replica.target_vm_id];
 
 			/* Append waiter only if it's not there yet. */
 			if (list_empty(&entry->wait_links)) {
@@ -787,16 +809,18 @@ int64_t api_mailbox_send(uint32_t vm_id, size_t size, bool notify,
 			}
 		}
 
-		ret = -1;
+		ret = SPCI_BUSY;
 		goto out;
 	}
 
 	/* Copy data. */
-	memcpy(to->mailbox.recv, from_buf, size);
+	to_msg = to->mailbox.recv;
+	*to_msg = from_msg_replica;
+	memcpy(to_msg->payload, from->mailbox.send->payload, size);
 	to->mailbox.recv_bytes = size;
 	to->mailbox.recv_from_id = from->id;
 	primary_ret.message.vm_id = to->id;
-	ret = 0;
+	ret = SPCI_SUCCESS;
 
 	/* Messages for the primary VM are delivered directly. */
 	if (to->id == HF_PRIMARY_VM_ID) {

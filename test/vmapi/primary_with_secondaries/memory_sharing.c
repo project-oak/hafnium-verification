@@ -104,8 +104,9 @@ TEST(memory_sharing, concurrent)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
+	memcpy(mb.send->payload, &ptr, sizeof(ptr));
+	spci_message_init(mb.send, sizeof(ptr), SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_YIELD);
@@ -146,8 +147,9 @@ TEST(memory_sharing, share_concurrently_and_get_back)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
+	memcpy(mb.send->payload, &ptr, sizeof(ptr));
+	spci_message_init(mb.send, sizeof(ptr), SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -183,8 +185,9 @@ TEST(memory_sharing, give_and_get_back)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
+	memcpy(mb.send->payload, &ptr, sizeof(ptr));
+	spci_message_init(mb.send, sizeof(ptr), SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -220,8 +223,9 @@ TEST(memory_sharing, lend_and_get_back)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
+	memcpy(mb.send->payload, &ptr, sizeof(ptr));
+	spci_message_init(mb.send, sizeof(ptr), SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -256,8 +260,9 @@ TEST(memory_sharing, reshare_after_return)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
+	memcpy(mb.send->payload, &ptr, sizeof(ptr));
+	spci_message_init(mb.send, sizeof(ptr), SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -295,8 +300,9 @@ TEST(memory_sharing, share_elsewhere_after_return)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(mb.send, &ptr, sizeof(ptr));
-	EXPECT_EQ(hf_mailbox_send(SERVICE_VM0, sizeof(ptr), false), 0);
+	memcpy(mb.send->payload, &ptr, sizeof(ptr));
+	spci_message_init(mb.send, sizeof(ptr), SERVICE_VM0, HF_PRIMARY_VM_ID);
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 
 	/* Let the memory be returned. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
@@ -328,7 +334,7 @@ TEST(memory_sharing, give_memory_and_lose_access)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 
 	/* Check the memory was cleared. */
-	memcpy(&ptr, mb.recv, sizeof(ptr));
+	memcpy(&ptr, mb.recv->payload, sizeof(ptr));
 	for (int i = 0; i < PAGE_SIZE; ++i) {
 		ASSERT_EQ(ptr[i], 0);
 	}
@@ -354,7 +360,7 @@ TEST(memory_sharing, lend_memory_and_lose_access)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 
 	/* Check the memory was cleared. */
-	memcpy(&ptr, mb.recv, sizeof(ptr));
+	memcpy(&ptr, mb.recv->payload, sizeof(ptr));
 	for (int i = 0; i < PAGE_SIZE; ++i) {
 		ASSERT_EQ(ptr[i], 0);
 	}

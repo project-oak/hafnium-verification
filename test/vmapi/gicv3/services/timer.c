@@ -46,8 +46,10 @@ static void irq_current(void)
 	}
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
-	memcpy(SERVICE_SEND_BUFFER(), buffer, size);
-	hf_mailbox_send(HF_PRIMARY_VM_ID, size, false);
+	memcpy(SERVICE_SEND_BUFFER()->payload, buffer, size);
+	spci_message_init(SERVICE_SEND_BUFFER(), size, HF_PRIMARY_VM_ID,
+			  SERVICE_RECV_BUFFER()->target_vm_id);
+	spci_msg_send(0);
 	dlog("secondary IRQ %d ended\n", interrupt_id);
 	event_send_local();
 }
@@ -60,18 +62,21 @@ TEST_SERVICE(timer)
 
 	for (;;) {
 		const char timer_wfi_message[] = "**** xxxxxxx";
-		char *message = SERVICE_RECV_BUFFER();
+		struct spci_message *message_header = SERVICE_RECV_BUFFER();
+		uint8_t *message;
 		bool wfi, wfe, receive;
 		bool disable_interrupts;
 		uint32_t ticks;
-		struct hf_mailbox_receive_return received_message =
-			mailbox_receive_retry();
+		mailbox_receive_retry();
 
-		if (received_message.vm_id != HF_PRIMARY_VM_ID ||
-		    received_message.size != sizeof(timer_wfi_message)) {
+		if (message_header->source_vm_id != HF_PRIMARY_VM_ID ||
+		    message_header->length != sizeof(timer_wfi_message)) {
 			FAIL("Got unexpected message from VM %d, size %d.\n",
-			     received_message.vm_id, received_message.size);
+			     message_header->source_vm_id,
+			     message_header->length);
 		}
+
+		message = message_header->payload;
 
 		/*
 		 * Start a timer to send the message back: enable it and

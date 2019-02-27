@@ -38,8 +38,10 @@ static void irq(void)
 	dlog("secondary IRQ %d from current\n", interrupt_id);
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
-	memcpy(SERVICE_SEND_BUFFER(), buffer, size);
-	hf_mailbox_send(HF_PRIMARY_VM_ID, size, false);
+	memcpy(SERVICE_SEND_BUFFER()->payload, buffer, size);
+	spci_message_init(SERVICE_SEND_BUFFER(), size, HF_PRIMARY_VM_ID,
+			  hf_vm_get_id());
+	spci_msg_send(0);
 	dlog("secondary IRQ %d ended\n", interrupt_id);
 }
 
@@ -62,6 +64,7 @@ struct hf_mailbox_receive_return mailbox_receive_retry()
 TEST_SERVICE(interruptible)
 {
 	uint32_t this_vm_id = hf_vm_get_id();
+	struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
 
 	exception_setup(irq);
 	hf_interrupt_enable(SELF_INTERRUPT_ID, true);
@@ -72,23 +75,23 @@ TEST_SERVICE(interruptible)
 	for (;;) {
 		const char ping_message[] = "Ping";
 		const char enable_message[] = "Enable interrupt C";
-		struct hf_mailbox_receive_return received_message =
-			mailbox_receive_retry();
-		if (received_message.vm_id == HF_PRIMARY_VM_ID &&
-		    received_message.size == sizeof(ping_message) &&
-		    memcmp(SERVICE_RECV_BUFFER(), ping_message,
+
+		mailbox_receive_retry();
+		if (recv_buf->source_vm_id == HF_PRIMARY_VM_ID &&
+		    recv_buf->length == sizeof(ping_message) &&
+		    memcmp(recv_buf->payload, ping_message,
 			   sizeof(ping_message)) == 0) {
 			/* Interrupt ourselves */
 			hf_interrupt_inject(this_vm_id, 0, SELF_INTERRUPT_ID);
-		} else if (received_message.vm_id == HF_PRIMARY_VM_ID &&
-			   received_message.size == sizeof(enable_message) &&
-			   memcmp(SERVICE_RECV_BUFFER(), enable_message,
+		} else if (recv_buf->source_vm_id == HF_PRIMARY_VM_ID &&
+			   recv_buf->length == sizeof(enable_message) &&
+			   memcmp(recv_buf->payload, enable_message,
 				  sizeof(enable_message)) == 0) {
 			/* Enable interrupt ID C. */
 			hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_C, true);
 		} else {
 			dlog("Got unexpected message from VM %d, size %d.\n",
-			     received_message.vm_id, received_message.size);
+			     recv_buf->source_vm_id, recv_buf->length);
 			FAIL("Unexpected message");
 		}
 		hf_mailbox_clear();
