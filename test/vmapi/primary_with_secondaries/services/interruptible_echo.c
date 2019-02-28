@@ -44,7 +44,7 @@ TEST_SERVICE(interruptible_echo)
 
 		/* Retry if interrupted but made visible with the yield. */
 		while (res == SPCI_INTERRUPTED) {
-			hf_vcpu_yield();
+			spci_yield();
 			res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		}
 

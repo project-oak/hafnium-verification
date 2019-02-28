@@ -61,7 +61,7 @@ TEST_SERVICE(spci_check)
 	/* Ensure that the payload was correctly transmitted. */
 	EXPECT_EQ(memcmp(recv_buf->payload, message, sizeof(message)), 0);
 
-	hf_vcpu_yield();
+	spci_yield();
 }
 
 TEST_SERVICE(spci_length)
@@ -79,7 +79,7 @@ TEST_SERVICE(spci_length)
 	EXPECT_NE(memcmp(recv_buf->payload, message, sizeof(message)), 0);
 	EXPECT_EQ(memcmp(recv_buf->payload, message, recv_buf->length), 0);
 
-	hf_vcpu_yield();
+	spci_yield();
 }
 
 TEST_SERVICE(spci_recv_non_blocking)
@@ -87,5 +87,5 @@ TEST_SERVICE(spci_recv_non_blocking)
 	/* Wait for single message to be sent by the primary VM. */
 	EXPECT_EQ(spci_msg_recv(0), SPCI_RETRY);
 
-	hf_vcpu_yield();
+	spci_yield();
 }

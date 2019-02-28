@@ -128,9 +128,9 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 /**
  * Returns to the primary vm to allow this cpu to be used for other tasks as the
  * vcpu does not have work to do at this moment. The current vcpu is marked as
- * ready to be scheduled again.
+ * ready to be scheduled again. This SPCI function always returns SPCI_SUCCESS.
  */
-struct vcpu *api_yield(struct vcpu *current)
+int32_t api_spci_yield(struct vcpu *current, struct vcpu **next)
 {
 	struct hf_vcpu_run_return ret = {
 		.code = HF_VCPU_RUN_YIELD,
@@ -138,10 +138,13 @@ struct vcpu *api_yield(struct vcpu *current)
 
 	if (current->vm->id == HF_PRIMARY_VM_ID) {
 		/* Noop on the primary as it makes the scheduling decisions. */
-		return NULL;
+		return SPCI_SUCCESS;
 	}
 
-	return api_switch_to_primary(current, ret, VCPU_STATE_READY);
+	*next = api_switch_to_primary(current, ret, VCPU_STATE_READY);
+
+	/* SPCI_YIELD always returns SPCI_SUCCESS. */
+	return SPCI_SUCCESS;
 }
 
 /**

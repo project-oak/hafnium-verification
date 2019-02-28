@@ -42,7 +42,7 @@ TEST_SERVICE(memory_increment)
 		}
 
 		/* Allow the memory to be populated. */
-		hf_vcpu_yield();
+		EXPECT_EQ(spci_yield(), SPCI_SUCCESS);
 
 		/* Increment each byte of memory. */
 		for (i = 0; i < PAGE_SIZE; ++i) {

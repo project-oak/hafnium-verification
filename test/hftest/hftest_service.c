@@ -114,7 +114,7 @@ noreturn void kmain(size_t memory_size)
 	ctx->memory_size = memory_size;
 
 	/* Pause so the next time cycles are given the service will be run. */
-	hf_vcpu_yield();
+	spci_yield();
 
 	/* Let the service run. */
 	service();

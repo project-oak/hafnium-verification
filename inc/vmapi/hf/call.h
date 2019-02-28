@@ -28,7 +28,6 @@
 #define HF_VM_GET_COUNT         0xff01
 #define HF_VCPU_GET_COUNT       0xff02
 #define HF_VCPU_RUN             0xff03
-#define HF_VCPU_YIELD           0xff04
 #define HF_VM_CONFIGURE         0xff05
 #define HF_MAILBOX_CLEAR        0xff08
 #define HF_MAILBOX_WRITABLE_GET 0xff09
@@ -84,10 +83,11 @@ static inline struct hf_vcpu_run_return hf_vcpu_run(uint32_t vm_id,
 
 /**
  * Hints that the vcpu is willing to yield its current use of the physical CPU.
+ * This call always returns SPCI_SUCCESS.
  */
-static inline void hf_vcpu_yield(void)
+static inline int64_t spci_yield(void)
 {
-	hf_call(HF_VCPU_YIELD, 0, 0, 0);
+	return hf_call(SPCI_YIELD_32, 0, 0, 0);
 }
 
 /**

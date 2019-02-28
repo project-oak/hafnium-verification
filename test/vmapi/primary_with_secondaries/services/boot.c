@@ -47,7 +47,7 @@ TEST_SERVICE(boot_memory)
 	ASSERT_NE(checksum, 0);
 	dlog("Checksum of all memory is %d\n", checksum);
 
-	hf_vcpu_yield();
+	spci_yield();
 }
 
 TEST_SERVICE(boot_memory_underrun)

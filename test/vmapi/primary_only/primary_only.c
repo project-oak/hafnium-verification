@@ -91,9 +91,9 @@ TEST(hf_vcpu_run, cannot_run_absent_secondary)
 /**
  * Yielding from the primary is a noop.
  */
-TEST(hf_vcpu_yield, yield_is_noop_for_primary)
+TEST(spci_yield, yield_is_noop_for_primary)
 {
-	hf_vcpu_yield();
+	EXPECT_EQ(spci_yield(), SPCI_SUCCESS);
 }
 
 /**

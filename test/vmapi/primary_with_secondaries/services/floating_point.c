@@ -27,8 +27,8 @@ TEST_SERVICE(fp_fill)
 {
 	const double value = 0.75;
 	fill_fp_registers(value);
-	hf_vcpu_yield();
+	EXPECT_EQ(spci_yield(), SPCI_SUCCESS);
 
 	ASSERT_TRUE(check_fp_register(value));
-	hf_vcpu_yield();
+	spci_yield();
 }

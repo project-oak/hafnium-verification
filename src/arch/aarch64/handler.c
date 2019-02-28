@@ -410,9 +410,8 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 			api_vcpu_run(arg1, arg2, current(), &ret.new));
 		break;
 
-	case HF_VCPU_YIELD:
-		ret.user_ret = 0;
-		ret.new = api_yield(current());
+	case SPCI_YIELD_32:
+		ret.user_ret = api_spci_yield(current(), &ret.new);
 		break;
 
 	case HF_VM_CONFIGURE:
@@ -544,6 +543,7 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 {
 	struct vcpu *vcpu = current();
 	struct vcpu_fault_info info;
+	struct vcpu *new_vcpu;
 
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
@@ -556,7 +556,8 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 			 * TODO: consider giving the scheduler more context,
 			 * somehow.
 			 */
-			return api_yield(vcpu);
+			api_spci_yield(vcpu, &new_vcpu);
+			return new_vcpu;
 		}
 		/* WFI */
 		return api_wait_for_interrupt(vcpu);
