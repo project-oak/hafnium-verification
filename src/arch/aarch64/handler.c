@@ -563,12 +563,18 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
+		/* Skip the instruction. */
+		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
 		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
 		if (esr & 1) {
-			return NULL;
+			/* WFE */
+			/*
+			 * TODO: consider giving the scheduler more context,
+			 * somehow.
+			 */
+			return api_yield(vcpu);
 		}
-		/* Skip the WFI instruction. */
-		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
+		/* WFI */
 		return api_wait_for_interrupt(vcpu);
 
 	case 0x24: /* EC = 100100, Data abort. */

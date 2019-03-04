@@ -96,7 +96,7 @@ TEST(timer_secondary, busywait)
 	timer_busywait_secondary();
 }
 
-void timer_wfi_secondary(const char message[])
+void timer_wfi_secondary(const char message[], bool wfe)
 {
 	const char expected_response[] = "Got IRQ 03.";
 	size_t message_length = strlen(message) + 1;
@@ -117,7 +117,7 @@ void timer_wfi_secondary(const char message[])
 	 */
 	last_interrupt_id = 0;
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	if (run_res.code == HF_VCPU_RUN_SLEEP) {
+	if (run_res.code == HF_VCPU_RUN_SLEEP && !wfe) {
 		/*
 		 * This case happens if the secondary manages to call WFI before
 		 * the timer fires. This is likely when the timer is set for a
@@ -132,13 +132,26 @@ void timer_wfi_secondary(const char message[])
 			run_res = hf_vcpu_run(SERVICE_VM0, 0);
 		}
 		dlog("Primary done looping\n");
+	} else if (run_res.code == HF_VCPU_RUN_YIELD && wfe) {
+		/*
+		 * This case happens if the secondary manages to call WFE before
+		 * the timer fires. This is likely when the timer is set for a
+		 * long time.
+		 */
+		dlog("secondary yielding after receiving timer message\n");
+		/* Loop until the timer fires. */
+		while (run_res.code == HF_VCPU_RUN_YIELD) {
+			dlog("Primary looping until timer fires\n");
+			run_res = hf_vcpu_run(SERVICE_VM0, 0);
+		}
+		dlog("Primary done looping\n");
 	} else if (run_res.code == HF_VCPU_RUN_PREEMPTED) {
 		/*
 		 * This case happens if the (hardware) timer fires before the
 		 * secondary calls WFI. Then we get the interrupt to the
-		 * primary, ignore it, and see a HF_VCPU_RUN_YIELD code from the
-		 * hf_vcpu_run call, so we should call it again for the timer
-		 * interrupt to be injected automatically by Hafnium.
+		 * primary, ignore it, and see a HF_VCPU_RUN_PREEMPTED code from
+		 * the hf_vcpu_run call, so we should call it again for the
+		 * timer interrupt to be injected automatically by Hafnium.
 		 */
 		EXPECT_EQ(last_interrupt_id, VIRTUAL_TIMER_IRQ);
 		dlog("Primary yielded, running again\n");
@@ -169,8 +182,8 @@ TEST(timer_secondary, wfi_short)
 	 * Run the test twice in a row, to check that the state doesn't get
 	 * messed up.
 	 */
-	timer_wfi_secondary("WFI  0000001");
-	timer_wfi_secondary("WFI  0000001");
+	timer_wfi_secondary("WFI  0000001", false);
+	timer_wfi_secondary("WFI  0000001", false);
 }
 
 TEST(timer_secondary, wfi_long)
@@ -179,8 +192,28 @@ TEST(timer_secondary, wfi_long)
 	 * Run the test twice in a row, to check that the state doesn't get
 	 * messed up.
 	 */
-	timer_wfi_secondary("WFI  0099999");
-	timer_wfi_secondary("WFI  0099999");
+	timer_wfi_secondary("WFI  0099999", false);
+	timer_wfi_secondary("WFI  0099999", false);
+}
+
+TEST(timer_secondary, wfe_short)
+{
+	/*
+	 * Run the test twice in a row, to check that the state doesn't get
+	 * messed up.
+	 */
+	timer_wfi_secondary("WFE  0000001", true);
+	timer_wfi_secondary("WFE  0000001", true);
+}
+
+TEST(timer_secondary, wfe_long)
+{
+	/*
+	 * Run the test twice in a row, to check that the state doesn't get
+	 * messed up.
+	 */
+	timer_wfi_secondary("WFE  0099999", true);
+	timer_wfi_secondary("WFE  0099999", true);
 }
 
 /**

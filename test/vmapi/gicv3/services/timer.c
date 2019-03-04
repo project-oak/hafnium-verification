@@ -18,6 +18,7 @@
 
 #include "hf/arch/cpu.h"
 #include "hf/arch/std.h"
+#include "hf/arch/vm/events.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
 
 #include "hf/dlog.h"
@@ -48,6 +49,7 @@ static void irq_current(void)
 	memcpy(SERVICE_SEND_BUFFER(), buffer, size);
 	hf_mailbox_send(HF_PRIMARY_VM_ID, size, false);
 	dlog("secondary IRQ %d ended\n", interrupt_id);
+	event_send_local();
 }
 
 TEST_SERVICE(timer)
@@ -58,6 +60,7 @@ TEST_SERVICE(timer)
 
 	for (;;) {
 		const char timer_wfi_message[] = "WFI  xxxxxxx";
+		const char timer_wfe_message[] = "WFE  xxxxxxx";
 		struct hf_mailbox_receive_return received_message =
 			mailbox_receive_retry();
 		if (received_message.vm_id == HF_PRIMARY_VM_ID &&
@@ -68,6 +71,7 @@ TEST_SERVICE(timer)
 			 */
 			char *message = SERVICE_RECV_BUFFER();
 			bool wfi = memcmp(message, timer_wfi_message, 5) == 0;
+			bool wfe = memcmp(message, timer_wfe_message, 5) == 0;
 			int32_t ticks = (message[5] - '0') * 1000000 +
 					(message[6] - '0') * 100000 +
 					(message[7] - '0') * 10000 +
@@ -86,6 +90,11 @@ TEST_SERVICE(timer)
 				/* WFI until the timer fires. */
 				interrupt_wait();
 				arch_irq_enable();
+			} else if (wfe) {
+				/* WFE until the timer fires. */
+				while (!timer_fired) {
+					event_wait();
+				}
 			} else {
 				/* Busy wait until the timer fires. */
 				while (!timer_fired) {
