@@ -55,22 +55,15 @@ source_set("src_testable") {
   ]
 
   deps = [
-    ":common",
     ":fdt",
     ":memiter",
     "//src/arch/${plat_arch}",
+    "//src/arch/${plat_arch}:std",
   ]
 
   if (is_debug) {
     deps += [ ":dlog" ]
   }
-}
-
-# Code that is not specific to a certain image so can be shared.
-source_set("common") {
-  sources = [
-    "std.c",
-  ]
 }
 
 # Debug code that is not specific to a certain image so can be shared.
@@ -80,8 +73,8 @@ source_set("dlog") {
   ]
 
   deps = [
-    ":common",
     "//src/arch/${plat_arch}:putchar",
+    "//src/arch/${plat_arch}:std",
   ]
 }
 
@@ -92,7 +85,7 @@ source_set("fdt") {
   ]
 
   deps = [
-    ":common",
+    "//src/arch/${plat_arch}:std",
   ]
 
   if (is_debug) {

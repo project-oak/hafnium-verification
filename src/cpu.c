@@ -19,10 +19,10 @@
 #include <stdalign.h>
 
 #include "hf/arch/cpu.h"
+#include "hf/arch/std.h"
 
 #include "hf/api.h"
 #include "hf/dlog.h"
-#include "hf/std.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"

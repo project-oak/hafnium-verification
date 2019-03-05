@@ -45,6 +45,12 @@ source_set("arch") {
   ]
 }
 
+source_set("std") {
+  sources = [
+    "std.c",
+  ]
+}
+
 # Entry code to prepare the loaded image to be run.
 source_set("entry") {
   sources = [

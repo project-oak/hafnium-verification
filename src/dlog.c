@@ -20,9 +20,9 @@
 #include <stddef.h>
 
 #include "hf/arch/console.h"
+#include "hf/arch/std.h"
 
 #include "hf/spinlock.h"
-#include "hf/std.h"
 
 /* Keep macro alignment */
 /* clang-format off */

@@ -19,11 +19,11 @@
 #include <stdalign.h>
 #include <stdint.h>
 
+#include "hf/arch/std.h"
 #include "hf/arch/vm/power_mgmt.h"
 
 #include "hf/fdt.h"
 #include "hf/memiter.h"
-#include "hf/std.h"
 
 alignas(4096) uint8_t kstack[4096];
 

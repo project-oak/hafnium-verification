@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "hf/std.h"
+#include "hf/arch/std.h"
 
 #include "vmapi/hf/call.h"
 

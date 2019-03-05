@@ -18,7 +18,7 @@
 
 #include <stdnoreturn.h>
 
-#include "hf/std.h"
+#include "hf/arch/std.h"
 
 /*
  * Log with the HFTEST_LOG_PREFIX and a new line. The zero is added so there is

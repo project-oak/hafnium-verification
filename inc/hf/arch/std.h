@@ -64,6 +64,7 @@ int strcmp(const char *a, const char *b);
 #define align_down(v, a) ((uintptr_t)(v) & ~(a - 1))
 #endif
 
+#ifndef be16toh
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
 
 #define be16toh(v) __builtin_bswap16(v)
@@ -109,4 +110,5 @@ int strcmp(const char *a, const char *b);
 
 #error "Unsupported byte order"
 
+#endif
 #endif

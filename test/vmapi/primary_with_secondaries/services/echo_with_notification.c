@@ -15,9 +15,8 @@
  */
 
 #include "hf/arch/cpu.h"
+#include "hf/arch/std.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
-
-#include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 

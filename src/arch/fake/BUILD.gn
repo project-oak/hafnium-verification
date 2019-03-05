@@ -26,3 +26,7 @@ source_set("putchar") {
     "putchar.c",
   ]
 }
+
+# Empty, as the functions are provided by libc already.
+source_set("std") {
+}

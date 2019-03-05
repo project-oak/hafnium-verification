@@ -18,8 +18,9 @@
 
 #include <stdint.h>
 
+#include "hf/arch/std.h"
+
 #include "hf/dlog.h"
-#include "hf/std.h"
 
 struct fdt_header {
 	uint32_t magic;
