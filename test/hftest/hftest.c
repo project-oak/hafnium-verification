@@ -93,7 +93,7 @@ static void json(void)
 static noreturn void abort(void)
 {
 	HFTEST_LOG("FAIL");
-	shutdown();
+	arch_power_off();
 }
 
 static void run_test(hftest_test_fn set_up, hftest_test_fn test,

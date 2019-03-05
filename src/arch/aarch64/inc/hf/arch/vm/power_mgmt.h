@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include <stdnoreturn.h>
 
-noreturn void shutdown(void);
+noreturn void arch_power_off(void);
 
 bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
 	       void (*entry)(uintptr_t arg), uintptr_t arg);

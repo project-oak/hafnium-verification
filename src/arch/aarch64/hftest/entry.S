@@ -25,7 +25,7 @@ image_entry:
 	bl kmain
 
 	/* If the VM returns, shutdown the system. */
-	bl shutdown
+	bl arch_power_off
 
 	/* Loop forever waiting for interrupts. */
 0:	wfi

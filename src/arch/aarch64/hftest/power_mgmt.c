@@ -99,7 +99,7 @@ noreturn void cpu_stop(void)
 /**
  * Shuts down the system or exits emulation.
  */
-noreturn void shutdown(void)
+noreturn void arch_power_off(void)
 {
 	smc(PSCI_SYSTEM_OFF, 0, 0, 0);
 	for (;;) {
