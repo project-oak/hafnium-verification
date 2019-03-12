@@ -216,6 +216,26 @@ TEST(timer_secondary, wfe_long)
 	timer_wfi_secondary("WFE  0099999", true);
 }
 
+TEST(timer_secondary, receive_short)
+{
+	/*
+	 * Run the test twice in a row, to check that the state doesn't get
+	 * messed up.
+	 */
+	timer_wfi_secondary("RECV 0000001", false);
+	timer_wfi_secondary("RECV 0000001", false);
+}
+
+TEST(timer_secondary, receive_long)
+{
+	/*
+	 * Run the test twice in a row, to check that the state doesn't get
+	 * messed up.
+	 */
+	timer_wfi_secondary("RECV 0099999", false);
+	timer_wfi_secondary("RECV 0099999", false);
+}
+
 /**
  * Set the timer for a very long time, and expect that it doesn't fire.
  */

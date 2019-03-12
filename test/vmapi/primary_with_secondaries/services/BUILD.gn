@@ -89,6 +89,19 @@ source_set("interruptible") {
   ]
 }
 
+# Service to check that hf_mailbox_receive can't block when there are pending
+# interrupts.
+source_set("receive_block") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  sources = [
+    "receive_block.c",
+  ]
+}
+
 # Service to listen for messages and forward them on to another.
 source_set("relay") {
   testonly = true
@@ -111,6 +124,7 @@ vm_kernel("service_vm0") {
     ":echo_with_notification",
     ":interruptible",
     ":memory",
+    ":receive_block",
     ":relay",
     "//test/hftest:hftest_secondary_vm",
   ]

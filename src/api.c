@@ -916,8 +916,12 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 		goto out;
 	}
 
-	/* No pending message so fail if not allowed to block. */
-	if (!block) {
+	/*
+	 * No pending message so fail if not allowed to block. Don't block if
+	 * there are enabled and pending interrupts, to match behaviour of
+	 * wait_for_interrupt.
+	 */
+	if (!block || current->interrupts.enabled_and_pending_count > 0) {
 		goto out;
 	}
 

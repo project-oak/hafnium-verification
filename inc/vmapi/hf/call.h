@@ -134,6 +134,13 @@ static inline int64_t hf_mailbox_send(uint32_t vm_id, size_t size, bool notify)
  * If no message was received, the VM ID will be HF_INVALID_VM_ID.
  *
  * The mailbox must be cleared before a new message can be received.
+ *
+ * If no message is immediately available, `block` is true, and there are no
+ * enabled and pending interrupts (irrespective of whether interrupts are
+ * enabled globally), then this will block until a message is available or an
+ * enabled interrupt becomes pending. This matches the behaviour of the WFI
+ * instruction on aarch64, except that a message becoming available is also
+ * treated like a wake-up event.
  */
 static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
 {
