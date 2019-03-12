@@ -28,7 +28,7 @@ TEST_SERVICE(memory_increment)
 {
 	/* Loop, writing message to the shared memory. */
 	for (;;) {
-		hf_mailbox_receive(true);
+		spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		uint8_t *ptr;
 		size_t i;
 
@@ -60,7 +60,7 @@ TEST_SERVICE(memory_return)
 {
 	/* Loop, giving memory back to the sender. */
 	for (;;) {
-		hf_mailbox_receive(true);
+		spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		uint8_t *ptr;
 
 		/* Check the memory was cleared. */

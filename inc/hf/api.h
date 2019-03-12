@@ -32,9 +32,6 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 				       struct vcpu **next);
 int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 			 struct vcpu **next);
-struct hf_mailbox_receive_return api_mailbox_receive(bool block,
-						     struct vcpu *current,
-						     struct vcpu **next);
 int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next);
 int64_t api_mailbox_writable_get(const struct vcpu *current);
 int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current);
@@ -53,4 +50,6 @@ int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 			     struct vcpu **next);
 
 int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
+			  struct vcpu **next);
+int32_t api_spci_msg_recv(uint32_t attributes, struct vcpu *current,
 			  struct vcpu **next);

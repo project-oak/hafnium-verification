@@ -18,15 +18,18 @@
 
 #include "vmapi/hf/call.h"
 
+#include "hftest.h"
 /**
  * Try to receive a message from the mailbox, blocking if necessary, and
  * retrying if interrupted.
  */
-struct hf_mailbox_receive_return mailbox_receive_retry(void)
+int32_t mailbox_receive_retry(void)
 {
-	struct hf_mailbox_receive_return received;
+	int32_t received;
+
 	do {
-		received = hf_mailbox_receive(true);
-	} while (received.vm_id == HF_INVALID_VM_ID && received.size == 0);
+		received = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+	} while (received == SPCI_INTERRUPTED);
+
 	return received;
 }

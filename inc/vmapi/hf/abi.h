@@ -101,11 +101,6 @@ struct hf_vcpu_run_return {
 	};
 };
 
-struct hf_mailbox_receive_return {
-	uint32_t vm_id;
-	uint32_t size;
-};
-
 enum hf_share {
 	/**
 	 * Relinquish ownership and access to the memory and pass them to the
@@ -181,25 +176,4 @@ static inline struct hf_vcpu_run_return hf_vcpu_run_return_decode(uint64_t res)
 	}
 
 	return ret;
-}
-
-/**
- * Encode an hf_mailbox_receive_return struct in the 64-bit packing ABI.
- */
-static inline uint64_t hf_mailbox_receive_return_encode(
-	struct hf_mailbox_receive_return res)
-{
-	return res.vm_id | ((uint64_t)res.size << 32);
-}
-
-/**
- * Decode an hf_mailbox_receive_return struct from the 64-bit packing ABI.
- */
-static inline struct hf_mailbox_receive_return hf_mailbox_receive_return_decode(
-	uint64_t res)
-{
-	return (struct hf_mailbox_receive_return){
-		.vm_id = (uint32_t)(res & 0xffffffff),
-		.size = (uint32_t)(res >> 32),
-	};
 }

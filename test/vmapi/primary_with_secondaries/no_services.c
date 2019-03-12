@@ -147,9 +147,8 @@ TEST(hf_vm_configure, succeeds)
  */
 TEST(hf_mailbox_receive, cannot_receive_from_primary_blocking)
 {
-	struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
-	EXPECT_EQ(res.vm_id, HF_INVALID_VM_ID);
-	EXPECT_EQ(res.size, 0);
+	int32_t res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+	EXPECT_NE(res, SPCI_SUCCESS);
 }
 
 /**
@@ -157,7 +156,6 @@ TEST(hf_mailbox_receive, cannot_receive_from_primary_blocking)
  */
 TEST(hf_mailbox_receive, cannot_receive_from_primary_non_blocking)
 {
-	struct hf_mailbox_receive_return res = hf_mailbox_receive(false);
-	EXPECT_EQ(res.vm_id, HF_INVALID_VM_ID);
-	EXPECT_EQ(res.size, 0);
+	int32_t res = spci_msg_recv(0);
+	EXPECT_NE(res, SPCI_SUCCESS);
 }

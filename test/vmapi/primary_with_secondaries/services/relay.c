@@ -36,7 +36,7 @@ TEST_SERVICE(relay)
 		uint32_t next_message_size;
 
 		/* Receive the message to relay. */
-		hf_mailbox_receive(true);
+		spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 
 		/* Prepare to relay the message. */
 		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();

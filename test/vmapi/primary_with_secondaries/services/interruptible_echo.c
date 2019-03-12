@@ -38,19 +38,20 @@ TEST_SERVICE(interruptible_echo)
 	arch_irq_enable();
 
 	for (;;) {
-		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
+		uint32_t res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		struct spci_message *message = SERVICE_SEND_BUFFER();
+		struct spci_message *recv_message = SERVICE_RECV_BUFFER();
 
 		/* Retry if interrupted but made visible with the yield. */
-		while (res.vm_id == HF_INVALID_VM_ID && res.size == 0) {
+		while (res == SPCI_INTERRUPTED) {
 			hf_vcpu_yield();
-			res = hf_mailbox_receive(true);
+			res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		}
 
-		memcpy(message->payload, SERVICE_RECV_BUFFER()->payload,
-		       res.size);
-		spci_message_init(message, res.size, HF_PRIMARY_VM_ID,
-				  SERVICE_VM0);
+		memcpy(message->payload, recv_message->payload,
+		       recv_message->length);
+		spci_message_init(message, recv_message->length,
+				  HF_PRIMARY_VM_ID, SERVICE_VM0);
 
 		hf_mailbox_clear();
 		spci_msg_send(0);

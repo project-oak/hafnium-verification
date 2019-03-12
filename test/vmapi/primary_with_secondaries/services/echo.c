@@ -26,7 +26,7 @@ TEST_SERVICE(echo)
 {
 	/* Loop, echo messages back to the sender. */
 	for (;;) {
-		hf_mailbox_receive(true);
+		spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		struct spci_message *send_buf = SERVICE_SEND_BUFFER();
 		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
 

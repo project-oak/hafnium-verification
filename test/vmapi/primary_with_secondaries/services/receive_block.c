@@ -46,9 +46,8 @@ TEST_SERVICE(receive_block)
 	hf_interrupt_enable(EXTERNAL_INTERRUPT_ID_A, true);
 
 	for (i = 0; i < 10; ++i) {
-		struct hf_mailbox_receive_return res = hf_mailbox_receive(true);
-		EXPECT_EQ(res.vm_id, HF_INVALID_VM_ID);
-		EXPECT_EQ(res.size, 0);
+		int32_t res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+		EXPECT_EQ(res, SPCI_INTERRUPTED);
 	}
 
 	memcpy(SERVICE_SEND_BUFFER()->payload, message, sizeof(message));

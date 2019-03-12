@@ -112,14 +112,9 @@ TEST_SERVICE(timer)
 				event_wait();
 			}
 		} else if (receive) {
-			struct hf_mailbox_receive_return received =
-				hf_mailbox_receive(true);
-			/*
-			 * Expect to be interrupted, not to actually
-			 * receive a message.
-			 */
-			EXPECT_EQ(received.vm_id, HF_INVALID_VM_ID);
-			EXPECT_EQ(received.size, 0);
+			int32_t res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+
+			EXPECT_EQ(res, SPCI_INTERRUPTED);
 		} else {
 			/* Busy wait until the timer fires. */
 			while (!timer_fired) {

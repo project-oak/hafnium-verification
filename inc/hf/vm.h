@@ -54,8 +54,6 @@ struct wait_entry {
 
 struct mailbox {
 	enum mailbox_state state;
-	uint32_t recv_from_id;
-	int16_t recv_bytes;
 	struct spci_message *recv;
 	const struct spci_message *send;
 

@@ -437,9 +437,8 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		ret.user_ret = api_spci_msg_send(arg1, current(), &ret.new);
 		break;
 
-	case HF_MAILBOX_RECEIVE:
-		ret.user_ret = hf_mailbox_receive_return_encode(
-			api_mailbox_receive(arg1, current(), &ret.new));
+	case SPCI_MSG_RECV_32:
+		ret.user_ret = api_spci_msg_recv(arg1, current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_CLEAR:

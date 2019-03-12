@@ -91,7 +91,7 @@ noreturn void kmain(void)
 	hf_vm_configure(send_addr, recv_addr);
 
 	/* Receive the name of the service to run. */
-	hf_mailbox_receive(true);
+	spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 	memiter_init(&args, recv_msg->payload, recv_msg->length);
 	service = find_service(&args);
 	hf_mailbox_clear();

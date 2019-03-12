@@ -395,13 +395,7 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 		 * be delivered directly.
 		 */
 		if (vcpu->vm->mailbox.state == mailbox_state_received) {
-			arch_regs_set_retval(
-				&vcpu->regs,
-				hf_mailbox_receive_return_encode((
-					struct hf_mailbox_receive_return){
-					.vm_id = vcpu->vm->mailbox.recv_from_id,
-					.size = vcpu->vm->mailbox.recv_bytes,
-				}));
+			arch_regs_set_retval(&vcpu->regs, SPCI_SUCCESS);
 			vcpu->vm->mailbox.state = mailbox_state_read;
 			break;
 		}
@@ -817,8 +811,6 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 	to_msg = to->mailbox.recv;
 	*to_msg = from_msg_replica;
 	memcpy(to_msg->payload, from->mailbox.send->payload, size);
-	to->mailbox.recv_bytes = size;
-	to->mailbox.recv_from_id = from->id;
 	primary_ret.message.vm_id = to->id;
 	ret = SPCI_SUCCESS;
 
@@ -851,21 +843,20 @@ out:
  *
  * No new messages can be received until the mailbox has been cleared.
  */
-struct hf_mailbox_receive_return api_mailbox_receive(bool block,
-						     struct vcpu *current,
-						     struct vcpu **next)
+int32_t api_spci_msg_recv(uint32_t attributes, struct vcpu *current,
+			  struct vcpu **next)
 {
 	struct vm *vm = current->vm;
-	struct hf_mailbox_receive_return ret = {
-		.vm_id = HF_INVALID_VM_ID,
-	};
+	int32_t return_code;
+	bool block =
+		(attributes & SPCI_MSG_RECV_BLOCK_MASK) == SPCI_MSG_RECV_BLOCK;
 
 	/*
 	 * The primary VM will receive messages as a status code from running
 	 * vcpus and must not call this function.
 	 */
 	if (vm->id == HF_PRIMARY_VM_ID) {
-		return ret;
+		return SPCI_INTERRUPTED;
 	}
 
 	sl_lock(&vm->lock);
@@ -873,17 +864,28 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 	/* Return pending messages without blocking. */
 	if (vm->mailbox.state == mailbox_state_received) {
 		vm->mailbox.state = mailbox_state_read;
-		ret.vm_id = vm->mailbox.recv_from_id;
-		ret.size = vm->mailbox.recv_bytes;
+		return_code = SPCI_SUCCESS;
+		goto out;
+	}
+
+	/* No pending message so fail if not allowed to block. */
+	if (!block) {
+		return_code = SPCI_RETRY;
 		goto out;
 	}
 
 	/*
-	 * No pending message so fail if not allowed to block. Don't block if
-	 * there are enabled and pending interrupts, to match behaviour of
-	 * wait_for_interrupt.
+	 * From this point onward this call can only be interrupted or a message
+	 * received. If a message is received the return value will be set at
+	 * that time to SPCI_SUCCESS.
 	 */
-	if (!block || current->interrupts.enabled_and_pending_count > 0) {
+	return_code = SPCI_INTERRUPTED;
+
+	/*
+	 * Don't block if there are enabled and pending interrupts, to match
+	 * behaviour of wait_for_interrupt.
+	 */
+	if (current->interrupts.enabled_and_pending_count > 0) {
 		goto out;
 	}
 
@@ -899,7 +901,7 @@ struct hf_mailbox_receive_return api_mailbox_receive(bool block,
 out:
 	sl_unlock(&vm->lock);
 
-	return ret;
+	return return_code;
 }
 
 /**

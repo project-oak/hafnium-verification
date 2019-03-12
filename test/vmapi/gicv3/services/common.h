@@ -16,4 +16,4 @@
 
 #include "vmapi/hf/call.h"
 
-struct hf_mailbox_receive_return mailbox_receive_retry(void);
+int32_t mailbox_receive_retry(void);

@@ -30,7 +30,6 @@
 #define HF_VCPU_RUN             0xff03
 #define HF_VCPU_YIELD           0xff04
 #define HF_VM_CONFIGURE         0xff05
-#define HF_MAILBOX_RECEIVE      0xff07
 #define HF_MAILBOX_CLEAR        0xff08
 #define HF_MAILBOX_WRITABLE_GET 0xff09
 #define HF_MAILBOX_WAITER_GET   0xff0a
@@ -140,10 +139,9 @@ static inline int64_t spci_msg_send(uint32_t attributes)
  * instruction on aarch64, except that a message becoming available is also
  * treated like a wake-up event.
  */
-static inline struct hf_mailbox_receive_return hf_mailbox_receive(bool block)
+static inline int32_t spci_msg_recv(int32_t attributes)
 {
-	return hf_mailbox_receive_return_decode(
-		hf_call(HF_MAILBOX_RECEIVE, block, 0, 0));
+	return hf_call(SPCI_MSG_RECV_32, attributes, 0, 0);
 }
 
 /**

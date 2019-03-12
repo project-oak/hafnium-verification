@@ -42,7 +42,7 @@ TEST_SERVICE(spci_check)
 	};
 
 	/* Wait for single message to be sent by the primary VM. */
-	hf_mailbox_receive(true);
+	spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 
 	/* Ensure message header has all fields correctly set. */
 	EXPECT_EQ(recv_buf->flags, expected_message.flags);

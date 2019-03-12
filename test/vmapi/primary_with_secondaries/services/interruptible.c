@@ -21,6 +21,7 @@
 #include "hf/dlog.h"
 
 #include "vmapi/hf/call.h"
+#include "vmapi/hf/spci.h"
 
 #include "hftest.h"
 #include "primary_with_secondary.h"
@@ -49,15 +50,14 @@ static void irq(void)
  * Try to receive a message from the mailbox, blocking if necessary, and
  * retrying if interrupted.
  */
-struct hf_mailbox_receive_return mailbox_receive_retry()
+int32_t mailbox_receive_retry()
 {
-	struct hf_mailbox_receive_return received = {
-		.vm_id = HF_INVALID_VM_ID,
-		.size = 0,
-	};
-	while (received.vm_id == HF_INVALID_VM_ID && received.size == 0) {
-		received = hf_mailbox_receive(true);
-	}
+	int32_t received;
+
+	do {
+		received = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+	} while (received == SPCI_INTERRUPTED);
+
 	return received;
 }
 

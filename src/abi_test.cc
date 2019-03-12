@@ -37,18 +37,6 @@ struct hf_vcpu_run_return dirty_vcpu_run_return()
 }
 
 /**
- * Simulate an uninitialized hf_mailbox_receive_return so it can be detected if
- * any uninitialized fields make their way into the encoded form which would
- * indicate a data leak.
- */
-struct hf_mailbox_receive_return dirty_mailbox_receive_return()
-{
-	struct hf_mailbox_receive_return res;
-	memset(&res, 0xc5, sizeof(res));
-	return res;
-}
-
-/**
  * Encode a preempted response without leaking.
  */
 TEST(abi, hf_vcpu_run_return_encode_preempted)
@@ -242,29 +230,6 @@ TEST(abi, hf_vcpu_run_return_decode_aborted)
 	struct hf_vcpu_run_return res =
 		hf_vcpu_run_return_decode(0x31dbac4810fbc507);
 	EXPECT_THAT(res.code, Eq(HF_VCPU_RUN_ABORTED));
-}
-
-/**
- * Encode a mailbox receive response without leaking.
- */
-TEST(abi, hf_mailbox_receive_return_encode)
-{
-	struct hf_mailbox_receive_return res = dirty_mailbox_receive_return();
-	res.vm_id = 0x12345678;
-	res.size = 0xaabbccdd;
-	EXPECT_THAT(hf_mailbox_receive_return_encode(res),
-		    Eq(0xaabbccdd12345678));
-}
-
-/**
- * Decode a mailbox receive response.
- */
-TEST(abi, hf_mailbox_receive_return_decode)
-{
-	struct hf_mailbox_receive_return res =
-		hf_mailbox_receive_return_decode(0X8badf00d00ddba11);
-	EXPECT_THAT(res.vm_id, Eq(0X00ddba11));
-	EXPECT_THAT(res.size, Eq(0x8badf00d));
 }
 
 } /* namespace */
