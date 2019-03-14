@@ -112,6 +112,18 @@ source_set("relay") {
   ]
 }
 
+# Service to check that WFI is a no-op when there are pending interrupts.
+source_set("wfi") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  sources = [
+    "wfi.c",
+  ]
+}
+
 # Group services together into VMs.
 
 vm_kernel("service_vm0") {
@@ -126,6 +138,7 @@ vm_kernel("service_vm0") {
     ":memory",
     ":receive_block",
     ":relay",
+    ":wfi",
     "//test/hftest:hftest_secondary_vm",
   ]
 }

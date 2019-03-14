@@ -222,3 +222,30 @@ TEST(interrupts, pending_interrupt_no_blocking_receive)
 		  0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
+
+/**
+ * If a secondary VM has an enabled and pending interrupt, even if interrupts
+ * are disabled globally via PSTATE, then WFI should be treated as a no-op and
+ * not return to the primary.
+ */
+TEST(interrupts, pending_interrupt_wfi_not_trapped)
+{
+	const char expected_response[] = "Done waiting";
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+
+	SERVICE_SELECT(SERVICE_VM0, "wfi", mb.send);
+
+	/*
+	 * Inject the interrupt and run the VM. It should disable interrupts
+	 * globally, enable the specific interrupt, and then send us a message
+	 * back after running WFI a few times.
+	 */
+	hf_interrupt_inject(SERVICE_VM0, 0, EXTERNAL_INTERRUPT_ID_A);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(memcmp(mb.recv, expected_response, sizeof(expected_response)),
+		  0);
+	EXPECT_EQ(hf_mailbox_clear(), 0);
+}
