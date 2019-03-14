@@ -53,6 +53,83 @@ def qemu(image, initrd, args, log):
         return f.read()
 
 
+def fvp(image, initrd, args, log):
+    uart0_log = log + ".uart0"
+    uart1_log = log + ".uart1"
+    fdt = log + ".dtb"
+    dtc_args = [
+        "dtc", "-I", "dts", "-O", "dtb",
+        "-o", fdt,
+    ]
+    fvp_args = [
+        "timeout", "--foreground", "10s",
+        "../fvp/Base_RevC_AEMv8A_pkg/models/Linux64_GCC-4.9/FVP_Base_RevC-2xAEMv8A",
+        "-C", "pctl.startup=0.0.0.0",
+        "-C", "bp.secure_memory=0",
+        "-C", "cluster0.NUM_CORES=4",
+        "-C", "cluster1.NUM_CORES=4",
+        "-C", "cache_state_modelled=0",
+        "-C", "bp.vis.disable_visualisation=true",
+        "-C", "bp.vis.rate_limit-enable=false",
+        "-C", "bp.terminal_0.start_telnet=false",
+        "-C", "bp.terminal_1.start_telnet=false",
+        "-C", "bp.terminal_2.start_telnet=false",
+        "-C", "bp.terminal_3.start_telnet=false",
+        "-C", "bp.pl011_uart0.untimed_fifos=1",
+        "-C", "bp.pl011_uart0.unbuffered_output=1",
+        "-C", "bp.pl011_uart0.out_file=" + uart0_log,
+        "-C", "bp.pl011_uart1.out_file=" + uart1_log,
+        "-C", "cluster0.cpu0.RVBAR=0x04020000",
+        "-C", "cluster0.cpu1.RVBAR=0x04020000",
+        "-C", "cluster0.cpu2.RVBAR=0x04020000",
+        "-C", "cluster0.cpu3.RVBAR=0x04020000",
+        "-C", "cluster1.cpu0.RVBAR=0x04020000",
+        "-C", "cluster1.cpu1.RVBAR=0x04020000",
+        "-C", "cluster1.cpu2.RVBAR=0x04020000",
+        "-C", "cluster1.cpu3.RVBAR=0x04020000",
+        "--data", "cluster0.cpu0=prebuilts/linux-aarch64/arm-trusted-firmware/bl31.bin@0x04020000",
+        "--data", "cluster0.cpu0=" + fdt + "@0x82000000",
+        "--data", "cluster0.cpu0=" + image + "@0x80000000",
+        "-C", "bp.ve_sysregs.mmbSiteDefault=0",
+        "-C", "bp.ve_sysregs.exit_on_shutdown=1",
+    ]
+    if initrd:
+        fvp_args += ["--data", "cluster0.cpu0=" + initrd + "@0x84000000"]
+
+    with open(log, "w") as f:
+        f.write("$ {}\r\n".format(" ".join(dtc_args)))
+        f.flush()
+        dtc = subprocess.Popen(dtc_args, stdout=f, stderr=f, stdin=subprocess.PIPE)
+        with open("prebuilts/linux-aarch64/arm-trusted-firmware/fvp-base-gicv3-psci-1t.dts", "r") as base_dts:
+            dtc.stdin.write(base_dts.read())
+        dtc.stdin.write("/ {\n")
+        dtc.stdin.write("        chosen {\n")
+        dtc.stdin.write("                bootargs = \"" + args + "\";\n")
+        dtc.stdin.write("                stdout-path = \"serial0:115200n8\";\n")
+        dtc.stdin.write("                linux,initrd-start = <0x84000000>;\n")
+        dtc.stdin.write("                linux,initrd-end = <0x85000000>;\n")
+        dtc.stdin.write("        };\n")
+        dtc.stdin.write("};\n")
+        dtc.stdin.close()
+        dtc.wait()
+
+        f.write("$ {}\r\n".format(" ".join(fvp_args)))
+        f.flush()
+        subprocess.call(fvp_args, stdout=f, stderr=f)
+        with open(uart0_log, "r") as g:
+            f.write(g.read())
+
+    with open(log, "r") as f:
+        return f.read()
+
+
+def emulator(use_fvp, image, initrd, args, log):
+    if use_fvp:
+        return fvp(image, initrd, args, log)
+    else:
+        return qemu(image, initrd, args, log)
+
+
 def ensure_dir(path):
     try:
         os.makedirs(path)
@@ -79,6 +156,7 @@ def Main():
     parser.add_argument("--suite")
     parser.add_argument("--test")
     parser.add_argument("--vm_args")
+    parser.add_argument("--fvp", type=bool)
     args = parser.parse_args()
     # Resolve some paths.
     image = os.path.join(args.out, args.image + ".bin")
@@ -94,7 +172,7 @@ def Main():
     log_file = os.path.join(log, "sponge_log.log")
     with open(log_file, "w") as sponge_log:
         # Query the tests in the image.
-        out = qemu(image, initrd, vm_args + " json", os.path.join(log, "json.log"))
+        out = emulator(args.fvp, image, initrd, vm_args + " json", os.path.join(log, "json.log"))
         sponge_log.write(out)
         sponge_log.write("\r\n\r\n")
         hftest_json = "\n".join(hftest_lines(out))
@@ -129,7 +207,7 @@ def Main():
                 print("      RUN", test)
                 test_log = os.path.join(log,
                                         suite["name"] + "." + test + ".log")
-                out = qemu(image, initrd, vm_args + " run {} {}".format(
+                out = emulator(args.fvp, image, initrd, vm_args + " run {} {}".format(
                     suite["name"], test), test_log)
                 sponge_log.write(out)
                 sponge_log.write("\r\n\r\n")

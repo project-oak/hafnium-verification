@@ -26,10 +26,31 @@ set -u
 # Display commands being run.
 set -x
 
+USE_FVP=0
+
+while test $# -gt 0
+do
+  case "$1" in
+    --fvp) USE_FVP=1
+      ;;
+    *) echo "Unexpected argument $1"
+      exit 1
+      ;;
+  esac
+  shift
+done
+
 TIMEOUT="timeout --foreground"
 PROJECT="${PROJECT:-reference}"
 OUT="out/${PROJECT}"
-HFTEST="$TIMEOUT 30s ./test/hftest/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log"
+
+# Run the tests with a timeout so they can't loop forever.
+if [ $USE_FVP == 1 ]
+then
+  HFTEST="$TIMEOUT 300s ./test/hftest/hftest.py --fvp=true --out $OUT/aem_v8a_fvp_clang --log $OUT/kokoro_log"
+else
+  HFTEST="$TIMEOUT 30s ./test/hftest/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log"
+fi
 
 # Add prebuilt libc++ to the path.
 export LD_LIBRARY_PATH=$PWD/prebuilts/linux-x64/clang/lib64
@@ -40,7 +61,6 @@ $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
   --gtest_output="xml:$OUT/kokoro_log/unit_tests/sponge_log.xml" \
   | tee $OUT/kokoro_log/unit_tests/sponge_log.log
 
-# Run the tests with a timeout so they can't loop forever.
 $HFTEST arch_test
 $HFTEST hafnium --initrd test/vmapi/gicv3/gicv3_test
 $HFTEST hafnium --initrd test/vmapi/primary_only/primary_only_test
