@@ -32,8 +32,7 @@
 static void irq(void)
 {
 	uint32_t interrupt_id = hf_interrupt_get();
-	dlog("Unexpected secondary IRQ %d from current\n", interrupt_id);
-	FAIL("Unexpected secondary IRQ");
+	FAIL("Unexpected secondary IRQ %d from current", interrupt_id);
 }
 
 TEST_SERVICE(receive_block)

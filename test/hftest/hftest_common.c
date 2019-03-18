@@ -45,7 +45,7 @@ void hftest_register(struct hftest_test test)
 	if (hftest_count < HFTEST_MAX_TESTS) {
 		hftest_constructed[hftest_count++] = test;
 	} else {
-		HFTEST_FAIL("Too many tests", true);
+		HFTEST_FAIL(true, "Too many tests");
 	}
 }
 

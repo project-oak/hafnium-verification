@@ -63,8 +63,7 @@
 #define EXPECT_TRUE(x) EXPECT_EQ(x, true)
 #define EXPECT_FALSE(x) EXPECT_EQ(x, false)
 
-#define FAIL(message) HFTEST_FAIL(message, true)
-#define ADD_FAILURE(message) HFTEST_FAIL(message, false)
+#define FAIL(...) HFTEST_FAIL(true, __VA_ARGS__)
 
 /* Service utilities. */
 #define SERVICE_SELECT(vm_id, service, send_buffer) \
