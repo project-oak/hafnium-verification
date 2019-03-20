@@ -110,6 +110,7 @@ source_set("common") {
     "hftest_common.c",
   ]
   deps = [
+    "//src:fdt_handler",
     "//src:memiter",
     "//src:panic",
     "//src:std",

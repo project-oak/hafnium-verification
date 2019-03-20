@@ -15,6 +15,7 @@
  */
 
 #include <stdalign.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -54,7 +55,7 @@ void test_main(int argc, const char *argv[])
 
 		memiter_init(&suite_name, argv[2], strnlen_s(argv[2], 64));
 		memiter_init(&test_name, argv[3], strnlen_s(argv[3], 64));
-		hftest_run(suite_name, test_name);
+		hftest_run(suite_name, test_name, NULL);
 		return;
 	}
 

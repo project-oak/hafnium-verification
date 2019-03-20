@@ -18,6 +18,7 @@
 
 #include <stdnoreturn.h>
 
+#include "hf/fdt.h"
 #include "hf/spci.h"
 #include "hf/std.h"
 
@@ -132,6 +133,9 @@
 struct hftest_context {
 	uint32_t failures;
 	noreturn void (*abort)(void);
+
+	/* These are used in primary VMs. */
+	const struct fdt_header *fdt;
 
 	/* These are used in services. */
 	struct spci_message *send;

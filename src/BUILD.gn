@@ -50,7 +50,6 @@ source_set("src_testable") {
     "abort.c",
     "api.c",
     "cpu.c",
-    "fdt_handler.c",
     "mm.c",
     "mpool.c",
     "panic.c",
@@ -59,6 +58,7 @@ source_set("src_testable") {
 
   deps = [
     ":fdt",
+    ":fdt_handler",
     ":memiter",
     ":std",
     "//src/arch/${plat_arch}/hypervisor",
@@ -91,6 +91,19 @@ source_set("dlog") {
     ":std",
     plat_console,
   ]
+}
+
+source_set("fdt_handler") {
+  sources = [
+    "fdt_handler.c",
+  ]
+  deps = [
+    ":fdt",
+  ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
 }
 
 # Flattened Device Tree (FDT) utilities.

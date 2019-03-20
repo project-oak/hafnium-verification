@@ -90,5 +90,7 @@
  */
 #define HFTEST_LOG_INDENT "    "
 
+uintptr_t hftest_get_cpu_id(size_t index);
+
 /* Above this point is the public API. Now include the implementation. */
 #include <hftest_impl.h>

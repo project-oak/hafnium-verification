@@ -18,6 +18,8 @@
 
 #include "hf/arch/vm/power_mgmt.h"
 
+#include "hf/boot_params.h"
+#include "hf/fdt_handler.h"
 #include "hf/memiter.h"
 #include "hf/std.h"
 
@@ -131,12 +133,13 @@ noreturn void abort(void)
 }
 
 static void run_test(hftest_test_fn set_up, hftest_test_fn test,
-		     hftest_test_fn tear_down)
+		     hftest_test_fn tear_down, const struct fdt_header *fdt)
 {
 	/* Prepare the context. */
 	struct hftest_context *ctx = hftest_get_context();
 	memset_s(ctx, sizeof(*ctx), 0, sizeof(*ctx));
 	ctx->abort = abort;
+	ctx->fdt = fdt;
 
 	/* Run any set up functions. */
 	if (set_up) {
@@ -166,7 +169,8 @@ static void run_test(hftest_test_fn set_up, hftest_test_fn test,
 /**
  * Runs the given test case.
  */
-void hftest_run(struct memiter suite_name, struct memiter test_name)
+void hftest_run(struct memiter suite_name, struct memiter test_name,
+		const struct fdt_header *fdt)
 {
 	size_t i;
 	bool found_suite = false;
@@ -209,7 +213,7 @@ void hftest_run(struct memiter suite_name, struct memiter test_name)
 		case HFTEST_KIND_TEST:
 			if (memiter_iseq(&test_name, test->name)) {
 				run_test(suite_set_up, test->fn,
-					 suite_tear_down);
+					 suite_tear_down, fdt);
 				return;
 			}
 			break;
@@ -243,4 +247,39 @@ void hftest_help(void)
 	HFTEST_LOG("  run <suite> <test>");
 	HFTEST_LOG("");
 	HFTEST_LOG("    Run the named test from the named test suite.");
+}
+
+static uintptr_t vcpu_index_to_id(size_t index)
+{
+	/* For now we use indices as IDs for vCPUs. */
+	return index;
+}
+
+/**
+ * Get the ID of the CPU with the given index.
+ */
+uintptr_t hftest_get_cpu_id(size_t index)
+{
+	struct boot_params params;
+	struct fdt_node n;
+	const struct fdt_header *fdt = hftest_get_context()->fdt;
+
+	if (fdt == NULL) {
+		/*
+		 * We must be in a service VM, so apply the mapping that Hafnium
+		 * uses for vCPU IDs.
+		 */
+		return vcpu_index_to_id(index);
+	}
+
+	/* Find physical CPU ID from FDT. */
+	if (!fdt_root_node(&n, fdt)) {
+		FAIL("FDT failed validation.");
+	}
+	if (!fdt_find_child(&n, "")) {
+		FAIL("Unable to find FDT root node.");
+	}
+	fdt_find_cpus(&n, params.cpu_ids, &params.cpu_count);
+
+	return params.cpu_ids[index];
 }

@@ -362,13 +362,13 @@ template("aarch64_toolchains") {
                              "gic_version",
                              "gicd_base_address",
                              "gicr_base_address",
+                             "max_cpus",
                              "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+fp"
 
     # Nonsense values because they are required but shouldn't be used.
     heap_pages = 0
-    max_cpus = 1
     max_vms = 1
   }
 }

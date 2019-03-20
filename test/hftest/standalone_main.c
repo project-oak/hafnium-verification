@@ -84,7 +84,7 @@ void kmain(const struct fdt_header *fdt)
 			HFTEST_LOG("Unable to parse test.");
 			return;
 		}
-		hftest_run(suite_name, test_name);
+		hftest_run(suite_name, test_name, fdt);
 		return;
 	}
 
