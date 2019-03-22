@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,9 @@
  * limitations under the License.
  */
 
-.section .init.image_entry, "ax"
-.global image_entry
-image_entry:
-	/* Prepare the stack. */
-	adr x30, kstack + 4096
-	mov sp, x30
+#pragma once
 
-	/* Disable trapping floating point access in EL1. */
-	mov x30, #(0x3 << 20)
-	msr cpacr_el1, x30
-	isb
+#include <stdbool.h>
 
-	/* Call into C code. */
-	bl kmain
-
-	/* If the VM returns, shutdown the system. */
-	bl arch_power_off
-
-	/* Loop forever waiting for interrupts. */
-0:	wfi
-	b 0b
+void fill_fp_registers(double value);
+bool check_fp_register(double value);

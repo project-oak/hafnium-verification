@@ -58,3 +58,11 @@ source_set("state") {
     "state.c",
   ]
 }
+
+# Interact directly with registers.
+source_set("registers") {
+  testonly = true
+  sources = [
+    "registers.c",
+  ]
+}

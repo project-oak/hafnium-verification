@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,24 +14,21 @@
  * limitations under the License.
  */
 
-.section .init.image_entry, "ax"
-.global image_entry
-image_entry:
-	/* Prepare the stack. */
-	adr x30, kstack + 4096
-	mov sp, x30
+#include "hf/arch/std.h"
+#include "hf/arch/vm/registers.h"
 
-	/* Disable trapping floating point access in EL1. */
-	mov x30, #(0x3 << 20)
-	msr cpacr_el1, x30
-	isb
+#include "hf/spci.h"
 
-	/* Call into C code. */
-	bl kmain
+#include "vmapi/hf/call.h"
 
-	/* If the VM returns, shutdown the system. */
-	bl arch_power_off
+#include "hftest.h"
 
-	/* Loop forever waiting for interrupts. */
-0:	wfi
-	b 0b
+TEST_SERVICE(fp_fill)
+{
+	const double value = 0.75;
+	fill_fp_registers(value);
+	hf_vcpu_yield();
+
+	ASSERT_TRUE(check_fp_register(value));
+	hf_vcpu_yield();
+}

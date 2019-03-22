@@ -20,5 +20,10 @@ vm_cpu_entry_raw:
 	ldr x1, [x0]
 	mov sp, x1
 
+	/* Disable trapping floating point access in EL1. */
+	mov x1, #(0x3 << 20)
+	msr cpacr_el1, x1
+	isb
+
 	/* Jump to C entry point. */
 	b vm_cpu_entry

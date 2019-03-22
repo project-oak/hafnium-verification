@@ -26,6 +26,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
   sources = [
     "abort.c",
     "boot.c",
+    "floating_point.c",
     "interrupts.c",
     "mailbox.c",
     "memory_sharing.c",
@@ -37,6 +38,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
   sources += [ "util.c" ]
 
   deps = [
+    "//src/arch/aarch64/hftest:registers",
     "//test/hftest:hftest_primary_vm",
   ]
 }

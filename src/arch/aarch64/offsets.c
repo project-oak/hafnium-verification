@@ -30,3 +30,4 @@ CHECK_OFFSET(CPU_ID, struct cpu, id);
 CHECK_OFFSET(CPU_STACK_BOTTOM, struct cpu, stack_bottom);
 CHECK_OFFSET(VCPU_REGS, struct vcpu, regs);
 CHECK_OFFSET(VCPU_LAZY, struct vcpu, regs.lazy);
+CHECK_OFFSET(VCPU_FREGS, struct vcpu, regs.fp);

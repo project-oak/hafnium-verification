@@ -52,6 +52,20 @@ source_set("echo_with_notification") {
   ]
 }
 
+# Service for floating point register save/restore checks.
+source_set("floating_point") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "floating_point.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:registers",
+  ]
+}
+
 # Services related to memory sharing.
 source_set("memory") {
   testonly = true
@@ -159,6 +173,7 @@ vm_kernel("service_vm0") {
     ":check_state",
     ":echo",
     ":echo_with_notification",
+    ":floating_point",
     ":interruptible",
     ":memory",
     ":receive_block",

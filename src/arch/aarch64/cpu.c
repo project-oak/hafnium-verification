@@ -68,7 +68,9 @@ void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
 		       (1u << 10) | /* BSU bits set to inner-sh. */
 		       (3u << 13);  /* TWI, TWE bits. */
 
-		cptr |= (1u << 10); /* TFP, trap fp access. */
+		/* TODO: Trap fp access once handler logic is in place. */
+
+		/* TODO: Investigate fpexc32_el2 for 32bit EL0 support. */
 	}
 
 	r->lazy.hcr_el2 = hcr;

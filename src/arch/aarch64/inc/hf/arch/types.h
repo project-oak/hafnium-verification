@@ -16,10 +16,14 @@
 
 #pragma once
 
+#include <stdalign.h>
 #include <stdint.h>
+
+#include "hf/assert.h"
 
 #define PAGE_BITS 12
 #define PAGE_LEVEL_BITS 9
+#define FLOAT_REG_BYTES 16
 
 /** The type of a page table entry (PTE). */
 typedef uint64_t pte_t;
@@ -30,8 +34,21 @@ typedef uintptr_t uintpaddr_t;
 /** Integer type large enough to hold a virtual address. */
 typedef uintptr_t uintvaddr_t;
 
-/** The integer large corresponding to the native register size. */
+/** The integer type corresponding to the native register size. */
 typedef uint64_t uintreg_t;
+
+/**
+ * The struct for storing a floating point register.
+ *
+ * 2 64-bit integers used to avoid need for FP support at this level.
+ */
+struct float_reg {
+	alignas(FLOAT_REG_BYTES) uint64_t low;
+	uint64_t high;
+};
+
+static_assert(sizeof(struct float_reg) == FLOAT_REG_BYTES,
+	      "Ensure float register type is 128 bits.");
 
 /** Type to represent the register state of a VM.  */
 struct arch_regs {
@@ -39,7 +56,6 @@ struct arch_regs {
 	uintreg_t r[31];
 	uintreg_t pc;
 	uintreg_t spsr;
-
 	struct {
 		uintreg_t vmpidr_el2;
 		uintreg_t csselr_el1;
@@ -73,4 +89,8 @@ struct arch_regs {
 		uintreg_t cntv_cval_el0;
 		uintreg_t cntv_ctl_el0;
 	} lazy;
+	/* Floating point registers. */
+	struct float_reg fp[32];
+	uintreg_t fpsr;
+	uintreg_t fpcr;
 };
