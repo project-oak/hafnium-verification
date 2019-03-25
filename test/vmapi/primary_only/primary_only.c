@@ -137,3 +137,23 @@ TEST(spci, spci_version)
 
 	EXPECT_EQ(spci_version(), current_version);
 }
+
+/**
+ * Test that floating-point operations work in the primary VM.
+ */
+TEST(fp, fp)
+{
+	/*
+	 * Get some numbers that the compiler can't tell are constants, so it
+	 * can't optimise them away.
+	 */
+	double a = hf_vm_get_count();
+	double b = hf_vcpu_get_count(0);
+	double result = a * b;
+	dlog("VM count: %d\n", hf_vm_get_count());
+	dlog("vCPU count: %d\n", hf_vcpu_get_count(0));
+	dlog("result: %d\n", (int)result);
+	EXPECT_TRUE(a == 1.0);
+	EXPECT_TRUE(b == 8.0);
+	EXPECT_TRUE(result == 8.0);
+}
