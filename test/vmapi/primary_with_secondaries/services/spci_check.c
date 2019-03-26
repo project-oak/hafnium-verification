@@ -64,3 +64,29 @@ TEST_SERVICE(spci_check)
 
 	hf_vcpu_yield();
 }
+
+TEST_SERVICE(spci_length)
+{
+	struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
+	const char message[] = "this should be truncated";
+
+	/* Wait for single message to be sent by the primary VM. */
+	spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+
+	/* Verify the length is as expected. */
+	EXPECT_EQ(16, recv_buf->length);
+
+	/* Check only part of the message is sent correctly. */
+	EXPECT_NE(memcmp(recv_buf->payload, message, sizeof(message)), 0);
+	EXPECT_EQ(memcmp(recv_buf->payload, message, recv_buf->length), 0);
+
+	hf_vcpu_yield();
+}
+
+TEST_SERVICE(spci_recv_non_blocking)
+{
+	/* Wait for single message to be sent by the primary VM. */
+	EXPECT_EQ(spci_msg_recv(0), SPCI_RETRY);
+
+	hf_vcpu_yield();
+}
