@@ -18,6 +18,7 @@
 
 #include "hftest.h"
 #include "primary_with_secondary.h"
+#include "util.h"
 
 /**
  * Accessing unmapped memory aborts the VM.

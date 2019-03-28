@@ -16,10 +16,9 @@
 
 #pragma once
 
-#define SERVICE_VM0 1
-#define SERVICE_VM1 2
+struct mailbox_buffers {
+	void *send;
+	void *recv;
+};
 
-#define SELF_INTERRUPT_ID 5
-#define EXTERNAL_INTERRUPT_ID_A 7
-#define EXTERNAL_INTERRUPT_ID_B 8
-#define EXTERNAL_INTERRUPT_ID_C 9
+struct mailbox_buffers set_up_mailbox(void);

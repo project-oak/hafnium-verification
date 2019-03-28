@@ -22,6 +22,7 @@
 
 #include "hftest.h"
 #include "primary_with_secondary.h"
+#include "util.h"
 
 /**
  * Send a message to the interruptible VM, which will interrupt itself to send a

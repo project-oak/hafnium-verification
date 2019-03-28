@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
+#include "util.h"
+
 #include "hf/mm.h"
 
 #include "vmapi/hf/call.h"
 
 #include "hftest.h"
-#include "primary_with_secondary.h"
 
 static alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
 static alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];

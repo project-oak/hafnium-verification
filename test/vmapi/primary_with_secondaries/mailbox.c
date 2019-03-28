@@ -22,6 +22,7 @@
 
 #include "hftest.h"
 #include "primary_with_secondary.h"
+#include "util.h"
 
 /**
  * Reverses the order of the elements in the given array.
