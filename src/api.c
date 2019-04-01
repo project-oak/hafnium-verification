@@ -816,7 +816,6 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 
 	/* Messages for the primary VM are delivered directly. */
 	if (to->id == HF_PRIMARY_VM_ID) {
-		primary_ret.message.size = size,
 		to->mailbox.state = mailbox_state_read;
 		*next = api_switch_to_primary(current, primary_ret,
 					      vcpu_state_ready);

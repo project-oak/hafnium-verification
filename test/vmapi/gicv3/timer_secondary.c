@@ -73,7 +73,7 @@ static void timer_busywait_secondary()
 	 */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(recv_buffer->length, sizeof(expected_response));
 	EXPECT_EQ(memcmp(recv_buffer->payload, expected_response,
 			 sizeof(expected_response)),
 		  0);
@@ -156,7 +156,7 @@ static void timer_secondary(const char message[],
 
 	/* Once we wake it up it should get the timer interrupt and respond. */
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(run_res.message.size, sizeof(expected_response));
+	EXPECT_EQ(recv_buffer->length, sizeof(expected_response));
 	EXPECT_EQ(memcmp(recv_buffer->payload, expected_response,
 			 sizeof(expected_response)),
 		  0);

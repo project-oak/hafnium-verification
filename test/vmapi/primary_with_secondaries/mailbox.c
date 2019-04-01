@@ -95,7 +95,7 @@ TEST(mailbox, echo)
 	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(mb.recv->length, sizeof(message));
 	EXPECT_EQ(memcmp(mb.send->payload, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -126,7 +126,7 @@ TEST(mailbox, repeated_echo)
 		EXPECT_EQ(spci_msg_send(0), 0);
 		run_res = hf_vcpu_run(SERVICE_VM0, 0);
 		EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-		EXPECT_EQ(run_res.message.size, sizeof(message));
+		EXPECT_EQ(mb.recv->length, sizeof(message));
 		EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)),
 			  0);
 		EXPECT_EQ(hf_mailbox_clear(), 0);
@@ -173,7 +173,7 @@ TEST(mailbox, relay)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 	EXPECT_EQ(run_res.message.vm_id, SERVICE_VM1);
-	EXPECT_EQ(run_res.message.size, 0);
+	EXPECT_EQ(mb.recv->length, 0);
 
 	/* Let SERVICE_VM1 forward the message. */
 	run_res = hf_vcpu_run(SERVICE_VM1, 0);
@@ -181,7 +181,7 @@ TEST(mailbox, relay)
 
 	/* Ensure the message is in tact. */
 	EXPECT_EQ(run_res.message.vm_id, HF_PRIMARY_VM_ID);
-	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(mb.recv->length, sizeof(message));
 	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 	EXPECT_EQ(hf_mailbox_clear(), 0);
 }
@@ -258,7 +258,7 @@ TEST(mailbox, primary_to_secondary)
 	EXPECT_EQ(spci_msg_send(0), 0);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(mb.recv->length, sizeof(message));
 	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 
 	/* Let secondary VM continue running so that it will wait again. */
@@ -294,7 +294,7 @@ TEST(mailbox, primary_to_secondary)
 		1);
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(mb.recv->length, sizeof(message));
 	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 }
 
@@ -325,7 +325,7 @@ TEST(mailbox, secondary_to_primary_notification)
 	/* Receive a reply for the first message. */
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
-	EXPECT_EQ(run_res.message.size, sizeof(message));
+	EXPECT_EQ(mb.recv->length, sizeof(message));
 	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);
 
 	/* Run VM again so that it clears its mailbox. */
