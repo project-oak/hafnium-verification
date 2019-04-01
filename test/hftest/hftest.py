@@ -80,7 +80,7 @@ def fvp(image, initrd, args, log):
         "-o", fdt,
     ]
     fvp_args = [
-        "timeout", "--foreground", "10s",
+        "timeout", "--foreground", "40s",
         "../fvp/Base_RevC_AEMv8A_pkg/models/Linux64_GCC-4.9/FVP_Base_RevC-2xAEMv8A",
         "-C", "pctl.startup=0.0.0.0",
         "-C", "bp.secure_memory=0",
@@ -111,8 +111,12 @@ def fvp(image, initrd, args, log):
         "-C", "bp.ve_sysregs.mmbSiteDefault=0",
         "-C", "bp.ve_sysregs.exit_on_shutdown=1",
     ]
+    initrd_start = 0x84000000
+    initrd_end = 0x85000000  # Default value
     if initrd:
-        fvp_args += ["--data", "cluster0.cpu0=" + initrd + "@0x84000000"]
+        fvp_args += ["--data", "cluster0.cpu0={}@{}".format(initrd, hex(initrd_start))]
+        initrd_end = initrd_start + os.path.getsize(initrd)
+
 
     with open(log, "w") as f:
         f.write("$ {}\r\n".format(" ".join(dtc_args)))
@@ -127,8 +131,8 @@ def fvp(image, initrd, args, log):
         dtc.stdin.write("        chosen {\n")
         dtc.stdin.write("                bootargs = \"" + args + "\";\n")
         dtc.stdin.write("                stdout-path = \"serial0:115200n8\";\n")
-        dtc.stdin.write("                linux,initrd-start = <0x84000000>;\n")
-        dtc.stdin.write("                linux,initrd-end = <0x85000000>;\n")
+        dtc.stdin.write("                linux,initrd-start = <{}>;\n".format(initrd_start))
+        dtc.stdin.write("                linux,initrd-end = <{}>;\n".format(initrd_end))
         dtc.stdin.write("        };\n")
         dtc.stdin.write("};\n")
         dtc.stdin.close()
