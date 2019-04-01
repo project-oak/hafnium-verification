@@ -23,6 +23,20 @@ set -u
 # Display commands being run.
 set -x
 
+USE_FVP=0
+
+while test $# -gt 0
+do
+  case "$1" in
+    --fvp) USE_FVP=1
+      ;;
+    *) echo "Unexpected argument $1"
+      exit 1
+      ;;
+  esac
+  shift
+done
+
 # Detect server vs local run. Local run should be from the project's root
 # directory.
 if [ -v KOKORO_JOB_NAME ]
@@ -56,7 +70,12 @@ make
 # Step 2: make sure it works.
 #
 
-./kokoro/ubuntu/test.sh
+if [ $USE_FVP == 1 ]
+then
+  ./kokoro/ubuntu/test.sh --fvp
+else
+  ./kokoro/ubuntu/test.sh
+fi
 
 #
 # Step 3: static analysis.
