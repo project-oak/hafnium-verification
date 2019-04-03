@@ -16,7 +16,6 @@
 
 #include <stdalign.h>
 #include <stddef.h>
-#include <stdnoreturn.h>
 
 #include "hf/arch/init.h"
 #include "hf/arch/std.h"
@@ -29,6 +28,7 @@
 #include "hf/load.h"
 #include "hf/mm.h"
 #include "hf/mpool.h"
+#include "hf/panic.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"
@@ -36,29 +36,6 @@
 alignas(alignof(
 	struct mm_page_table)) char ptable_buf[sizeof(struct mm_page_table) *
 					       HEAP_PAGES];
-
-/**
- * Blocks the hypervisor.
- *
- * TODO: Determine if we want to omit strings on non-debug builds.
- */
-noreturn void panic(const char *fmt, ...)
-{
-	va_list args;
-
-	/* TODO: Block all CPUs. */
-
-	dlog("Panic: ");
-
-	va_start(args, fmt);
-	vdlog(fmt, args);
-	va_end(args);
-
-	dlog("\n");
-
-	for (;;) {
-	}
-}
 
 /**
  * Performs one-time initialisation of the hypervisor.

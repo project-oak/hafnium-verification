@@ -21,6 +21,7 @@
 #include "hf/api.h"
 #include "hf/cpu.h"
 #include "hf/dlog.h"
+#include "hf/panic.h"
 #include "hf/spci.h"
 #include "hf/vm.h"
 
@@ -124,24 +125,12 @@ void begin_restoring_state(struct vcpu *vcpu)
 	}
 }
 
-/**
- * This should never be reached as it means something has gone very wrong.
- */
-static noreturn void hang(void)
-{
-	dlog("Hang: something went very wrong!\n");
-	for (;;) {
-		/* Do nothing. */
-	}
-}
-
 noreturn void irq_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	(void)elr;
 	(void)spsr;
 
-	dlog("IRQ from current\n");
-	hang();
+	panic("IRQ from current");
 }
 
 noreturn void fiq_current_exception(uintreg_t elr, uintreg_t spsr)
@@ -149,8 +138,7 @@ noreturn void fiq_current_exception(uintreg_t elr, uintreg_t spsr)
 	(void)elr;
 	(void)spsr;
 
-	dlog("FIQ from current\n");
-	hang();
+	panic("FIQ from current");
 }
 
 noreturn void serr_current_exception(uintreg_t elr, uintreg_t spsr)
@@ -158,8 +146,7 @@ noreturn void serr_current_exception(uintreg_t elr, uintreg_t spsr)
 	(void)elr;
 	(void)spsr;
 
-	dlog("SERR from current\n");
-	hang();
+	panic("SERR from current");
 }
 
 noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
@@ -188,7 +175,7 @@ noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 		break;
 	}
 
-	hang();
+	panic("EL2 exception");
 }
 
 /**
@@ -259,12 +246,12 @@ static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
 
 	case PSCI_SYSTEM_OFF:
 		smc(PSCI_SYSTEM_OFF, 0, 0, 0);
-		hang();
+		panic("System off failed");
 		break;
 
 	case PSCI_SYSTEM_RESET:
 		smc(PSCI_SYSTEM_RESET, 0, 0, 0);
-		hang();
+		panic("System reset failed");
 		break;
 
 	case PSCI_AFFINITY_INFO:
@@ -306,7 +293,7 @@ static bool psci_handler(uint32_t func, uintreg_t arg0, uintreg_t arg1,
 	case PSCI_CPU_OFF:
 		cpu_off(current()->cpu);
 		smc(PSCI_CPU_OFF, 0, 0, 0);
-		hang();
+		panic("CPU off failed");
 		break;
 
 	case PSCI_CPU_ON:
