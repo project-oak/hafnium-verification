@@ -14,29 +14,8 @@
  * limitations under the License.
  */
 
-#include "hf/panic.h"
+#pragma once
 
-#include <stdarg.h>
+#include <stdnoreturn.h>
 
-#include "hf/abort.h"
-#include "hf/dlog.h"
-
-/**
- * Logs a reason before calling abort.
- *
- * TODO: Determine if we want to omit strings on non-debug builds.
- */
-noreturn void panic(const char *fmt, ...)
-{
-	va_list args;
-
-	dlog("Panic: ");
-
-	va_start(args, fmt);
-	vdlog(fmt, args);
-	va_end(args);
-
-	dlog("\n");
-
-	abort();
-}
+noreturn void abort(void);

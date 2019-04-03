@@ -66,7 +66,7 @@ static hftest_test_fn find_service(struct memiter *args)
 	return NULL;
 }
 
-static noreturn void abort(void)
+noreturn void abort(void)
 {
 	HFTEST_LOG("Service contained failures.");
 	for (;;) {

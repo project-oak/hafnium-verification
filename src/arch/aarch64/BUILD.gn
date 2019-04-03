@@ -47,6 +47,7 @@ source_set("arch") {
 
 source_set("std") {
   sources = [
+    "stack_protector.c",
     "std.c",
   ]
 }

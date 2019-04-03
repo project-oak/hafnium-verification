@@ -46,6 +46,7 @@ source_set("src_not_testable_yet") {
 # sharing.
 source_set("src_testable") {
   sources = [
+    "abort.c",
     "api.c",
     "cpu.c",
     "fdt_handler.c",
@@ -97,6 +98,12 @@ source_set("fdt") {
 source_set("memiter") {
   sources = [
     "memiter.c",
+  ]
+}
+
+source_set("panic") {
+  sources = [
+    "panic.c",
   ]
 }
 

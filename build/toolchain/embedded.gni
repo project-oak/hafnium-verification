@@ -227,7 +227,7 @@ template("embedded_platform_toolchain") {
          "\"platform_name\" must be defined for ${target_name}.")
 
   defines = ""
-  cflags = "-fno-stack-protector -fno-builtin -ffreestanding -fpic"
+  cflags = "-fno-builtin -ffreestanding -fpic"
   ldflags = "--defsym=ORIGIN_ADDRESS=${invoker.origin_address}"
   if (defined(invoker.extra_defines)) {
     defines += " ${invoker.extra_defines}"

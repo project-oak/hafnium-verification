@@ -24,6 +24,8 @@ config("compiler_defaults") {
     #"-Wextra",
     "-Wpedantic",
     "-Werror",
+
+    "-fstack-protector-all",
   ]
 
   cflags_c = [ "-std=c11" ]

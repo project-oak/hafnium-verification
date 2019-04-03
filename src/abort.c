@@ -14,29 +14,19 @@
  * limitations under the License.
  */
 
-#include "hf/panic.h"
-
-#include <stdarg.h>
-
 #include "hf/abort.h"
-#include "hf/dlog.h"
 
 /**
- * Logs a reason before calling abort.
+ * Causes execution to halt and prevent progress of the current and less
+ * privileged software components. This should be triggered when a
+ * non-recoverable event is identified which leaves the system in an
+ * inconsistent state.
  *
- * TODO: Determine if we want to omit strings on non-debug builds.
+ * TODO: Should this also reset the system?
  */
-noreturn void panic(const char *fmt, ...)
+noreturn void abort(void)
 {
-	va_list args;
-
-	dlog("Panic: ");
-
-	va_start(args, fmt);
-	vdlog(fmt, args);
-	va_end(args);
-
-	dlog("\n");
-
-	abort();
+	/* TODO: Block all CPUs. */
+	for (;;) {
+	}
 }
