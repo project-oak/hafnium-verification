@@ -31,6 +31,21 @@ import re
 import subprocess
 import sys
 
+HFTEST_LOG_PREFIX = "[hftest] "
+HFTEST_LOG_FAILURE_PREFIX = "Failure:"
+HFTEST_LOG_FINISHED = "FINISHED"
+
+
+def log_timeout_returncode(f, returncode):
+    if returncode == 0:
+        return
+    elif returncode == 124:
+        f.write("\r\n{}{} timed out\r\n".format(HFTEST_LOG_PREFIX,
+                                                HFTEST_LOG_FAILURE_PREFIX))
+    else:
+        f.write("\r\n{}{} process return code {}\r\n".format(
+            HFTEST_LOG_PREFIX, HFTEST_LOG_FAILURE_PREFIX, returncode))
+
 
 def qemu(image, initrd, args, log):
     qemu_args = [
@@ -47,7 +62,10 @@ def qemu(image, initrd, args, log):
     with open(log, "w") as f:
         f.write("$ {}\r\n".format(" ".join(qemu_args)))
         f.flush()
-        subprocess.check_call(qemu_args, stdout=f, stderr=f)
+        try:
+            subprocess.check_call(qemu_args, stdout=f, stderr=f)
+        except subprocess.CalledProcessError as e:
+            log_timeout_returncode(f, e.returncode)
     # Return that log for processing.
     with open(log, "r") as f:
         return f.read()
@@ -99,8 +117,11 @@ def fvp(image, initrd, args, log):
     with open(log, "w") as f:
         f.write("$ {}\r\n".format(" ".join(dtc_args)))
         f.flush()
-        dtc = subprocess.Popen(dtc_args, stdout=f, stderr=f, stdin=subprocess.PIPE)
-        with open("prebuilts/linux-aarch64/arm-trusted-firmware/fvp-base-gicv3-psci-1t.dts", "r") as base_dts:
+        dtc = subprocess.Popen(
+            dtc_args, stdout=f, stderr=f, stdin=subprocess.PIPE)
+        with open(
+                "prebuilts/linux-aarch64/arm-trusted-firmware/fvp-base-gicv3-psci-1t.dts",
+                "r") as base_dts:
             dtc.stdin.write(base_dts.read())
         dtc.stdin.write("/ {\n")
         dtc.stdin.write("        chosen {\n")
@@ -115,9 +136,10 @@ def fvp(image, initrd, args, log):
 
         f.write("$ {}\r\n".format(" ".join(fvp_args)))
         f.flush()
-        subprocess.call(fvp_args, stdout=f, stderr=f)
+        returncode = subprocess.call(fvp_args, stdout=f, stderr=f)
         with open(uart0_log, "r") as g:
             f.write(g.read())
+        log_timeout_returncode(f, returncode)
 
     with open(log, "r") as f:
         return f.read()
@@ -139,11 +161,10 @@ def ensure_dir(path):
 
 
 def hftest_lines(raw):
-    prefix = "[hftest] "
     return [
-        line[len(prefix):]
+        line[len(HFTEST_LOG_PREFIX):]
         for line in raw.splitlines()
-        if line.startswith(prefix)
+        if line.startswith(HFTEST_LOG_PREFIX)
     ]
 
 
@@ -170,11 +191,12 @@ def Main():
     ensure_dir(log)
     print("Logs saved under", log)
     log_file = os.path.join(log, "sponge_log.log")
-    with open(log_file, "w") as sponge_log:
+    with open(log_file, "w") as full_log:
         # Query the tests in the image.
-        out = emulator(args.fvp, image, initrd, vm_args + " json", os.path.join(log, "json.log"))
-        sponge_log.write(out)
-        sponge_log.write("\r\n\r\n")
+        out = emulator(args.fvp, image, initrd, vm_args + " json",
+                       os.path.join(log, "json.log"))
+        full_log.write(out)
+        full_log.write("\r\n\r\n")
         hftest_json = "\n".join(hftest_lines(out))
         tests = json.loads(hftest_json)
         # Run the selected tests.
@@ -182,9 +204,9 @@ def Main():
         failures = 0
         suite_re = re.compile(args.suite or ".*")
         test_re = re.compile(args.test or ".*")
-        sponge = ET.Element("testsuites")
-        sponge.set("name", suite)
-        sponge.set(
+        suites_xml = ET.Element("testsuites")
+        suites_xml.set("name", suite)
+        suites_xml.set(
             "timestamp",
             datetime.datetime.now().replace(microsecond=0).isoformat())
         for suite in tests["suites"]:
@@ -192,43 +214,49 @@ def Main():
                 continue
             tests_run_from_suite = 0
             failures_from_suite = 0
-            sponge_suite = ET.SubElement(sponge, "testsuite")
-            sponge_suite.set("name", suite["name"])
+            suite_xml = ET.SubElement(suites_xml, "testsuite")
+            suite_xml.set("name", suite["name"])
             for test in suite["tests"]:
                 if not test_re.match(test):
                     continue
-                sponge_test = ET.SubElement(sponge_suite, "testcase")
-                sponge_test.set("name", test)
-                sponge_test.set("classname", suite['name'])
-                sponge_test.set("status", "run")
+                test_xml = ET.SubElement(suite_xml, "testcase")
+                test_xml.set("name", test)
+                test_xml.set("classname", suite['name'])
+                test_xml.set("status", "run")
                 tests_run_from_suite += 1
                 if tests_run_from_suite == 1:
                     print("    SUITE", suite["name"])
                 print("      RUN", test)
                 test_log = os.path.join(log,
                                         suite["name"] + "." + test + ".log")
-                out = emulator(args.fvp, image, initrd, vm_args + " run {} {}".format(
-                    suite["name"], test), test_log)
-                sponge_log.write(out)
-                sponge_log.write("\r\n\r\n")
+                out = emulator(
+                    args.fvp, image, initrd,
+                    vm_args + " run {} {}".format(suite["name"], test),
+                    test_log)
+                full_log.write(out)
+                full_log.write("\r\n\r\n")
                 hftest_out = hftest_lines(out)
-                if len(hftest_out) > 0 and hftest_out[-1] == "FINISHED" and not any(
-                        l.startswith('Failure:') for l in hftest_out):
+                if len(
+                        hftest_out
+                ) > 0 and hftest_out[-1] == HFTEST_LOG_FINISHED and not any(
+                        l.startswith(HFTEST_LOG_FAILURE_PREFIX)
+                        for l in hftest_out):
                     print("        PASS")
                 else:
                     failures_from_suite += 1
-                    sponge_failure = ET.SubElement(sponge_test, "failure")
+                    failure_xml = ET.SubElement(test_xml, "failure")
                     # TODO: set a meaningful message and put log in CDATA
-                    sponge_failure.set("message", "Test failed")
+                    failure_xml.set("message", "Test failed")
                     print("[x]     FAIL --", test_log)
             tests_run += tests_run_from_suite
             failures += failures_from_suite
-            sponge_suite.set("tests", str(tests_run_from_suite))
-            sponge_suite.set("failures", str(failures_from_suite))
-    sponge.set("tests", str(tests_run))
-    sponge.set("failures", str(failures))
+            suite_xml.set("tests", str(tests_run_from_suite))
+            suite_xml.set("failures", str(failures_from_suite))
+    suites_xml.set("tests", str(tests_run))
+    suites_xml.set("failures", str(failures))
     with open(os.path.join(log, "sponge_log.xml"), "w") as f:
-        ET.ElementTree(sponge).write(f, encoding='utf-8', xml_declaration=True)
+        ET.ElementTree(suites_xml).write(
+            f, encoding='utf-8', xml_declaration=True)
     # If none were run, this is probably a mistake.
     if tests_run == 0:
         print("Error: no tests match")
