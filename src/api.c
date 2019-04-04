@@ -16,12 +16,11 @@
 
 #include "hf/api.h"
 
-#include <assert.h>
-
 #include "hf/arch/cpu.h"
 #include "hf/arch/std.h"
 #include "hf/arch/timer.h"
 
+#include "hf/assert.h"
 #include "hf/dlog.h"
 #include "hf/mm.h"
 #include "hf/spinlock.h"

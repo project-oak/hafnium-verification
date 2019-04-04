@@ -16,12 +16,12 @@
 
 #include "hf/load.h"
 
-#include <assert.h>
 #include <stdbool.h>
 
 #include "hf/arch/std.h"
 
 #include "hf/api.h"
+#include "hf/assert.h"
 #include "hf/boot_params.h"
 #include "hf/dlog.h"
 #include "hf/layout.h"

@@ -16,10 +16,10 @@
 
 #include "hf/mm.h"
 
-#include <assert.h>
 #include <stdatomic.h>
 #include <stdint.h>
 
+#include "hf/assert.h"
 #include "hf/dlog.h"
 #include "hf/layout.h"
 

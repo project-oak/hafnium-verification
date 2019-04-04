@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include <assert.h>
 #include <stdalign.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,6 +23,7 @@
 #include "hf/arch/mm.h"
 
 #include "hf/addr.h"
+#include "hf/assert.h"
 #include "hf/mpool.h"
 
 /* Keep macro alignment */
