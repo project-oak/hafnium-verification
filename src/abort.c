@@ -16,6 +16,8 @@
 
 #include "hf/abort.h"
 
+#include "hf/dlog.h"
+
 /**
  * Causes execution to halt and prevent progress of the current and less
  * privileged software components. This should be triggered when a
@@ -28,5 +30,7 @@ noreturn void abort(void)
 {
 	/* TODO: Block all CPUs. */
 	for (;;) {
+		/* Prevent loop being optimized away. */
+		__asm__ volatile("nop");
 	}
 }

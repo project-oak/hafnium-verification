@@ -495,13 +495,10 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 	ptable_addr_t begin = pa_addr(arch_mm_clear_pa(pa_begin));
 
 	/*
-	 * TODO: replace with assertions that the max level will be greater than
-	 * 0 and less than 255 so wrapping will not be a problem and will not
-	 * lead to subsequent overflows.
+	 * Assert condition to communicate the API constraint of mm_max_level(),
+	 * that isn't encoded in the types, to the static analyzer.
 	 */
-	if (root_level == 0 || root_level == 1) {
-		return false;
-	}
+	assert(root_level >= 2);
 
 	/* Cap end to stay within the bounds of the page table. */
 	if (end > ptable_end) {
