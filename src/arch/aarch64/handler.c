@@ -516,14 +516,12 @@ struct vcpu *serr_lower(void)
  * instruction and data aborts, but not necessarily for other exception reasons.
  */
 static struct vcpu_fault_info fault_info_init(uintreg_t esr,
-					      const struct vcpu *vcpu, int mode,
-					      uint8_t size)
+					      const struct vcpu *vcpu, int mode)
 {
 	uint32_t fsc = esr & 0x3f;
 	struct vcpu_fault_info r;
 
 	r.mode = mode;
-	r.size = size;
 	r.pc = va_init(vcpu->regs.pc);
 
 	/*
@@ -564,27 +562,15 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		return api_wait_for_interrupt(vcpu);
 
 	case 0x24: /* EC = 100100, Data abort. */
-		/*
-		 * Determine the size based on the SAS bits, which are only
-		 * valid if the ISV bit is set. The WnR bit is used to decide
-		 * if it's a read or write.
-		 */
 		info = fault_info_init(
-			esr, vcpu, (esr & (1u << 6)) ? MM_MODE_W : MM_MODE_R,
-			(esr & (1u << 24)) ? (1u << ((esr >> 22) & 0x3)) : 0);
-
-		/* Call the platform-independent handler. */
+			esr, vcpu, (esr & (1u << 6)) ? MM_MODE_W : MM_MODE_R);
 		if (vcpu_handle_page_fault(vcpu, &info)) {
 			return NULL;
 		}
 		break;
 
 	case 0x20: /* EC = 100000, Instruction abort. */
-		/* Determine the size based on the IL bit. */
-		info = fault_info_init(esr, vcpu, MM_MODE_X,
-				       (esr & (1u << 25)) ? 4 : 2);
-
-		/* Call the platform-independent handler. */
+		info = fault_info_init(esr, vcpu, MM_MODE_X);
 		if (vcpu_handle_page_fault(vcpu, &info)) {
 			return NULL;
 		}

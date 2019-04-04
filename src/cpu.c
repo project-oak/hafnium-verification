@@ -198,62 +198,34 @@ bool vcpu_handle_page_fault(const struct vcpu *current,
 			    struct vcpu_fault_info *f)
 {
 	struct vm *vm = current->vm;
-	ipaddr_t second_addr;
-	bool second;
 	int mode;
 	int mask = f->mode | MM_MODE_INVALID;
-	bool ret = false;
-
-	/* We can't recover if we don't know the size. */
-	if (f->size == 0) {
-		goto exit;
-	}
+	bool resume;
 
 	sl_lock(&vm->lock);
 
 	/*
 	 * Check if this is a legitimate fault, i.e., if the page table doesn't
 	 * allow the access attemped by the VM.
+	 *
+	 * Otherwise, this is a spurious fault, likely because another CPU is
+	 * updating the page table. It is responsible for issuing global TLB
+	 * invalidations while holding the VM lock, so we don't need to do
+	 * anything else to recover from it. (Acquiring/releasing the lock
+	 * ensured that the invalidations have completed.)
 	 */
-	if (!mm_vm_get_mode(&vm->ptable, f->ipaddr, ipa_add(f->ipaddr, 1),
-			    &mode) ||
-	    (mode & mask) != f->mode) {
-		goto exit_unlock;
-	}
+	resume = mm_vm_get_mode(&vm->ptable, f->ipaddr, ipa_add(f->ipaddr, 1),
+				&mode) &&
+		 (mode & mask) == f->mode;
 
-	/*
-	 * Do the same mode check on the second page, if the fault straddles two
-	 * pages.
-	 */
-	second_addr = ipa_add(f->ipaddr, f->size - 1);
-	second = (ipa_addr(f->ipaddr) >> PAGE_BITS) !=
-		 (ipa_addr(second_addr) >> PAGE_BITS);
-	if (second) {
-		if (!mm_vm_get_mode(&vm->ptable, second_addr,
-				    ipa_add(second_addr, 1), &mode) ||
-		    (mode & mask) != f->mode) {
-			goto exit_unlock;
-		}
-	}
-
-	/*
-	 * This is a spurious fault, likely because another CPU is updating the
-	 * page table. It is responsible for issuing global tlb invalidations
-	 * while holding the VM lock, so we don't need to do anything else to
-	 * recover from it. (Acquiring/releasing the lock ensured that the
-	 * invalidations have completed.)
-	 */
-
-	ret = true;
-
-exit_unlock:
 	sl_unlock(&vm->lock);
-exit:
-	if (!ret) {
+
+	if (!resume) {
 		dlog("Stage-2 page fault: pc=0x%x, vmid=%u, vcpu=%u, "
-		     "vaddr=0x%x, ipaddr=0x%x, mode=0x%x, size=%u\n",
+		     "vaddr=0x%x, ipaddr=0x%x, mode=0x%x\n",
 		     f->pc, vm->id, vcpu_index(current), f->vaddr, f->ipaddr,
-		     f->mode, f->size);
+		     f->mode);
 	}
-	return ret;
+
+	return resume;
 }

@@ -68,7 +68,6 @@ struct vcpu_fault_info {
 	vaddr_t vaddr;
 	vaddr_t pc;
 	int mode;
-	uint8_t size;
 };
 
 struct vcpu {
