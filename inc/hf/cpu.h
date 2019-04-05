@@ -32,22 +32,22 @@
 
 enum vcpu_state {
 	/** The vcpu is switched off. */
-	vcpu_state_off,
+	VCPU_STATE_OFF,
 
 	/** The vcpu is ready to be run. */
-	vcpu_state_ready,
+	VCPU_STATE_READY,
 
 	/** The vcpu is currently running. */
-	vcpu_state_running,
+	VCPU_STATE_RUNNING,
 
 	/** The vcpu is waiting for a message. */
-	vcpu_state_blocked_mailbox,
+	VCPU_STATE_BLOCKED_MAILBOX,
 
 	/** The vcpu is waiting for an interrupt. */
-	vcpu_state_blocked_interrupt,
+	VCPU_STATE_BLOCKED_INTERRUPT,
 
 	/** The vcpu has aborted. */
-	vcpu_state_aborted,
+	VCPU_STATE_ABORTED,
 };
 
 struct interrupts {

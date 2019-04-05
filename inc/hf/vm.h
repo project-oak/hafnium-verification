@@ -26,13 +26,13 @@
 
 enum mailbox_state {
 	/** There is no message in the mailbox. */
-	mailbox_state_empty,
+	MAILBOX_STATE_EMPTY,
 
 	/** There is a message in the mailbox that is waiting for a reader. */
-	mailbox_state_received,
+	MAILBOX_STATE_RECEIVED,
 
 	/** There is a message in the mailbox that has been read. */
-	mailbox_state_read,
+	MAILBOX_STATE_READ,
 };
 
 struct wait_entry {

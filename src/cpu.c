@@ -163,7 +163,7 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 	sl_init(&vcpu->lock);
 	vcpu->regs_available = true;
 	vcpu->vm = vm;
-	vcpu->state = vcpu_state_off;
+	vcpu->state = VCPU_STATE_OFF;
 }
 
 void vcpu_on(struct vcpu *vcpu, ipaddr_t entry, uintreg_t arg)
@@ -171,14 +171,14 @@ void vcpu_on(struct vcpu *vcpu, ipaddr_t entry, uintreg_t arg)
 	arch_regs_set_pc_arg(&vcpu->regs, entry, arg);
 
 	sl_lock(&vcpu->lock);
-	vcpu->state = vcpu_state_ready;
+	vcpu->state = VCPU_STATE_READY;
 	sl_unlock(&vcpu->lock);
 }
 
 void vcpu_off(struct vcpu *vcpu)
 {
 	sl_lock(&vcpu->lock);
-	vcpu->state = vcpu_state_off;
+	vcpu->state = VCPU_STATE_OFF;
 	sl_unlock(&vcpu->lock);
 }
 

@@ -108,7 +108,7 @@ struct vcpu *api_preempt(struct vcpu *current)
 		.code = HF_VCPU_RUN_PREEMPTED,
 	};
 
-	return api_switch_to_primary(current, ret, vcpu_state_ready);
+	return api_switch_to_primary(current, ret, VCPU_STATE_READY);
 }
 
 /**
@@ -122,7 +122,7 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 	};
 
 	return api_switch_to_primary(current, ret,
-				     vcpu_state_blocked_interrupt);
+				     VCPU_STATE_BLOCKED_INTERRUPT);
 }
 
 /**
@@ -141,7 +141,7 @@ struct vcpu *api_yield(struct vcpu *current)
 		return NULL;
 	}
 
-	return api_switch_to_primary(current, ret, vcpu_state_ready);
+	return api_switch_to_primary(current, ret, VCPU_STATE_READY);
 }
 
 /**
@@ -167,7 +167,7 @@ struct vcpu *api_abort(struct vcpu *current)
 
 	/* TODO: free resources once all vCPUs abort. */
 
-	return api_switch_to_primary(current, ret, vcpu_state_aborted);
+	return api_switch_to_primary(current, ret, VCPU_STATE_ABORTED);
 }
 
 /**
@@ -227,7 +227,7 @@ static struct wait_entry *api_fetch_waiter(struct vm_locked locked_vm)
 	struct wait_entry *entry;
 	struct vm *vm = locked_vm.vm;
 
-	if (vm->mailbox.state != mailbox_state_empty ||
+	if (vm->mailbox.state != MAILBOX_STATE_EMPTY ||
 	    vm->mailbox.recv == NULL || list_empty(&vm->mailbox.waiter_list)) {
 		/* The mailbox is not writable or there are no waiters. */
 		return NULL;
@@ -303,7 +303,7 @@ static int64_t internal_interrupt_inject(struct vm *target_vm,
 			.wake_up.vm_id = target_vm->id,
 			.wake_up.vcpu = target_vcpu - target_vm->vcpus,
 		};
-		*next = api_switch_to_primary(current, ret, vcpu_state_ready);
+		*next = api_switch_to_primary(current, ret, VCPU_STATE_READY);
 	}
 
 out:
@@ -340,7 +340,7 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 		sl_lock(&vcpu->lock);
 
 		/* The VM needs to be locked to deliver mailbox messages. */
-		need_vm_lock = vcpu->state == vcpu_state_blocked_mailbox;
+		need_vm_lock = vcpu->state == VCPU_STATE_BLOCKED_MAILBOX;
 		if (need_vm_lock) {
 			sl_unlock(&vcpu->lock);
 			sl_lock(&vcpu->vm->lock);
@@ -351,7 +351,7 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 			break;
 		}
 
-		if (vcpu->state == vcpu_state_running) {
+		if (vcpu->state == VCPU_STATE_RUNNING) {
 			/*
 			 * vCPU is running on another pCPU.
 			 *
@@ -372,34 +372,34 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	}
 
 	if (atomic_load_explicit(&vcpu->vm->aborting, memory_order_relaxed)) {
-		if (vcpu->state != vcpu_state_aborted) {
+		if (vcpu->state != VCPU_STATE_ABORTED) {
 			dlog("Aborting VM %u vCPU %u\n", vcpu->vm->id,
 			     vcpu_index(vcpu));
-			vcpu->state = vcpu_state_aborted;
+			vcpu->state = VCPU_STATE_ABORTED;
 		}
 		ret = false;
 		goto out;
 	}
 
 	switch (vcpu->state) {
-	case vcpu_state_running:
-	case vcpu_state_off:
-	case vcpu_state_aborted:
+	case VCPU_STATE_RUNNING:
+	case VCPU_STATE_OFF:
+	case VCPU_STATE_ABORTED:
 		ret = false;
 		goto out;
 
-	case vcpu_state_blocked_mailbox:
+	case VCPU_STATE_BLOCKED_MAILBOX:
 		/*
 		 * A pending message allows the vCPU to run so the message can
 		 * be delivered directly.
 		 */
-		if (vcpu->vm->mailbox.state == mailbox_state_received) {
+		if (vcpu->vm->mailbox.state == MAILBOX_STATE_RECEIVED) {
 			arch_regs_set_retval(&vcpu->regs, SPCI_SUCCESS);
-			vcpu->vm->mailbox.state = mailbox_state_read;
+			vcpu->vm->mailbox.state = MAILBOX_STATE_READ;
 			break;
 		}
 		/* Fall through. */
-	case vcpu_state_blocked_interrupt:
+	case VCPU_STATE_BLOCKED_INTERRUPT:
 		/* Allow virtual interrupts to be delivered. */
 		if (vcpu->interrupts.enabled_and_pending_count > 0) {
 			break;
@@ -416,7 +416,7 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 		 */
 		if (arch_timer_enabled(&vcpu->regs)) {
 			run_ret->code =
-				vcpu->state == vcpu_state_blocked_mailbox
+				vcpu->state == VCPU_STATE_BLOCKED_MAILBOX
 					? HF_VCPU_RUN_WAIT_FOR_MESSAGE
 					: HF_VCPU_RUN_WAIT_FOR_INTERRUPT;
 			run_ret->sleep.ns =
@@ -426,13 +426,13 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 		ret = false;
 		goto out;
 
-	case vcpu_state_ready:
+	case VCPU_STATE_READY:
 		break;
 	}
 
 	/* It has been decided that the vCPU should be run. */
 	vcpu->cpu = current->cpu;
-	vcpu->state = vcpu_state_running;
+	vcpu->state = VCPU_STATE_RUNNING;
 
 	/*
 	 * Mark the registers as unavailable now that we're about to reflect
@@ -563,7 +563,7 @@ static int64_t api_waiter_result(struct vm_locked locked_vm,
 	 * Switch back to the primary VM, informing it that there are waiters
 	 * that need to be notified.
 	 */
-	*next = api_switch_to_primary(current, ret, vcpu_state_ready);
+	*next = api_switch_to_primary(current, ret, VCPU_STATE_READY);
 
 	return 0;
 }
@@ -784,7 +784,7 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 
 	sl_lock(&to->lock);
 
-	if (to->mailbox.state != mailbox_state_empty ||
+	if (to->mailbox.state != MAILBOX_STATE_EMPTY ||
 	    to->mailbox.recv == NULL) {
 		/*
 		 * Fail if the target isn't currently ready to receive data,
@@ -816,18 +816,18 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 
 	/* Messages for the primary VM are delivered directly. */
 	if (to->id == HF_PRIMARY_VM_ID) {
-		to->mailbox.state = mailbox_state_read;
+		to->mailbox.state = MAILBOX_STATE_READ;
 		*next = api_switch_to_primary(current, primary_ret,
-					      vcpu_state_ready);
+					      VCPU_STATE_READY);
 		goto out;
 	}
 
-	to->mailbox.state = mailbox_state_received;
+	to->mailbox.state = MAILBOX_STATE_RECEIVED;
 
 	/* Return to the primary VM directly or with a switch. */
 	if (from->id != HF_PRIMARY_VM_ID) {
 		*next = api_switch_to_primary(current, primary_ret,
-					      vcpu_state_ready);
+					      VCPU_STATE_READY);
 	}
 
 out:
@@ -861,8 +861,8 @@ int32_t api_spci_msg_recv(uint32_t attributes, struct vcpu *current,
 	sl_lock(&vm->lock);
 
 	/* Return pending messages without blocking. */
-	if (vm->mailbox.state == mailbox_state_received) {
-		vm->mailbox.state = mailbox_state_read;
+	if (vm->mailbox.state == MAILBOX_STATE_RECEIVED) {
+		vm->mailbox.state = MAILBOX_STATE_READ;
 		return_code = SPCI_SUCCESS;
 		goto out;
 	}
@@ -895,7 +895,7 @@ int32_t api_spci_msg_recv(uint32_t attributes, struct vcpu *current,
 		};
 
 		*next = api_switch_to_primary(current, run_return,
-					      vcpu_state_blocked_mailbox);
+					      VCPU_STATE_BLOCKED_MAILBOX);
 	}
 out:
 	sl_unlock(&vm->lock);
@@ -1002,17 +1002,17 @@ int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next)
 
 	vm_lock(vm, &locked);
 	switch (vm->mailbox.state) {
-	case mailbox_state_empty:
+	case MAILBOX_STATE_EMPTY:
 		ret = 0;
 		break;
 
-	case mailbox_state_received:
+	case MAILBOX_STATE_RECEIVED:
 		ret = -1;
 		break;
 
-	case mailbox_state_read:
+	case MAILBOX_STATE_READ:
 		ret = api_waiter_result(locked, current, next);
-		vm->mailbox.state = mailbox_state_empty;
+		vm->mailbox.state = MAILBOX_STATE_EMPTY;
 		break;
 	}
 	vm_unlock(&locked);
