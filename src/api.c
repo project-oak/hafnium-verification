@@ -767,7 +767,7 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 
 	size = from_msg_replica.length;
 	/* Limit the size of transfer. */
-	if (size > HF_MAILBOX_SIZE - sizeof(struct spci_message)) {
+	if (size > SPCI_MSG_PAYLOAD_MAX) {
 		return SPCI_INVALID_PARAMETERS;
 	}
 

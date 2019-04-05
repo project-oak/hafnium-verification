@@ -42,6 +42,9 @@ typedef uintptr_t hf_ipaddr_t;
 /* Sleep value for an indefinite period of time. */
 #define HF_SLEEP_INDEFINITE 0xffffffffffffff
 
+/** The amount of data that can be sent to a mailbox. */
+#define HF_MAILBOX_SIZE 4096
+
 /** The number of virtual interrupt IDs which are supported. */
 #define HF_NUM_INTIDS 64
 

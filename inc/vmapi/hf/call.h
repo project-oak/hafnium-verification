@@ -38,9 +38,6 @@
 #define HF_INTERRUPT_INJECT     0xff0d
 #define HF_SHARE_MEMORY         0xff0e
 
-/** The amount of data that can be sent to a mailbox. */
-#define HF_MAILBOX_SIZE 4096
-
 /* clang-format on */
 
 /**

@@ -90,11 +90,9 @@ TEST(spci, spci_incorrect_length)
 
 	SERVICE_SELECT(SERVICE_VM0, "spci_length", mb.send);
 
-	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
-	/* Send the message and compare if truncated*/
+	/* Send the message and compare if truncated. */
 	memcpy(mb.send->payload, message, sizeof(message));
-	/* Hard code incorrect length */
+	/* Hard code incorrect length. */
 	spci_message_init(mb.send, 16, SERVICE_VM0, HF_PRIMARY_VM_ID);
 
 	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
@@ -108,17 +106,10 @@ TEST(spci, spci_incorrect_length)
 TEST(spci, spci_large_message)
 {
 	const char message[] = "fail to send";
-	struct hf_vcpu_run_return run_res;
 	struct mailbox_buffers mb = set_up_mailbox();
 
-	SERVICE_SELECT(SERVICE_VM0, "spci_check", mb.send);
-
-	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
-
 	memcpy(mb.send->payload, message, sizeof(message));
-	/* Try to send a message that is larger than the mailbox supports (4KB).
-	 */
+	/* Send a message that is larger than the mailbox supports (4KB). */
 	spci_message_init(mb.send, 4 * 1024, SERVICE_VM0, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), SPCI_INVALID_PARAMETERS);
 }

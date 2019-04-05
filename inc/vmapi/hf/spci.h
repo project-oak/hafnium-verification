@@ -47,13 +47,16 @@
 #define SPCI_RETRY              INT32_C(-7)
 
 /* SPCI function specific constants. */
-#define SPCI_MSG_RECV_BLOCK_MASK 0x1
+#define SPCI_MSG_RECV_BLOCK_MASK  0x1
 #define SPCI_MSG_SEND_NOTIFY_MASK 0x1
 
 #define SPCI_MESSAGE_IMPDEF_MASK 0x1
 
 #define SPCI_MSG_SEND_NOTIFY 0x1
-#define SPCI_MSG_RECV_BLOCK 0x1
+#define SPCI_MSG_RECV_BLOCK  0x1
+
+/* The maximum length possible for a single message. */
+#define SPCI_MSG_PAYLOAD_MAX (HF_MAILBOX_SIZE - sizeof(struct spci_message))
 
 /* clang-format on */
 
