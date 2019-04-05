@@ -32,3 +32,5 @@ typedef size_t rsize_t;
 void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count);
 void memcpy_s(void *dest, rsize_t destsz, const void *src, rsize_t count);
 void memmove_s(void *dest, rsize_t destsz, const void *src, rsize_t count);
+
+size_t strnlen_s(const char *str, size_t strsz);

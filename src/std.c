@@ -100,3 +100,18 @@ void memmove_s(void *dest, rsize_t destsz, const void *src, rsize_t count)
 fail:
 	panic("memmove_s failure");
 }
+
+size_t strnlen_s(const char *str, size_t strsz)
+{
+	const char *p = str;
+
+	if (str == NULL) {
+		return 0;
+	}
+
+	while (*p && strsz--) {
+		p++;
+	}
+
+	return p - str;
+}

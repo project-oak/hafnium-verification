@@ -23,7 +23,6 @@
 
 int memcmp(const void *a, const void *b, size_t n);
 
-size_t strlen(const char *str);
 int strcmp(const char *a, const char *b);
 
 #define ctz(x) __builtin_ctz(x)

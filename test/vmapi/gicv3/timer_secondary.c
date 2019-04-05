@@ -99,7 +99,7 @@ static void timer_secondary(const char message[],
 			    enum hf_vcpu_run_code expected_code)
 {
 	const char expected_response[] = "Got IRQ 03.";
-	size_t message_length = strlen(message) + 1;
+	size_t message_length = strnlen_s(message, 64) + 1;
 	struct hf_vcpu_run_return run_res;
 
 	/* Let the secondary get started and wait for our message. */
@@ -238,7 +238,7 @@ TEST(timer_secondary, receive_long)
 TEST(timer_secondary, wfi_very_long)
 {
 	const char message[] = "WFI  9999999";
-	size_t message_length = strlen(message) + 1;
+	size_t message_length = strnlen_s(message, 64) + 1;
 	struct hf_vcpu_run_return run_res;
 
 	/* Let the secondary get started and wait for our message. */

@@ -270,7 +270,7 @@ TEST(mailbox, primary_to_secondary)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Without clearing our mailbox, send message again. */
-	reverse(message, strlen(message));
+	reverse(message, strnlen_s(message, sizeof(message)));
 	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
 		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,

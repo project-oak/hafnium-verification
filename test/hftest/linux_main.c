@@ -52,8 +52,8 @@ void test_main(int argc, const char *argv[])
 			return;
 		}
 
-		memiter_init(&suite_name, argv[2], strlen(argv[2]));
-		memiter_init(&test_name, argv[3], strlen(argv[3]));
+		memiter_init(&suite_name, argv[2], strnlen_s(argv[2], 64));
+		memiter_init(&test_name, argv[3], strnlen_s(argv[3], 64));
 		hftest_run(suite_name, test_name);
 		return;
 	}

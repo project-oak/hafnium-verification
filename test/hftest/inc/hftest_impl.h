@@ -272,7 +272,7 @@ union hftest_any {
 #define HFTEST_SERVICE_SELECT(vm_id, service, send_buffer)                    \
 	do {                                                                  \
 		struct hf_vcpu_run_return run_res;                            \
-		uint32_t msg_length = strlen(service);                        \
+		uint32_t msg_length = strnlen_s(service, 64);                 \
                                                                               \
 		/*                                                            \
 		 * Let the service configure its mailbox and wait for a       \

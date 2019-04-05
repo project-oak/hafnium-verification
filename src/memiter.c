@@ -58,9 +58,10 @@ static void memiter_skip_space(struct memiter *it)
  */
 bool memiter_iseq(const struct memiter *it, const char *str)
 {
-	size_t len = strlen(str);
+	size_t it_len = it->limit - it->next;
+	size_t len = strnlen_s(str, it_len + 1);
 
-	if (len != it->limit - it->next) {
+	if (len != it_len) {
 		return false;
 	}
 

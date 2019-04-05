@@ -91,7 +91,7 @@ static void print_string(const char *str, const char *suffix, size_t width,
 	}
 
 	/* Fill until we reach the desired length. */
-	len += strlen(suffix);
+	len += strnlen_s(suffix, 50);
 	while (len < width) {
 		arch_putchar(fill);
 		len++;
