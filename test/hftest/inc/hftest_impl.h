@@ -18,9 +18,8 @@
 
 #include <stdnoreturn.h>
 
-#include "hf/arch/std.h"
-
 #include "hf/spci.h"
+#include "hf/std.h"
 
 #define HFTEST_MAX_TESTS 50
 

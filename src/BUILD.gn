@@ -59,13 +59,20 @@ source_set("src_testable") {
   deps = [
     ":fdt",
     ":memiter",
+    ":std",
     "//src/arch/${plat_arch}",
-    "//src/arch/${plat_arch}:std",
   ]
 
   if (is_debug) {
     deps += [ ":dlog" ]
   }
+}
+
+# Standard library functions.
+source_set("std") {
+  deps = [
+    "//src/arch/${plat_arch}:std",
+  ]
 }
 
 # Debug code that is not specific to a certain image so can be shared.
@@ -75,8 +82,8 @@ source_set("dlog") {
   ]
 
   deps = [
+    ":std",
     "//src/arch/${plat_arch}:putchar",
-    "//src/arch/${plat_arch}:std",
   ]
 }
 
@@ -87,7 +94,7 @@ source_set("fdt") {
   ]
 
   deps = [
-    "//src/arch/${plat_arch}:std",
+    ":std",
   ]
 
   if (is_debug) {

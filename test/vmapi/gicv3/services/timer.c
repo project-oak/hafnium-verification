@@ -17,11 +17,11 @@
 #include "hf/arch/vm/timer.h"
 
 #include "hf/arch/cpu.h"
-#include "hf/arch/std.h"
 #include "hf/arch/vm/events.h"
 #include "hf/arch/vm/interrupts_gicv3.h"
 
 #include "hf/dlog.h"
+#include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 

@@ -16,10 +16,10 @@
 
 #include "hftest_common.h"
 
-#include "hf/arch/std.h"
 #include "hf/arch/vm/power_mgmt.h"
 
 #include "hf/memiter.h"
+#include "hf/std.h"
 
 #include "hftest.h"
 

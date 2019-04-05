@@ -20,9 +20,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "hf/arch/std.h"
-
 #include "hf/addr.h"
+#include "hf/std.h"
 
 void arch_irq_disable(void)
 {

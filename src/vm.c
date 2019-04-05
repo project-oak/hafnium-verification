@@ -16,10 +16,9 @@
 
 #include "hf/vm.h"
 
-#include "hf/arch/std.h"
-
 #include "hf/api.h"
 #include "hf/cpu.h"
+#include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 

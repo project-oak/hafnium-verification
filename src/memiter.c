@@ -16,7 +16,7 @@
 
 #include "hf/memiter.h"
 
-#include "hf/arch/std.h"
+#include "hf/std.h"
 
 /**
  * Initialises the given memory iterator.

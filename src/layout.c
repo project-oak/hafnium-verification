@@ -16,7 +16,7 @@
 
 #include "hf/layout.h"
 
-#include "hf/arch/std.h"
+#include "hf/std.h"
 
 /**
  * Get the address the .text section begins at.

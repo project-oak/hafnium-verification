@@ -18,7 +18,7 @@
 
 #include <stdint.h>
 
-#include "hf/arch/std.h"
+#include "hf/std.h"
 
 #pragma pack(push, 1)
 struct cpio_header {

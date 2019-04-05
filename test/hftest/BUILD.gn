@@ -45,8 +45,8 @@ source_set("hftest_secondary_vm") {
     "//src:dlog",
     "//src:memiter",
     "//src:panic",
+    "//src:std",
     "//src/arch/${plat_arch}:entry",
-    "//src/arch/${plat_arch}:std",
     "//src/arch/${plat_arch}/hftest:entry",
     "//src/arch/${plat_arch}/hftest:hf_call",
     "//src/arch/${plat_arch}/hftest:power_mgmt",
@@ -112,6 +112,6 @@ source_set("common") {
   deps = [
     "//src:memiter",
     "//src:panic",
-    "//src/arch/${plat_arch}:std",
+    "//src:std",
   ]
 }

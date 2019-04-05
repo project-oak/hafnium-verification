@@ -18,8 +18,6 @@
 
 #include <stdbool.h>
 
-#include "hf/arch/std.h"
-
 #include "hf/api.h"
 #include "hf/assert.h"
 #include "hf/boot_params.h"
@@ -27,6 +25,7 @@
 #include "hf/layout.h"
 #include "hf/memiter.h"
 #include "hf/mm.h"
+#include "hf/std.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"

@@ -17,10 +17,9 @@
 #include <stdalign.h>
 #include <stdint.h>
 
-#include "hf/arch/std.h"
-
 #include "hf/memiter.h"
 #include "hf/spci.h"
+#include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 

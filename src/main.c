@@ -18,7 +18,6 @@
 #include <stddef.h>
 
 #include "hf/arch/init.h"
-#include "hf/arch/std.h"
 
 #include "hf/api.h"
 #include "hf/boot_params.h"
@@ -29,6 +28,7 @@
 #include "hf/mm.h"
 #include "hf/mpool.h"
 #include "hf/panic.h"
+#include "hf/std.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"

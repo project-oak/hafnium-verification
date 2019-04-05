@@ -16,14 +16,13 @@
 
 #include "hf/fdt_handler.h"
 
-#include "hf/arch/std.h"
-
 #include "hf/boot_params.h"
 #include "hf/cpu.h"
 #include "hf/dlog.h"
 #include "hf/fdt.h"
 #include "hf/layout.h"
 #include "hf/mm.h"
+#include "hf/std.h"
 
 static uint64_t convert_number(const char *data, uint32_t size)
 {
