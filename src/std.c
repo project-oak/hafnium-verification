@@ -21,6 +21,7 @@
 /* Declare unsafe functions locally so they are not available globally. */
 void *memset(void *s, int c, size_t n);
 void *memcpy(void *dst, const void *src, size_t n);
+void *memmove(void *dst, const void *src, size_t n);
 
 void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count)
 {
@@ -77,4 +78,25 @@ void memcpy_s(void *dest, rsize_t destsz, const void *src, rsize_t count)
 
 fail:
 	panic("memcpy_s failure");
+}
+
+void memmove_s(void *dest, rsize_t destsz, const void *src, rsize_t count)
+{
+	if (dest == NULL || src == NULL) {
+		goto fail;
+	}
+
+	if (destsz > RSIZE_MAX || count > RSIZE_MAX) {
+		goto fail;
+	}
+
+	if (count > destsz) {
+		goto fail;
+	}
+
+	memmove(dest, src, count);
+	return;
+
+fail:
+	panic("memmove_s failure");
 }

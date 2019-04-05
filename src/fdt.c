@@ -400,6 +400,8 @@ void fdt_add_mem_reservation(struct fdt_header *hdr, uint64_t addr,
 	/* TODO: Clean this up. */
 	uint8_t *begin = (uint8_t *)hdr + be32toh(hdr->off_mem_rsvmap);
 	struct fdt_reserve_entry *e = (struct fdt_reserve_entry *)begin;
+	size_t old_size =
+		be32toh(hdr->totalsize) - be32toh(hdr->off_mem_rsvmap);
 
 	hdr->totalsize = htobe32(be32toh(hdr->totalsize) +
 				 sizeof(struct fdt_reserve_entry));
@@ -407,8 +409,8 @@ void fdt_add_mem_reservation(struct fdt_header *hdr, uint64_t addr,
 				     sizeof(struct fdt_reserve_entry));
 	hdr->off_dt_strings = htobe32(be32toh(hdr->off_dt_strings) +
 				      sizeof(struct fdt_reserve_entry));
-	memmove(begin + sizeof(struct fdt_reserve_entry), begin,
-		be32toh(hdr->totalsize) - be32toh(hdr->off_mem_rsvmap));
+	memmove_s(begin + sizeof(struct fdt_reserve_entry), old_size, begin,
+		  old_size);
 	e->address = htobe64(addr);
 	e->size = htobe64(len);
 }
