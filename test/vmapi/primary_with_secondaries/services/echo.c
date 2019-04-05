@@ -29,7 +29,8 @@ TEST_SERVICE(echo)
 		struct spci_message *send_buf = SERVICE_SEND_BUFFER();
 		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
 
-		memcpy(send_buf->payload, recv_buf->payload, recv_buf->length);
+		memcpy_s(send_buf->payload, SPCI_MSG_PAYLOAD_MAX,
+			 recv_buf->payload, recv_buf->length);
 		spci_message_init(SERVICE_SEND_BUFFER(), recv_buf->length,
 				  recv_buf->source_vm_id,
 				  recv_buf->target_vm_id);

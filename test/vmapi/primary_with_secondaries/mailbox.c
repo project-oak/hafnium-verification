@@ -88,7 +88,8 @@ TEST(mailbox, echo)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Set the message, echo it and check it didn't change. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -119,7 +120,8 @@ TEST(mailbox, repeated_echo)
 
 		/* Set the message, echo it and check it didn't change. */
 		next_permutation(message, sizeof(message) - 1);
-		memcpy(mb.send->payload, message, sizeof(message));
+		memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+			 sizeof(message));
 		spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 				  HF_PRIMARY_VM_ID);
 		EXPECT_EQ(spci_msg_send(0), 0);
@@ -160,7 +162,8 @@ TEST(mailbox, relay)
 		uint32_t *chain = (uint32_t *)mb.send->payload;
 		*chain++ = htole32(SERVICE_VM1);
 		*chain++ = htole32(HF_PRIMARY_VM_ID);
-		memcpy(chain, message, sizeof(message));
+		memcpy_s(chain, SPCI_MSG_PAYLOAD_MAX - (2 * sizeof(uint32_t)),
+			 message, sizeof(message));
 
 		spci_message_init(mb.send,
 				  sizeof(message) + (2 * sizeof(uint32_t)),
@@ -251,7 +254,8 @@ TEST(mailbox, primary_to_secondary)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send a message to echo service, and get response back. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -267,7 +271,8 @@ TEST(mailbox, primary_to_secondary)
 
 	/* Without clearing our mailbox, send message again. */
 	reverse(message, strlen(message));
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 
@@ -315,7 +320,8 @@ TEST(mailbox, secondary_to_primary_notification)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send a message to echo service twice. The second should fail. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);

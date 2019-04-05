@@ -66,7 +66,8 @@ TEST_SERVICE(check_state)
 	}
 
 	/* Send two replies, one for each physical CPU. */
-	memcpy(SERVICE_SEND_BUFFER()->payload, &ok, sizeof(ok));
+	memcpy_s(SERVICE_SEND_BUFFER()->payload, SPCI_MSG_PAYLOAD_MAX, &ok,
+		 sizeof(ok));
 	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ok), HF_PRIMARY_VM_ID,
 			  hf_vm_get_id());
 	send_with_retry();

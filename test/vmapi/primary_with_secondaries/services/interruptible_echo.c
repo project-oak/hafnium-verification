@@ -48,8 +48,8 @@ TEST_SERVICE(interruptible_echo)
 			res = spci_msg_recv(SPCI_MSG_RECV_BLOCK);
 		}
 
-		memcpy(message->payload, recv_message->payload,
-		       recv_message->length);
+		memcpy_s(message->payload, SPCI_MSG_PAYLOAD_MAX,
+			 recv_message->payload, recv_message->length);
 		spci_message_init(message, recv_message->length,
 				  HF_PRIMARY_VM_ID, SERVICE_VM0);
 

@@ -35,7 +35,7 @@ static uint64_t convert_number(const char *data, uint32_t size)
 	case sizeof(uint32_t):
 		return be32toh(*(uint32_t *)data);
 	case sizeof(uint64_t):
-		memcpy(t.a, data, sizeof(uint64_t));
+		memcpy_s(t.a, sizeof(t.a), data, sizeof(uint64_t));
 		return be64toh(t.v);
 	default:
 		return 0;
@@ -86,7 +86,7 @@ static bool fdt_write_number(struct fdt_node *node, const char *name,
 
 	case sizeof(uint64_t):
 		t.v = be64toh(value);
-		memcpy((void *)data, t.a, sizeof(uint64_t));
+		memcpy_s((void *)data, size, t.a, sizeof(uint64_t));
 		break;
 
 	default:

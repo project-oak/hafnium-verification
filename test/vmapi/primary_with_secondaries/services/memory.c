@@ -33,7 +33,7 @@ TEST_SERVICE(memory_increment)
 
 		/* Check the memory was cleared. */
 		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
-		memcpy(&ptr, recv_buf->payload, sizeof(ptr));
+		ptr = *(uint8_t **)recv_buf->payload;
 		spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr),
 				  recv_buf->source_vm_id, hf_vm_get_id());
 
@@ -64,7 +64,7 @@ TEST_SERVICE(memory_return)
 
 		/* Check the memory was cleared. */
 		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
-		memcpy(&ptr, recv_buf->payload, sizeof(ptr));
+		ptr = *(uint8_t **)recv_buf->payload;
 		spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr),
 				  recv_buf->source_vm_id, hf_vm_get_id());
 
@@ -102,7 +102,8 @@ TEST_SERVICE(give_memory_and_fault)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(SERVICE_SEND_BUFFER()->payload, &ptr, sizeof(ptr));
+	memcpy_s(SERVICE_SEND_BUFFER()->payload, SPCI_MSG_PAYLOAD_MAX, &ptr,
+		 sizeof(ptr));
 	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr), HF_PRIMARY_VM_ID,
 			  hf_vm_get_id());
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -125,7 +126,8 @@ TEST_SERVICE(lend_memory_and_fault)
 	 *       API is still to be agreed on so the address is passed
 	 *       explicitly to test the mechanism.
 	 */
-	memcpy(SERVICE_SEND_BUFFER()->payload, &ptr, sizeof(ptr));
+	memcpy_s(SERVICE_SEND_BUFFER()->payload, SPCI_MSG_PAYLOAD_MAX, &ptr,
+		 sizeof(ptr));
 	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(ptr), HF_PRIMARY_VM_ID,
 			  hf_vm_get_id());
 	EXPECT_EQ(spci_msg_send(0), 0);

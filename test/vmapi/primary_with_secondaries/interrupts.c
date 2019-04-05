@@ -42,7 +42,8 @@ TEST(interrupts, interrupt_self)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Set the message, echo it and wait for a response. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -165,7 +166,8 @@ TEST(interrupts, inject_interrupt_message)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Now send a message to the secondary. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -202,7 +204,8 @@ TEST(interrupts, inject_interrupt_disabled)
 	 * Now send a message to the secondary to enable the interrupt ID, and
 	 * expect the response from the interrupt we sent before.
 	 */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -287,7 +290,8 @@ TEST(interrupts, deliver_interrupt_and_message)
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_WAIT_FOR_MESSAGE);
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);

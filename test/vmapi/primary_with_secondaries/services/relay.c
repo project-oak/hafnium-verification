@@ -49,7 +49,8 @@ TEST_SERVICE(relay)
 		next_message_size = recv_buf->length - sizeof(uint32_t);
 
 		/* Send the message to the next stage. */
-		memcpy(send_buf->payload, next_message, next_message_size);
+		memcpy_s(send_buf->payload, SPCI_MSG_PAYLOAD_MAX, next_message,
+			 next_message_size);
 		spci_message_init(send_buf, next_message_size, next_vm_id,
 				  hf_vm_get_id());
 

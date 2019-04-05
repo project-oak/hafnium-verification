@@ -809,7 +809,8 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 	/* Copy data. */
 	to_msg = to->mailbox.recv;
 	*to_msg = from_msg_replica;
-	memcpy(to_msg->payload, from->mailbox.send->payload, size);
+	memcpy_s(to_msg->payload, SPCI_MSG_PAYLOAD_MAX,
+		 from->mailbox.send->payload, size);
 	primary_ret.message.vm_id = to->id;
 	ret = SPCI_SUCCESS;
 

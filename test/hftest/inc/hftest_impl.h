@@ -283,7 +283,8 @@ union hftest_any {
 		ASSERT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);             \
                                                                               \
 		/* Send the selected service to run and let it be handled. */ \
-		memcpy(send_buffer->payload, service, msg_length);            \
+		memcpy_s(send_buffer->payload, SPCI_MSG_PAYLOAD_MAX, service, \
+			 msg_length);                                         \
 		spci_message_init(send_buffer, msg_length, vm_id,             \
 				  hf_vm_get_id());                            \
                                                                               \

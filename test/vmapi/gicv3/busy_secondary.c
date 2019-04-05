@@ -79,7 +79,8 @@ TEST(busy_secondary, virtual_timer)
 
 	/* Let secondary start looping. */
 	dlog("Telling secondary to loop.\n");
-	memcpy(send_buffer->payload, message, sizeof(message));
+	memcpy_s(send_buffer->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(send_buffer, 0, SERVICE_VM0,
 			  recv_buffer->target_vm_id);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -136,7 +137,8 @@ TEST(busy_secondary, physical_timer)
 
 	/* Let secondary start looping. */
 	dlog("Telling secondary to loop.\n");
-	memcpy(send_buffer->payload, message, sizeof(message));
+	memcpy_s(send_buffer->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(send_buffer, 0, SERVICE_VM0,
 			  recv_buffer->target_vm_id);
 	EXPECT_EQ(spci_msg_send(0), 0);

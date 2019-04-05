@@ -50,7 +50,8 @@ TEST_SERVICE(receive_block)
 		EXPECT_EQ(res, SPCI_INTERRUPTED);
 	}
 
-	memcpy(SERVICE_SEND_BUFFER()->payload, message, sizeof(message));
+	memcpy_s(SERVICE_SEND_BUFFER()->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(SERVICE_SEND_BUFFER(), sizeof(message),
 			  HF_PRIMARY_VM_ID, hf_vm_get_id());
 

@@ -39,7 +39,8 @@ static void irq(void)
 	dlog("secondary IRQ %d from current\n", interrupt_id);
 	buffer[8] = '0' + interrupt_id / 10;
 	buffer[9] = '0' + interrupt_id % 10;
-	memcpy(SERVICE_SEND_BUFFER()->payload, buffer, size);
+	memcpy_s(SERVICE_SEND_BUFFER()->payload, SPCI_MSG_PAYLOAD_MAX, buffer,
+		 size);
 	spci_message_init(SERVICE_SEND_BUFFER(), size, HF_PRIMARY_VM_ID,
 			  hf_vm_get_id());
 	spci_msg_send(0);

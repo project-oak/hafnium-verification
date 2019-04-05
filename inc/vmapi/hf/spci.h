@@ -84,10 +84,9 @@ struct spci_message {
 	 * to reflect this (TBD).
 	 */
 	uint16_t reserved_1;
+
 	uint32_t length;
-
 	spci_vm_id_t target_vm_id;
-
 	spci_vm_id_t source_vm_id;
 
 	/*

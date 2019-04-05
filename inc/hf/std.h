@@ -30,3 +30,4 @@ typedef size_t rsize_t;
  * have a constraint handler that panics.
  */
 void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count);
+void memcpy_s(void *dest, rsize_t destsz, const void *src, rsize_t count);

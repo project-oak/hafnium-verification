@@ -49,7 +49,7 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size,
 		return false;
 	}
 
-	memcpy(ptr, from, size);
+	memcpy_s(ptr, size, from, size);
 	arch_mm_write_back_dcache(ptr, size);
 
 	mm_unmap(to, to_end, ppool);
@@ -261,8 +261,8 @@ bool load_secondary(const struct memiter *cpio,
 	static_assert(sizeof(mem_ranges_available) < 500,
 		      "This will use too much stack, either make "
 		      "MAX_MEM_RANGES smaller or change this.");
-	memcpy(mem_ranges_available, params->mem_ranges,
-	       sizeof(mem_ranges_available));
+	memcpy_s(mem_ranges_available, sizeof(mem_ranges_available),
+		 params->mem_ranges, sizeof(params->mem_ranges));
 
 	primary = vm_get(HF_PRIMARY_VM_ID);
 

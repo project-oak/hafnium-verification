@@ -49,7 +49,8 @@ static void timer_busywait_secondary()
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send the message for the secondary to set a timer. */
-	memcpy(send_buffer->payload, message, sizeof(message));
+	memcpy_s(send_buffer->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(send_buffer, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -107,7 +108,8 @@ static void timer_secondary(const char message[],
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send the message for the secondary to set a timer. */
-	memcpy(send_buffer->payload, message, message_length);
+	memcpy_s(send_buffer->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 message_length);
 	spci_message_init(send_buffer, message_length, SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -245,7 +247,8 @@ TEST(timer_secondary, wfi_very_long)
 	EXPECT_EQ(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
 
 	/* Send the message for the secondary to set a timer. */
-	memcpy(send_buffer->payload, message, message_length);
+	memcpy_s(send_buffer->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 message_length);
 	spci_message_init(send_buffer, message_length, SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);

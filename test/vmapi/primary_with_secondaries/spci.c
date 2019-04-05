@@ -39,7 +39,8 @@ TEST(spci, msg_send)
 	SERVICE_SELECT(SERVICE_VM0, "spci_check", mb.send);
 
 	/* Set the payload, init the message header and send the message. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0,
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
@@ -59,7 +60,8 @@ TEST(spci, msg_send_spoof)
 	SERVICE_SELECT(SERVICE_VM0, "spci_check", mb.send);
 
 	/* Set the payload, init the message header and send the message. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), SERVICE_VM0, SERVICE_VM1);
 	EXPECT_EQ(spci_msg_send(0), SPCI_INVALID_PARAMETERS);
 }
@@ -74,7 +76,8 @@ TEST(spci, spci_invalid_destination_id)
 
 	SERVICE_SELECT(SERVICE_VM0, "spci_check", mb.send);
 	/* Set the payload, init the message header and send the message. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	spci_message_init(mb.send, sizeof(message), -1, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), SPCI_INVALID_PARAMETERS);
 }
@@ -91,7 +94,8 @@ TEST(spci, spci_incorrect_length)
 	SERVICE_SELECT(SERVICE_VM0, "spci_length", mb.send);
 
 	/* Send the message and compare if truncated. */
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	/* Hard code incorrect length. */
 	spci_message_init(mb.send, 16, SERVICE_VM0, HF_PRIMARY_VM_ID);
 
@@ -108,7 +112,8 @@ TEST(spci, spci_large_message)
 	const char message[] = "fail to send";
 	struct mailbox_buffers mb = set_up_mailbox();
 
-	memcpy(mb.send->payload, message, sizeof(message));
+	memcpy_s(mb.send->payload, SPCI_MSG_PAYLOAD_MAX, message,
+		 sizeof(message));
 	/* Send a message that is larger than the mailbox supports (4KB). */
 	spci_message_init(mb.send, 4 * 1024, SERVICE_VM0, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), SPCI_INVALID_PARAMETERS);
