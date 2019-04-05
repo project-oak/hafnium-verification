@@ -107,7 +107,7 @@ noreturn void kmain(void)
 
 	/* Clean the context. */
 	ctx = hftest_get_context();
-	memset(ctx, 0, sizeof(*ctx));
+	memset_s(ctx, sizeof(*ctx), 0, sizeof(*ctx));
 	ctx->abort = abort;
 	ctx->send = (struct spci_message *)send;
 	ctx->recv = (struct spci_message *)recv;

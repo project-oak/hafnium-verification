@@ -42,7 +42,7 @@ void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
 	uintreg_t cptr;
 	uintreg_t cnthctl;
 
-	memset(r, 0, sizeof(*r));
+	memset_s(r, sizeof(*r), 0, sizeof(*r));
 
 	r->pc = pc;
 	r->r[0] = arg;

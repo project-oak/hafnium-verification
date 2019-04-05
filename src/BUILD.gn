@@ -70,6 +70,10 @@ source_set("src_testable") {
 
 # Standard library functions.
 source_set("std") {
+  sources = [
+    "std.c",
+  ]
+
   deps = [
     "//src/arch/${plat_arch}:std",
   ]

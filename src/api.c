@@ -1185,7 +1185,7 @@ static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
 		return false;
 	}
 
-	memset(ptr, 0, size);
+	memset_s(ptr, size, 0, size);
 	arch_mm_write_back_dcache(ptr, size);
 	mm_unmap(begin, end, ppool);
 

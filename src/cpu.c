@@ -159,7 +159,7 @@ struct cpu *cpu_find(uint64_t id)
 
 void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 {
-	memset(vcpu, 0, sizeof(*vcpu));
+	memset_s(vcpu, sizeof(*vcpu), 0, sizeof(*vcpu));
 	sl_init(&vcpu->lock);
 	vcpu->regs_available = true;
 	vcpu->vm = vm;

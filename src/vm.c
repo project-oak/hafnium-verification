@@ -36,7 +36,7 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 
 	vm = &vms[vm_count];
 
-	memset(vm, 0, sizeof(*vm));
+	memset_s(vm, sizeof(*vm), 0, sizeof(*vm));
 
 	list_init(&vm->mailbox.waiter_list);
 	list_init(&vm->mailbox.ready_list);

@@ -14,19 +14,30 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "hf/std.h"
 
-#include "hf/arch/std.h"
+#include "hf/panic.h"
 
-typedef size_t rsize_t;
+/* Declare unsafe functions locally so they are not available globally. */
+void *memset(void *s, int c, size_t n);
 
-#define RSIZE_MAX SIZE_MAX
+void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count)
+{
+	if (dest == NULL) {
+		goto fail;
+	}
 
-/*
- * Only the safer versions of these functions are exposed to reduce the chance
- * of misusing the versions without bounds checking or null pointer checks.
- *
- * These functions don't return errno_t as per the specification and implicity
- * have a constraint handler that panics.
- */
-void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count);
+	if (destsz > RSIZE_MAX || count > RSIZE_MAX) {
+		goto fail;
+	}
+
+	if (count > destsz) {
+		goto fail;
+	}
+
+	memset(dest, ch, count);
+	return;
+
+fail:
+	panic("memset_s failure");
+}

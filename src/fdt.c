@@ -136,7 +136,7 @@ bool fdt_root_node(struct fdt_node *node, const struct fdt_header *hdr)
 	uint32_t begin = be32toh(hdr->off_dt_struct);
 	uint32_t size = be32toh(hdr->size_dt_struct);
 
-	memset(node, 0, sizeof(*node));
+	memset_s(node, sizeof(*node), 0, sizeof(*node));
 
 	/* Check the magic number before anything else. */
 	if (hdr->magic != be32toh(FDT_MAGIC)) {

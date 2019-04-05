@@ -106,8 +106,7 @@ void hftest_json(void)
 			}
 			/*
 			 * It's easier to put the comma at the start of the line
-			 * than the end even
-			 * though the JSON looks a bit funky.
+			 * than the end even though the JSON looks a bit funky.
 			 */
 			HFTEST_LOG("       %c\"%s\"",
 				   tests_in_suite ? ',' : ' ', test->name);
@@ -136,7 +135,7 @@ static void run_test(hftest_test_fn set_up, hftest_test_fn test,
 {
 	/* Prepare the context. */
 	struct hftest_context *ctx = hftest_get_context();
-	memset(ctx, 0, sizeof(*ctx));
+	memset_s(ctx, sizeof(*ctx), 0, sizeof(*ctx));
 	ctx->abort = abort;
 
 	/* Run any set up functions. */

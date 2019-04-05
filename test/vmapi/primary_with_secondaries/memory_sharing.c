@@ -93,7 +93,7 @@ TEST(memory_sharing, concurrent)
 
 	SERVICE_SELECT(SERVICE_VM0, "memory_increment", mb.send);
 
-	memset(ptr, 'a', PAGE_SIZE);
+	memset_s(ptr, sizeof(page), 'a', PAGE_SIZE);
 	ASSERT_EQ(hf_share_memory(SERVICE_VM0, (hf_ipaddr_t)&page, PAGE_SIZE,
 				  HF_MEMORY_SHARE),
 		  0);
@@ -136,7 +136,7 @@ TEST(memory_sharing, share_concurrently_and_get_back)
 	SERVICE_SELECT(SERVICE_VM0, "memory_return", mb.send);
 
 	/* Dirty the memory before sharing it. */
-	memset(ptr, 'b', PAGE_SIZE);
+	memset_s(ptr, sizeof(page), 'b', PAGE_SIZE);
 	ASSERT_EQ(hf_share_memory(SERVICE_VM0, (hf_ipaddr_t)&page, PAGE_SIZE,
 				  HF_MEMORY_SHARE),
 		  0);
@@ -174,7 +174,7 @@ TEST(memory_sharing, give_and_get_back)
 	SERVICE_SELECT(SERVICE_VM0, "memory_return", mb.send);
 
 	/* Dirty the memory before giving it. */
-	memset(ptr, 'b', PAGE_SIZE);
+	memset_s(ptr, sizeof(page), 'b', PAGE_SIZE);
 	ASSERT_EQ(hf_share_memory(SERVICE_VM0, (hf_ipaddr_t)&page, PAGE_SIZE,
 				  HF_MEMORY_GIVE),
 		  0);
@@ -212,7 +212,7 @@ TEST(memory_sharing, lend_and_get_back)
 	SERVICE_SELECT(SERVICE_VM0, "memory_return", mb.send);
 
 	/* Dirty the memory before lending it. */
-	memset(ptr, 'c', PAGE_SIZE);
+	memset_s(ptr, sizeof(page), 'c', PAGE_SIZE);
 	ASSERT_EQ(hf_share_memory(SERVICE_VM0, (hf_ipaddr_t)&page, PAGE_SIZE,
 				  HF_MEMORY_LEND),
 		  0);
