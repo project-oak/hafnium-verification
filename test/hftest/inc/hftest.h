@@ -66,6 +66,7 @@
 #define FAIL(...) HFTEST_FAIL(true, __VA_ARGS__)
 
 /* Service utilities. */
+#define SERVICE_NAME_MAX_LENGTH 64
 #define SERVICE_SELECT(vm_id, service, send_buffer) \
 	HFTEST_SERVICE_SELECT(vm_id, service, send_buffer)
 

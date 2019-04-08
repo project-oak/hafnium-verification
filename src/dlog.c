@@ -35,6 +35,8 @@
 #define FLAG_UPPER 0x20
 #define FLAG_NEG   0x40
 
+#define DLOG_MAX_STRING_LENGTH 64
+
 /* clang-format on */
 
 static bool dlog_lock_enabled = false;
@@ -91,7 +93,7 @@ static void print_string(const char *str, const char *suffix, size_t width,
 	}
 
 	/* Fill until we reach the desired length. */
-	len += strnlen_s(suffix, 50);
+	len += strnlen_s(suffix, DLOG_MAX_STRING_LENGTH);
 	while (len < width) {
 		arch_putchar(fill);
 		len++;
@@ -110,7 +112,7 @@ static void print_num(size_t v, size_t base, size_t width, int flags)
 	static const char *digits_lower = "0123456789abcdefx";
 	static const char *digits_upper = "0123456789ABCDEFX";
 	const char *d = (flags & FLAG_UPPER) ? digits_upper : digits_lower;
-	char buf[51];
+	char buf[DLOG_MAX_STRING_LENGTH];
 	char *ptr = &buf[sizeof(buf) - 1];
 	char *num;
 	*ptr = '\0';
