@@ -53,6 +53,7 @@ source_set("src_testable") {
     "mm.c",
     "mpool.c",
     "panic.c",
+    "spci_architected_message.c",
     "vm.c",
   ]
 

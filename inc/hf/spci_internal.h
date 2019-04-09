@@ -16,7 +16,31 @@
 
 #pragma once
 
+#include "hf/addr.h"
+#include "hf/vm.h"
+
+#include "vmapi/hf/spci.h"
+
 #define SPCI_VERSION_MAJOR 0x0
 #define SPCI_VERSION_MINOR 0x9
 
 #define SPCI_VERSION_MAJOR_OFFSET 16
+
+struct spci_mem_transitions {
+	int orig_from_mode;
+	int orig_to_mode;
+	int from_mode;
+	int to_mode;
+};
+
+spci_return_t spci_msg_handle_architected_message(
+	struct vm_locked to_locked, struct vm_locked from_locked,
+	const struct spci_architected_message_header
+		*architected_message_replica,
+	struct spci_message *from_msg_replica, struct spci_message *to_msg);
+
+bool spci_msg_check_transition(struct vm *to, struct vm *from,
+			       enum spci_memory_share share,
+			       int *orig_from_mode, ipaddr_t begin,
+			       ipaddr_t end, uint32_t memory_to_attributes,
+			       int *from_mode, int *to_mode);

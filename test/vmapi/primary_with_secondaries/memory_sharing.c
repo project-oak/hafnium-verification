@@ -163,6 +163,45 @@ TEST(memory_sharing, share_concurrently_and_get_back)
 }
 
 /**
+ * SPCI Memory given away can be given back.
+ * Employing SPCI donate architected messages.
+ */
+TEST(memory_sharing, spci_give_and_get_back)
+{
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+	uint8_t *ptr = page;
+
+	SERVICE_SELECT(SERVICE_VM0, "memory_return_spci", mb.send);
+
+	/* Initialise the memory before giving it. */
+	memset_s(ptr, sizeof(page), 'b', PAGE_SIZE);
+
+	/* Can only donate single constituent memory region. */
+	struct spci_memory_region_constituent constituents[] = {
+		{.address = (uint64_t)page, .page_count = 1},
+	};
+
+	spci_memory_donate(mb.send, SERVICE_VM0, HF_PRIMARY_VM_ID, constituents,
+			   1, 0);
+
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+
+	/* Let the memory be returned. */
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+
+	/* Ensure that the secondary VM accessed the region. */
+	for (int i = 0; i < PAGE_SIZE; ++i) {
+		ASSERT_EQ(ptr[i], 'c');
+	}
+
+	/* Observe the service faulting when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/**
  * Memory given away can be given back.
  */
 TEST(memory_sharing, give_and_get_back)
