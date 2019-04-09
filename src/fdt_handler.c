@@ -337,12 +337,21 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 		goto out_unmap_fdt;
 	}
 
-	/* Patch fdt to reserve primary VM memory. */
+	/*
+	 * Patch FDT to reserve hypervisor memory so the primary VM doesn't try
+	 * to use it.
+	 */
 	fdt_add_mem_reservation(
-		fdt, align_down(pa_addr(layout_primary_begin()), 0x100000),
-		0x80000);
+		fdt, pa_addr(layout_text_begin()),
+		pa_addr(layout_text_end()) - pa_addr(layout_text_begin()));
+	fdt_add_mem_reservation(
+		fdt, pa_addr(layout_rodata_begin()),
+		pa_addr(layout_rodata_end()) - pa_addr(layout_rodata_begin()));
+	fdt_add_mem_reservation(
+		fdt, pa_addr(layout_data_begin()),
+		pa_addr(layout_data_end()) - pa_addr(layout_data_begin()));
 
-	/* Patch fdt to reserve memory for secondary VMs. */
+	/* Patch FDT to reserve memory for secondary VMs. */
 	for (i = 0; i < p->reserved_ranges_count; ++i) {
 		fdt_add_mem_reservation(
 			fdt, pa_addr(p->reserved_ranges[i].begin),
