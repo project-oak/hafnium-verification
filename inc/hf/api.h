@@ -52,9 +52,14 @@ int64_t api_interrupt_inject(spci_vm_id_t target_vm_id,
 			     spci_vcpu_index_t target_vcpu_idx, uint32_t intid,
 			     struct vcpu *current, struct vcpu **next);
 
-int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
-			  struct vcpu **next);
+spci_return_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
+				struct vcpu **next);
 int32_t api_spci_msg_recv(uint32_t attributes, struct vcpu *current,
 			  struct vcpu **next);
 int32_t api_spci_yield(struct vcpu *current, struct vcpu **next);
 int32_t api_spci_version(void);
+spci_return_t api_spci_share_memory(struct vm_locked to_locked,
+				    struct vm_locked from_locked,
+				    struct spci_memory_region *memory_region,
+				    uint32_t memory_to_attributes,
+				    enum spci_memory_share share);

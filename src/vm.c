@@ -102,6 +102,21 @@ struct vm_locked vm_lock(struct vm *vm)
 }
 
 /**
+ * Locks two VMs ensuring that the locking order is according to the locks'
+ * addresses.
+ */
+struct two_vm_locked vm_lock_both(struct vm *vm1, struct vm *vm2)
+{
+	struct two_vm_locked dual_lock;
+
+	sl_lock_both(&vm1->lock, &vm2->lock);
+	dual_lock.vm1.vm = vm1;
+	dual_lock.vm2.vm = vm2;
+
+	return dual_lock;
+}
+
+/**
  * Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
  * the fact that the VM is no longer locked.
  */

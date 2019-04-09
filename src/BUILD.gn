@@ -50,6 +50,7 @@ source_set("src_testable") {
     "api.c",
     "cpu.c",
     "panic.c",
+    "spci_architected_message.c",
     "vm.c",
   ]
 
