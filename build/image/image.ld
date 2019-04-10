@@ -146,6 +146,8 @@ SECTIONS
 	.dynamic : {
 		*(.dynamic.*)
 	}
+	/* Everything beyond this point will not be included in the binary. */
+	bin_end = .;
 	/* The entry point code assumes that .bss is 16-byte aligned. */
 	. = ALIGN(16);
 	bss_begin = .;
@@ -178,11 +180,15 @@ SECTIONS
 
 	/* Note the first page not used in the image. */
 	. = ALIGN(4096);
-	bin_end = .;
+	image_end = .;
 
 	/*
-	 * Note the size of the image. This includes everything up to the .bss
-	 * as that is initialized to zero by the entry code.
+	 * Calculate sizes of the the binary file and image loaded into memory
+	 * as well as the text, read-only and read-write data sections.
 	 */
-	image_size = ABSOLUTE(bss_begin - ORIGIN_ADDRESS);
+	bin_size = ABSOLUTE(bin_end - ORIGIN_ADDRESS);
+	image_size = ABSOLUTE(image_end - ORIGIN_ADDRESS);
+	text_size = ABSOLUTE(text_end - text_begin);
+	rodata_size = ABSOLUTE(rodata_end - rodata_begin);
+	data_size = ABSOLUTE(data_end - data_begin);
 }

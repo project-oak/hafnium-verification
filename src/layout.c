@@ -121,11 +121,11 @@ paddr_t layout_fdt_end(void)
 /**
  * Get the address the loaded image ends at.
  */
-paddr_t layout_bin_end(void)
+paddr_t layout_image_end(void)
 {
-	extern uint8_t bin_end[];
+	extern uint8_t image_end[];
 
-	return pa_init((uintpaddr_t)bin_end);
+	return pa_init((uintpaddr_t)image_end);
 }
 
 /**
@@ -136,7 +136,7 @@ paddr_t layout_bin_end(void)
 paddr_t layout_primary_begin(void)
 {
 	/* TODO: This is a hack. We must read the alignment from the binary. */
-	paddr_t bin_end = layout_bin_end();
+	paddr_t image_end = layout_image_end();
 
-	return pa_init(align_up(pa_addr(bin_end), 0x80000));
+	return pa_init(align_up(pa_addr(image_end), 0x80000));
 }

@@ -46,7 +46,7 @@ paddr_t layout_data_end(void)
 	return pa_init(500);
 }
 
-paddr_t layout_bin_end(void)
+paddr_t layout_image_end(void)
 {
 	return pa_init(600);
 }

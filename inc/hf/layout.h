@@ -33,6 +33,6 @@ paddr_t layout_initrd_end(void);
 paddr_t layout_fdt_begin(void);
 paddr_t layout_fdt_end(void);
 
-paddr_t layout_bin_end(void);
+paddr_t layout_image_end(void);
 
 paddr_t layout_primary_begin(void);
