@@ -131,6 +131,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 
 	{
 		struct vm *vm;
+		struct vcpu_locked vcpu_locked;
 
 		if (!vm_init(MAX_CPUS, ppool, &vm)) {
 			dlog("Unable to initialise primary vm\n");
@@ -157,7 +158,9 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 			return false;
 		}
 
-		vcpu_on(&vm->vcpus[0], ipa_from_pa(primary_begin), kernel_arg);
+		vcpu_locked = vcpu_lock(&vm->vcpus[0]);
+		vcpu_on(vcpu_locked, ipa_from_pa(primary_begin), kernel_arg);
+		vcpu_unlock(&vcpu_locked);
 	}
 
 	return true;
