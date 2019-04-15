@@ -16,6 +16,7 @@
 
 #include "hf/arch/vm/power_mgmt.h"
 
+#include "hf/assert.h"
 #include "hf/spinlock.h"
 
 #include "vmapi/hf/call.h"
@@ -94,6 +95,28 @@ noreturn void cpu_stop(void)
 	for (;;) {
 		/* This should never be reached. */
 	}
+}
+
+static_assert(POWER_STATUS_ON == PSCI_RETURN_ON,
+	      "power_status enum values must match PSCI return values.");
+static_assert(POWER_STATUS_OFF == PSCI_RETURN_OFF,
+	      "power_status enum values must match PSCI return values.");
+static_assert(POWER_STATUS_ON_PENDING == PSCI_RETURN_ON_PENDING,
+	      "power_status enum values must match PSCI return values.");
+
+/**
+ * Returns the power status of the given CPU.
+ */
+enum power_status cpu_status(uint64_t cpu_id)
+{
+	uint32_t lowest_affinity_level = 0;
+
+	/*
+	 * This works because the power_status enum values happen to be the same
+	 * as the PSCI_RETURN_* values. The static_asserts above validate that
+	 * this is the case.
+	 */
+	return smc(PSCI_AFFINITY_INFO, cpu_id, lowest_affinity_level, 0);
 }
 
 /**

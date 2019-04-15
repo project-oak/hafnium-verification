@@ -58,6 +58,11 @@ bool arch_timer_pending(struct arch_regs *regs);
 bool arch_timer_enabled_current(void);
 
 /**
+ * Disable the virtual timer for the currently active vCPU.
+ */
+void arch_timer_disable_current(void);
+
+/**
  * Returns the number of ticks remaining on the virtual timer of the currently
  * active vCPU, or 0 if it has already expired. This is undefined if the timer
  * is not enabled.

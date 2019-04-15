@@ -209,27 +209,62 @@ size_t vcpu_index(const struct vcpu *vcpu)
 }
 
 /**
- * Starts a vCPU of a secondary VM.
+ * Check whether the given vcpu_state is an off state, for the purpose of
+ * turning vCPUs on and off. Note that aborted still counts as on in this
+ * context.
  */
-void vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
+bool vcpu_is_off(struct vcpu_locked vcpu)
+{
+	switch (vcpu.vcpu->state) {
+	case VCPU_STATE_OFF:
+		return true;
+	case VCPU_STATE_READY:
+	case VCPU_STATE_RUNNING:
+	case VCPU_STATE_BLOCKED_MAILBOX:
+	case VCPU_STATE_BLOCKED_INTERRUPT:
+	case VCPU_STATE_ABORTED:
+		/*
+		 * Aborted still counts as ON for the purposes of PSCI,
+		 * because according to the PSCI specification (section
+		 * 5.7.1) a core is only considered to be off if it has
+		 * been turned off with a CPU_OFF call or hasn't yet
+		 * been turned on with a CPU_ON call.
+		 */
+		return false;
+	}
+}
+
+/**
+ * Starts a vCPU of a secondary VM.
+ *
+ * Returns true if the secondary was reset and started, or false if it was
+ * already on and so nothing was done.
+ */
+bool vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 				    uintreg_t arg)
 {
 	struct vcpu_locked vcpu_locked;
 	struct vm *vm = vcpu->vm;
+	bool vcpu_was_off;
 
 	assert(vm->id != HF_PRIMARY_VM_ID);
 
 	vcpu_locked = vcpu_lock(vcpu);
-	/*
-	 * Set vCPU registers to a clean state ready for boot. As this is a
-	 * secondary which can migrate between pCPUs, the ID of the vCPU is
-	 * defined as the index and does not match the ID of the pCPU it is
-	 * running on.
-	 */
-	arch_regs_reset(&vcpu->regs, false, vm->id, vcpu_index(vcpu),
-			vm->ptable.root);
-	vcpu_on(vcpu_locked, entry, arg);
+	vcpu_was_off = vcpu_is_off(vcpu_locked);
+	if (vcpu_was_off) {
+		/*
+		 * Set vCPU registers to a clean state ready for boot. As this
+		 * is a secondary which can migrate between pCPUs, the ID of the
+		 * vCPU is defined as the index and does not match the ID of the
+		 * pCPU it is running on.
+		 */
+		arch_regs_reset(&vcpu->regs, false, vm->id, vcpu_index(vcpu),
+				vm->ptable.root);
+		vcpu_on(vcpu_locked, entry, arg);
+	}
 	vcpu_unlock(&vcpu_locked);
+
+	return vcpu_was_off;
 }
 
 /**

@@ -129,6 +129,14 @@ bool arch_timer_enabled_current(void)
 }
 
 /**
+ * Disables the virtual timer for the currently active vCPU.
+ */
+void arch_timer_disable_current(void)
+{
+	write_msr(cntv_ctl_el0, 0x0);
+}
+
+/**
  * Returns the number of ticks remaining on the virtual timer of the currently
  * active vCPU, or 0 if it has already expired. This is undefined if the timer
  * is not enabled.

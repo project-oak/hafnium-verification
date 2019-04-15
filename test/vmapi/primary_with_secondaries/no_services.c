@@ -43,11 +43,11 @@ TEST(hf_vm_get_id, primary_has_primary_id)
 }
 
 /**
- * Confirm there are 2 secondary VMs as well as this primary VM.
+ * Confirm there are 3 secondary VMs as well as this primary VM.
  */
-TEST(hf_vm_get_count, four_secondary_vms)
+TEST(hf_vm_get_count, three_secondary_vms)
 {
-	EXPECT_EQ(hf_vm_get_count(), 3);
+	EXPECT_EQ(hf_vm_get_count(), 4);
 }
 
 /**

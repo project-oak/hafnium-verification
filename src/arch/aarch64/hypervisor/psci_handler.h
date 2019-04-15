@@ -14,53 +14,14 @@
  * limitations under the License.
  */
 
-#include "hf/arch/timer.h"
+#pragma once
 
-#include <stdbool.h>
 #include <stdint.h>
 
 #include "hf/arch/types.h"
 
-bool arch_timer_pending(struct arch_regs *regs)
-{
-	/* TODO */
-	(void)regs;
-	return false;
-}
+#include "hf/cpu.h"
 
-void arch_timer_mask(struct arch_regs *regs)
-{
-	/* TODO */
-	(void)regs;
-}
-
-bool arch_timer_enabled(struct arch_regs *regs)
-{
-	/* TODO */
-	(void)regs;
-	return false;
-}
-
-uint64_t arch_timer_remaining_ns(struct arch_regs *regs)
-{
-	/* TODO */
-	(void)regs;
-	return 0;
-}
-
-bool arch_timer_enabled_current(void)
-{
-	/* TODO */
-	return false;
-}
-
-void arch_timer_disable_current(void)
-{
-	/* TODO */
-}
-
-uint64_t arch_timer_remaining_ns_current(void)
-{
-	/* TODO */
-	return 0;
-}
+bool psci_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
+		  uintreg_t arg1, uintreg_t arg2, uintreg_t *ret,
+		  struct vcpu **next);

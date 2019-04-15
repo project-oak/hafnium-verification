@@ -39,7 +39,7 @@
  * TODO: Trusted OS call: 0x32000000 - 0x3f000000
  */
 
-#define SMCCC_RETURN_UNKNOWN  (-1)
+#define SMCCC_ERROR_UNKNOWN  (-1)
 
 /* The following are PSCI version codes. */
 #define PSCI_VERSION_0_2 0x00000002
@@ -70,15 +70,18 @@
 #define PSCI_MEM_PROTECT_CHECK_RANGE 0x84000014
 
 /* The following are return codes for PSCI. */
+#define PSCI_RETURN_ON_PENDING         2
+#define PSCI_RETURN_OFF                1
+#define PSCI_RETURN_ON                 0
 #define PSCI_RETURN_SUCCESS            0
-#define PSCI_RETURN_NOT_SUPPORTED      SMCCC_RETURN_UNKNOWN
-#define PSCI_RETURN_INVALID_PARAMETERS (-2)
-#define PSCI_RETURN_DENIED             (-3)
-#define PSCI_RETURN_ALREADY_ON         (-4)
-#define PSCI_RETURN_ON_PENDING         (-5)
-#define PSCI_RETURN_INTERNAL_FAILURE   (-6)
-#define PSCI_NOT_PRESENT               (-7)
-#define PSCI_DISABLE                   (-8)
-#define PSCI_INVALID_ADDRESS           (-9)
+#define PSCI_ERROR_NOT_SUPPORTED       SMCCC_ERROR_UNKNOWN
+#define PSCI_ERROR_INVALID_PARAMETERS  (-2)
+#define PSCI_ERROR_DENIED              (-3)
+#define PSCI_ERROR_ALREADY_ON          (-4)
+#define PSCI_ERROR_ON_PENDING          (-5)
+#define PSCI_ERROR_INTERNAL_FAILURE    (-6)
+#define PSCI_ERROR_NOT_PRESENT         (-7)
+#define PSCI_ERROR_DISABLE             (-8)
+#define PSCI_ERROR_INVALID_ADDRESS     (-9)
 
 /* clang-format on */

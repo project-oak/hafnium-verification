@@ -32,6 +32,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
     "memory_sharing.c",
     "no_services.c",
     "run_race.c",
+    "smp.c",
     "spci.c",
   ]
 
@@ -59,6 +60,12 @@ initrd("primary_with_secondaries_test") {
       "1",
       "services1",
       "services:service_vm1",
+    ],
+    [
+      "1048576",
+      "2",
+      "services2",
+      "services:service_vm2",
     ],
   ]
 }

@@ -126,6 +126,24 @@ struct vcpu *api_wait_for_interrupt(struct vcpu *current)
 }
 
 /**
+ * Puts the current vCPU in off mode, and returns to the primary VM.
+ */
+struct vcpu *api_vcpu_off(struct vcpu *current)
+{
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_WAIT_FOR_INTERRUPT,
+	};
+
+	/*
+	 * Disable the timer, so the scheduler doesn't get told to call back
+	 * based on it.
+	 */
+	arch_timer_disable_current();
+
+	return api_switch_to_primary(current, ret, VCPU_STATE_OFF);
+}
+
+/**
  * Returns to the primary vm to allow this cpu to be used for other tasks as the
  * vcpu does not have work to do at this moment. The current vcpu is marked as
  * ready to be scheduled again. This SPCI function always returns SPCI_SUCCESS.
@@ -145,6 +163,20 @@ int32_t api_spci_yield(struct vcpu *current, struct vcpu **next)
 
 	/* SPCI_YIELD always returns SPCI_SUCCESS. */
 	return SPCI_SUCCESS;
+}
+
+/**
+ * Switches to the primary so that it can switch to the target, or kick it if it
+ * is already running on a different physical CPU.
+ */
+struct vcpu *api_wake_up(struct vcpu *current, struct vcpu *target_vcpu)
+{
+	struct hf_vcpu_run_return ret = {
+		.code = HF_VCPU_RUN_WAKE_UP,
+		.wake_up.vm_id = target_vcpu->vm->id,
+		.wake_up.vcpu = vcpu_index(target_vcpu),
+	};
+	return api_switch_to_primary(current, ret, VCPU_STATE_READY);
 }
 
 /**
@@ -258,7 +290,6 @@ static int64_t internal_interrupt_inject(struct vcpu *target_vcpu,
 					 uint32_t intid, struct vcpu *current,
 					 struct vcpu **next)
 {
-	struct vm *target_vm = target_vcpu->vm;
 	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
 	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
 	int64_t ret = 0;
@@ -297,16 +328,7 @@ static int64_t internal_interrupt_inject(struct vcpu *target_vcpu,
 		 */
 		ret = 1;
 	} else if (current != target_vcpu && next != NULL) {
-		/*
-		 * Switch to the primary so that it can switch to the target, or
-		 * kick it if it is already running on a different physical CPU.
-		 */
-		struct hf_vcpu_run_return ret = {
-			.code = HF_VCPU_RUN_WAKE_UP,
-			.wake_up.vm_id = target_vm->id,
-			.wake_up.vcpu = target_vcpu - target_vm->vcpus,
-		};
-		*next = api_switch_to_primary(current, ret, VCPU_STATE_READY);
+		*next = api_wake_up(current, target_vcpu);
 	}
 
 out:

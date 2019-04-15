@@ -25,6 +25,7 @@ source_set("hypervisor") {
   sources += [
     "handler.c",
     "offsets.c",
+    "psci_handler.c",
   ]
 
   deps = [
