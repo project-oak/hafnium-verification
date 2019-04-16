@@ -136,6 +136,7 @@ struct hftest_context {
 	/* These are used in services. */
 	struct spci_message *send;
 	struct spci_message *recv;
+	size_t memory_size;
 };
 
 struct hftest_context *hftest_get_context(void);
@@ -296,5 +297,6 @@ union hftest_any {
 
 #define HFTEST_SERVICE_SEND_BUFFER() hftest_get_context()->send
 #define HFTEST_SERVICE_RECV_BUFFER() hftest_get_context()->recv
+#define HFTEST_SERVICE_MEMORY_SIZE() hftest_get_context()->memory_size
 
 void hftest_register(struct hftest_test test);

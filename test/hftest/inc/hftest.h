@@ -72,6 +72,7 @@
 
 #define SERVICE_SEND_BUFFER() HFTEST_SERVICE_SEND_BUFFER()
 #define SERVICE_RECV_BUFFER() HFTEST_SERVICE_RECV_BUFFER()
+#define SERVICE_MEMORY_SIZE() HFTEST_SERVICE_MEMORY_SIZE()
 
 /*
  * This must be used exactly once in a test image to signal to the linker that
