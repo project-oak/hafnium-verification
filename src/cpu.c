@@ -175,13 +175,6 @@ void vcpu_on(struct vcpu *vcpu, ipaddr_t entry, uintreg_t arg)
 	sl_unlock(&vcpu->lock);
 }
 
-void vcpu_off(struct vcpu *vcpu)
-{
-	sl_lock(&vcpu->lock);
-	vcpu->state = VCPU_STATE_OFF;
-	sl_unlock(&vcpu->lock);
-}
-
 size_t vcpu_index(const struct vcpu *vcpu)
 {
 	return vcpu - vcpu->vm->vcpus;

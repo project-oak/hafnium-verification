@@ -125,7 +125,6 @@ struct cpu *cpu_find(uint64_t id);
 
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu *vcpu, ipaddr_t entry, uintreg_t arg);
-void vcpu_off(struct vcpu *vcpu);
 size_t vcpu_index(const struct vcpu *vcpu);
 
 bool vcpu_handle_page_fault(const struct vcpu *current,
