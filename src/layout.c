@@ -135,8 +135,14 @@ paddr_t layout_image_end(void)
  */
 paddr_t layout_primary_begin(void)
 {
-	/* TODO: This is a hack. We must read the alignment from the binary. */
 	paddr_t image_end = layout_image_end();
 
-	return pa_init(align_up(pa_addr(image_end), 0x80000));
+	/*
+	 * Linux usually expects to be loaded at offset 0x80000 into a 2MB
+	 * aligned address.
+	 * TODO: This is a hack, and isn't always correct. We should really read
+	 * the alignment from the header of the binary, or have a bootloader
+	 * within the VM do so.
+	 */
+	return pa_init(align_up(pa_addr(image_end), 0x200000) + 0x80000);
 }
