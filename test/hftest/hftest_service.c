@@ -68,11 +68,11 @@ static hftest_test_fn find_service(struct memiter *args)
 noreturn void abort(void)
 {
 	HFTEST_LOG("Service contained failures.");
+	/* Cause a fault, as a secondary can't power down the machine. */
+	*((volatile uint8_t *)1) = 1;
+
+	/* This should never be reached, but to make the compiler happy... */
 	for (;;) {
-		/*
-		 * Hang if the service aborts as a secondary can't power down
-		 * the machine.
-		 */
 	}
 }
 
