@@ -1177,7 +1177,7 @@ static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
 	 *       invalidation.
 	 */
 	void *ptr = mm_identity_map(begin, end, MM_MODE_W, ppool);
-	size_t size = pa_addr(end) - pa_addr(begin);
+	size_t size = pa_difference(begin, end);
 
 	if (!ptr) {
 		/* TODO: partial defrag of failed range. */

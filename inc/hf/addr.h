@@ -61,6 +61,14 @@ static inline paddr_t pa_add(paddr_t pa, size_t n)
 }
 
 /**
+ * Returns the difference between two physical addresses.
+ */
+static inline size_t pa_difference(paddr_t start, paddr_t end)
+{
+	return pa_addr(end) - pa_addr(start);
+}
+
+/**
  * Initializes an intermeditate physical address.
  */
 static inline ipaddr_t ipa_init(uintpaddr_t ipa)

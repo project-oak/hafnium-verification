@@ -343,13 +343,13 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 	 */
 	fdt_add_mem_reservation(
 		fdt, pa_addr(layout_text_begin()),
-		pa_addr(layout_text_end()) - pa_addr(layout_text_begin()));
+		pa_difference(layout_text_begin(), layout_text_end()));
 	fdt_add_mem_reservation(
 		fdt, pa_addr(layout_rodata_begin()),
-		pa_addr(layout_rodata_end()) - pa_addr(layout_rodata_begin()));
+		pa_difference(layout_rodata_begin(), layout_rodata_end()));
 	fdt_add_mem_reservation(
 		fdt, pa_addr(layout_data_begin()),
-		pa_addr(layout_data_end()) - pa_addr(layout_data_begin()));
+		pa_difference(layout_data_begin(), layout_data_end()));
 
 	/* Patch FDT to reserve memory for secondary VMs. */
 	for (i = 0; i < p->reserved_ranges_count; ++i) {

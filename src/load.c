@@ -180,7 +180,7 @@ bool carve_out_mem_range(struct mem_range *mem_ranges, size_t mem_ranges_count,
 	 */
 	for (i = 0; i < mem_ranges_count; ++i) {
 		if (size_to_find <=
-		    pa_addr(mem_ranges[i].end) - pa_addr(mem_ranges[i].begin)) {
+		    pa_difference(mem_ranges[i].begin, mem_ranges[i].end)) {
 			/*
 			 * This range is big enough, take some of it from the
 			 * end and reduce its size accordingly.

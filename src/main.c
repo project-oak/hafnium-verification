@@ -88,7 +88,7 @@ static void one_time_init(void)
 	}
 
 	memiter_init(&cpio, initrd,
-		     pa_addr(params.initrd_end) - pa_addr(params.initrd_begin));
+		     pa_difference(params.initrd_begin, params.initrd_end));
 
 	/* Load all VMs. */
 	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd, &ppool)) {
