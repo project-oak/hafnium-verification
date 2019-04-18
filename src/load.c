@@ -285,6 +285,7 @@ bool load_secondary(const struct memiter *cpio,
 		ipaddr_t secondary_entry;
 		const char *p;
 		struct vm *vm;
+		struct vcpu *vcpu;
 
 		dlog("Loading ");
 		for (p = name.next; p != name.limit; ++p) {
@@ -348,8 +349,9 @@ bool load_secondary(const struct memiter *cpio,
 		dlog("Loaded with %u vcpus, entry at 0x%x\n", cpu,
 		     pa_addr(secondary_mem_begin));
 
-		vm_secondary_start_vcpu(
-			vm, 0, secondary_entry,
+		vcpu = &vm->vcpus[0];
+		vcpu_secondary_reset_and_start(
+			vcpu, secondary_entry,
 			pa_difference(secondary_mem_begin, secondary_mem_end));
 	}
 

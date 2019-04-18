@@ -181,6 +181,27 @@ size_t vcpu_index(const struct vcpu *vcpu)
 }
 
 /**
+ * Starts a vCPU of a secondary VM.
+ */
+void vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
+				    uintreg_t arg)
+{
+	struct vm *vm = vcpu->vm;
+
+	assert(vm->id != HF_PRIMARY_VM_ID);
+
+	/*
+	 * Set vCPU registers to a clean state ready for boot. As this is a
+	 * secondary which can migrate between pCPUs, the ID of the vCPU is
+	 * defined as the index and does not match the ID of the pCPU it is
+	 * running on.
+	 */
+	arch_regs_reset(&vcpu->regs, false, vm->id, vcpu_index(vcpu),
+			vm->ptable.root);
+	vcpu_on(vcpu, entry, arg);
+}
+
+/**
  * Handles a page fault. It does so by determining if it's a legitimate or
  * spurious fault, and recovering from the latter.
  *
