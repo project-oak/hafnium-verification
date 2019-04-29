@@ -67,7 +67,7 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 					  enum vcpu_state secondary_state)
 {
 	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
-	struct vcpu *next = &primary->vcpus[cpu_index(current->cpu)];
+	struct vcpu *next = vm_get_vcpu(primary, cpu_index(current->cpu));
 
 	/*
 	 * If the secondary is blocked but has a timer running, sleep until the
@@ -491,7 +491,7 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 	}
 
 	/* Update state if allowed. */
-	vcpu = &vm->vcpus[vcpu_idx];
+	vcpu = vm_get_vcpu(vm, vcpu_idx);
 	if (!api_vcpu_prepare_run(current, vcpu, &ret)) {
 		goto out;
 	}
@@ -1159,7 +1159,7 @@ int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
 		return -1;
 	}
 
-	target_vcpu = &target_vm->vcpus[target_vcpu_idx];
+	target_vcpu = vm_get_vcpu(target_vm, target_vcpu_idx);
 
 	dlog("Injecting IRQ %d for VM %d VCPU %d from VM %d VCPU %d\n", intid,
 	     target_vm_id, target_vcpu_idx, current->vm->id, current->cpu->id);

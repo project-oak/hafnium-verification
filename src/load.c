@@ -158,7 +158,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 			return false;
 		}
 
-		vcpu_locked = vcpu_lock(&vm->vcpus[0]);
+		vcpu_locked = vcpu_lock(vm_get_vcpu(vm, 0));
 		vcpu_on(vcpu_locked, ipa_from_pa(primary_begin), kernel_arg);
 		vcpu_unlock(&vcpu_locked);
 	}
@@ -352,7 +352,7 @@ bool load_secondary(const struct memiter *cpio,
 		dlog("Loaded with %u vcpus, entry at 0x%x\n", cpu,
 		     pa_addr(secondary_mem_begin));
 
-		vcpu = &vm->vcpus[0];
+		vcpu = vm_get_vcpu(vm, 0);
 		vcpu_secondary_reset_and_start(
 			vcpu, secondary_entry,
 			pa_difference(secondary_mem_begin, secondary_mem_end));

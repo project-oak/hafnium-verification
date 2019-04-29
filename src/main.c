@@ -146,7 +146,7 @@ struct vcpu *cpu_main(struct cpu *c)
 		panic("mm_cpu_init failed");
 	}
 
-	vcpu = &vm_get(HF_PRIMARY_VM_ID)->vcpus[cpu_index(c)];
+	vcpu = vm_get_vcpu(vm_get(HF_PRIMARY_VM_ID), cpu_index(c));
 	vm = vcpu->vm;
 	vcpu->cpu = c;
 

@@ -60,7 +60,7 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 
 	/* Do basic initialization of vcpus. */
 	for (i = 0; i < vcpu_count; i++) {
-		vcpu_init(&vm->vcpus[i], vm);
+		vcpu_init(vm_get_vcpu(vm, i), vm);
 	}
 
 	++vm_count;
@@ -106,4 +106,14 @@ void vm_unlock(struct vm_locked *locked)
 {
 	sl_unlock(&locked->vm->lock);
 	locked->vm = NULL;
+}
+
+/**
+ * Get the vCPU with the given index from the given VM.
+ * This assumes the index is valid, i.e. less than vm->vcpu_count.
+ */
+struct vcpu *vm_get_vcpu(struct vm *vm, uint32_t vcpu_index)
+{
+	assert(vcpu_index < vm->vcpu_count);
+	return &vm->vcpus[vcpu_index];
 }
