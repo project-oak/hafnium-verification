@@ -614,7 +614,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 		return -1;
 	}
 
-	vm_lock(vm, &locked);
+	locked = vm_lock(vm);
 
 	/* We only allow these to be setup once. */
 	if (vm->mailbox.send || vm->mailbox.recv) {
@@ -964,7 +964,7 @@ int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current)
 	}
 
 	/* Check if there are outstanding notifications from given vm. */
-	vm_lock(vm, &locked);
+	locked = vm_lock(vm);
 	entry = api_fetch_waiter(locked);
 	vm_unlock(&locked);
 
@@ -1003,7 +1003,7 @@ int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next)
 	struct vm_locked locked;
 	int64_t ret;
 
-	vm_lock(vm, &locked);
+	locked = vm_lock(vm);
 	switch (vm->mailbox.state) {
 	case MAILBOX_STATE_EMPTY:
 		ret = 0;

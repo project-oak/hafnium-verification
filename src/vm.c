@@ -87,10 +87,15 @@ struct vm *vm_get(uint32_t id)
 /**
  * Locks the given VM and updates `locked` to hold the newly locked vm.
  */
-void vm_lock(struct vm *vm, struct vm_locked *locked)
+struct vm_locked vm_lock(struct vm *vm)
 {
+	struct vm_locked locked = {
+		.vm = vm,
+	};
+
 	sl_lock(&vm->lock);
-	locked->vm = vm;
+
+	return locked;
 }
 
 /**
