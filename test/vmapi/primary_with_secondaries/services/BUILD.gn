@@ -125,6 +125,9 @@ source_set("receive_block") {
   sources = [
     "receive_block.c",
   ]
+  deps = [
+    "//src/arch/aarch64:arch",
+  ]
 }
 
 # Service to listen for messages and forward them on to another.

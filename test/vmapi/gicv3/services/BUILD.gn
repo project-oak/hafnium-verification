@@ -48,6 +48,7 @@ source_set("timer") {
 
   deps = [
     ":common",
+    "//src/arch/aarch64:arch",
     "//src/arch/aarch64/hftest:interrupts_gicv3",
   ]
 }
