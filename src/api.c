@@ -22,6 +22,7 @@
 #include "hf/check.h"
 #include "hf/dlog.h"
 #include "hf/mm.h"
+#include "hf/plat/console.h"
 #include "hf/spci_internal.h"
 #include "hf/spinlock.h"
 #include "hf/static_assert.h"
@@ -36,7 +37,7 @@
  * acquisition of locks held concurrently by the same physical CPU. Our current
  * ordering requirements are as follows:
  *
- * vm::lock -> vcpu::lock -> mm_stage1_lock
+ * vm::lock -> vcpu::lock -> mm_stage1_lock -> dlog sl
  *
  * Locks of the same kind require the lock of lowest address to be locked first,
  * see `sl_lock_both()`.
@@ -1654,4 +1655,21 @@ int32_t api_spci_version(void)
 
 	return (SPCI_VERSION_MAJOR << SPCI_VERSION_MAJOR_OFFSET) |
 	       SPCI_VERSION_MINOR;
+}
+
+int64_t api_debug_log(char c, struct vcpu *current)
+{
+	struct vm *vm = current->vm;
+	struct vm_locked vm_locked = vm_lock(vm);
+
+	if (c == '\n' || c == '\0' ||
+	    vm->log_buffer_length == sizeof(vm->log_buffer)) {
+		dlog_flush_vm_buffer(vm_locked);
+	} else {
+		vm->log_buffer[vm->log_buffer_length++] = c;
+	}
+
+	vm_unlock(&vm_locked);
+
+	return 0;
 }

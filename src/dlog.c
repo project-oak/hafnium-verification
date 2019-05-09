@@ -22,6 +22,7 @@
 #include "hf/plat/console.h"
 #include "hf/spinlock.h"
 #include "hf/std.h"
+#include "hf/vm.h"
 
 /* Keep macro alignment */
 /* clang-format off */
@@ -39,6 +40,27 @@
 /* clang-format on */
 
 static bool dlog_lock_enabled = false;
+static struct spinlock sl = SPINLOCK_INIT;
+
+/**
+ * Takes the lock, if it is enabled.
+ */
+static void lock(void)
+{
+	if (dlog_lock_enabled) {
+		sl_lock(&sl);
+	}
+}
+
+/**
+ * Releases the lock, if it is enabled.
+ */
+static void unlock(void)
+{
+	if (dlog_lock_enabled) {
+		sl_unlock(&sl);
+	}
+}
 
 /**
  * Enables the lock protecting the serial device.
@@ -190,19 +212,38 @@ static const char *parse_flags(const char *p, int *flags)
 }
 
 /**
+ * Send the contents of the given VM's log buffer to the log, preceded by the VM
+ * ID and followed by a newline.
+ */
+void dlog_flush_vm_buffer(struct vm_locked vm)
+{
+	lock();
+
+	print_raw_string("VM ");
+	print_num(vm.vm->id, 10, 0, 0);
+	print_raw_string(": ");
+
+	for (size_t i = 0; i < vm.vm->log_buffer_length; ++i) {
+		plat_console_putchar(vm.vm->log_buffer[i]);
+		vm.vm->log_buffer[i] = '\0';
+	}
+	vm.vm->log_buffer_length = 0;
+	plat_console_putchar('\n');
+
+	unlock();
+}
+
+/**
  * Same as "dlog", except that arguments are passed as a va_list
  */
 void vdlog(const char *fmt, va_list args)
 {
-	static struct spinlock sl = SPINLOCK_INIT;
 	const char *p;
 	size_t w;
 	int flags;
 	char buf[2];
 
-	if (dlog_lock_enabled) {
-		sl_lock(&sl);
-	}
+	lock();
 
 	for (p = fmt; *p; p++) {
 		switch (*p) {
@@ -302,9 +343,7 @@ void vdlog(const char *fmt, va_list args)
 		}
 	}
 
-	if (dlog_lock_enabled) {
-		sl_unlock(&sl);
-	}
+	unlock();
 }
 
 /**

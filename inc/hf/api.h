@@ -39,6 +39,7 @@ int64_t api_mailbox_writable_get(const struct vcpu *current);
 int64_t api_mailbox_waiter_get(spci_vm_id_t vm_id, const struct vcpu *current);
 int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
 			 enum hf_share share, struct vcpu *current);
+int64_t api_debug_log(char c, struct vcpu *current);
 
 struct vcpu *api_preempt(struct vcpu *current);
 struct vcpu *api_wait_for_interrupt(struct vcpu *current);

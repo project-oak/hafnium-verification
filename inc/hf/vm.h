@@ -27,6 +27,8 @@
 
 #include "vmapi/hf/spci.h"
 
+#define LOG_BUFFER_SIZE 256
+
 enum mailbox_state {
 	/** There is no message in the mailbox. */
 	MAILBOX_STATE_EMPTY,
@@ -83,6 +85,8 @@ struct vm {
 	struct vcpu vcpus[MAX_CPUS];
 	struct mm_ptable ptable;
 	struct mailbox mailbox;
+	char log_buffer[LOG_BUFFER_SIZE];
+	size_t log_buffer_length;
 
 	/** Wait entries to be used when waiting on other VM mailboxes. */
 	struct wait_entry wait_entries[MAX_VMS];
