@@ -371,3 +371,41 @@ template("aarch64_toolchain") {
     platform_name = target_name
   }
 }
+
+template("aarch64_toolchains") {
+  aarch64_toolchain("${target_name}") {
+    forward_variables_from(invoker,
+                           [
+                             "origin_address",
+                             "use_pl011",
+                             "pl011_base_address",
+                             "gic_version",
+                             "gicd_base_address",
+                             "gicr_base_address",
+                             "heap_pages",
+                             "max_cpus",
+                             "max_vms",
+                           ])
+    cpu = "${invoker.cpu}+nofp"
+  }
+
+  # Toolchain for building test VMs which run under Hafnium.
+  aarch64_toolchain("${target_name}_vm") {
+    # TODO(b/115484857): Remove access to PL011 from VMs.
+    forward_variables_from(invoker,
+                           [
+                             "origin_address",
+                             "use_pl011",
+                             "pl011_base_address",
+                             "gic_version",
+                             "gicd_base_address",
+                             "gicr_base_address",
+                           ])
+    cpu = "${invoker.cpu}+fp"
+
+    # Nonsense values because they are required but shouldn't be used.
+    heap_pages = 0
+    max_cpus = 0
+    max_vms = 0
+  }
+}

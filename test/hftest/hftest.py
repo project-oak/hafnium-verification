@@ -177,6 +177,7 @@ def Main():
     parser.add_argument("image")
     parser.add_argument("--out", required=True)
     parser.add_argument("--log", required=True)
+    parser.add_argument("--out_initrd")
     parser.add_argument("--initrd")
     parser.add_argument("--suite")
     parser.add_argument("--test")
@@ -188,7 +189,7 @@ def Main():
     initrd = None
     suite = args.image
     if args.initrd:
-        initrd = os.path.join(args.out, "obj", args.initrd, "initrd.img")
+        initrd = os.path.join(args.out_initrd, "obj", args.initrd, "initrd.img")
         suite += "_" + args.initrd
     vm_args = args.vm_args or ""
     log = os.path.join(args.log, suite)

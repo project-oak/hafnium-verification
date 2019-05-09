@@ -47,9 +47,9 @@ OUT="out/${PROJECT}"
 # Run the tests with a timeout so they can't loop forever.
 if [ $USE_FVP == 1 ]
 then
-  HFTEST="$TIMEOUT 300s ./test/hftest/hftest.py --fvp=true --out $OUT/aem_v8a_fvp_clang --log $OUT/kokoro_log"
+  HFTEST="$TIMEOUT 300s ./test/hftest/hftest.py --fvp=true --out $OUT/aem_v8a_fvp_clang --out_initrd $OUT/aem_v8a_fvp_vm_clang --log $OUT/kokoro_log"
 else
-  HFTEST="$TIMEOUT 30s ./test/hftest/hftest.py --out $OUT/qemu_aarch64_clang --log $OUT/kokoro_log"
+  HFTEST="$TIMEOUT 30s ./test/hftest/hftest.py --out $OUT/qemu_aarch64_clang --out_initrd $OUT/qemu_aarch64_vm_clang --log $OUT/kokoro_log"
 fi
 
 # Add prebuilt libc++ to the path.

@@ -19,6 +19,7 @@ host_toolchain("host") {
   use_platform = false
 }
 
+# Toolchain for building tests which run under Linux under Hafnium.
 embedded_clang_toolchain("aarch64_linux_clang") {
   target = "aarch64-linux-musleabi"
 
