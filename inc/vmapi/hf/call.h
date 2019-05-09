@@ -37,6 +37,9 @@
 #define HF_INTERRUPT_INJECT     0xff0d
 #define HF_SHARE_MEMORY         0xff0e
 
+/* This matches what Trusty and its ATF module currently use. */
+#define HF_DEBUG_LOG            0xbd000000
+
 /* clang-format on */
 
 /**
@@ -242,6 +245,16 @@ static inline int64_t hf_share_memory(spci_vm_id_t vm_id, hf_ipaddr_t addr,
 {
 	return hf_call(HF_SHARE_MEMORY, (((uint64_t)vm_id) << 32) | share, addr,
 		       size);
+}
+
+/**
+ * Sends a character to the debug log for the VM.
+ *
+ * Returns 0 on success, or -1 if it failed for some reason.
+ */
+static inline int64_t hf_debug_log(char c)
+{
+	return hf_call(HF_DEBUG_LOG, c, 0, 0);
 }
 
 /** Obtains the Hafnium's version of the implemented SPCI specification. */

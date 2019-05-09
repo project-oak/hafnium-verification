@@ -18,6 +18,8 @@
 
 #include <stdarg.h>
 
+#include "vm.h"
+
 #if DEBUG
 void dlog_enable_lock(void);
 void dlog(const char *fmt, ...);
@@ -27,3 +29,5 @@ void vdlog(const char *fmt, va_list args);
 #define dlog(...)
 #define vdlog(fmt, args)
 #endif
+
+void dlog_flush_vm_buffer(struct vm_locked vm);
