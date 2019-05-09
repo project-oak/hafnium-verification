@@ -69,3 +69,13 @@ source_set("registers") {
     "registers.c",
   ]
 }
+
+source_set("console") {
+  sources = [
+    "console.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:hf_call",
+  ]
+}
