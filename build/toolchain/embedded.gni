@@ -354,11 +354,9 @@ template("aarch64_toolchains") {
 
   # Toolchain for building test VMs which run under Hafnium.
   aarch64_toolchain("${target_name}_vm") {
-    # TODO(b/115484857): Remove access to PL011 from VMs.
     forward_variables_from(invoker,
                            [
                              "origin_address",
-                             "console",
                              "gic_version",
                              "gicd_base_address",
                              "gicr_base_address",
@@ -366,6 +364,7 @@ template("aarch64_toolchains") {
                              "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+fp"
+    console = "//src/arch/aarch64/hftest:console"
 
     # Nonsense values because they are required but shouldn't be used.
     heap_pages = 0

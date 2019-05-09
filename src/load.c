@@ -331,8 +331,6 @@ bool load_secondary(struct mm_stage1_locked stage1_locked,
 			continue;
 		}
 
-		plat_console_vm_mm_init(vm, ppool);
-
 		/* Grant the VM access to the memory. */
 		if (!mm_vm_identity_map(&vm->ptable, secondary_mem_begin,
 					secondary_mem_end,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,17 +14,11 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "hf/plat/console.h"
 
-#include "hf/mm.h"
-#include "hf/mpool.h"
+#include "vmapi/hf/call.h"
 
-/** Initialises the console hardware. */
-void plat_console_init(void);
-
-/** Initialises any memory mappings that the console driver needs. */
-void plat_console_mm_init(struct mm_stage1_locked stage1_locked,
-			  struct mpool *ppool);
-
-/** Puts a single character on the console. */
-void plat_console_putchar(char c);
+void plat_console_putchar(char c)
+{
+	hf_debug_log(c);
+}
