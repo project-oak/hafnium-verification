@@ -267,7 +267,7 @@ bool load_secondary(const struct memiter *cpio,
 	memcpy_s(mem_ranges_available, sizeof(mem_ranges_available),
 		 params->mem_ranges, sizeof(params->mem_ranges));
 
-	primary = vm_get(HF_PRIMARY_VM_ID);
+	primary = vm_find(HF_PRIMARY_VM_ID);
 
 	if (!find_file(cpio, "vms.txt", &it)) {
 		dlog("vms.txt is missing\n");

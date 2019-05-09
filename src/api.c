@@ -66,7 +66,7 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 					  struct hf_vcpu_run_return primary_ret,
 					  enum vcpu_state secondary_state)
 {
-	struct vm *primary = vm_get(HF_PRIMARY_VM_ID);
+	struct vm *primary = vm_find(HF_PRIMARY_VM_ID);
 	struct vcpu *next = vm_get_vcpu(primary, cpu_index(current->cpu));
 
 	/*
@@ -192,7 +192,7 @@ int64_t api_vm_get_count(void)
 /**
  * Returns the number of vcpus configured in the given VM.
  */
-int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current)
+int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current)
 {
 	struct vm *vm;
 
@@ -201,7 +201,7 @@ int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current)
 		return -1;
 	}
 
-	vm = vm_get(vm_id);
+	vm = vm_find(vm_id);
 	if (vm == NULL) {
 		return -1;
 	}
@@ -458,7 +458,7 @@ out:
 /**
  * Runs the given vcpu of the given vm.
  */
-struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
+struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id, uint32_t vcpu_idx,
 				       const struct vcpu *current,
 				       struct vcpu **next)
 {
@@ -480,7 +480,7 @@ struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
 	}
 
 	/* The requested VM must exist. */
-	vm = vm_get(vm_id);
+	vm = vm_find(vm_id);
 	if (vm == NULL) {
 		goto out;
 	}
@@ -780,7 +780,7 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 	}
 
 	/* Ensure the target VM exists. */
-	to = vm_get(from_msg_replica.target_vm_id);
+	to = vm_find(from_msg_replica.target_vm_id);
 	if (to == NULL) {
 		return SPCI_INVALID_PARAMETERS;
 	}
@@ -946,7 +946,7 @@ exit:
  * Returns -1 on failure or if there are no waiters; the VM id of the next
  * waiter otherwise.
  */
-int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current)
+int64_t api_mailbox_waiter_get(spci_vm_id_t vm_id, const struct vcpu *current)
 {
 	struct vm *vm;
 	struct vm_locked locked;
@@ -958,7 +958,7 @@ int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current)
 		return -1;
 	}
 
-	vm = vm_get(vm_id);
+	vm = vm_find(vm_id);
 	if (vm == NULL) {
 		return -1;
 	}
@@ -1135,12 +1135,12 @@ static inline bool is_injection_allowed(uint32_t target_vm_id,
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick the target vCPU.
  */
-int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
-			     uint32_t intid, struct vcpu *current,
-			     struct vcpu **next)
+int64_t api_interrupt_inject(spci_vm_id_t target_vm_id,
+			     uint32_t target_vcpu_idx, uint32_t intid,
+			     struct vcpu *current, struct vcpu **next)
 {
 	struct vcpu *target_vcpu;
-	struct vm *target_vm = vm_get(target_vm_id);
+	struct vm *target_vm = vm_find(target_vm_id);
 
 	if (intid >= HF_NUM_INTIDS) {
 		return -1;
@@ -1206,7 +1206,7 @@ static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
  *       possibly allowing multiple blocks to be transferred. What this will
  *       look like is TBD.
  */
-int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
+int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
 			 enum hf_share share, struct vcpu *current)
 {
 	struct vm *from = current->vm;
@@ -1227,7 +1227,7 @@ int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
 	}
 
 	/* Ensure the target VM exists. */
-	to = vm_get(vm_id);
+	to = vm_find(vm_id);
 	if (to == NULL) {
 		return -1;
 	}

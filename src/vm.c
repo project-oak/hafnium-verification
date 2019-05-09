@@ -74,7 +74,7 @@ uint32_t vm_get_count(void)
 	return vm_count;
 }
 
-struct vm *vm_get(uint32_t id)
+struct vm *vm_find(spci_vm_id_t id)
 {
 	/* Ensure the VM is initialized. */
 	if (id >= vm_count) {

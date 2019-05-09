@@ -122,7 +122,7 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 	sl_unlock(&c->lock);
 
 	if (!prev) {
-		struct vm *vm = vm_get(HF_PRIMARY_VM_ID);
+		struct vm *vm = vm_find(HF_PRIMARY_VM_ID);
 		struct vcpu *vcpu = vm_get_vcpu(vm, cpu_index(c));
 		struct vcpu_locked vcpu_locked;
 

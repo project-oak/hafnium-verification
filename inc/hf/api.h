@@ -25,17 +25,17 @@
 void api_init(struct mpool *ppool);
 int64_t api_vm_get_id(const struct vcpu *current);
 int64_t api_vm_get_count(void);
-int64_t api_vcpu_get_count(uint32_t vm_id, const struct vcpu *current);
+int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current);
 void api_regs_state_saved(struct vcpu *vcpu);
-struct hf_vcpu_run_return api_vcpu_run(uint32_t vm_id, uint32_t vcpu_idx,
+struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id, uint32_t vcpu_idx,
 				       const struct vcpu *current,
 				       struct vcpu **next);
 int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 			 struct vcpu **next);
 int64_t api_mailbox_clear(struct vcpu *current, struct vcpu **next);
 int64_t api_mailbox_writable_get(const struct vcpu *current);
-int64_t api_mailbox_waiter_get(uint32_t vm_id, const struct vcpu *current);
-int64_t api_share_memory(uint32_t vm_id, ipaddr_t addr, size_t size,
+int64_t api_mailbox_waiter_get(spci_vm_id_t vm_id, const struct vcpu *current);
+int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
 			 enum hf_share share, struct vcpu *current);
 
 struct vcpu *api_preempt(struct vcpu *current);
@@ -44,9 +44,9 @@ struct vcpu *api_abort(struct vcpu *current);
 
 int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current);
 uint32_t api_interrupt_get(struct vcpu *current);
-int64_t api_interrupt_inject(uint32_t target_vm_id, uint32_t target_vcpu_idx,
-			     uint32_t intid, struct vcpu *current,
-			     struct vcpu **next);
+int64_t api_interrupt_inject(spci_vm_id_t target_vm_id,
+			     uint32_t target_vcpu_idx, uint32_t intid,
+			     struct vcpu *current, struct vcpu **next);
 
 int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 			  struct vcpu **next);
