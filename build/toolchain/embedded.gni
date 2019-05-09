@@ -298,7 +298,7 @@ template("embedded_platform_toolchain") {
 # Specialize for different architectures.
 
 template("aarch64_common_toolchain") {
-  assert(defined(invoker.cpu), "\"cpu\" must be defiend for ${target_name}.")
+  assert(defined(invoker.cpu), "\"cpu\" must be defined for ${target_name}.")
   assert(defined(invoker.target),
          "\"target\" must be defined for ${target_name}")
   assert(defined(invoker.tool_prefix),
