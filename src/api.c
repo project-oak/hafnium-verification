@@ -254,11 +254,11 @@ static struct wait_entry *api_fetch_waiter(struct vm_locked locked_vm)
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick the target vCPU.
  */
-static int64_t internal_interrupt_inject(struct vm *target_vm,
-					 struct vcpu *target_vcpu,
+static int64_t internal_interrupt_inject(struct vcpu *target_vcpu,
 					 uint32_t intid, struct vcpu *current,
 					 struct vcpu **next)
 {
+	struct vm *target_vm = target_vcpu->vm;
 	uint32_t intid_index = intid / INTERRUPT_REGISTER_BITS;
 	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
 	int64_t ret = 0;
@@ -504,8 +504,8 @@ struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id, uint32_t vcpu_idx,
 	 */
 	if (arch_timer_pending(&vcpu->regs)) {
 		/* Make virtual timer interrupt pending. */
-		internal_interrupt_inject(vm, vcpu, HF_VIRTUAL_TIMER_INTID,
-					  vcpu, NULL);
+		internal_interrupt_inject(vcpu, HF_VIRTUAL_TIMER_INTID, vcpu,
+					  NULL);
 
 		/*
 		 * Set the mask bit so the hardware interrupt doesn't fire
@@ -1163,8 +1163,7 @@ int64_t api_interrupt_inject(spci_vm_id_t target_vm_id,
 
 	dlog("Injecting IRQ %d for VM %d VCPU %d from VM %d VCPU %d\n", intid,
 	     target_vm_id, target_vcpu_idx, current->vm->id, current->cpu->id);
-	return internal_interrupt_inject(target_vm, target_vcpu, intid, current,
-					 next);
+	return internal_interrupt_inject(target_vcpu, intid, current, next);
 }
 
 /**
