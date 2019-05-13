@@ -9,3 +9,6 @@ Get in touch and keep up-to-date at
 
 To jump in and build Hafnium, follow the [getting
 started](docs/GettingStarted.md) instructions.
+
+If you want to contribute to the project, see details of [how we accept
+contributions](CONTRIBUTING.md).

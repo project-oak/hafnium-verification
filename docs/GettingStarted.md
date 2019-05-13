@@ -1,12 +1,5 @@
 # Getting started
 
-## Getting access
-
-Read access to the source is provided to all Googlers (members of
-`nonconf-mirror@prod`, to be precise). Permission to submit CLs requires
-membership of `hafnium-access@prod`. Full administrative rights are only granted
-to members of `hafnium-admin@prod`.
-
 ## Getting the source code
 
 ``` shell
@@ -18,8 +11,11 @@ To upload a commit for review:
 ``` shell
 git push origin HEAD:refs/for/master
 ```
-Browse source at [go/hafnium-repo](https://goto.google.com/hafnium-repo).
-Review CLs at [go/hafnium-review](https://goto.google.com/hafnium-review).
+
+Browse source at https://hafnium.googlesource.com/hafnium.
+Review CLs at https://hafnium-review.googlesource.com/.
+
+See details of [how to contribute](CONTRIBUTING.md).
 
 ## Compiling the hypervisor
 
