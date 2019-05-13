@@ -14,18 +14,17 @@
  * limitations under the License.
  */
 
+#include "hf/io.h"
 #include "hf/mm.h"
 #include "hf/mpool.h"
 #include "hf/plat/console.h"
 #include "hf/vm.h"
 
-#include "io.h"
-
 /* UART Data Register. */
-#define UARTDR 0
+#define UARTDR IO32_C(PL011_BASE + 0x0)
 
 /* UART Flag Register. */
-#define UARTFR 0x018
+#define UARTFR IO32_C(PL011_BASE + 0x018)
 
 /* UART Flag Register bit: transmit fifo is full. */
 #define UARTFR_TXFF (1 << 5)
@@ -63,19 +62,19 @@ void plat_console_putchar(char c)
 	}
 
 	/* Wait until there is room in the tx buffer. */
-	while (io_read(PL011_BASE + UARTFR) & UARTFR_TXFF) {
+	while (io_read32(UARTFR) & UARTFR_TXFF) {
 		/* do nothing */
 	}
 
 	dmb();
 
 	/* Write the character out. */
-	io_write(PL011_BASE + UARTDR, c);
+	io_write32(UARTDR, c);
 
 	dmb();
 
 	/* Wait until the UART is no longer busy. */
-	while (io_read_mb(PL011_BASE + UARTFR) & UARTFR_BUSY) {
+	while (io_read32_mb(UARTFR) & UARTFR_BUSY) {
 		/* do nothing */
 	}
 }

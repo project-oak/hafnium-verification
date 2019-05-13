@@ -39,10 +39,10 @@ TEST(interrupts, enable_sgi)
 	interrupt_set_priority(intid, 0x80);
 	arch_irq_enable();
 	interrupt_enable_all(true);
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 
 	/* Send ourselves the SGI. */
 	last_interrupt_id = 0xffffffff;
@@ -52,9 +52,9 @@ TEST(interrupts, enable_sgi)
 
 	/* Check that we got it, and we are back to not active or pending. */
 	EXPECT_EQ(last_interrupt_id, intid);
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 }
 
 TEST(interrupts, disable_sgi)
@@ -66,10 +66,10 @@ TEST(interrupts, disable_sgi)
 	interrupt_set_priority_mask(0xff);
 	interrupt_set_priority(intid, 0x80);
 	arch_irq_enable();
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 
 	/* Send ourselves the SGI. */
 	last_interrupt_id = 0xffffffff;
@@ -79,10 +79,10 @@ TEST(interrupts, disable_sgi)
 
 	/* Check that we didn't get it, but it is pending (and not active). */
 	EXPECT_EQ(last_interrupt_id, 0xffffffff);
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0x1 << intid);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0x1 << intid);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 }
 
 TEST(interrupts, physical_timer)
@@ -97,10 +97,10 @@ TEST(interrupts, physical_timer)
 	 * Check that no (SGI or PPI) interrupts are active or pending to start
 	 * with.
 	 */
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 
 	dlog("Starting timer\n");
 	/* Set physical timer for 1 tick. */
@@ -110,10 +110,10 @@ TEST(interrupts, physical_timer)
 
 	dlog("waiting for interrupt\n");
 	while (last_interrupt_id == 0) {
-		EXPECT_EQ(GICD_ISPENDR(0), 0);
-		EXPECT_EQ(GICR_ISPENDR0, 0);
-		EXPECT_EQ(GICD_ISACTIVER(0), 0);
-		EXPECT_EQ(GICR_ISACTIVER0, 0);
+		EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+		EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+		EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+		EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 	}
 
 	/* Check that we got the interrupt. */
@@ -123,10 +123,10 @@ TEST(interrupts, physical_timer)
 	EXPECT_EQ(read_msr(CNTP_CTL_EL0), 0x00000005);
 
 	/* There should again be no pending or active interrupts. */
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 }
 
 TEST(interrupts, virtual_timer)
@@ -138,10 +138,10 @@ TEST(interrupts, virtual_timer)
 	arch_irq_enable();
 
 	/* Check that no interrupts are active or pending to start with. */
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 
 	dlog("Starting timer\n");
 	/* Set virtual timer for 1 tick. */
@@ -151,10 +151,10 @@ TEST(interrupts, virtual_timer)
 
 	dlog("Waiting for interrupt\n");
 	while (last_interrupt_id == 0) {
-		EXPECT_EQ(GICD_ISPENDR(0), 0);
-		EXPECT_EQ(GICR_ISPENDR0, 0);
-		EXPECT_EQ(GICD_ISACTIVER(0), 0);
-		EXPECT_EQ(GICR_ISACTIVER0, 0);
+		EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+		EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+		EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+		EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 	}
 
 	/* Check that we got the interrupt. */
@@ -164,8 +164,8 @@ TEST(interrupts, virtual_timer)
 	EXPECT_EQ(read_msr(CNTV_CTL_EL0), 0x00000005);
 
 	/* There should again be no pending or active interrupts. */
-	EXPECT_EQ(GICD_ISPENDR(0), 0);
-	EXPECT_EQ(GICR_ISPENDR0, 0);
-	EXPECT_EQ(GICD_ISACTIVER(0), 0);
-	EXPECT_EQ(GICR_ISACTIVER0, 0);
+	EXPECT_EQ(io_read32_array(GICD_ISPENDR, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISPENDR0), 0);
+	EXPECT_EQ(io_read32_array(GICD_ISACTIVER, 0), 0);
+	EXPECT_EQ(io_read32(GICR_ISACTIVER0), 0);
 }

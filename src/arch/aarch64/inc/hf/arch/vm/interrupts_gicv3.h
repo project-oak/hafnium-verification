@@ -19,30 +19,37 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "hf/io.h"
+
 #if GIC_VERSION != 3 && GIC_VERSION != 4
 #error This header should only be included for GICv3 or v4.
 #endif
 
+/* Keep macro alignment */
+/* clang-format off */
+
 #define SGI_BASE (GICR_BASE + 0x10000)
 
-#define GICD_CTLR (*(volatile uint32_t *)(GICD_BASE + 0x0000))
-#define GICD_ISENABLER(n) (((volatile uint32_t *)(GICD_BASE + 0x0100))[n])
-#define GICD_ICENABLER(n) (((volatile uint32_t *)(GICD_BASE + 0x0180))[n])
-#define GICD_ISPENDR(n) (((volatile uint32_t *)(GICD_BASE + 0x0200))[n])
-#define GICD_ICPENDR(n) (((volatile uint32_t *)(GICD_BASE + 0x0280))[n])
-#define GICD_ISACTIVER(n) (((volatile uint32_t *)(GICD_BASE + 0x0300))[n])
-#define GICD_ICACTIVER(n) (((volatile uint32_t *)(GICD_BASE + 0x0380))[n])
-#define GICD_IPRIORITYR(n) (((volatile uint8_t *)(GICD_BASE + 0x0400))[n])
-#define GICD_ITARGETSR(n) (((volatile uint32_t *)(GICD_BASE + 0x0800))[n])
-#define GICD_ICFGR(n) (((volatile uint32_t *)(GICD_BASE + 0x0c00))[n])
-#define GICR_WAKER (*(volatile uint32_t *)(GICR_BASE + 0x0014))
-#define GICR_IGROUPR0 (*(volatile uint32_t *)(SGI_BASE + 0x0080))
-#define GICR_ISENABLER0 (*(volatile uint32_t *)(SGI_BASE + 0x0100))
-#define GICR_ICENABLER0 (*(volatile uint32_t *)(SGI_BASE + 0x0180))
-#define GICR_ISPENDR0 (*(volatile uint32_t *)(SGI_BASE + 0x0200))
-#define GICR_ICPENDR0 (*(volatile uint32_t *)(SGI_BASE + 0x0280))
-#define GICR_ISACTIVER0 (*(volatile uint32_t *)(SGI_BASE + 0x0300))
-#define GICR_ICFGR(n) (((volatile uint32_t *)(SGI_BASE + 0x0c00))[n])
+#define GICD_CTLR       IO32_C(GICD_BASE + 0x0000)
+#define GICD_ISENABLER  IO32_ARRAY_C(GICD_BASE + 0x0100, 32)
+#define GICD_ICENABLER  IO32_ARRAY_C(GICD_BASE + 0x0180, 32)
+#define GICD_ISPENDR    IO32_ARRAY_C(GICD_BASE + 0x0200, 32)
+#define GICD_ICPENDR    IO32_ARRAY_C(GICD_BASE + 0x0280, 32)
+#define GICD_ISACTIVER  IO32_ARRAY_C(GICD_BASE + 0x0300, 32)
+#define GICD_ICACTIVER  IO32_ARRAY_C(GICD_BASE + 0x0380, 32)
+#define GICD_IPRIORITYR IO8_ARRAY_C(GICD_BASE + 0x0400, 1020)
+#define GICD_ITARGETSR  IO8_ARRAY_C(GICD_BASE + 0x0800, 1020)
+#define GICD_ICFGR      IO32_ARRAY_C(GICD_BASE + 0x0c00, 64)
+#define GICR_WAKER      IO32_C(GICR_BASE + 0x0014)
+#define GICR_IGROUPR0   IO32_C(SGI_BASE + 0x0080)
+#define GICR_ISENABLER0 IO32_C(SGI_BASE + 0x0100)
+#define GICR_ICENABLER0 IO32_C(SGI_BASE + 0x0180)
+#define GICR_ISPENDR0   IO32_C(SGI_BASE + 0x0200)
+#define GICR_ICPENDR0   IO32_C(SGI_BASE + 0x0280)
+#define GICR_ISACTIVER0 IO32_C(SGI_BASE + 0x0300)
+#define GICR_ICFGR      IO32_ARRAY_C(SGI_BASE + 0x0c00, 32)
+
+/* clang-format on */
 
 void exception_setup(void (*irq)(void));
 void interrupt_gic_setup(void);

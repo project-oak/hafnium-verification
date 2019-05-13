@@ -71,7 +71,7 @@ TEST(system, system_setup)
 
 	/* Should have affinity routing enabled, group 1 interrupts enabled,
 	 * group 0 disabled. */
-	EXPECT_EQ(GICD_CTLR & 0x13, 0x12);
+	EXPECT_EQ(io_read32(GICD_CTLR) & 0x13, 0x12);
 	EXPECT_EQ(read_msr(ICC_CTLR_EL1) & 0xff, 0);
 }
 
