@@ -1,0 +1,17 @@
+[package]
+name = "hfo2"
+version = "0.1.0"
+authors = ["Jeehoon Kang <jeehoon.kang@kaist.ac.kr>"]
+edition = "2018"
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
+
+[dependencies]

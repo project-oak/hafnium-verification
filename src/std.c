@@ -23,27 +23,6 @@ void *memset(void *s, int c, size_t n);
 void *memcpy(void *dst, const void *src, size_t n);
 void *memmove(void *dst, const void *src, size_t n);
 
-void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count)
-{
-	if (dest == NULL) {
-		goto fail;
-	}
-
-	if (destsz > RSIZE_MAX || count > RSIZE_MAX) {
-		goto fail;
-	}
-
-	if (count > destsz) {
-		goto fail;
-	}
-
-	memset(dest, ch, count);
-	return;
-
-fail:
-	panic("memset_s failure");
-}
-
 void memcpy_s(void *dest, rsize_t destsz, const void *src, rsize_t count)
 {
 	uintptr_t d = (uintptr_t)dest;

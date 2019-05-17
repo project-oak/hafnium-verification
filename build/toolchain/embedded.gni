@@ -69,7 +69,7 @@ template("embedded_cc_toolchain") {
     tool("link") {
       outfile = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
       rspfile = "$outfile.rsp"
-      command = "${invoker.ld} ${extra_ldflags} {{ldflags}} -o $outfile --start-group @$rspfile --end-group"
+      command = "${invoker.ld} ${extra_ldflags} {{ldflags}} -o $outfile --start-group @$rspfile --end-group {{libs}}"
       description = "LINK $outfile"
       default_output_dir = "{{root_out_dir}}"
       rspfile_content = "{{inputs}}"
