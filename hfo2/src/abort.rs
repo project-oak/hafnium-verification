@@ -6,9 +6,9 @@
 #[cfg(not(feature = "test"))]
 #[no_mangle]
 pub unsafe extern "C" fn abort() -> ! {
-	  // TODO: Block all CPUs.
+    // TODO: Block all CPUs.
     loop {
-		    // Prevent loop being optimized away.
+        // Prevent loop being optimized away.
         asm!("nop");
     }
 }
