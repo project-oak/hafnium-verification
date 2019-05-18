@@ -106,9 +106,6 @@ source_set("fdt") {
 }
 
 source_set("memiter") {
-  sources = [
-    "memiter.c",
-  ]
 }
 
 source_set("panic") {

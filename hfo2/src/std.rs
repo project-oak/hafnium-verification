@@ -69,3 +69,21 @@ pub unsafe extern "C" fn strnlen_s(str: *const c_char, mut strsz: size_t) -> siz
 
     ((p as usize) - (str as usize)) / mem::size_of::<c_char>()
 }
+
+pub(crate) unsafe fn memcmp_rs(a: *const c_void, b: *const c_void, mut n: size_t) -> c_int {
+    let mut a = a as *const u8;
+    let mut b = b as *const u8;
+
+    while n > 0 {
+        let cmp = *a - *b;
+        if cmp != 0 {
+            return cmp as c_int;
+        }
+
+        a = a.add(1);
+        b = b.add(1);
+        n -= 1;
+    }
+
+    0
+}
