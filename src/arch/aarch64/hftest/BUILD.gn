@@ -51,7 +51,6 @@ source_set("interrupts_gicv3") {
     "exceptions.S",
     "interrupts_gicv3.c",
   ]
-  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
 }
 
 # Get/set CPU state.

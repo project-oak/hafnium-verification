@@ -29,12 +29,16 @@ OUT ?= out/$(PROJECT)
 OUT_DIR = out/$(PROJECT)
 
 .PHONY: all
-all: libhfo2-aarch64 libhfo2-host $(OUT_DIR)/build.ninja
+all: libhfo2-aarch64 libhfo2-aarch64-test libhfo2-host $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 
 .PHONY: libhfo2-aarch64
 libhfo2-aarch64:
 	cargo xbuild --manifest-path hfo2/Cargo.toml --target hfo2/aarch64-hfo2.json --release
+
+.PHONY: libhfo2-aarch64-test
+libhfo2-aarch64-test:
+	cargo xbuild --manifest-path hfo2/Cargo.toml --target hfo2/aarch64-hfo2-test.json --features "test" --release
 
 .PHONY: libhfo2-host
 libhfo2-host:
