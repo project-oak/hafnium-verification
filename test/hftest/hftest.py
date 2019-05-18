@@ -258,7 +258,7 @@ def Main():
             suite_xml.set("failures", str(failures_from_suite))
     suites_xml.set("tests", str(tests_run))
     suites_xml.set("failures", str(failures))
-    with open(os.path.join(log, "sponge_log.xml"), "w") as f:
+    with open(os.path.join(log, "sponge_log.xml"), "wb") as f:
         ET.ElementTree(suites_xml).write(
             f, encoding='utf-8', xml_declaration=True)
     # If none were run, this is probably a mistake.
