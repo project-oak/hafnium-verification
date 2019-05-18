@@ -40,7 +40,7 @@ source_set("hftest_secondary_vm") {
   sources = [
     "hftest_service.c",
   ]
-  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
+  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
 
   deps = [
     "//src:dlog",
@@ -110,7 +110,7 @@ source_set("common") {
   sources = [
     "hftest_common.c",
   ]
-  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
+  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
   deps = [
     "//src:fdt_handler",
     "//src:memiter",
