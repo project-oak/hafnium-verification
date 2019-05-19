@@ -23,7 +23,6 @@
 
 struct mpool {
 	struct spinlock lock;
-	size_t entry_size;
 	struct mpool_chunk *chunk_list;
 	struct mpool_entry *entry_list;
 	struct mpool *fallback;

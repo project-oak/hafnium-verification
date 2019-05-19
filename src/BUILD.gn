@@ -51,7 +51,6 @@ source_set("src_testable") {
     "cpu.c",
     "fdt_handler.c",
     "mm.c",
-    "mpool.c",
     "panic.c",
     "vm.c",
   ]

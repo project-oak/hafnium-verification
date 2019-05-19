@@ -20,6 +20,7 @@
 
 extern "C" {
 #include "hf/mpool.h"
+#include "hf/mm.h"
 }
 
 namespace
@@ -28,10 +29,14 @@ using ::testing::Eq;
 using ::testing::IsNull;
 using ::testing::NotNull;
 
+struct alignas(PAGE_SIZE) raw_page {
+	char data[PAGE_SIZE];
+};
+
 /**
  * Checks that the given allocations come from the given chunks.
  */
-bool check_allocs(std::vector<std::unique_ptr<char[]>>& chunks,
+bool check_allocs(std::vector<std::unique_ptr<raw_page[]>>& chunks,
 		  std::vector<uintptr_t>& allocs, size_t entries_per_chunk,
 		  size_t entry_size)
 {
@@ -43,8 +48,8 @@ bool check_allocs(std::vector<std::unique_ptr<char[]>>& chunks,
 
 	sort(allocs.begin(), allocs.end());
 	sort(chunks.begin(), chunks.end(),
-	     [](const std::unique_ptr<char[]>& a,
-		const std::unique_ptr<char[]>& b) {
+	     [](const std::unique_ptr<raw_page[]>& a,
+		const std::unique_ptr<raw_page[]>& b) {
 		     return a.get() < b.get();
 	     });
 
@@ -68,14 +73,14 @@ bool check_allocs(std::vector<std::unique_ptr<char[]>>& chunks,
 /**
  * Add chunks to the given mem pool and chunk vector.
  */
-static void add_chunks(std::vector<std::unique_ptr<char[]>>& chunks,
+static void add_chunks(std::vector<std::unique_ptr<raw_page[]>>& chunks,
 		       struct mpool* p, size_t count, size_t size)
 {
 	size_t i;
 
 	for (i = 0; i < count; i++) {
-		chunks.emplace_back(std::make_unique<char[]>(size));
-		mpool_add_chunk(p, chunks.back().get(), size);
+		chunks.emplace_back(std::make_unique<raw_page[]>(size));
+		mpool_add_chunk(p, chunks.back().get(), PAGE_SIZE * size);
 	}
 }
 
@@ -85,10 +90,10 @@ static void add_chunks(std::vector<std::unique_ptr<char[]>>& chunks,
 TEST(mpool, allocation)
 {
 	struct mpool p;
-	constexpr size_t entry_size = 16;
+	constexpr size_t entry_size = PAGE_SIZE;
 	constexpr size_t entries_per_chunk = 10;
 	constexpr size_t chunk_count = 10;
-	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<std::unique_ptr<raw_page[]>> chunks;
 	std::vector<uintptr_t> allocs;
 	void* ret;
 
@@ -105,7 +110,7 @@ TEST(mpool, allocation)
 	EXPECT_THAT(mpool_alloc(&p), IsNull());
 
 	/* Allocate a number of chunks and add them to the pool. */
-	add_chunks(chunks, &p, chunk_count, entries_per_chunk * entry_size);
+	add_chunks(chunks, &p, chunk_count, entries_per_chunk);
 
 	/* Allocate from the pool until we run out of memory. */
 	while ((ret = mpool_alloc(&p))) {
@@ -123,10 +128,10 @@ TEST(mpool, allocation)
 TEST(mpool, freeing)
 {
 	struct mpool p;
-	constexpr size_t entry_size = 16;
+	constexpr size_t entry_size = PAGE_SIZE;
 	constexpr size_t entries_per_chunk = 12;
 	constexpr size_t chunk_count = 10;
-	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<std::unique_ptr<raw_page[]>> chunks;
 	std::vector<uintptr_t> allocs;
 	size_t i;
 	alignas(entry_size) char entry[entry_size];
@@ -143,7 +148,7 @@ TEST(mpool, freeing)
 	EXPECT_THAT(mpool_alloc(&p), IsNull());
 
 	/* Allocate a number of chunks and add them to the pool. */
-	add_chunks(chunks, &p, chunk_count, entries_per_chunk * entry_size);
+	add_chunks(chunks, &p, chunk_count, entries_per_chunk);
 
 	/*
 	 * Free again into the pool. Ensure that we get entry back on next
@@ -186,10 +191,10 @@ TEST(mpool, freeing)
 TEST(mpool, init_from)
 {
 	struct mpool p, q;
-	constexpr size_t entry_size = 16;
+	constexpr size_t entry_size = PAGE_SIZE;
 	constexpr size_t entries_per_chunk = 10;
 	constexpr size_t chunk_count = 10;
-	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<std::unique_ptr<raw_page[]>> chunks;
 	std::vector<uintptr_t> allocs;
 	size_t i;
 	void* ret;
@@ -197,7 +202,7 @@ TEST(mpool, init_from)
 	mpool_init(&p, entry_size);
 
 	/* Allocate a number of chunks and add them to the pool. */
-	add_chunks(chunks, &p, chunk_count, entries_per_chunk * entry_size);
+	add_chunks(chunks, &p, chunk_count, entries_per_chunk);
 
 	/* Allocate half of the elements. */
 	for (i = 0; i < entries_per_chunk * chunk_count / 2; i++) {
@@ -234,10 +239,10 @@ TEST(mpool, init_from)
 TEST(mpool, alloc_contiguous)
 {
 	struct mpool p;
-	constexpr size_t entry_size = 16;
+	constexpr size_t entry_size = PAGE_SIZE;
 	constexpr size_t entries_per_chunk = 12;
 	constexpr size_t chunk_count = 10;
-	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<std::unique_ptr<raw_page[]>> chunks;
 	std::vector<uintptr_t> allocs;
 	size_t i;
 	void* ret;
@@ -246,7 +251,7 @@ TEST(mpool, alloc_contiguous)
 	mpool_init(&p, entry_size);
 
 	/* Allocate a number of chunks and add them to the pool. */
-	add_chunks(chunks, &p, chunk_count, entries_per_chunk * entry_size);
+	add_chunks(chunks, &p, chunk_count, entries_per_chunk);
 
 	/*
 	 * Allocate entries until the remaining chunk is aligned to 2 entries,
@@ -294,10 +299,10 @@ TEST(mpool, allocation_with_fallback)
 {
 	struct mpool fallback;
 	struct mpool p;
-	constexpr size_t entry_size = 16;
+	constexpr size_t entry_size = PAGE_SIZE;
 	constexpr size_t entries_per_chunk = 10;
 	constexpr size_t chunk_count = 10;
-	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<std::unique_ptr<raw_page[]>> chunks;
 	std::vector<uintptr_t> allocs;
 	void* ret;
 
@@ -308,8 +313,7 @@ TEST(mpool, allocation_with_fallback)
 	EXPECT_THAT(mpool_alloc(&p), IsNull());
 
 	/* Allocate a number of chunks and add them to the fallback pool. */
-	add_chunks(chunks, &fallback, chunk_count,
-		   entries_per_chunk * entry_size);
+	add_chunks(chunks, &fallback, chunk_count, entries_per_chunk);
 
 	/* Allocate from the pool until we run out of memory. */
 	while ((ret = mpool_alloc(&p))) {
@@ -325,10 +329,10 @@ TEST(mpool, free_with_fallback)
 {
 	struct mpool fallback;
 	struct mpool p;
-	constexpr size_t entry_size = 16;
+	constexpr size_t entry_size = PAGE_SIZE;
 	constexpr size_t entries_per_chunk = 1;
 	constexpr size_t chunk_count = 1;
-	std::vector<std::unique_ptr<char[]>> chunks;
+	std::vector<std::unique_ptr<raw_page[]>> chunks;
 	std::vector<uintptr_t> allocs;
 	void* ret;
 
@@ -336,8 +340,7 @@ TEST(mpool, free_with_fallback)
 	mpool_init_with_fallback(&p, &fallback);
 
 	/* Allocate a number of chunks and add them to the fallback pool. */
-	add_chunks(chunks, &fallback, chunk_count,
-		   entries_per_chunk * entry_size);
+	add_chunks(chunks, &fallback, chunk_count, entries_per_chunk);
 
 	/* Allocate, making use of the fallback and free again. */
 	ret = mpool_alloc(&p);

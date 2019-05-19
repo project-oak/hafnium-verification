@@ -1,72 +1,119 @@
+use core::cell::UnsafeCell;
 use core::marker::PhantomData;
 use core::mem;
+use core::ops::{Deref, DerefMut};
 use core::ptr;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{spin_loop_hint, AtomicBool, Ordering};
 
-pub struct SpinLock {
+#[repr(C)]
+pub struct RawSpinLock {
     inner: AtomicBool,
 }
 
-impl SpinLock {
+impl RawSpinLock {
     pub const fn new() -> Self {
         Self {
             inner: AtomicBool::new(false),
         }
     }
 
-    fn lock<'s>(&'s self) -> Guard<'s> {
-        while self.inner.swap(true, Ordering::Acquire) {}
-        Guard {
+    pub fn lock(&self) {
+        while self.inner.swap(true, Ordering::Acquire) {
+            spin_loop_hint();
+        }
+    }
+
+    pub fn lock_both(lhs: &Self, rhs: &Self) {
+        if (lhs as *const _) < (rhs as *const _) {
+            lhs.lock();
+            rhs.lock();
+        } else {
+            rhs.lock();
+            lhs.lock();
+        }
+    }
+
+    pub fn unlock(&self) {
+        self.inner.store(false, Ordering::Release);
+    }
+}
+
+#[repr(C)]
+pub struct SpinLock<T> {
+    lock: RawSpinLock,
+    data: UnsafeCell<T>,
+}
+
+impl<T> SpinLock<T> {
+    pub const fn new(data: T) -> Self {
+        Self {
+            lock: RawSpinLock::new(),
+            data: UnsafeCell::new(data),
+        }
+    }
+
+    pub fn into_inner(self) -> T {
+        self.data.into_inner()
+    }
+
+    pub fn lock<'s>(&'s self) -> SpinLockGuard<'s, T> {
+        self.lock.lock();
+        SpinLockGuard {
             lock: self,
             _marker: PhantomData,
         }
     }
 
-    fn lock_both<'s>(lhs: &'s Self, rhs: &'s Self) -> (Guard<'s>, Guard<'s>) {
-        if lhs as *const _ < rhs as *const _ {
-            let l = lhs.lock();
-            let r = rhs.lock();
-            (l, r)
-        } else {
-            let r = rhs.lock();
-            let l = lhs.lock();
-            (l, r)
-        }
+    pub fn get_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.data.get() }
     }
 }
 
-pub struct Guard<'s> {
-    lock: *const SpinLock,
-    _marker: PhantomData<(*const (), &'s SpinLock)>, // !Send + !Sync
+pub struct SpinLockGuard<'s, T> {
+    lock: &'s SpinLock<T>,
+    _marker: PhantomData<*const ()>, // !Send + !Sync
 }
 
-impl<'s> Drop for Guard<'s> {
+unsafe impl<'s, T> Send for SpinLockGuard<'s, T> {}
+unsafe impl<'s, T: Send + Sync> Sync for SpinLockGuard<'s, T> {}
+
+impl<'s, T> Drop for SpinLockGuard<'s, T> {
     fn drop(&mut self) {
-        let lock = unsafe { &*self.lock };
-        lock.inner.store(false, Ordering::Release);
+        self.lock.lock.unlock();
+    }
+}
+
+impl<'s, T> Deref for SpinLockGuard<'s, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.lock.data.get() }
+    }
+}
+
+impl<'s, T> DerefMut for SpinLockGuard<'s, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.lock.data.get() }
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sl_init(l: *mut SpinLock) {
-    ptr::write(l, SpinLock::new());
+pub unsafe extern "C" fn sl_init(l: *mut RawSpinLock) {
+    ptr::write(l, RawSpinLock::new());
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sl_lock(l: *const SpinLock) {
-    mem::forget((*l).lock());
+pub unsafe extern "C" fn sl_lock(l: *const RawSpinLock) {
+    (*l).lock();
 }
 
 /// Locks both locks, enforcing the lowest address first ordering for locks of the same kind.
 #[no_mangle]
-pub unsafe extern "C" fn sl_lock_both(a: *const SpinLock, b: *const SpinLock) {
-    mem::forget(SpinLock::lock_both(&*a, &*b));
+pub unsafe extern "C" fn sl_lock_both(a: *const RawSpinLock, b: *const RawSpinLock) {
+    RawSpinLock::lock_both(&*a, &*b);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sl_unlock(l: *const SpinLock) {
-    drop(Guard {
-        lock: l,
-        _marker: PhantomData,
-    });
+pub unsafe extern "C" fn sl_unlock(l: *const RawSpinLock) {
+    (*l).unlock();
 }
