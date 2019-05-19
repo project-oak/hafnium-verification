@@ -3,4 +3,14 @@
 [[package]]
 name = "hfo2"
 version = "0.1.0"
+dependencies = [
+ "static_assertions 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
 
+[[package]]
+name = "static_assertions"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[metadata]
+"checksum static_assertions 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "ec3c2cbd19f2033005f463529553273cdcb3e91b3281346007adc7967b6789af"

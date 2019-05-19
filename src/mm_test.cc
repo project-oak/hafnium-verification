@@ -43,6 +43,10 @@ constexpr size_t TEST_HEAP_SIZE = PAGE_SIZE * 16;
 const int TOP_LEVEL = arch_mm_stage2_max_level();
 const paddr_t VM_MEM_END = pa_init(0x200'0000'0000);
 
+struct alignas(PAGE_SIZE) raw_page {
+	char data[PAGE_SIZE];
+};
+
 /**
  * Calculates the size of the address space represented by a page table entry at
  * the given level.
@@ -95,12 +99,12 @@ class mm : public ::testing::Test
 		 * TODO: replace with direct use of stdlib allocator so
 		 * sanitizers are more effective.
 		 */
-		test_heap = std::make_unique<uint8_t[]>(TEST_HEAP_SIZE);
+		test_heap = std::make_unique<raw_page[]>(TEST_HEAP_SIZE / PAGE_SIZE);
 		mpool_init(&ppool, sizeof(struct mm_page_table));
 		mpool_add_chunk(&ppool, test_heap.get(), TEST_HEAP_SIZE);
 	}
 
-	std::unique_ptr<uint8_t[]> test_heap;
+	std::unique_ptr<raw_page[]> test_heap;
 
        protected:
 	struct mpool ppool;
