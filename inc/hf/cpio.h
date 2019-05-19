@@ -23,3 +23,9 @@
 
 bool cpio_next(struct memiter *iter, const char **name, const void **contents,
 	       size_t *size);
+bool cpio_find_file_memiter(const struct memiter *cpio,
+                            const struct memiter *filename,
+                            struct memiter *it);
+bool cpio_find_file(const struct memiter *cpio,
+                    const char *name,
+                    struct memiter *it);

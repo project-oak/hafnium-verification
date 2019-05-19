@@ -4,6 +4,7 @@ use crate::std::*;
 use crate::types::*;
 
 #[repr(C)]
+#[derive(Clone)]
 pub struct MemIter {
     next: *const u8,
     limit: *const u8,

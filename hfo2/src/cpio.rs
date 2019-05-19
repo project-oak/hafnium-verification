@@ -30,7 +30,7 @@ pub struct CpioResult {
 
 /// Retrieves the next file stored in the cpio archive stored in the cpio, and advances the iterator
 /// such that another call to this function would return the following file.
-pub unsafe fn read_cpio(it: &mut MemIter) -> Option<CpioResult> {
+pub unsafe fn parse_cpio(it: &mut MemIter) -> Option<CpioResult> {
     let header = &*(it.read(mem::size_of::<CpioHeader>())? as *const CpioHeader);
 
     // TODO: Check magic.
@@ -55,6 +55,30 @@ pub unsafe fn read_cpio(it: &mut MemIter) -> Option<CpioResult> {
     })
 }
 
+/// Looks for a file in the given cpio archive. The filename is not null-terminated, so we use a
+/// memory iterator to represent it. The file, if found, is returned in the `it` argument.
+pub unsafe fn find_file_memiter(cpio: &mut MemIter, filename: &MemIter) -> Option<MemIter> {
+    while let Some(result) = parse_cpio(cpio) {
+        if filename.iseq(result.name) {
+            return Some(MemIter::from_raw(result.contents, result.size));
+        }
+    }
+
+    None
+}
+
+/// Looks for a file in the given cpio archive. The file, if found, is returned in the `it`
+/// argument.
+pub unsafe fn find_file(cpio: &mut MemIter, filename: *const u8) -> Option<MemIter> {
+    while let Some(result) = parse_cpio(cpio) {
+        if strcmp(filename, result.name) == 0 {
+            return Some(MemIter::from_raw(result.contents, result.size));
+        }
+    }
+
+    None
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn cpio_next(
     iter: *mut MemIter,
@@ -62,11 +86,35 @@ pub unsafe extern "C" fn cpio_next(
     contents: *mut *const c_void,
     size: *mut size_t,
 ) -> bool {
-    read_cpio(&mut *iter)
+    parse_cpio(&mut *iter)
         .map(|result| {
             *name = result.name;
             *contents = result.contents as *const _;
             *size = result.size;
         })
+        .is_some()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn cpio_find_file_memiter(
+    cpio: *const MemIter,
+    filename: *const MemIter,
+    it: *mut MemIter,
+) -> bool {
+    let mut cpio = (*cpio).clone();
+    find_file_memiter(&mut cpio, &*filename)
+        .map(|iter| *it = iter)
+        .is_some()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn cpio_find_file(
+    cpio: *const MemIter,
+    filename: *const u8,
+    it: *mut MemIter,
+) -> bool {
+    let mut cpio = (*cpio).clone();
+    find_file(&mut cpio, filename)
+        .map(|iter| *it = iter)
         .is_some()
 }

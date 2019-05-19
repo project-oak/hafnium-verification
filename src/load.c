@@ -59,52 +59,6 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size,
 }
 
 /**
- * Looks for a file in the given cpio archive. The filename is not
- * null-terminated, so we use a memory iterator to represent it. The file, if
- * found, is returned in the "it" argument.
- */
-static bool memiter_find_file(const struct memiter *cpio,
-			      const struct memiter *filename,
-			      struct memiter *it)
-{
-	const char *fname;
-	const void *fcontents;
-	size_t fsize;
-	struct memiter iter = *cpio;
-
-	while (cpio_next(&iter, &fname, &fcontents, &fsize)) {
-		if (memiter_iseq(filename, fname)) {
-			memiter_init(it, fcontents, fsize);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-/**
- * Looks for a file in the given cpio archive. The file, if found, is returned
- * in the "it" argument.
- */
-static bool find_file(const struct memiter *cpio, const char *name,
-		      struct memiter *it)
-{
-	const char *fname;
-	const void *fcontents;
-	size_t fsize;
-	struct memiter iter = *cpio;
-
-	while (cpio_next(&iter, &fname, &fcontents, &fsize)) {
-		if (!strcmp(fname, name)) {
-			memiter_init(it, fcontents, fsize);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-/**
  * Loads the primary VM.
  */
 bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
@@ -113,7 +67,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 	struct memiter it;
 	paddr_t primary_begin = layout_primary_begin();
 
-	if (!find_file(cpio, "vmlinuz", &it)) {
+	if (!cpio_find_file(cpio, "vmlinuz", &it)) {
 		dlog("Unable to find vmlinuz\n");
 		return false;
 	}
@@ -125,7 +79,7 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 		return false;
 	}
 
-	if (!find_file(cpio, "initrd.img", initrd)) {
+	if (!cpio_find_file(cpio, "initrd.img", initrd)) {
 		dlog("Unable to find initrd.img\n");
 		return false;
 	}
@@ -270,7 +224,7 @@ bool load_secondary(const struct memiter *cpio,
 
 	primary = vm_find(HF_PRIMARY_VM_ID);
 
-	if (!find_file(cpio, "vms.txt", &it)) {
+	if (!cpio_find_file(cpio, "vms.txt", &it)) {
 		dlog("vms.txt is missing\n");
 		return true;
 	}
@@ -297,7 +251,7 @@ bool load_secondary(const struct memiter *cpio,
 		}
 		dlog("\n");
 
-		if (!memiter_find_file(cpio, &name, &kernel)) {
+		if (!cpio_find_file_memiter(cpio, &name, &kernel)) {
 			dlog("Unable to load kernel\n");
 			continue;
 		}
