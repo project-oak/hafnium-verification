@@ -49,7 +49,6 @@ source_set("src_testable") {
   sources = [
     "api.c",
     "cpu.c",
-    "mm.c",
     "panic.c",
     "vm.c",
   ]

@@ -1,5 +1,15 @@
 use core::sync::atomic::spin_loop_hint;
 
+#[macro_export]
+macro_rules! some_or_return {
+    ($e:expr, $err:expr) => {{
+        match $e {
+            Some(r) => r,
+            None => return $err,
+        }
+    }};
+}
+
 pub fn spin_loop() -> ! {
     loop {
         spin_loop_hint();
