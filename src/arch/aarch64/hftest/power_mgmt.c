@@ -20,8 +20,8 @@
 
 #include "vmapi/hf/call.h"
 
-#include "../psci.h"
-#include "../smc.h"
+#include "psci.h"
+#include "smc.h"
 
 /**
  * Holds temporary state used to set up the environment on which CPUs will

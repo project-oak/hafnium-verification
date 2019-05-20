@@ -31,6 +31,7 @@ source_set("hf_call") {
 # Shutdown the system or exit emulation, start/stop CPUs.
 source_set("power_mgmt") {
   testonly = true
+  public_configs = [ "//src/arch/aarch64:config" ]
   sources = [
     "cpu_entry.S",
     "power_mgmt.c",
@@ -44,6 +45,7 @@ source_set("power_mgmt") {
 # Exception handlers for interrupts and GICv3 el1 driver.
 source_set("interrupts_gicv3") {
   testonly = true
+  public_configs = [ "//src/arch/aarch64:config" ]
   sources = [
     "events.c",
     "exceptions.S",
@@ -54,6 +56,7 @@ source_set("interrupts_gicv3") {
 # Get/set CPU state.
 source_set("state") {
   testonly = true
+  public_configs = [ "//src/arch/aarch64:config" ]
   sources = [
     "state.c",
   ]

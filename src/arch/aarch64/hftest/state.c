@@ -16,7 +16,7 @@
 
 #include "hf/arch/vm/state.h"
 
-#include "../msr.h"
+#include "msr.h"
 
 void per_cpu_ptr_set(uintptr_t v)
 {

@@ -23,9 +23,9 @@
 
 #include "vmapi/hf/call.h"
 
-#include "../msr.h"
 #include "gicv3.h"
 #include "hftest.h"
+#include "msr.h"
 
 /**
  * Converts a number of nanoseconds to the equivalent number of timer ticks.

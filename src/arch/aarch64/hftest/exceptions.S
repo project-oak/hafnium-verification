@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include "../exception_macros.S"
+#include "exception_macros.S"
 
 .section .text.vector_table_el1, "ax"
 .global vector_table_el1

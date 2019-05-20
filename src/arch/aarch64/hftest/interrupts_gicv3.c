@@ -23,7 +23,7 @@
 
 #include "hf/dlog.h"
 
-#include "../msr.h"
+#include "msr.h"
 
 extern uint8_t vector_table_el1;
 static void (*irq_callback)(void);
