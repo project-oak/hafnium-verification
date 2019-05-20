@@ -1,4 +1,4 @@
-# Copyright 2018 The Hafnium Authors.
+# Copyright 2019 The Hafnium Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-declare_args() {
-  # Whether to include the PrimeCell UART (PL011) driver.
-  arch_aarch64_use_pl011 = false
+import("args.gni")
+
+# aarch64 PL011 implementation of putchar for debugging.
+source_set("pl011") {
+  sources = [
+    "pl011.c",
+  ]
+  deps = [
+    "//src/arch/aarch64:arch",
+  ]
+
+  assert(defined(pl011_base_address),
+         "\"pl011_base_address\" must be defined for ${target_name}.")
+  defines = [ "PL011_BASE=${pl011_base_address}" ]
 }

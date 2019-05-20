@@ -12,8 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import("args.gni")
-
 # Hypervisor specific code.
 source_set("aarch64") {
   sources = [
@@ -64,17 +62,4 @@ source_set("smc") {
   sources = [
     "smc.S",
   ]
-}
-
-# aarch64 implementation of putchar for debugging.
-source_set("putchar") {
-  if (arch_aarch64_use_pl011) {
-    sources = [
-      "pl011.c",
-    ]
-
-    deps = [
-      ":arch",
-    ]
-  }
 }

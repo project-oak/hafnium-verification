@@ -25,6 +25,7 @@
 #include "hf/layout.h"
 #include "hf/memiter.h"
 #include "hf/mm.h"
+#include "hf/plat/console.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -327,11 +328,7 @@ bool load_secondary(const struct memiter *cpio,
 			continue;
 		}
 
-		/* TODO: Remove this. */
-		/* Grant VM access to uart. */
-		mm_vm_identity_map(&vm->ptable, pa_init(PL011_BASE),
-				   pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-				   MM_MODE_R | MM_MODE_W, NULL, ppool);
+		plat_console_vm_mm_init(vm, ppool);
 
 		/* Grant the VM access to the memory. */
 		if (!mm_vm_identity_map(&vm->ptable, secondary_mem_begin,

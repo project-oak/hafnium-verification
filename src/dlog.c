@@ -19,8 +19,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "hf/arch/console.h"
-
+#include "hf/plat/console.h"
 #include "hf/spinlock.h"
 #include "hf/std.h"
 
@@ -57,7 +56,7 @@ static size_t print_raw_string(const char *str)
 	const char *c = str;
 
 	while (*c != '\0') {
-		arch_putchar(*c++);
+		plat_console_putchar(*c++);
 	}
 
 	return c - str;
@@ -79,14 +78,14 @@ static void print_string(const char *str, const char *suffix, size_t width,
 
 	/* Print the string up to the beginning of the suffix. */
 	while (str != suffix) {
-		arch_putchar(*str++);
+		plat_console_putchar(*str++);
 	}
 
 	if (flags & FLAG_MINUS) {
 		/* Left-aligned. Print suffix, then print padding if needed. */
 		len += print_raw_string(suffix);
 		while (len < width) {
-			arch_putchar(' ');
+			plat_console_putchar(' ');
 			len++;
 		}
 		return;
@@ -95,7 +94,7 @@ static void print_string(const char *str, const char *suffix, size_t width,
 	/* Fill until we reach the desired length. */
 	len += strnlen_s(suffix, DLOG_MAX_STRING_LENGTH);
 	while (len < width) {
-		arch_putchar(fill);
+		plat_console_putchar(fill);
 		len++;
 	}
 
@@ -208,7 +207,7 @@ void vdlog(const char *fmt, va_list args)
 	for (p = fmt; *p; p++) {
 		switch (*p) {
 		default:
-			arch_putchar(*p);
+			plat_console_putchar(*p);
 			break;
 
 		case '%':
@@ -296,7 +295,7 @@ void vdlog(const char *fmt, va_list args)
 				break;
 
 			default:
-				arch_putchar('%');
+				plat_console_putchar('%');
 			}
 
 			break;

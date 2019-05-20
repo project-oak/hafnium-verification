@@ -150,6 +150,7 @@ template("host_toolchain") {
         # When building for the ${target_name}, use the fake architecture to make things
         # testable.
         plat_arch = "fake"
+        plat_console = "//src/arch/fake:console"
         plat_heap_pages = invoker.heap_pages
         plat_max_cpus = invoker.max_cpus
         plat_max_vms = invoker.max_vms
@@ -173,6 +174,7 @@ template("host_toolchain") {
         # When building for the ${target_name}, use the fake architecture to make things
         # testable.
         plat_arch = "fake"
+        plat_console = "//src/arch/fake:console"
         plat_heap_pages = invoker.heap_pages
         plat_max_cpus = invoker.max_cpus
         plat_max_vms = invoker.max_vms

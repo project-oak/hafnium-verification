@@ -37,6 +37,7 @@ source_set("src_not_testable_yet") {
   deps = [
     ":src_testable",
     "//project/${project}/${plat_name}",
+    plat_console,
   ]
 }
 
@@ -61,6 +62,7 @@ source_set("src_testable") {
     ":memiter",
     ":std",
     "//src/arch/${plat_arch}",
+    plat_console,
   ]
 
   if (is_debug) {
@@ -87,7 +89,7 @@ source_set("dlog") {
 
   deps = [
     ":std",
-    "//src/arch/${plat_arch}:putchar",
+    plat_console,
   ]
 }
 

@@ -21,9 +21,9 @@ source_set("fake") {
 }
 
 # Fake implementation of putchar logs to the console.
-source_set("putchar") {
+source_set("console") {
   sources = [
-    "putchar.c",
+    "console.c",
   ]
 }
 

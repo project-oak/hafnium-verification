@@ -14,11 +14,22 @@
  * limitations under the License.
  */
 
+#include "hf/plat/console.h"
+
 #include <stdio.h>
 
-#include "hf/dlog.h"
+#include "hf/mm.h"
+#include "hf/mpool.h"
 
-void arch_putchar(char c)
+void plat_console_init(void)
+{
+}
+
+void plat_console_mm_init(struct mpool *ppool)
+{
+}
+
+void plat_console_putchar(char c)
 {
 	putchar(c);
 }

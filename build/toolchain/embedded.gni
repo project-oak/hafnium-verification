@@ -305,8 +305,8 @@ template("aarch64_common_toolchain") {
          "\"tool_prefix\" must be defined for ${target_name}")
   assert(defined(invoker.origin_address),
          "\"origin_address\" must be defined for ${target_name}.")
-  assert(defined(invoker.use_pl011),
-         "\"use_pl011\" must be defined for ${target_name}.")
+  assert(defined(invoker.console),
+         "\"console\" must be defined for ${target_name}.")
   assert(defined(invoker.heap_pages),
          "\"heap_pages\" must be defined for ${target_name}.")
   assert(defined(invoker.max_cpus),
@@ -345,11 +345,6 @@ template("aarch64_common_toolchain") {
       extra_defines += " ${invoker.extra_defines}"
     }
 
-    if (invoker.use_pl011) {
-      assert(defined(invoker.pl011_base_address),
-             "\"pl011_base_address\" must be defined for ${target_name}.")
-      extra_defines += " -DPL011_BASE=${invoker.pl011_base_address}"
-    }
     if (invoker.gic_version > 0) {
       extra_defines += " -DGIC_VERSION=${invoker.gic_version}"
     }
@@ -358,7 +353,8 @@ template("aarch64_common_toolchain") {
     }
 
     toolchain_args = {
-      arch_aarch64_use_pl011 = invoker.use_pl011
+      plat_console = invoker.console
+      forward_variables_from(invoker.toolchain_args, "*")
     }
   }
 }
@@ -377,14 +373,14 @@ template("aarch64_toolchains") {
     forward_variables_from(invoker,
                            [
                              "origin_address",
-                             "use_pl011",
-                             "pl011_base_address",
+                             "console",
                              "gic_version",
                              "gicd_base_address",
                              "gicr_base_address",
                              "heap_pages",
                              "max_cpus",
                              "max_vms",
+                             "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+nofp"
   }
@@ -395,17 +391,17 @@ template("aarch64_toolchains") {
     forward_variables_from(invoker,
                            [
                              "origin_address",
-                             "use_pl011",
-                             "pl011_base_address",
+                             "console",
                              "gic_version",
                              "gicd_base_address",
                              "gicr_base_address",
+                             "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+fp"
 
     # Nonsense values because they are required but shouldn't be used.
     heap_pages = 0
-    max_cpus = 0
-    max_vms = 0
+    max_cpus = 1
+    max_vms = 1
   }
 }

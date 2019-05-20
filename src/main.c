@@ -28,6 +28,7 @@
 #include "hf/mm.h"
 #include "hf/mpool.h"
 #include "hf/panic.h"
+#include "hf/plat/console.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -49,6 +50,9 @@ static void one_time_init(void)
 	void *initrd;
 	size_t i;
 	struct mpool ppool;
+
+	/* Make sure the console is initialised before calling dlog. */
+	plat_console_init();
 
 	dlog("Initialising hafnium\n");
 

@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-#include "hf/dlog.h"
+#include "hf/mm.h"
+#include "hf/mpool.h"
+#include "hf/plat/console.h"
+#include "hf/vm.h"
 
 #include "io.h"
 
@@ -30,11 +33,33 @@
 /* UART Flag Register bit: UART is busy. */
 #define UARTFR_BUSY (1 << 3)
 
-void arch_putchar(char c)
+void plat_console_init(void)
+{
+	/* No hardware initialisation required. */
+}
+
+void plat_console_mm_init(struct mpool *ppool)
+{
+	/* Map page for UART. */
+	mm_identity_map(pa_init(PL011_BASE),
+			pa_add(pa_init(PL011_BASE), PAGE_SIZE),
+			MM_MODE_R | MM_MODE_W | MM_MODE_D, ppool);
+}
+
+/* TODO: Remove this. */
+void plat_console_vm_mm_init(struct vm *vm, struct mpool *ppool)
+{
+	/* Grant VM access to UART. */
+	mm_vm_identity_map(&vm->ptable, pa_init(PL011_BASE),
+			   pa_add(pa_init(PL011_BASE), PAGE_SIZE),
+			   MM_MODE_R | MM_MODE_W, NULL, ppool);
+}
+
+void plat_console_putchar(char c)
 {
 	/* Print a carriage-return as well. */
 	if (c == '\n') {
-		arch_putchar('\r');
+		plat_console_putchar('\r');
 	}
 
 	/* Wait until there is room in the tx buffer. */

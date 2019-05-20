@@ -22,6 +22,7 @@
 #include "hf/assert.h"
 #include "hf/dlog.h"
 #include "hf/layout.h"
+#include "hf/plat/console.h"
 
 /**
  * This file has functions for managing the level 1 and 2 page tables used by
@@ -906,11 +907,8 @@ bool mm_init(struct mpool *ppool)
 		return false;
 	}
 
-	/* Map page for uart. */
-	/* TODO: We may not want to map this. */
-	mm_identity_map(pa_init(PL011_BASE),
-			pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-			MM_MODE_R | MM_MODE_W | MM_MODE_D, ppool);
+	/* Let console driver map pages for itself. */
+	plat_console_mm_init(ppool);
 
 	/* Map each section. */
 	mm_identity_map(layout_text_begin(), layout_text_end(), MM_MODE_X,
