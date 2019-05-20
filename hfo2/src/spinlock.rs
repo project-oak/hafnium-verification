@@ -43,6 +43,9 @@ pub struct SpinLock<T> {
     data: UnsafeCell<T>,
 }
 
+unsafe impl<'s, T: Send> Send for SpinLock<T> {}
+unsafe impl<'s, T: Send> Sync for SpinLock<T> {}
+
 impl<T> SpinLock<T> {
     pub const fn new(data: T) -> Self {
         Self {
@@ -65,6 +68,10 @@ impl<T> SpinLock<T> {
 
     pub fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.data.get() }
+    }
+
+    pub unsafe fn get_mut_unchecked(&self) -> &mut T {
+        &mut *self.data.get()
     }
 }
 

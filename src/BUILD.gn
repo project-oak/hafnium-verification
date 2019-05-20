@@ -50,7 +50,6 @@ source_set("src_testable") {
     "api.c",
     "cpu.c",
     "fdt_handler.c",
-    "mm.c",
     "panic.c",
     "vm.c",
   ]

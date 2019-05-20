@@ -3,6 +3,7 @@ use core::ops::DerefMut;
 use core::ptr;
 
 use crate::list::{IsElement, List, ListEntry};
+use crate::page::*;
 use crate::spinlock::SpinLock;
 use crate::types::*;
 use crate::utils::*;
@@ -19,9 +20,9 @@ struct Entry {
 }
 
 impl Chunk {
-    pub const fn new(size: usize) -> Self {
-        const_assert!(mem::size_of::<Chunk>() <= mem::size_of::<RawPage>());
+    const_assert!(chunk_size; mem::size_of::<Chunk>() <= mem::size_of::<RawPage>());
 
+    pub const fn new(size: usize) -> Self {
         Self {
             entry: ListEntry::new(),
             size,
@@ -30,9 +31,9 @@ impl Chunk {
 }
 
 impl Entry {
-    pub const fn new() -> Self {
-        const_assert!(mem::size_of::<Entry>() <= mem::size_of::<RawPage>());
+    const_assert!(entry_size; mem::size_of::<Entry>() <= mem::size_of::<RawPage>());
 
+    pub const fn new() -> Self {
         Self {
             entry: ListEntry::new(),
         }
@@ -277,6 +278,8 @@ impl Drop for MPool {
             // TODO(@jeehoonkang): it's different from the original C implementation, where
             // `self.pool.fallback` is re-initialized. But it seems the difference doesn't matter.
         }
+
+        // TODO(@jeehoonkang): here we're leaking all the memory chunks in this pool.
     }
 }
 
