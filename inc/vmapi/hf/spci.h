@@ -48,6 +48,7 @@
 
 /* Architected memory sharing message IDs. */
 enum spci_memory_share {
+	SPCI_MEMORY_RELINQUISH = 0x1,
 	SPCI_MEMORY_DONATE = 0x2,
 };
 
@@ -283,6 +284,29 @@ static inline void spci_memory_donate(
 	/* Fill in the details on the common message header. */
 	spci_architected_message_init(message, message_length, target_vm_id,
 				      source_vm_id, SPCI_MEMORY_DONATE);
+
+	/* Create single memory region. */
+	spci_memory_region_add(message, handle, region_constituents,
+			       num_elements);
+}
+
+/**
+ * Construct the SPCI memory region relinquish message.
+ * A set of memory regions can be given back to the owner.
+ */
+static inline void spci_memory_relinquish(
+	struct spci_message *message, spci_vm_id_t target_vm_id,
+	spci_vm_id_t source_vm_id,
+	struct spci_memory_region_constituent *region_constituents,
+	uint64_t num_elements, uint32_t handle)
+{
+	int32_t message_length;
+
+	message_length = sizeof(struct spci_architected_message_header);
+
+	/* Fill in the details on the common message header. */
+	spci_architected_message_init(message, message_length, target_vm_id,
+				      source_vm_id, SPCI_MEMORY_RELINQUISH);
 
 	/* Create single memory region. */
 	spci_memory_region_add(message, handle, region_constituents,

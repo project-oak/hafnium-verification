@@ -25,6 +25,37 @@ use crate::spci::*;
 use crate::std::*;
 use crate::vm::*;
 
+/// Check if the message length and the number of memory region constituents match, if the check is
+/// correct call the memory sharing routine.
+fn spci_validate_call_share_memory(
+    to_inner: &mut VmInner,
+    from_inner: &mut VmInner,
+    memory_region: &SpciMemoryRegion,
+    memory_share_size: usize,
+    memory_to_attributes: Mode,
+    share: SpciMemoryShare,
+    fallback: &MPool,
+) -> SpciReturn {
+    let max_count = memory_region.count as usize;
+
+    // Ensure the number of constituents are within the memory bounds.
+    if memory_share_size
+        != mem::size_of::<SpciMemoryRegion>()
+            + mem::size_of::<SpciMemoryRegionConstituent>() * max_count
+    {
+        return SpciReturn::InvalidParameters;
+    }
+
+    spci_share_memory(
+        to_inner,
+        from_inner,
+        memory_region,
+        memory_to_attributes,
+        share,
+        fallback,
+    )
+}
+
 /// Performs initial architected message information parsing. Calls the corresponding api functions
 /// implementing the functionality requested in the architected message.
 pub fn spci_msg_handle_architected_message(
@@ -38,38 +69,47 @@ pub fn spci_msg_handle_architected_message(
     let from_msg_payload_length = from_msg_replica.length as usize;
 
     let message_type = architected_message_replica.r#type;
-    if message_type != SpciMemoryShare::Donate {
-        dlog!("Invalid memory sharing message.");
-        return SpciReturn::InvalidParameters;
-    }
+    let ret = match message_type {
+        SpciMemoryShare::Donate => {
+            #[allow(clippy::cast_ptr_alignment)]
+            let memory_region = unsafe {
+                &*(architected_message_replica.payload.as_ptr() as *const SpciMemoryRegion)
+            };
+            let memory_share_size =
+                from_msg_payload_length - mem::size_of::<SpciArchitectedMessageHeader>();
 
-    #[allow(clippy::cast_ptr_alignment)]
-    let memory_region =
-        unsafe { &*(architected_message_replica.payload.as_ptr() as *const SpciMemoryRegion) };
-    let memory_share_size =
-        from_msg_payload_length - mem::size_of::<SpciArchitectedMessageHeader>();
-    // TODO: Add memory attributes.
-    let to_mode = Mode::R | Mode::W | Mode::X;
+            // TODO: Add memory attributes.
+            let to_mode = Mode::R | Mode::W | Mode::X;
 
-    // Check if the message length and the number of memory region constituents match.
-    // Ensure the number of constituents are within the memory bounds.
-    let max_count = memory_region.count as usize;
-    if memory_share_size
-        != mem::size_of::<SpciMemoryRegion>()
-            + mem::size_of::<SpciMemoryRegionConstituent>() * max_count
-    {
-        return SpciReturn::InvalidParameters;
-    }
+            spci_share_memory(
+                to_inner,
+                from_inner,
+                memory_region,
+                to_mode,
+                message_type,
+                fallback,
+            )
+        }
+        SpciMemoryShare::Relinquish => {
+            #[allow(clippy::cast_ptr_alignment)]
+            let memory_region = unsafe {
+                &*(architected_message_replica.payload.as_ptr() as *const SpciMemoryRegion)
+            };
+            let memory_share_size =
+                from_msg_payload_length - mem::size_of::<SpciArchitectedMessageHeader>();
 
-    // Call the memory sharing routine.
-    let ret = spci_share_memory(
-        to_inner,
-        from_inner,
-        memory_region,
-        to_mode,
-        message_type,
-        fallback,
-    );
+            let to_mode = Mode::R | Mode::W | Mode::X;
+
+            spci_share_memory(
+                to_inner,
+                from_inner,
+                memory_region,
+                to_mode,
+                message_type,
+                fallback,
+            )
+        }
+    };
 
     // Copy data to the destination Rx.
     //
@@ -96,16 +136,12 @@ pub fn spci_msg_handle_architected_message(
 }
 
 /// Obtain the next mode to apply to the two VMs.
-///
-/// # Returns
-///
-/// The error code -1 indicates that a state transition was not found.  Success is indicated by 0.
 fn spci_msg_get_next_state(
     transitions: &[SpciMemTransitions],
     memory_to_attributes: Mode,
     orig_from_mode: Mode,
     orig_to_mode: Mode,
-) -> Result<(Mode, Mode, Mode), ()> {
+) -> Result<(Mode, Mode), ()> {
     let state_mask = Mode::INVALID | Mode::UNOWNED | Mode::SHARED;
     let orig_from_state = orig_from_mode & state_mask;
     let orig_to_state = orig_to_mode & state_mask;
@@ -116,7 +152,6 @@ fn spci_msg_get_next_state(
 
         if orig_from_state == table_orig_from_mode && orig_to_state == table_orig_to_mode {
             return Ok((
-                orig_from_mode,
                 // TODO: Change access permission assignment to cater for the lend case.
                 transition.from_mode,
                 transition.to_mode | memory_to_attributes,
@@ -182,6 +217,23 @@ pub fn spci_msg_check_transition(
         },
     ];
 
+    let relinquish_transitions: [SpciMemTransitions; 2] = [
+        // 1) {!O-EA, O-NA} -> {!O-NA, O-EA}
+        SpciMemTransitions {
+            orig_from_mode: Mode::UNOWNED,
+            orig_to_mode: Mode::INVALID,
+            from_mode: Mode::INVALID | Mode::UNOWNED | Mode::SHARED,
+            to_mode: Mode::empty(),
+        },
+        // 2) {!O-SA, O-SA} -> {!O-NA, O-EA}
+        SpciMemTransitions {
+            orig_from_mode: Mode::UNOWNED | Mode::SHARED,
+            orig_to_mode: Mode::SHARED,
+            from_mode: Mode::INVALID | Mode::UNOWNED | Mode::SHARED,
+            to_mode: Mode::empty(),
+        },
+    ];
+
     // Fail if addresses are not page-aligned.
     if !is_aligned(ipa_addr(begin), PAGE_SIZE) || !is_aligned(ipa_addr(end), PAGE_SIZE) {
         return Err(());
@@ -191,16 +243,19 @@ pub fn spci_msg_check_transition(
     let orig_from_mode = from_inner.ptable.get_mode(begin, end)?;
     let orig_to_mode = to_inner.ptable.get_mode(begin, end)?;
 
-    if share != SpciMemoryShare::Donate {
-        return Err(());
-    }
+    let mem_transition_table: &[SpciMemTransitions] = match share {
+        SpciMemoryShare::Donate => &donate_transitions,
+        SpciMemoryShare::Relinquish => &relinquish_transitions,
+    };
 
-    spci_msg_get_next_state(
-        &donate_transitions,
+    let (from_mode, to_mode) = spci_msg_get_next_state(
+        &mem_transition_table,
         memory_to_attributes,
         orig_from_mode,
         orig_to_mode,
-    )
+    )?;
+
+    Ok((orig_from_mode, from_mode, to_mode))
 }
 
 /// Shares memory from the calling VM with another. The memory can be shared in different modes.
