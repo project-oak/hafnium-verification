@@ -41,12 +41,12 @@ void exception_setup(void (*irq)(void))
 
 	/* Set exception vector table. */
 	write_msr(VBAR_EL1, &vector_table_el1);
-
-	write_msr(ICC_CTLR_EL1, 0);
 }
 
 void interrupt_gic_setup(void)
 {
+	write_msr(ICC_CTLR_EL1, 0);
+
 	GICD_CTLR = 1u << 4    /* Enable affinity routing. */
 		    | 1u << 1; /* Enable group 1 non-secure interrupts. */
 

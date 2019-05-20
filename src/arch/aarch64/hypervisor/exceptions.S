@@ -312,6 +312,15 @@ vcpu_switch:
 	mrs x28, vttbr_el2
 	str x28, [x1, #VCPU_LAZY + 16 * 14]
 
+	/* Save GIC registers. */
+#if GIC_VERSION == 3 || GIC_VERSION == 4
+	/* Offset is too large, so start from a new base. */
+	add x2, x1, #VCPU_GIC
+
+	mrs x3, ich_hcr_el2
+	str x3, [x2, #16 * 0]
+#endif
+
 	/*
 	 * Save floating point registers.
 	 *
@@ -382,7 +391,7 @@ vcpu_restore_all_and_run:
 	ldp q24, q25, [x2, #32 * 12]
 	ldp q26, q27, [x2, #32 * 13]
 	ldp q28, q29, [x2, #32 * 14]
-	/* Offest becomes too large, so move the base. */
+	/* Offset becomes too large, so move the base. */
 	ldp q30, q31, [x2, #32 * 15]!
 	ldp x3, x4, [x2, #32 * 1]
 	msr fpsr, x3
@@ -457,6 +466,15 @@ vcpu_restore_lazy_and_run:
 
 	ldr x28, [x0, #VCPU_LAZY + 16 * 14]
 	msr vttbr_el2, x28
+
+	/* Restore GIC registers. */
+#if GIC_VERSION == 3 || GIC_VERSION == 4
+	/* Offset is too large, so start from a new base. */
+	add x2, x0, #VCPU_GIC
+
+	ldr x3, [x2, #16 * 0]
+	msr ich_hcr_el2, x3
+#endif
 
 	/* Restore non-volatile registers. */
 	ldp x19, x20, [x0, #VCPU_REGS + 8 * 19]

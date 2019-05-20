@@ -53,6 +53,22 @@ source_set("timer") {
   ]
 }
 
+# Service which tries to access GICv3 system registers.
+source_set("systemreg") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "systemreg.c",
+  ]
+
+  deps = [
+    ":common",
+    "//src/arch/aarch64:arch",
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
+  ]
+}
+
 # Group services together into VMs.
 
 vm_kernel("gicv3_service_vm0") {
@@ -60,6 +76,7 @@ vm_kernel("gicv3_service_vm0") {
 
   deps = [
     ":busy",
+    ":systemreg",
     ":timer",
     "//test/hftest:hftest_secondary_vm",
   ]

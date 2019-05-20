@@ -33,6 +33,20 @@ void arch_irq_enable(void)
 	__asm__ volatile("msr DAIFClr, #0xf");
 }
 
+static void gic_regs_reset(struct arch_regs *r, bool is_primary)
+{
+#if GIC_VERSION == 3 || GIC_VERSION == 4
+	uint32_t ich_hcr = 0;
+
+	if (!is_primary) {
+		/* Trap EL1 access to GICv3 system registers. */
+		ich_hcr =
+			(0x1fu << 10); /* TDIR, TSEI, TALL1, TALL0, TC bits. */
+	}
+	r->gic.ich_hcr_el2 = ich_hcr;
+#endif
+}
+
 void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
 		     uint64_t vcpu_id, paddr_t table)
 {
@@ -81,6 +95,8 @@ void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */
+
+	gic_regs_reset(r, is_primary);
 }
 
 void arch_regs_set_pc_arg(struct arch_regs *r, ipaddr_t pc, uintreg_t arg)

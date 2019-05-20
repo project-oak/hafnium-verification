@@ -74,3 +74,33 @@ TEST(system, system_setup)
 	EXPECT_EQ(GICD_CTLR & 0x13, 0x12);
 	EXPECT_EQ(read_msr(ICC_CTLR_EL1) & 0xff, 0);
 }
+
+/*
+ * Check that an attempt by a secondary VM to read a GICv3 system register is
+ * trapped.
+ */
+TEST(system, icc_ctlr_read_trapped_secondary)
+{
+	struct hf_vcpu_run_return run_res;
+
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	SERVICE_SELECT(SERVICE_VM0, "read_systemreg_ctlr", send_buffer);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/*
+ * Check that an attempt by a secondary VM to write a GICv3 system register is
+ * trapped.
+ */
+TEST(system, icc_ctlr_write_trapped_secondary)
+{
+	struct hf_vcpu_run_return run_res;
+
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	SERVICE_SELECT(SERVICE_VM0, "write_systemreg_ctlr", send_buffer);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}

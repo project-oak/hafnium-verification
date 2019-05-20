@@ -56,6 +56,7 @@ struct arch_regs {
 	uintreg_t r[31];
 	uintreg_t pc;
 	uintreg_t spsr;
+
 	/* System registers. */
 	struct {
 		uintreg_t vmpidr_el2;
@@ -88,6 +89,18 @@ struct arch_regs {
 		uintreg_t cnthctl_el2;
 		uintreg_t vttbr_el2;
 	} lazy;
+
+	/* Floating point registers. */
+	struct float_reg fp[32];
+	uintreg_t fpsr;
+	uintreg_t fpcr;
+
+#if GIC_VERSION == 3 || GIC_VERSION == 4
+	struct {
+		uintreg_t ich_hcr_el2;
+	} gic;
+#endif
+
 	/*
 	 * Peripheral registers, handled separately from other system registers.
 	 */
@@ -95,8 +108,4 @@ struct arch_regs {
 		uintreg_t cntv_cval_el0;
 		uintreg_t cntv_ctl_el0;
 	} peripherals;
-	/* Floating point registers. */
-	struct float_reg fp[32];
-	uintreg_t fpsr;
-	uintreg_t fpcr;
 };
