@@ -61,7 +61,7 @@ source_set("src_testable") {
     ":fdt",
     ":memiter",
     ":std",
-    "//src/arch/${plat_arch}",
+    "//src/arch/${plat_arch}/hypervisor",
     plat_console,
   ]
 

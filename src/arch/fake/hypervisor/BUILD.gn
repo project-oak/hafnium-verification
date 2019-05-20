@@ -1,4 +1,4 @@
-# Copyright 2018 The Hafnium Authors.
+# Copyright 2019 The Hafnium Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,37 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-config("config") {
-  include_dirs = [ "." ]
-}
-
-# Implementation of the arch interface for aarch64.
-source_set("arch") {
+source_set("hypervisor") {
   sources = [
-    "barriers.c",
     "cpu.c",
-    "mm.c",
-    "timer.c",
   ]
-}
-
-source_set("std") {
-  sources = [
-    "stack_protector.c",
-    "std.c",
-  ]
-}
-
-# Entry code to prepare the loaded image to be run.
-source_set("entry") {
-  sources = [
-    "entry.S",
-  ]
-}
-
-# Make a call to the secure monitor.
-source_set("smc") {
-  sources = [
-    "smc.S",
+  deps = [
+    "//src/arch/fake",
   ]
 }
