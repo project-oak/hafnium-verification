@@ -22,7 +22,7 @@ See details of [how to contribute](CONTRIBUTING.md).
 Install prerequisites:
 
 ``` shell
-sudo apt install make binutils-aarch64-linux-gnu
+sudo apt install make binutils-aarch64-linux-gnu device-tree-compiler libssl-dev
 ```
 
 By default, the hypervisor is built with clang for a few target platforms along
