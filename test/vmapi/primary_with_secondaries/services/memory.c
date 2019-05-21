@@ -56,6 +56,44 @@ TEST_SERVICE(memory_increment)
 	}
 }
 
+TEST_SERVICE(memory_lend_relinquish_spci)
+{
+	/* Loop, giving memory back to the sender. */
+	for (;;) {
+		spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+		uint8_t *ptr;
+
+		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
+		struct spci_message *send_buf = SERVICE_SEND_BUFFER();
+		struct spci_memory_region *memory_region =
+			(struct spci_memory_region *)(spci_get_lend_descriptor(
+							      recv_buf)
+							      ->payload);
+
+		ptr = (uint8_t *)memory_region->constituents[0].address;
+		/* Relevant information read, mailbox can be cleared. */
+		hf_mailbox_clear();
+
+		/* Check that one has access to the shared region. */
+		for (int i = 0; i < PAGE_SIZE; ++i) {
+			ptr[i]++;
+		}
+
+		hf_mailbox_clear();
+		/* Give the memory back and notify the sender. */
+		spci_memory_relinquish(
+			send_buf, HF_PRIMARY_VM_ID, recv_buf->target_vm_id,
+			memory_region->constituents, memory_region->count, 0);
+		spci_msg_send(0);
+
+		/*
+		 * Try and access the memory which will cause a fault unless the
+		 * memory has been shared back again.
+		 */
+		ptr[0] = 123;
+	}
+}
+
 TEST_SERVICE(memory_return)
 {
 	/* Loop, giving memory back to the sender. */

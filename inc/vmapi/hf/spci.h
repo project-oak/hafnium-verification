@@ -48,6 +48,7 @@
 
 /* Architected memory sharing message IDs. */
 enum spci_memory_share {
+	SPCI_MEMORY_LEND = 0x0,
 	SPCI_MEMORY_RELINQUISH = 0x1,
 	SPCI_MEMORY_DONATE = 0x2,
 };
@@ -65,6 +66,90 @@ enum spci_memory_share {
 
 /* The maximum length possible for a single message. */
 #define SPCI_MSG_PAYLOAD_MAX (HF_MAILBOX_SIZE - sizeof(struct spci_message))
+
+#define spci_get_lend_descriptor(message)\
+	((struct spci_memory_lend *)(((uint8_t *) message)\
+	+ sizeof(struct spci_message)\
+	+ sizeof(struct spci_architected_message_header)))
+
+enum spci_lend_access {
+	SPCI_LEND_RO_NX,
+	SPCI_LEND_RO_X,
+	SPCI_LEND_RW_NX,
+	SPCI_LEND_RW_X,
+};
+
+enum spci_lend_type {
+	SPCI_LEND_NORMAL_MEM,
+	SPCI_LEND_DEV_NGNRNE,
+	SPCI_LEND_DEV_NGNRE,
+	SPCI_LEND_DEV_NGRE,
+	SPCI_LEND_DEV_GRE,
+};
+
+enum spci_lend_cacheability {
+	SPCI_LEND_CACHE_NON_CACHEABLE,
+	SPCI_LEND_CACHE_WRITE_THROUGH,
+	SPCI_LEND_CACHE_WRITE_BACK,
+};
+
+enum spci_lend_shareability {
+	SPCI_LEND_SHARE_NON_SHAREABLE,
+	SPCI_LEND_RESERVED,
+	SPCI_LEND_OUTER_SHAREABLE,
+	SPCI_LEND_INNER_SHAREABLE,
+};
+
+#define SPCI_LEND_ACCESS_OFFSET (0x7U)
+#define SPCI_LEND_ACCESS_MASK ((0x3U) << SPCI_LEND_ACCESS_OFFSET)
+
+#define SPCI_LEND_TYPE_OFFSET (0x4U)
+#define SPCI_LEND_TYPE_MASK ((0x7U) << SPCI_LEND_TYPE_OFFSET)
+
+#define SPCI_LEND_CACHEABILITY_OFFSET (0x2U)
+#define SPCI_LEND_CACHEABILITY_MASK ((0x3U) <<\
+	SPCI_LEND_CACHEABILITY_OFFSET)
+
+#define SPCI_LEND_SHAREABILITY_OFFSET (0x0U)
+#define SPCI_LEND_SHAREABILITY_MASK ((0x3U) <<\
+	SPCI_LEND_SHAREABILITY_OFFSET)
+
+#define LEND_ATTR_FUNCTION_SET(name, offset, mask) \
+static inline void spci_set_lend_##name##_attr(uint16_t *lend_attr,\
+	const enum spci_lend_##name perm)\
+{\
+	*lend_attr = (*lend_attr & ~(mask)) | ((perm  << offset) & mask);\
+}
+
+#define LEND_ATTR_FUNCTION_GET(name, offset, mask) \
+static inline enum spci_lend_##name spci_get_lend_##name##_attr(\
+	uint16_t lend_attr)\
+{\
+	return (enum spci_lend_##name)((lend_attr & mask) >> offset);\
+}
+
+LEND_ATTR_FUNCTION_SET(access, SPCI_LEND_ACCESS_OFFSET, SPCI_LEND_ACCESS_MASK)
+LEND_ATTR_FUNCTION_GET(access, SPCI_LEND_ACCESS_OFFSET, SPCI_LEND_ACCESS_MASK)
+
+LEND_ATTR_FUNCTION_SET(type, SPCI_LEND_TYPE_OFFSET, SPCI_LEND_TYPE_MASK)
+LEND_ATTR_FUNCTION_GET(type, SPCI_LEND_TYPE_OFFSET, SPCI_LEND_TYPE_MASK)
+
+LEND_ATTR_FUNCTION_SET(cacheability, SPCI_LEND_CACHEABILITY_OFFSET,
+	SPCI_LEND_CACHEABILITY_MASK)
+
+LEND_ATTR_FUNCTION_GET(cacheability, SPCI_LEND_CACHEABILITY_OFFSET,
+	SPCI_LEND_CACHEABILITY_MASK)
+
+LEND_ATTR_FUNCTION_SET(shareability, SPCI_LEND_SHAREABILITY_OFFSET,
+	SPCI_LEND_SHAREABILITY_MASK)
+
+LEND_ATTR_FUNCTION_GET(shareability, SPCI_LEND_SHAREABILITY_OFFSET,
+	SPCI_LEND_SHAREABILITY_MASK)
+
+enum spci_lend_flags {
+	SPCI_LEND_KEEP_MAPPED = 0x0,
+	SPCI_LEND_UNMAP = 0x1
+};
 
 /* clang-format on */
 
@@ -154,6 +239,15 @@ struct spci_memory_region {
 	struct spci_memory_region_constituent constituents[];
 };
 
+struct spci_memory_lend {
+	uint16_t flags;
+	uint16_t borrower_attributes;
+
+	uint32_t reserved;
+
+	uint8_t payload[];
+};
+
 /* TODO: Move all the functions below this line to a support library. */
 /**
  * Fill all the fields, except for the flags, in the SPCI message common header.
@@ -238,17 +332,16 @@ static inline struct spci_memory_region *spci_get_donated_memory_region(
 }
 
 /**
- * Add a memory region to the current message.
- * A memory region is composed of one or more constituents.
+ * Helper function that copies the memory constituents and the handle
+ * information onto the address pointed to by memory_region.
+ * The function returns the length in bytes occupied by the data copied to
+ * memory_region (constituents and memory region header size).
  */
-static inline void spci_memory_region_add(
-	struct spci_message *message, spci_memory_handle_t handle,
+static inline uint32_t spci_memory_region_add(
+	struct spci_memory_region *memory_region, spci_memory_handle_t handle,
 	const struct spci_memory_region_constituent constituents[],
 	uint32_t num_constituents)
 {
-	struct spci_memory_region *memory_region =
-		spci_get_donated_memory_region(message);
-
 	uint32_t constituents_length =
 		num_constituents *
 		sizeof(struct spci_memory_region_constituent);
@@ -266,8 +359,8 @@ static inline void spci_memory_region_add(
 	 * TODO: Add assert ensuring that the specified message
 	 * length is not greater than SPCI_MSG_PAYLOAD_MAX.
 	 */
-	message->length +=
-		sizeof(struct spci_memory_region) + constituents_length;
+
+	return sizeof(struct spci_memory_region) + constituents_length;
 }
 
 /** Construct the SPCI donate memory region message. */
@@ -278,6 +371,8 @@ static inline void spci_memory_donate(
 	uint32_t num_elements, uint32_t handle)
 {
 	int32_t message_length;
+	struct spci_memory_region *memory_region =
+		spci_get_donated_memory_region(message);
 
 	message_length = sizeof(struct spci_architected_message_header);
 
@@ -286,8 +381,8 @@ static inline void spci_memory_donate(
 				      source_vm_id, SPCI_MEMORY_DONATE);
 
 	/* Create single memory region. */
-	spci_memory_region_add(message, handle, region_constituents,
-			       num_elements);
+	message->length += spci_memory_region_add(
+		memory_region, handle, region_constituents, num_elements);
 }
 
 /**
@@ -301,6 +396,8 @@ static inline void spci_memory_relinquish(
 	uint64_t num_elements, uint32_t handle)
 {
 	int32_t message_length;
+	struct spci_memory_region *memory_region =
+		spci_get_donated_memory_region(message);
 
 	message_length = sizeof(struct spci_architected_message_header);
 
@@ -309,6 +406,52 @@ static inline void spci_memory_relinquish(
 				      source_vm_id, SPCI_MEMORY_RELINQUISH);
 
 	/* Create single memory region. */
-	spci_memory_region_add(message, handle, region_constituents,
-			       num_elements);
+	message->length += spci_memory_region_add(
+		memory_region, handle, region_constituents, num_elements);
+}
+
+/**
+ * Construct the SPCI memory region lend message.
+ */
+static inline void spci_memory_lend(
+	struct spci_message *message, spci_vm_id_t target_vm_id,
+	spci_vm_id_t source_vm_id,
+	struct spci_memory_region_constituent *region_constituents,
+	uint64_t num_elements, uint32_t handle, enum spci_lend_access access,
+	enum spci_lend_type type, enum spci_lend_cacheability cacheability,
+	enum spci_lend_shareability shareability)
+{
+	int32_t message_length;
+	struct spci_memory_region *memory_region;
+
+	const struct spci_memory_lend lend_init = {0};
+
+	struct spci_memory_lend *lend_descriptor =
+		spci_get_lend_descriptor(message);
+	memory_region = (struct spci_memory_region *)lend_descriptor->payload;
+
+	/* Initilise all struct elements to zero. */
+	*lend_descriptor = lend_init;
+
+	message_length = sizeof(struct spci_architected_message_header) +
+			 sizeof(struct spci_memory_lend);
+
+	/* Fill in the details on the common message header. */
+	spci_architected_message_init(message, message_length, target_vm_id,
+				      source_vm_id, SPCI_MEMORY_LEND);
+
+	lend_descriptor->flags = SPCI_LEND_KEEP_MAPPED;
+
+	/* Set memory region's page attributes. */
+	spci_set_lend_access_attr(&lend_descriptor->borrower_attributes,
+				  access);
+	spci_set_lend_type_attr(&lend_descriptor->borrower_attributes, type);
+	spci_set_lend_cacheability_attr(&lend_descriptor->borrower_attributes,
+					cacheability);
+	spci_set_lend_shareability_attr(&lend_descriptor->borrower_attributes,
+					shareability);
+
+	/* Create single memory region. */
+	message->length += spci_memory_region_add(
+		memory_region, handle, region_constituents, num_elements);
 }

@@ -226,6 +226,44 @@ TEST(memory_sharing, spci_give_and_get_back)
 }
 
 /**
+ * SPCI Memory given away can be given back.
+ */
+TEST(memory_sharing, spci_lend_relinquish)
+{
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+	uint8_t *ptr = page;
+
+	SERVICE_SELECT(SERVICE_VM0, "memory_lend_relinquish_spci", mb.send);
+
+	/* Initialise the memory before giving it. */
+	memset_s(ptr, sizeof(page), 'b', PAGE_SIZE);
+
+	struct spci_memory_region_constituent constituents[] = {
+		{.address = (uint64_t)page, .page_count = 1},
+	};
+
+	spci_memory_lend(mb.send, SERVICE_VM0, HF_PRIMARY_VM_ID, constituents,
+			 1, 0, SPCI_LEND_RW_X, SPCI_LEND_NORMAL_MEM,
+			 SPCI_LEND_CACHE_WRITE_BACK, SPCI_LEND_OUTER_SHAREABLE);
+
+	EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+
+	/* Let the memory be returned. */
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
+
+	/* Ensure that the secondary VM accessed the region. */
+	for (int i = 0; i < PAGE_SIZE; ++i) {
+		ASSERT_EQ(ptr[i], 'c');
+	}
+
+	/* Observe the service faulting when accessing the memory. */
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
+}
+
+/**
  * Memory given away can be given back.
  */
 TEST(memory_sharing, give_and_get_back)

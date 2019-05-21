@@ -81,10 +81,11 @@ pub fn spci_msg_handle_architected_message(
             // TODO: Add memory attributes.
             let to_mode = Mode::R | Mode::W | Mode::X;
 
-            spci_share_memory(
+            spci_validate_call_share_memory(
                 to_inner,
                 from_inner,
                 memory_region,
+                memory_share_size,
                 to_mode,
                 message_type,
                 fallback,
@@ -100,10 +101,39 @@ pub fn spci_msg_handle_architected_message(
 
             let to_mode = Mode::R | Mode::W | Mode::X;
 
-            spci_share_memory(
+            spci_validate_call_share_memory(
                 to_inner,
                 from_inner,
                 memory_region,
+                memory_share_size,
+                to_mode,
+                message_type,
+                fallback,
+            )
+        }
+        SpciMemoryShare::Lend => {
+            // TODO: Add support for lend exclusive.
+            #[allow(clippy::cast_ptr_alignment)]
+            let lend_descriptor = unsafe {
+                &*(architected_message_replica.payload.as_ptr() as *const SpciMemoryLend)
+            };
+
+            let borrower_attributes = lend_descriptor.borrower_attributes;
+
+            let memory_region =
+                unsafe { &*(lend_descriptor.payload.as_ptr() as *const SpciMemoryRegion) };
+
+            let memory_share_size = from_msg_payload_length
+                - mem::size_of::<SpciArchitectedMessageHeader>()
+                - mem::size_of::<SpciMemoryLend>();
+
+            let to_mode = spci_memory_attrs_to_mode(borrower_attributes as _);
+
+            spci_validate_call_share_memory(
+                to_inner,
+                from_inner,
+                memory_region,
+                memory_share_size,
                 to_mode,
                 message_type,
                 fallback,
@@ -152,8 +182,7 @@ fn spci_msg_get_next_state(
 
         if orig_from_state == table_orig_from_mode && orig_to_state == table_orig_to_mode {
             return Ok((
-                // TODO: Change access permission assignment to cater for the lend case.
-                transition.from_mode,
+                transition.from_mode | (!state_mask & orig_from_mode),
                 transition.to_mode | memory_to_attributes,
             ));
         }
@@ -234,6 +263,28 @@ pub fn spci_msg_check_transition(
         },
     ];
 
+    // This data structure holds the allowed state transitions for the "lend with shared access"
+    // state machine. In this state machine the owner keeps the lent pages mapped on its stage2
+    // table and keeps access as well.
+    let shared_lend_transitions: [SpciMemTransitions; 2] = [
+        // 1) {O-EA, !O-NA} -> {O-SA, !O-SA}
+        SpciMemTransitions {
+            orig_from_mode: Mode::empty(),
+            orig_to_mode: Mode::INVALID | Mode::UNOWNED | Mode::SHARED,
+            from_mode: Mode::SHARED,
+            to_mode: Mode::UNOWNED | Mode::SHARED,
+        },
+        // Duplicate of 1) in order to cater for an alternative representation of !O-NA:
+        // (INVALID | UNOWNED | SHARED) and (INVALID | UNOWNED) are both alternative representations
+        // of !O-NA.
+        SpciMemTransitions {
+            orig_from_mode: Mode::empty(),
+            orig_to_mode: Mode::INVALID | Mode::UNOWNED,
+            from_mode: Mode::SHARED,
+            to_mode: Mode::UNOWNED | Mode::SHARED,
+        },
+    ];
+
     // Fail if addresses are not page-aligned.
     if !is_aligned(ipa_addr(begin), PAGE_SIZE) || !is_aligned(ipa_addr(end), PAGE_SIZE) {
         return Err(());
@@ -246,6 +297,7 @@ pub fn spci_msg_check_transition(
     let mem_transition_table: &[SpciMemTransitions] = match share {
         SpciMemoryShare::Donate => &donate_transitions,
         SpciMemoryShare::Relinquish => &relinquish_transitions,
+        SpciMemoryShare::Lend => &shared_lend_transitions,
     };
 
     let (from_mode, to_mode) = spci_msg_get_next_state(
