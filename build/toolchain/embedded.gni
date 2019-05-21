@@ -225,73 +225,40 @@ template("embedded_platform_toolchain") {
   assert(defined(invoker.platform_name),
          "\"platform_name\" must be defined for ${target_name}.")
 
-  defines = ""
-  cflags = "-fno-builtin -ffreestanding -fpic"
-  ldflags = "--defsym=ORIGIN_ADDRESS=${invoker.origin_address}"
+  extra_defines = ""
+  extra_cflags = "-fno-builtin -ffreestanding -fpic"
+  extra_ldflags = "--defsym=ORIGIN_ADDRESS=${invoker.origin_address}"
   if (defined(invoker.extra_defines)) {
-    defines += " ${invoker.extra_defines}"
+    extra_defines += " ${invoker.extra_defines}"
   }
   if (defined(invoker.extra_cflags)) {
-    cflags += " ${invoker.extra_cflags}"
+    extra_cflags += " ${invoker.extra_cflags}"
   }
   if (defined(invoker.extra_ldflags)) {
-    ldflags += " ${invoker.extra_ldflags}"
+    extra_ldflags += " ${invoker.extra_ldflags}"
   }
+  toolchain_args = {
+    use_platform = true
+    plat_name = invoker.platform_name
+    plat_arch = invoker.arch
+    plat_heap_pages = invoker.heap_pages
+    plat_max_cpus = invoker.max_cpus
+    plat_max_vms = invoker.max_vms
+    if (defined(invoker.toolchain_args)) {
+      forward_variables_from(invoker.toolchain_args, "*")
+    }
+  }
+  tool_prefix = invoker.tool_prefix
 
   embedded_clang_toolchain("${target_name}_clang") {
     target = invoker.target
-    tool_prefix = invoker.tool_prefix
-    extra_defines = defines
-    extra_cflags = cflags
-    extra_ldflags = ldflags
-    toolchain_args = {
-      use_platform = true
-      plat_name = invoker.platform_name
-      plat_arch = invoker.arch
-      plat_heap_pages = invoker.heap_pages
-      plat_max_cpus = invoker.max_cpus
-      plat_max_vms = invoker.max_vms
-      if (defined(invoker.toolchain_args)) {
-        forward_variables_from(invoker.toolchain_args, "*")
-      }
-    }
   }
 
   embedded_clang_bfd_toolchain("${target_name}_clang_bfd") {
     target = invoker.target
-    tool_prefix = invoker.tool_prefix
-    extra_defines = defines
-    extra_cflags = cflags
-    extra_ldflags = ldflags
-    toolchain_args = {
-      use_platform = true
-      plat_name = invoker.platform_name
-      plat_arch = invoker.arch
-      plat_heap_pages = invoker.heap_pages
-      plat_max_cpus = invoker.max_cpus
-      plat_max_vms = invoker.max_vms
-      if (defined(invoker.toolchain_args)) {
-        forward_variables_from(invoker.toolchain_args, "*")
-      }
-    }
   }
 
   embedded_gcc_toolchain("${target_name}_gcc") {
-    tool_prefix = invoker.tool_prefix
-    extra_defines = defines
-    extra_cflags = cflags
-    extra_ldflags = ldflags
-    toolchain_args = {
-      use_platform = true
-      plat_name = invoker.platform_name
-      plat_arch = invoker.arch
-      plat_heap_pages = invoker.heap_pages
-      plat_max_cpus = invoker.max_cpus
-      plat_max_vms = invoker.max_vms
-      if (defined(invoker.toolchain_args)) {
-        forward_variables_from(invoker.toolchain_args, "*")
-      }
-    }
   }
 }
 
