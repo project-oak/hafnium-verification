@@ -172,9 +172,9 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
  * remove it from them. Return true on success, or false if no large enough
  * contiguous range is found.
  */
-bool carve_out_mem_range(struct mem_range *mem_ranges, size_t mem_ranges_count,
-			 uint64_t size_to_find, paddr_t *found_begin,
-			 paddr_t *found_end)
+static bool carve_out_mem_range(struct mem_range *mem_ranges,
+				size_t mem_ranges_count, uint64_t size_to_find,
+				paddr_t *found_begin, paddr_t *found_end)
 {
 	size_t i;
 
@@ -206,10 +206,10 @@ bool carve_out_mem_range(struct mem_range *mem_ranges, size_t mem_ranges_count,
  * reserved ranges after adding the new ones.
  * `before` and `after` must be arrays of exactly `mem_ranges_count` elements.
  */
-bool update_reserved_ranges(struct boot_params_update *update,
-			    const struct mem_range *before,
-			    const struct mem_range *after,
-			    size_t mem_ranges_count)
+static bool update_reserved_ranges(struct boot_params_update *update,
+				   const struct mem_range *before,
+				   const struct mem_range *after,
+				   size_t mem_ranges_count)
 {
 	size_t i;
 
