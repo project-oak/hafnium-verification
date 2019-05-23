@@ -5,7 +5,7 @@ use core::mem;
 use core::ops::*;
 use core::slice;
 
-use crate::arith::*;
+use crate::utils::*;
 
 pub type c_void = ffi::c_void;
 pub type c_int = i32;

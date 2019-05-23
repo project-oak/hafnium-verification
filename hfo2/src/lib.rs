@@ -6,7 +6,6 @@
 extern crate static_assertions;
 
 mod abort;
-mod arith;
 mod cpio;
 mod list;
 mod memiter;
