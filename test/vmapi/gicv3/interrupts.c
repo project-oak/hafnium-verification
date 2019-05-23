@@ -103,10 +103,10 @@ TEST(interrupts, physical_timer)
 	EXPECT_EQ(GICR_ISACTIVER0, 0);
 
 	dlog("Starting timer\n");
-	/* Enable physical timer. */
-	write_msr(CNTP_CTL_EL0, 0x00000001);
-	/* Set timer for 1 tick. */
+	/* Set physical timer for 1 tick. */
 	write_msr(CNTP_TVAL_EL0, 1);
+	/* Enable it. */
+	write_msr(CNTP_CTL_EL0, 0x00000001);
 
 	dlog("waiting for interrupt\n");
 	while (last_interrupt_id == 0) {
@@ -144,10 +144,10 @@ TEST(interrupts, virtual_timer)
 	EXPECT_EQ(GICR_ISACTIVER0, 0);
 
 	dlog("Starting timer\n");
-	/* Enable virtual timer. */
-	write_msr(CNTV_CTL_EL0, 0x00000001);
-	/* Set timer for 1 tick. */
+	/* Set virtual timer for 1 tick. */
 	write_msr(CNTV_TVAL_EL0, 1);
+	/* Enable it. */
+	write_msr(CNTV_CTL_EL0, 0x00000001);
 
 	dlog("Waiting for interrupt\n");
 	while (last_interrupt_id == 0) {
