@@ -2,10 +2,10 @@ use core::mem;
 use core::ops::DerefMut;
 use core::ptr;
 
-use crate::arith::*;
 use crate::list::{IsElement, List, ListEntry};
 use crate::spinlock::SpinLock;
 use crate::types::*;
+use crate::utils::*;
 
 #[repr(C)]
 struct Chunk {
