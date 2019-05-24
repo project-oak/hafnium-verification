@@ -7,7 +7,6 @@ extern crate bitflags;
 extern crate static_assertions;
 extern crate reduce;
 
-mod abort;
 mod cpio;
 #[macro_use]
 mod utils;
