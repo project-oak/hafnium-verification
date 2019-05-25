@@ -85,13 +85,6 @@ struct vcpu {
 	struct vm *vm;
 	struct arch_regs regs;
 	struct interrupts interrupts;
-
-	/*
-	 * Determine whether the 'regs' field is available for use. This is set
-	 * to false when a vCPU is about to run on a physical CPU, and is set
-	 * back to true when it is descheduled.
-	 */
-	bool regs_available;
 };
 
 /** Encapsulates a vCPU whose execution lock is held. */

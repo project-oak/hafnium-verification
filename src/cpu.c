@@ -189,14 +189,14 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 	memset_s(vcpu, sizeof(*vcpu), 0, sizeof(*vcpu));
 	sl_init(&vcpu->execution_lock);
 	sl_init(&vcpu->interrupts_lock);
-	vcpu->regs_available = true;
 	vcpu->vm = vm;
 	vcpu->state = VCPU_STATE_OFF;
 }
 
 /**
  * Initialise the registers for the given vCPU and set the state to
- * VCPU_STATE_READY. The caller must hold the vCPU lock while calling this.
+ * VCPU_STATE_READY. The caller must hold the vCPU execution lock while calling
+ * this.
  */
 void vcpu_on(struct vcpu_execution_locked vcpu, ipaddr_t entry, uintreg_t arg)
 {

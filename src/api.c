@@ -92,9 +92,7 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 			     hf_vcpu_run_return_encode(primary_ret));
 
 	/* Mark the current vcpu as waiting. */
-	sl_lock(&current->execution_lock);
 	current->state = secondary_state;
-	sl_unlock(&current->execution_lock);
 
 	return next;
 }
@@ -210,18 +208,6 @@ int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current)
 }
 
 /**
- * This function is called by the architecture-specific context switching
- * function to indicate that register state for the given vcpu has been saved
- * and can therefore be used by other pcpus.
- */
-void api_regs_state_saved(struct vcpu *vcpu)
-{
-	sl_lock(&vcpu->execution_lock);
-	vcpu->regs_available = true;
-	sl_unlock(&vcpu->execution_lock);
-}
-
-/**
  * Retrieves the next waiter and removes it from the wait list if the VM's
  * mailbox is in a writable state.
  */
@@ -321,6 +307,11 @@ out:
 /**
  * Prepares the vcpu to run by updating its state and fetching whether a return
  * value needs to be forced onto the vCPU.
+ *
+ * Returns:
+ *  - false if it fails to prepare `vcpu` to run.
+ *  - true if it succeeds to prepare `vcpu` to run. In this case,
+      `vcpu->execution_lock` has acquired.
  */
 static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 				 struct hf_vcpu_run_return *run_ret)
@@ -339,37 +330,24 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	 * dependencies in the common run case meaning the sensitive context
 	 * switch performance is consistent.
 	 */
-	for (;;) {
-		sl_lock(&vcpu->execution_lock);
 
-		/* The VM needs to be locked to deliver mailbox messages. */
-		need_vm_lock = vcpu->state == VCPU_STATE_BLOCKED_MAILBOX;
-		if (need_vm_lock) {
-			sl_lock(&vcpu->vm->lock);
-		}
+	if (!sl_try_lock(&vcpu->execution_lock)) {
+		/*
+		 * vCPU is running or prepared to run on another pCPU.
+		 *
+		 * It's ok to not return the sleep duration here because
+		 * the other physical CPU that is currently running this
+		 * vCPU will return sleep duration if neeed. The default
+		 * return value is HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no
+		 * need to set it explicitly.
+		 */
+		return false;
+	}
 
-		if (vcpu->regs_available) {
-			break;
-		}
-
-		if (vcpu->state == VCPU_STATE_RUNNING) {
-			/*
-			 * vCPU is running on another pCPU.
-			 *
-			 * It's ok to not return the sleep duration here because
-			 * the other physical CPU that is currently running this
-			 * vCPU will return sleep duration if neeed. The default
-			 * return value is HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no
-			 * need to set it explicitly.
-			 */
-			ret = false;
-			goto out;
-		}
-
-		if (need_vm_lock) {
-			sl_unlock(&vcpu->vm->lock);
-		}
-		sl_unlock(&vcpu->execution_lock);
+	/* The VM needs to be locked to deliver mailbox messages. */
+	need_vm_lock = vcpu->state == VCPU_STATE_BLOCKED_MAILBOX;
+	if (need_vm_lock) {
+		sl_lock(&vcpu->vm->lock);
 	}
 
 	if (atomic_load_explicit(&vcpu->vm->aborting, memory_order_relaxed)) {
@@ -435,20 +413,16 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	vcpu->cpu = current->cpu;
 	vcpu->state = VCPU_STATE_RUNNING;
 
-	/*
-	 * Mark the registers as unavailable now that we're about to reflect
-	 * them onto the real registers. This will also prevent another physical
-	 * CPU from trying to read these registers.
-	 */
-	vcpu->regs_available = false;
-
 	ret = true;
 
 out:
 	if (need_vm_lock) {
 		sl_unlock(&vcpu->vm->lock);
 	}
-	sl_unlock(&vcpu->execution_lock);
+
+	if (!ret) {
+		sl_unlock(&vcpu->execution_lock);
+	}
 
 	return ret;
 }
