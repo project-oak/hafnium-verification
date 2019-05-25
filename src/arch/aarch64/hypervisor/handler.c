@@ -23,6 +23,7 @@
 #include "hf/dlog.h"
 #include "hf/panic.h"
 #include "hf/spci.h"
+#include "hf/spinlock.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"
@@ -79,7 +80,7 @@ void complete_saving_state(struct vcpu *vcpu)
 	vcpu->regs.lazy.cntv_cval_el0 = read_msr(cntv_cval_el0);
 	vcpu->regs.lazy.cntv_ctl_el0 = read_msr(cntv_ctl_el0);
 
-	api_regs_state_saved(vcpu);
+	sl_unlock(&vcpu->lock);
 
 	/*
 	 * If switching away from the primary, copy the current EL0 virtual

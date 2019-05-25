@@ -188,7 +188,6 @@ void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 {
 	memset_s(vcpu, sizeof(*vcpu), 0, sizeof(*vcpu));
 	sl_init(&vcpu->lock);
-	vcpu->regs_available = true;
 	vcpu->vm = vm;
 	vcpu->state = VCPU_STATE_OFF;
 }

@@ -39,6 +39,11 @@ static inline void sl_lock(struct spinlock *l)
 	}
 }
 
+static inline bool sl_try_lock(struct spinlock *l)
+{
+	return !atomic_flag_test_and_set_explicit(&l->v, memory_order_acquire);
+}
+
 /**
  * Locks both locks, enforcing the lowest address first ordering for locks of
  * the same kind.
