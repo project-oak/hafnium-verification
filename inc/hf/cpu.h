@@ -71,7 +71,8 @@ struct vcpu_fault_info {
 };
 
 struct vcpu {
-	struct spinlock lock;
+	struct spinlock execution_lock;
+	struct spinlock interrupts_lock;
 
 	/*
 	 * The state is only changed in the context of the vCPU being run. This
@@ -93,8 +94,8 @@ struct vcpu {
 	bool regs_available;
 };
 
-/** Encapsulates a vCPU whose lock is held. */
-struct vcpu_locked {
+/** Encapsulates a vCPU whose execution lock is held. */
+struct vcpu_execution_locked {
 	struct vcpu *vcpu;
 };
 
@@ -128,10 +129,10 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg);
 void cpu_off(struct cpu *c);
 struct cpu *cpu_find(uint64_t id);
 
-struct vcpu_locked vcpu_lock(struct vcpu *vcpu);
-void vcpu_unlock(struct vcpu_locked *locked);
+struct vcpu_execution_locked vcpu_lock(struct vcpu *vcpu);
+void vcpu_unlock(struct vcpu_execution_locked *locked);
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
-void vcpu_on(struct vcpu_locked vcpu, ipaddr_t entry, uintreg_t arg);
+void vcpu_on(struct vcpu_execution_locked vcpu, ipaddr_t entry, uintreg_t arg);
 size_t vcpu_index(const struct vcpu *vcpu);
 void vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 				    uintreg_t arg);
