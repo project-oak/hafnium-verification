@@ -23,6 +23,7 @@
 #include "hf/dlog.h"
 #include "hf/panic.h"
 #include "hf/spci.h"
+#include "hf/spinlock.h"
 #include "hf/vm.h"
 
 #include "vmapi/hf/call.h"

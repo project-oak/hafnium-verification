@@ -124,11 +124,11 @@ bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg)
 	if (!prev) {
 		struct vm *vm = vm_find(HF_PRIMARY_VM_ID);
 		struct vcpu *vcpu = vm_get_vcpu(vm, cpu_index(c));
-		struct vcpu_locked vcpu_locked;
+		struct vcpu_execution_locked vcpu_execution_locked;
 
-		vcpu_locked = vcpu_lock(vcpu);
-		vcpu_on(vcpu_locked, entry, arg);
-		vcpu_unlock(&vcpu_locked);
+		vcpu_execution_locked = vcpu_lock(vcpu);
+		vcpu_on(vcpu_execution_locked, entry, arg);
+		vcpu_unlock(&vcpu_execution_locked);
 	}
 
 	return prev;
@@ -163,13 +163,13 @@ struct cpu *cpu_find(uint64_t id)
 /**
  * Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
  */
-struct vcpu_locked vcpu_lock(struct vcpu *vcpu)
+struct vcpu_execution_locked vcpu_lock(struct vcpu *vcpu)
 {
-	struct vcpu_locked locked = {
+	struct vcpu_execution_locked locked = {
 		.vcpu = vcpu,
 	};
 
-	sl_lock(&vcpu->lock);
+	sl_lock(&vcpu->execution_lock);
 
 	return locked;
 }
@@ -178,26 +178,27 @@ struct vcpu_locked vcpu_lock(struct vcpu *vcpu)
  * Unlocks a vCPU previously locked with vpu_lock, and updates `locked` to
  * reflect the fact that the vCPU is no longer locked.
  */
-void vcpu_unlock(struct vcpu_locked *locked)
+void vcpu_unlock(struct vcpu_execution_locked *locked)
 {
-	sl_unlock(&locked->vcpu->lock);
+	sl_unlock(&locked->vcpu->execution_lock);
 	locked->vcpu = NULL;
 }
 
 void vcpu_init(struct vcpu *vcpu, struct vm *vm)
 {
 	memset_s(vcpu, sizeof(*vcpu), 0, sizeof(*vcpu));
-	sl_init(&vcpu->lock);
-	vcpu->regs_available = true;
+	sl_init(&vcpu->execution_lock);
+	sl_init(&vcpu->interrupts_lock);
 	vcpu->vm = vm;
 	vcpu->state = VCPU_STATE_OFF;
 }
 
 /**
  * Initialise the registers for the given vCPU and set the state to
- * VCPU_STATE_READY. The caller must hold the vCPU lock while calling this.
+ * VCPU_STATE_READY. The caller must hold the vCPU execution lock while calling
+ * this.
  */
-void vcpu_on(struct vcpu_locked vcpu, ipaddr_t entry, uintreg_t arg)
+void vcpu_on(struct vcpu_execution_locked vcpu, ipaddr_t entry, uintreg_t arg)
 {
 	arch_regs_set_pc_arg(&vcpu.vcpu->regs, entry, arg);
 	vcpu.vcpu->state = VCPU_STATE_READY;
@@ -214,12 +215,12 @@ size_t vcpu_index(const struct vcpu *vcpu)
 void vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 				    uintreg_t arg)
 {
-	struct vcpu_locked vcpu_locked;
+	struct vcpu_execution_locked vcpu_execution_locked;
 	struct vm *vm = vcpu->vm;
 
 	assert(vm->id != HF_PRIMARY_VM_ID);
 
-	vcpu_locked = vcpu_lock(vcpu);
+	vcpu_execution_locked = vcpu_lock(vcpu);
 	/*
 	 * Set vCPU registers to a clean state ready for boot. As this is a
 	 * secondary which can migrate between pCPUs, the ID of the vCPU is
@@ -228,8 +229,8 @@ void vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 	 */
 	arch_regs_reset(&vcpu->regs, false, vm->id, vcpu_index(vcpu),
 			vm->ptable.root);
-	vcpu_on(vcpu_locked, entry, arg);
-	vcpu_unlock(&vcpu_locked);
+	vcpu_on(vcpu_execution_locked, entry, arg);
+	vcpu_unlock(&vcpu_execution_locked);
 }
 
 /**

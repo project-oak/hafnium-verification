@@ -34,7 +34,7 @@
  * acquisition of locks held concurrently by the same physical CPU. Our current
  * ordering requirements are as follows:
  *
- * vm::lock -> vcpu::lock
+ * vcpu::execution_lock -> vm::lock -> vcpu::interrupts_lock
  *
  * Locks of the same kind require the lock of lowest address to be locked first,
  * see `sl_lock_both()`.
@@ -92,9 +92,7 @@ static struct vcpu *api_switch_to_primary(struct vcpu *current,
 			     hf_vcpu_run_return_encode(primary_ret));
 
 	/* Mark the current vcpu as waiting. */
-	sl_lock(&current->lock);
 	current->state = secondary_state;
-	sl_unlock(&current->lock);
 
 	return next;
 }
@@ -216,9 +214,7 @@ int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current)
  */
 void api_regs_state_saved(struct vcpu *vcpu)
 {
-	sl_lock(&vcpu->lock);
-	vcpu->regs_available = true;
-	sl_unlock(&vcpu->lock);
+	sl_unlock(&vcpu->execution_lock);
 }
 
 /**
@@ -263,7 +259,7 @@ static int64_t internal_interrupt_inject(struct vcpu *target_vcpu,
 	uint32_t intid_mask = 1u << (intid % INTERRUPT_REGISTER_BITS);
 	int64_t ret = 0;
 
-	sl_lock(&target_vcpu->lock);
+	sl_lock(&target_vcpu->interrupts_lock);
 
 	/*
 	 * We only need to change state and (maybe) trigger a virtual IRQ if it
@@ -313,7 +309,7 @@ out:
 	/* Either way, make it pending. */
 	target_vcpu->interrupts.interrupt_pending[intid_index] |= intid_mask;
 
-	sl_unlock(&target_vcpu->lock);
+	sl_unlock(&target_vcpu->interrupts_lock);
 
 	return ret;
 }
@@ -321,6 +317,11 @@ out:
 /**
  * Prepares the vcpu to run by updating its state and fetching whether a return
  * value needs to be forced onto the vCPU.
+ *
+ * Returns:
+ *  - false if it fails to prepare `vcpu` to run.
+ *  - true if it succeeds to prepare `vcpu` to run. In this case,
+      `vcpu->execution_lock` has acquired.
  */
 static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 				 struct hf_vcpu_run_return *run_ret)
@@ -339,39 +340,24 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	 * dependencies in the common run case meaning the sensitive context
 	 * switch performance is consistent.
 	 */
-	for (;;) {
-		sl_lock(&vcpu->lock);
 
-		/* The VM needs to be locked to deliver mailbox messages. */
-		need_vm_lock = vcpu->state == VCPU_STATE_BLOCKED_MAILBOX;
-		if (need_vm_lock) {
-			sl_unlock(&vcpu->lock);
-			sl_lock(&vcpu->vm->lock);
-			sl_lock(&vcpu->lock);
-		}
+	if (!sl_try_lock(&vcpu->execution_lock)) {
+		/*
+		 * vCPU is running or prepared to run on another pCPU.
+		 *
+		 * It's ok to not return the sleep duration here because
+		 * the other physical CPU that is currently running this
+		 * vCPU will return sleep duration if neeed. The default
+		 * return value is HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no
+		 * need to set it explicitly.
+		 */
+		return false;
+	}
 
-		if (vcpu->regs_available) {
-			break;
-		}
-
-		if (vcpu->state == VCPU_STATE_RUNNING) {
-			/*
-			 * vCPU is running on another pCPU.
-			 *
-			 * It's ok to not return the sleep duration here because
-			 * the other physical CPU that is currently running this
-			 * vCPU will return sleep duration if neeed. The default
-			 * return value is HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no
-			 * need to set it explicitly.
-			 */
-			ret = false;
-			goto out;
-		}
-
-		sl_unlock(&vcpu->lock);
-		if (need_vm_lock) {
-			sl_unlock(&vcpu->vm->lock);
-		}
+	/* The VM needs to be locked to deliver mailbox messages. */
+	need_vm_lock = vcpu->state == VCPU_STATE_BLOCKED_MAILBOX;
+	if (need_vm_lock) {
+		sl_lock(&vcpu->vm->lock);
 	}
 
 	if (atomic_load_explicit(&vcpu->vm->aborting, memory_order_relaxed)) {
@@ -385,7 +371,6 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	}
 
 	switch (vcpu->state) {
-	case VCPU_STATE_RUNNING:
 	case VCPU_STATE_OFF:
 	case VCPU_STATE_ABORTED:
 		ret = false;
@@ -435,21 +420,16 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 
 	/* It has been decided that the vCPU should be run. */
 	vcpu->cpu = current->cpu;
-	vcpu->state = VCPU_STATE_RUNNING;
-
-	/*
-	 * Mark the registers as unavailable now that we're about to reflect
-	 * them onto the real registers. This will also prevent another physical
-	 * CPU from trying to read these registers.
-	 */
-	vcpu->regs_available = false;
 
 	ret = true;
 
 out:
-	sl_unlock(&vcpu->lock);
 	if (need_vm_lock) {
 		sl_unlock(&vcpu->vm->lock);
+	}
+
+	if (!ret) {
+		sl_unlock(&vcpu->execution_lock);
 	}
 
 	return ret;
@@ -1037,7 +1017,7 @@ int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current)
 		return -1;
 	}
 
-	sl_lock(&current->lock);
+	sl_lock(&current->interrupts_lock);
 	if (enable) {
 		/*
 		 * If it is pending and was not enabled before, increment the
@@ -1063,7 +1043,7 @@ int64_t api_interrupt_enable(uint32_t intid, bool enable, struct vcpu *current)
 			~intid_mask;
 	}
 
-	sl_unlock(&current->lock);
+	sl_unlock(&current->interrupts_lock);
 	return 0;
 }
 
@@ -1081,7 +1061,7 @@ uint32_t api_interrupt_get(struct vcpu *current)
 	 * Find the first enabled and pending interrupt ID, return it, and
 	 * deactivate it.
 	 */
-	sl_lock(&current->lock);
+	sl_lock(&current->interrupts_lock);
 	for (i = 0; i < HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS; ++i) {
 		uint32_t enabled_and_pending =
 			current->interrupts.interrupt_enabled[i] &
@@ -1101,7 +1081,7 @@ uint32_t api_interrupt_get(struct vcpu *current)
 		}
 	}
 
-	sl_unlock(&current->lock);
+	sl_unlock(&current->interrupts_lock);
 	return first_interrupt;
 }
 
