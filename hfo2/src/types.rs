@@ -9,3 +9,6 @@ pub type size_t = usize;
 pub type rsize_t = usize;
 
 pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
+
+/// The number of virtual interrupt IDs which are supported.
+pub const HF_NUM_INTIDS: usize = 64;

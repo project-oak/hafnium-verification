@@ -21,3 +21,4 @@ mod panic;
 mod spinlock;
 mod std;
 mod types;
+mod cpu;
