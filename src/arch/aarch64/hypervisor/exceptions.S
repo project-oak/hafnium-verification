@@ -386,9 +386,18 @@ vcpu_restore_all_and_run:
 	ldp q30, q31, [x2, #32 * 15]!
 	ldp x3, x4, [x2, #32 * 1]
 	msr fpsr, x3
-	/* TODO: Optimise by only performing expensive restore if changed. */
-	msr fpcr, x4
 
+	/*
+	 * Only restore FPCR if changed, to avoid expensive
+	 * self-synchronising operation where possible.
+	 */
+	mrs x5, fpcr
+	cmp x5, x4
+	b.eq vcpu_restore_lazy_and_run
+	msr fpcr, x4
+	/* Intentional fallthrough. */
+
+vcpu_restore_lazy_and_run:
 	/* Restore lazy registers. */
 	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 0]
 	msr vmpidr_el2, x24

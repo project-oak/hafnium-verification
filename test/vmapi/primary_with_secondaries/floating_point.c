@@ -21,6 +21,7 @@
 
 #include "vmapi/hf/call.h"
 
+#include "../msr.h"
 #include "hftest.h"
 #include "primary_with_secondary.h"
 #include "util.h"
@@ -47,4 +48,26 @@ TEST(floating_point, fp_fill)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_YIELD);
 	EXPECT_EQ(check_fp_register(second), true);
+}
+
+/**
+ * Test that the floating point control register is restored correctly
+ * on full context switch when needed by changing it in the service.
+ */
+TEST(floating_point, fp_fpcr)
+{
+	uintreg_t value = 0;
+	struct hf_vcpu_run_return run_res;
+	struct mailbox_buffers mb = set_up_mailbox();
+
+	EXPECT_EQ(read_msr(fpcr), value);
+
+	SERVICE_SELECT(SERVICE_VM0, "fp_fpcr", mb.send);
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_YIELD);
+	EXPECT_EQ(read_msr(fpcr), value);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_EQ(run_res.code, HF_VCPU_RUN_YIELD);
+	EXPECT_EQ(read_msr(fpcr), value);
 }

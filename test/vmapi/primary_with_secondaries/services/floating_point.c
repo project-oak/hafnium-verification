@@ -21,6 +21,7 @@
 
 #include "vmapi/hf/call.h"
 
+#include "../msr.h"
 #include "hftest.h"
 
 TEST_SERVICE(fp_fill)
@@ -30,5 +31,15 @@ TEST_SERVICE(fp_fill)
 	EXPECT_EQ(spci_yield(), SPCI_SUCCESS);
 
 	ASSERT_TRUE(check_fp_register(value));
+	spci_yield();
+}
+
+TEST_SERVICE(fp_fpcr)
+{
+	uintreg_t value = 3 << 22; /* Set RMode to RZ */
+	write_msr(fpcr, value);
+	EXPECT_EQ(spci_yield(), SPCI_SUCCESS);
+
+	ASSERT_EQ(read_msr(fpcr), value);
 	spci_yield();
 }
