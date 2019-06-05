@@ -76,8 +76,8 @@ static struct vcpu *current(void)
  */
 void complete_saving_state(struct vcpu *vcpu)
 {
-	vcpu->regs.lazy.cntv_cval_el0 = read_msr(cntv_cval_el0);
-	vcpu->regs.lazy.cntv_ctl_el0 = read_msr(cntv_ctl_el0);
+	vcpu->regs.peripherals.cntv_cval_el0 = read_msr(cntv_cval_el0);
+	vcpu->regs.peripherals.cntv_ctl_el0 = read_msr(cntv_ctl_el0);
 
 	api_regs_state_saved(vcpu);
 
@@ -111,8 +111,8 @@ void begin_restoring_state(struct vcpu *vcpu)
 	 * is configured as edge-triggered, as it would then be latched in.
 	 */
 	write_msr(cntv_ctl_el0, 0);
-	write_msr(cntv_cval_el0, vcpu->regs.lazy.cntv_cval_el0);
-	write_msr(cntv_ctl_el0, vcpu->regs.lazy.cntv_ctl_el0);
+	write_msr(cntv_cval_el0, vcpu->regs.peripherals.cntv_cval_el0);
+	write_msr(cntv_ctl_el0, vcpu->regs.peripherals.cntv_ctl_el0);
 
 	/*
 	 * If we are switching (back) to the primary, disable the EL2 physical

@@ -37,7 +37,7 @@
  */
 void arch_timer_mask(struct arch_regs *regs)
 {
-	regs->lazy.cntv_ctl_el0 |= CNTV_CTL_EL0_IMASK;
+	regs->peripherals.cntv_ctl_el0 |= CNTV_CTL_EL0_IMASK;
 }
 
 /**
@@ -45,7 +45,7 @@ void arch_timer_mask(struct arch_regs *regs)
  */
 bool arch_timer_enabled(struct arch_regs *regs)
 {
-	uintreg_t cntv_ctl_el0 = regs->lazy.cntv_ctl_el0;
+	uintreg_t cntv_ctl_el0 = regs->peripherals.cntv_ctl_el0;
 
 	return (cntv_ctl_el0 & CNTV_CTL_EL0_ENABLE) &&
 	       !(cntv_ctl_el0 & CNTV_CTL_EL0_IMASK);
@@ -70,7 +70,7 @@ uint64_t arch_timer_remaining_ticks(struct arch_regs *regs)
 	 * Calculate the value from the saved CompareValue (cntv_cval_el0) and
 	 * the virtual count value.
 	 */
-	uintreg_t cntv_cval_el0 = regs->lazy.cntv_cval_el0;
+	uintreg_t cntv_cval_el0 = regs->peripherals.cntv_cval_el0;
 	uintreg_t cntvct_el0 = read_msr(cntvct_el0);
 
 	if (cntv_cval_el0 >= cntvct_el0) {
@@ -100,7 +100,7 @@ bool arch_timer_pending(struct arch_regs *regs)
 		return false;
 	}
 
-	if (regs->lazy.cntv_ctl_el0 & CNTV_CTL_EL0_ISTATUS) {
+	if (regs->peripherals.cntv_ctl_el0 & CNTV_CTL_EL0_ISTATUS) {
 		return true;
 	}
 

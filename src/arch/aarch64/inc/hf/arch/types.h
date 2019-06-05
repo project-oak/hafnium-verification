@@ -56,6 +56,7 @@ struct arch_regs {
 	uintreg_t r[31];
 	uintreg_t pc;
 	uintreg_t spsr;
+	/* System registers. */
 	struct {
 		uintreg_t vmpidr_el2;
 		uintreg_t csselr_el1;
@@ -86,9 +87,14 @@ struct arch_regs {
 		uintreg_t cptr_el2;
 		uintreg_t cnthctl_el2;
 		uintreg_t vttbr_el2;
+	} lazy;
+	/*
+	 * Peripheral registers, handled separately from other system registers.
+	 */
+	struct {
 		uintreg_t cntv_cval_el0;
 		uintreg_t cntv_ctl_el0;
-	} lazy;
+	} peripherals;
 	/* Floating point registers. */
 	struct float_reg fp[32];
 	uintreg_t fpsr;
