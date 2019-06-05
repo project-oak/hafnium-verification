@@ -109,3 +109,19 @@ TEST(system, icc_ctlr_write_trapped_secondary)
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_ABORTED);
 }
+
+/*
+ * Check that an attempt by a secondary VM to write ICC_SRE_EL1 is trapped or
+ * ignored.
+ */
+TEST(system, icc_sre_write_trapped_secondary)
+{
+	struct hf_vcpu_run_return run_res;
+
+	EXPECT_EQ(hf_vm_configure(send_page_addr, recv_page_addr), 0);
+	SERVICE_SELECT(SERVICE_VM0, "write_systemreg_sre", send_buffer);
+
+	run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	EXPECT_TRUE(run_res.code == HF_VCPU_RUN_ABORTED ||
+		    run_res.code == HF_VCPU_RUN_YIELD);
+}

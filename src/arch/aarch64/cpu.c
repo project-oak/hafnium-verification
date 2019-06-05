@@ -37,13 +37,19 @@ static void gic_regs_reset(struct arch_regs *r, bool is_primary)
 {
 #if GIC_VERSION == 3 || GIC_VERSION == 4
 	uint32_t ich_hcr = 0;
+	uint32_t icc_sre_el2 =
+		(1u << 0) | /* SRE, enable ICH_* and ICC_* at EL2. */
+		(0x3 << 1); /* DIB and DFB, disable IRQ/FIQ bypass. */
 
-	if (!is_primary) {
+	if (is_primary) {
+		icc_sre_el2 |= 1u << 3; /* Enable EL1 access to ICC_SRE_EL1. */
+	} else {
 		/* Trap EL1 access to GICv3 system registers. */
 		ich_hcr =
 			(0x1fu << 10); /* TDIR, TSEI, TALL1, TALL0, TC bits. */
 	}
 	r->gic.ich_hcr_el2 = ich_hcr;
+	r->gic.icc_sre_el2 = icc_sre_el2;
 #endif
 }
 

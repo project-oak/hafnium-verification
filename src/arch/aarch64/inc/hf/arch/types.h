@@ -114,6 +114,7 @@ struct arch_regs {
 #if GIC_VERSION == 3 || GIC_VERSION == 4
 	struct {
 		uintreg_t ich_hcr_el2;
+		uintreg_t icc_sre_el2;
 	} gic;
 #endif
 

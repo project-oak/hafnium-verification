@@ -44,3 +44,17 @@ TEST_SERVICE(write_systemreg_ctlr)
 	write_msr(ICC_CTLR_EL1, 0);
 	FAIL("Writing ICC_CTLR_EL1 didn't trap.");
 }
+
+TEST_SERVICE(write_systemreg_sre)
+{
+	ASSERT_EQ(read_msr(ICC_SRE_EL1), 0x7);
+	/*
+	 * Writing ICC_SRE_EL1 should either trap and abort the VM or be
+	 * ignored.
+	 */
+	write_msr(ICC_SRE_EL1, 0x0);
+	ASSERT_EQ(read_msr(ICC_SRE_EL1), 0x7);
+	write_msr(ICC_SRE_EL1, 0xffffffff);
+	ASSERT_EQ(read_msr(ICC_SRE_EL1), 0x7);
+	spci_yield();
+}
