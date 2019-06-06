@@ -125,3 +125,15 @@ TEST(cpus, start)
 	/* Wait for CPU to release the lock. */
 	sl_lock(&lock);
 }
+
+/** Ensures that the Hafnium SPCI version is reported as expected. */
+TEST(spci, spci_version)
+{
+	const int32_t major_revision = 0;
+	const int32_t major_revision_offset = 16;
+	const int32_t minor_revision = 9;
+	const int32_t current_version =
+		(major_revision << major_revision_offset) | minor_revision;
+
+	EXPECT_EQ(spci_version(), current_version);
+}

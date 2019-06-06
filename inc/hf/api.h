@@ -53,3 +53,4 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 int32_t api_spci_msg_recv(uint32_t attributes, struct vcpu *current,
 			  struct vcpu **next);
 int32_t api_spci_yield(struct vcpu *current, struct vcpu **next);
+int32_t api_spci_version(void);

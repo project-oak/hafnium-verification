@@ -1350,3 +1350,19 @@ out:
 
 	return ret;
 }
+
+/** Returns the version of the implemented SPCI specification. */
+int32_t api_spci_version(void)
+{
+	/*
+	 * Ensure that both major and minor revision representation occupies at
+	 * most 15 bits.
+	 */
+	static_assert(0x8000 > SPCI_VERSION_MAJOR,
+		      "Major revision representation take more than 15 bits.");
+	static_assert(0x10000 > SPCI_VERSION_MINOR,
+		      "Minor revision representation take more than 16 bits.");
+
+	return (SPCI_VERSION_MAJOR << SPCI_VERSION_MAJOR_OFFSET) |
+	       SPCI_VERSION_MINOR;
+}

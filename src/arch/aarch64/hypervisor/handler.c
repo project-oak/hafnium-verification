@@ -393,6 +393,10 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 	}
 
 	switch ((uint32_t)arg0) {
+	case SPCI_VERSION_32:
+		ret.user_ret = api_spci_version();
+		break;
+
 	case HF_VM_GET_ID:
 		ret.user_ret = api_vm_get_id(current());
 		break;

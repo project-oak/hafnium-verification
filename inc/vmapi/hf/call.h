@@ -239,3 +239,9 @@ static inline int64_t hf_share_memory(uint32_t vm_id, hf_ipaddr_t addr,
 	return hf_call(HF_SHARE_MEMORY, (((uint64_t)vm_id) << 32) | share, addr,
 		       size);
 }
+
+/** Obtains the Hafnium's version of the implemented SPCI specification. */
+static inline int64_t spci_version(void)
+{
+	return hf_call(SPCI_VERSION_32, 0, 0, 0);
+}
