@@ -34,6 +34,12 @@ typedef uintptr_t uintvaddr_t;
 /** The integer corresponding to the native register size. */
 typedef uint64_t uintreg_t;
 
+/** Arch-specifc information about a VM. */
+struct arch_vm {
+	/* This field is only here because empty structs aren't allowed. */
+	void *dummy;
+};
+
 /** Type to represent the register state of a VM.  */
 struct arch_regs {
 	uintreg_t r[5];

@@ -18,6 +18,8 @@
 
 #include <stdatomic.h>
 
+#include "hf/arch/types.h"
+
 #include "hf/cpu.h"
 #include "hf/list.h"
 #include "hf/mm.h"
@@ -85,6 +87,9 @@ struct vm {
 	struct wait_entry wait_entries[MAX_VMS];
 
 	atomic_bool aborting;
+
+	/** Arch-specific VM information. */
+	struct arch_vm arch;
 };
 
 /** Encapsulates a VM whose lock is held. */

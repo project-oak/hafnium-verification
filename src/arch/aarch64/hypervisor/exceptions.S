@@ -476,6 +476,16 @@ vcpu_restore_lazy_and_run:
 	msr ich_hcr_el2, x3
 #endif
 
+	/*
+	 * If a different vCPU is being run on this physical CPU to the last one
+	 * which was run for this VM, invalidate the TLB. This must be called
+	 * after vttbr_el2 has been updated, so that we have the page table and
+	 * VMID of the vCPU to which we are switching.
+	 */
+	mov x19, x0
+	bl maybe_invalidate_tlb
+	mov x0, x19
+
 	/* Restore non-volatile registers. */
 	ldp x19, x20, [x0, #VCPU_REGS + 8 * 19]
 	ldp x21, x22, [x0, #VCPU_REGS + 8 * 21]

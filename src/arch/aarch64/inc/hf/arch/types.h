@@ -50,7 +50,18 @@ struct float_reg {
 static_assert(sizeof(struct float_reg) == FLOAT_REG_BYTES,
 	      "Ensure float register type is 128 bits.");
 
-/** Type to represent the register state of a VM.  */
+/** Arch-specifc information about a VM. */
+struct arch_vm {
+	/**
+	 * The index of the last vCPU of this VM which ran on each pCPU. Each
+	 * element of this array should only be read or written by code running
+	 * on that CPU, which avoids contention and so no lock is needed to
+	 * access this field.
+	 */
+	uint32_t last_vcpu_on_cpu[MAX_CPUS];
+};
+
+/** Type to represent the register state of a vCPU.  */
 struct arch_regs {
 	/* General purpose registers. */
 	uintreg_t r[31];

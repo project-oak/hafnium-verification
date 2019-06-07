@@ -16,6 +16,7 @@
 
 #include <stdnoreturn.h>
 
+#include "hf/arch/barriers.h"
 #include "hf/arch/init.h"
 
 #include "hf/api.h"
@@ -122,6 +123,55 @@ void begin_restoring_state(struct vcpu *vcpu)
 	if (vcpu->vm->id == HF_PRIMARY_VM_ID) {
 		write_msr(cnthp_ctl_el2, 0);
 		write_msr(cnthp_cval_el2, 0);
+	}
+}
+
+/**
+ * Ensures all explicit memory access and management instructions for
+ * non-shareable normal memory have completed before continuing.
+ */
+static void dsb_nsh(void)
+{
+	__asm__ volatile("dsb nsh");
+}
+
+/**
+ * Invalidate all stage 1 TLB entries on the current (physical) CPU for the
+ * current VMID.
+ */
+static void invalidate_vm_tlb(void)
+{
+	isb();
+	__asm__ volatile("tlbi vmalle1");
+	isb();
+	dsb_nsh();
+}
+
+/**
+ * Invalidates the TLB if a different vCPU is being run than the last vCPU of
+ * the same VM which was run on the current pCPU.
+ *
+ * This is necessary because VMs may (contrary to the architecture
+ * specification) use inconsistent ASIDs across vCPUs. c.f. KVM's similar
+ * workaround:
+ * https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=94d0e5980d6791b9
+ */
+void maybe_invalidate_tlb(struct vcpu *vcpu)
+{
+	size_t current_cpu_index = cpu_index(vcpu->cpu);
+	size_t new_vcpu_index = vcpu_index(vcpu);
+
+	if (vcpu->vm->arch.last_vcpu_on_cpu[current_cpu_index] !=
+	    new_vcpu_index) {
+		/*
+		 * The vCPU has changed since the last time this VM was run on
+		 * this pCPU, so we need to invalidate the TLB.
+		 */
+		invalidate_vm_tlb();
+
+		/* Record the fact that this vCPU is now running on this CPU. */
+		vcpu->vm->arch.last_vcpu_on_cpu[current_cpu_index] =
+			new_vcpu_index;
 	}
 }
 
