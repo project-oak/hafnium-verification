@@ -114,46 +114,60 @@ static void timer_secondary(const char message[],
 			  HF_PRIMARY_VM_ID);
 	EXPECT_EQ(spci_msg_send(0), 0);
 
-	/*
-	 * Let the secondary handle the message and set the timer. Then there's
-	 * a race for whether it manages to block and switch to the primary
-	 * before the hardware timer fires, so we need to handle both cases.
-	 */
+	/* Let the secondary handle the message and set the timer. */
 	last_interrupt_id = 0;
 	run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	if (run_res.code == expected_code) {
+
+	/*
+	 * There's a race for whether the secondary manages to block and switch
+	 * to the primary before the hardware timer fires, so we need to handle
+	 * three cases:
+	 * 1. The (hardware) timer fires immediately, we get
+	 *   HF_VCPU_RUN_PREEMPTED.
+	 * 2. The secondary blocks and switches back, we get expected_code until
+	 *   the timer fires.
+	 *  2a. The timer then expires while we are in the primary, so Hafnium
+	 *   can inject the timer interrupt the next time we call hf_vcpu_run.
+	 *  2b. The timer fires while the secondary is running, so we get
+	 *   HF_VCPU_RUN_PREEMPTED as in case 1.
+	 */
+
+	if (run_res.code != expected_code &&
+	    run_res.code != HF_VCPU_RUN_PREEMPTED) {
+		FAIL("Expected run to return HF_VCPU_RUN_PREEMPTED or %d, but "
+		     "got %d",
+		     expected_code, run_res.code);
+	}
+
+	/* Loop until the timer fires. */
+	while (run_res.code == expected_code) {
 		/*
 		 * This case happens if the secondary manages to block and
 		 * switch to the primary before the timer fires.
 		 */
-		dlog("secondary sleeping after receiving timer message\n");
-		/* Loop until the timer fires. */
-		while (run_res.code == expected_code) {
-			dlog("Primary looping until timer fires\n");
-			if (expected_code == HF_VCPU_RUN_WAIT_FOR_INTERRUPT ||
-			    expected_code == HF_VCPU_RUN_WAIT_FOR_MESSAGE) {
-				EXPECT_NE(run_res.sleep.ns,
-					  HF_SLEEP_INDEFINITE);
-				dlog("%d ns remaining\n", run_res.sleep.ns);
-			}
-			run_res = hf_vcpu_run(SERVICE_VM0, 0);
+		dlog("Primary looping until timer fires\n");
+		if (expected_code == HF_VCPU_RUN_WAIT_FOR_INTERRUPT ||
+		    expected_code == HF_VCPU_RUN_WAIT_FOR_MESSAGE) {
+			EXPECT_NE(run_res.sleep.ns, HF_SLEEP_INDEFINITE);
+			dlog("%d ns remaining\n", run_res.sleep.ns);
 		}
-		dlog("Primary done looping\n");
-	} else if (run_res.code == HF_VCPU_RUN_PREEMPTED) {
+		run_res = hf_vcpu_run(SERVICE_VM0, 0);
+	}
+	dlog("Primary done looping\n");
+
+	if (run_res.code == HF_VCPU_RUN_PREEMPTED) {
 		/*
 		 * This case happens if the (hardware) timer fires before the
-		 * secondary blocks and switches to the primary. Then we get the
-		 * interrupt to the primary, ignore it, and see a
-		 * HF_VCPU_RUN_PREEMPTED code from the hf_vcpu_run call, so we
+		 * secondary blocks and switches to the primary, either
+		 * immediately after setting the timer or during the loop above.
+		 * Then we get the interrupt to the primary, ignore it, and see
+		 * a HF_VCPU_RUN_PREEMPTED code from the hf_vcpu_run call, so we
 		 * should call it again for the timer interrupt to be injected
 		 * automatically by Hafnium.
 		 */
 		EXPECT_EQ(last_interrupt_id, VIRTUAL_TIMER_IRQ);
 		dlog("Preempted by timer interrupt, running again\n");
 		run_res = hf_vcpu_run(SERVICE_VM0, 0);
-	} else {
-		/* No other return codes should occur here, so fail. */
-		FAIL("Unexpected run result code (%d).", run_res.code);
 	}
 
 	/* Once we wake it up it should get the timer interrupt and respond. */
