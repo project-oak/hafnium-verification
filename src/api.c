@@ -361,7 +361,6 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	}
 
 	switch (vcpu->state) {
-	case VCPU_STATE_RUNNING:
 	case VCPU_STATE_OFF:
 	case VCPU_STATE_ABORTED:
 		ret = false;
@@ -411,7 +410,6 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 
 	/* It has been decided that the vCPU should be run. */
 	vcpu->cpu = current->cpu;
-	vcpu->state = VCPU_STATE_RUNNING;
 
 	ret = true;
 

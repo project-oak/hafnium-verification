@@ -37,9 +37,6 @@ enum vcpu_state {
 	/** The vcpu is ready to be run. */
 	VCPU_STATE_READY,
 
-	/** The vcpu is currently running. */
-	VCPU_STATE_RUNNING,
-
 	/** The vcpu is waiting for a message. */
 	VCPU_STATE_BLOCKED_MAILBOX,
 
