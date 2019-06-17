@@ -169,6 +169,8 @@ pub struct MPool {
     fallback: *const MPool,
 }
 
+unsafe impl Sync for MPool {}
+
 impl MPool {
     /// Initialises the given memory pool with the given entry size, which must be at least the size
     /// of two pointers.
