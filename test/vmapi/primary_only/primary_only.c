@@ -63,7 +63,7 @@ TEST(hf_vcpu_get_count, no_secondary_vms)
  */
 TEST(hf_vcpu_get_count, large_invalid_vm_index)
 {
-	EXPECT_EQ(hf_vcpu_get_count(0xffffffff), -1);
+	EXPECT_EQ(hf_vcpu_get_count(0xffff), -1);
 }
 
 /**

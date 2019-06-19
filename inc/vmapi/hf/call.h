@@ -48,7 +48,7 @@ int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
 /**
  * Returns the VM's own ID.
  */
-static inline uint32_t hf_vm_get_id(void)
+static inline spci_vm_id_t hf_vm_get_id(void)
 {
 	return hf_call(HF_VM_GET_ID, 0, 0, 0);
 }
@@ -64,7 +64,7 @@ static inline int64_t hf_vm_get_count(void)
 /**
  * Returns the number of VCPUs configured in the given secondary VM.
  */
-static inline int64_t hf_vcpu_get_count(uint32_t vm_id)
+static inline int64_t hf_vcpu_get_count(spci_vm_id_t vm_id)
 {
 	return hf_call(HF_VCPU_GET_COUNT, vm_id, 0, 0);
 }
@@ -74,7 +74,7 @@ static inline int64_t hf_vcpu_get_count(uint32_t vm_id)
  *
  * Returns an hf_vcpu_run_return struct telling the scheduler what to do next.
  */
-static inline struct hf_vcpu_run_return hf_vcpu_run(uint32_t vm_id,
+static inline struct hf_vcpu_run_return hf_vcpu_run(spci_vm_id_t vm_id,
 						    uint32_t vcpu_idx)
 {
 	return hf_vcpu_run_return_decode(
@@ -179,7 +179,7 @@ static inline int64_t hf_mailbox_writable_get(void)
  * Returns -1 on failure or if there are no waiters; the VM id of the next
  * waiter otherwise.
  */
-static inline int64_t hf_mailbox_waiter_get(uint32_t vm_id)
+static inline int64_t hf_mailbox_waiter_get(spci_vm_id_t vm_id)
 {
 	return hf_call(HF_MAILBOX_WAITER_GET, vm_id, 0, 0);
 }
@@ -217,7 +217,7 @@ static inline uint32_t hf_interrupt_get(void)
  *  - 1 if it was called by the primary VM and the primary VM now needs to wake
  *    up or kick the target vCPU.
  */
-static inline int64_t hf_interrupt_inject(uint32_t target_vm_id,
+static inline int64_t hf_interrupt_inject(spci_vm_id_t target_vm_id,
 					  uint32_t target_vcpu_idx,
 					  uint32_t intid)
 {
@@ -233,7 +233,7 @@ static inline int64_t hf_interrupt_inject(uint32_t target_vm_id,
  * TODO: replace this with a better API once we have decided what that should
  *       look like.
  */
-static inline int64_t hf_share_memory(uint32_t vm_id, hf_ipaddr_t addr,
+static inline int64_t hf_share_memory(spci_vm_id_t vm_id, hf_ipaddr_t addr,
 				      size_t size, enum hf_share share)
 {
 	return hf_call(HF_SHARE_MEMORY, (((uint64_t)vm_id) << 32) | share, addr,

@@ -24,6 +24,8 @@
 
 #include "hf/addr.h"
 
+#include "vmapi/hf/spci.h"
+
 /**
  * Disables interrutps.
  */
@@ -38,7 +40,7 @@ void arch_irq_enable(void);
  * Reset the register values other than the PC and argument which are set with
  * `arch_regs_set_pc_arg()`.
  */
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
+void arch_regs_reset(struct arch_regs *r, bool is_primary, spci_vm_id_t vm_id,
 		     uint64_t vcpu_id, paddr_t table);
 
 /**

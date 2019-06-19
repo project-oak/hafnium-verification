@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "hf/spci.h"
 #include "hf/types.h"
 
 enum hf_vcpu_run_code {
@@ -88,11 +89,11 @@ struct hf_vcpu_run_return {
 	enum hf_vcpu_run_code code;
 	union {
 		struct {
-			uint32_t vm_id;
+			spci_vm_id_t vm_id;
 			uint16_t vcpu;
 		} wake_up;
 		struct {
-			uint16_t vm_id;
+			spci_vm_id_t vm_id;
 		} message;
 		struct {
 			uint64_t ns;

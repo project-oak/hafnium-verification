@@ -26,7 +26,7 @@ void arch_irq_enable(void)
 	/* TODO */
 }
 
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
+void arch_regs_reset(struct arch_regs *r, bool is_primary, spci_vm_id_t vm_id,
 		     uint64_t vcpu_id, paddr_t table)
 {
 	/* TODO */

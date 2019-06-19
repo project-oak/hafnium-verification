@@ -30,8 +30,8 @@ TEST_SERVICE(relay)
 	 * message so multiple IDs can be places at the start of the message.
 	 */
 	for (;;) {
-		uint32_t *chain;
-		uint32_t next_vm_id;
+		spci_vm_id_t *chain;
+		spci_vm_id_t next_vm_id;
 		void *next_message;
 		uint32_t next_message_size;
 
@@ -41,12 +41,12 @@ TEST_SERVICE(relay)
 		/* Prepare to relay the message. */
 		struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
 		struct spci_message *send_buf = SERVICE_SEND_BUFFER();
-		ASSERT_GE(recv_buf->length, sizeof(uint32_t));
+		ASSERT_GE(recv_buf->length, sizeof(spci_vm_id_t));
 
-		chain = (uint32_t *)recv_buf->payload;
-		next_vm_id = le32toh(*chain);
+		chain = (spci_vm_id_t *)recv_buf->payload;
+		next_vm_id = le16toh(*chain);
 		next_message = chain + 1;
-		next_message_size = recv_buf->length - sizeof(uint32_t);
+		next_message_size = recv_buf->length - sizeof(spci_vm_id_t);
 
 		/* Send the message to the next stage. */
 		memcpy_s(send_buf->payload, SPCI_MSG_PAYLOAD_MAX, next_message,

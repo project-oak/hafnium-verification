@@ -159,14 +159,15 @@ TEST(mailbox, relay)
 	 * SERVICE_VM0, then to SERVICE_VM1 and finally back to here.
 	 */
 	{
-		uint32_t *chain = (uint32_t *)mb.send->payload;
+		spci_vm_id_t *chain = (spci_vm_id_t *)mb.send->payload;
 		*chain++ = htole32(SERVICE_VM1);
 		*chain++ = htole32(HF_PRIMARY_VM_ID);
-		memcpy_s(chain, SPCI_MSG_PAYLOAD_MAX - (2 * sizeof(uint32_t)),
+		memcpy_s(chain,
+			 SPCI_MSG_PAYLOAD_MAX - (2 * sizeof(spci_vm_id_t)),
 			 message, sizeof(message));
 
 		spci_message_init(mb.send,
-				  sizeof(message) + (2 * sizeof(uint32_t)),
+				  sizeof(message) + (2 * sizeof(spci_vm_id_t)),
 				  SERVICE_VM0, HF_PRIMARY_VM_ID);
 		EXPECT_EQ(spci_msg_send(0), 0);
 	}
@@ -181,7 +182,7 @@ TEST(mailbox, relay)
 	run_res = hf_vcpu_run(SERVICE_VM1, 0);
 	EXPECT_EQ(run_res.code, HF_VCPU_RUN_MESSAGE);
 
-	/* Ensure the message is in tact. */
+	/* Ensure the message is intact. */
 	EXPECT_EQ(run_res.message.vm_id, HF_PRIMARY_VM_ID);
 	EXPECT_EQ(mb.recv->length, sizeof(message));
 	EXPECT_EQ(memcmp(mb.recv->payload, message, sizeof(message)), 0);

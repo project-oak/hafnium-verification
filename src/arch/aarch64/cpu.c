@@ -47,7 +47,7 @@ static void gic_regs_reset(struct arch_regs *r, bool is_primary)
 #endif
 }
 
-void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
+void arch_regs_reset(struct arch_regs *r, bool is_primary, spci_vm_id_t vm_id,
 		     uint64_t vcpu_id, paddr_t table)
 {
 	uintreg_t pc = r->pc;
@@ -90,7 +90,7 @@ void arch_regs_reset(struct arch_regs *r, bool is_primary, uint64_t vm_id,
 	r->lazy.hcr_el2 = hcr;
 	r->lazy.cptr_el2 = cptr;
 	r->lazy.cnthctl_el2 = cnthctl;
-	r->lazy.vttbr_el2 = pa_addr(table) | (vm_id << 48);
+	r->lazy.vttbr_el2 = pa_addr(table) | ((uint64_t)vm_id << 48);
 	r->lazy.vmpidr_el2 = vcpu_id;
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */

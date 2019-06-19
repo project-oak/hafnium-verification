@@ -73,7 +73,7 @@ struct mailbox {
 };
 
 struct vm {
-	uint32_t id;
+	spci_vm_id_t id;
 	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
 	uint32_t vcpu_count;

@@ -64,7 +64,7 @@ int32_t mailbox_receive_retry()
 
 TEST_SERVICE(interruptible)
 {
-	uint32_t this_vm_id = hf_vm_get_id();
+	spci_vm_id_t this_vm_id = hf_vm_get_id();
 	struct spci_message *recv_buf = SERVICE_RECV_BUFFER();
 
 	exception_setup(irq);
