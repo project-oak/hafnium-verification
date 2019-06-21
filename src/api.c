@@ -380,11 +380,12 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 			/*
 			 * vCPU is running on another pCPU.
 			 *
-			 * It's ok to not return the sleep duration here because
+			 * It's ok not to return the sleep duration here because
 			 * the other physical CPU that is currently running this
-			 * vCPU will return sleep duration if neeed. The default
-			 * return value is HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no
-			 * need to set it explicitly.
+			 * vCPU will return the sleep duration if needed. The
+			 * default return value is
+			 * HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no need to set it
+			 * explicitly.
 			 */
 			ret = false;
 			goto out;
