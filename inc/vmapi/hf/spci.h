@@ -60,7 +60,14 @@
 
 /* clang-format on */
 
+/** The ID of a VM. These are assigned sequentially. */
 typedef uint16_t spci_vm_id_t;
+
+/**
+ * A count of VMs. This has the same range as the VM IDs but we give it a
+ * different name to make the different semantics clear.
+ */
+typedef spci_vm_id_t spci_vm_count_t;
 
 /** SPCI common message header. */
 struct spci_message {

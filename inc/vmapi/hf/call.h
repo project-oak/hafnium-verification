@@ -56,7 +56,7 @@ static inline spci_vm_id_t hf_vm_get_id(void)
 /**
  * Returns the number of secondary VMs.
  */
-static inline int64_t hf_vm_get_count(void)
+static inline spci_vm_count_t hf_vm_get_count(void)
 {
 	return hf_call(HF_VM_GET_COUNT, 0, 0, 0);
 }
