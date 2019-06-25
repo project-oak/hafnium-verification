@@ -75,7 +75,7 @@ static inline int64_t hf_vcpu_get_count(spci_vm_id_t vm_id)
  * Returns an hf_vcpu_run_return struct telling the scheduler what to do next.
  */
 static inline struct hf_vcpu_run_return hf_vcpu_run(spci_vm_id_t vm_id,
-						    uint32_t vcpu_idx)
+						    spci_vcpu_index_t vcpu_idx)
 {
 	return hf_vcpu_run_return_decode(
 		hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0));
@@ -218,7 +218,7 @@ static inline uint32_t hf_interrupt_get(void)
  *    up or kick the target vCPU.
  */
 static inline int64_t hf_interrupt_inject(spci_vm_id_t target_vm_id,
-					  uint32_t target_vcpu_idx,
+					  spci_vcpu_index_t target_vcpu_idx,
 					  uint32_t intid)
 {
 	return hf_call(HF_INTERRUPT_INJECT, target_vm_id, target_vcpu_idx,

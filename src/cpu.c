@@ -22,6 +22,7 @@
 
 #include "hf/api.h"
 #include "hf/dlog.h"
+#include "hf/spci.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -203,9 +204,12 @@ void vcpu_on(struct vcpu_locked vcpu, ipaddr_t entry, uintreg_t arg)
 	vcpu.vcpu->state = VCPU_STATE_READY;
 }
 
-size_t vcpu_index(const struct vcpu *vcpu)
+spci_vcpu_index_t vcpu_index(const struct vcpu *vcpu)
 {
-	return vcpu - vcpu->vm->vcpus;
+	size_t index = vcpu - vcpu->vm->vcpus;
+
+	assert(index < UINT16_MAX);
+	return index;
 }
 
 /**

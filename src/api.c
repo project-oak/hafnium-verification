@@ -22,6 +22,7 @@
 #include "hf/assert.h"
 #include "hf/dlog.h"
 #include "hf/mm.h"
+#include "hf/spci.h"
 #include "hf/spinlock.h"
 #include "hf/std.h"
 #include "hf/vm.h"
@@ -481,7 +482,8 @@ out:
 /**
  * Runs the given vcpu of the given vm.
  */
-struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id, uint32_t vcpu_idx,
+struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id,
+				       spci_vcpu_index_t vcpu_idx,
 				       const struct vcpu *current,
 				       struct vcpu **next)
 {
@@ -1159,7 +1161,7 @@ static inline bool is_injection_allowed(uint32_t target_vm_id,
  *    up or kick the target vCPU.
  */
 int64_t api_interrupt_inject(spci_vm_id_t target_vm_id,
-			     uint32_t target_vcpu_idx, uint32_t intid,
+			     spci_vcpu_index_t target_vcpu_idx, uint32_t intid,
 			     struct vcpu *current, struct vcpu **next)
 {
 	struct vcpu *target_vcpu;

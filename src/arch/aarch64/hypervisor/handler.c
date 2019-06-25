@@ -134,7 +134,7 @@ static void invalidate_vm_tlb(void)
 void maybe_invalidate_tlb(struct vcpu *vcpu)
 {
 	size_t current_cpu_index = cpu_index(vcpu->cpu);
-	size_t new_vcpu_index = vcpu_index(vcpu);
+	spci_vcpu_index_t new_vcpu_index = vcpu_index(vcpu);
 
 	if (vcpu->vm->arch.last_vcpu_on_cpu[current_cpu_index] !=
 	    new_vcpu_index) {

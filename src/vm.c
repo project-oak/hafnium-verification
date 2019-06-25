@@ -18,6 +18,7 @@
 
 #include "hf/api.h"
 #include "hf/cpu.h"
+#include "hf/spci.h"
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"
@@ -112,7 +113,7 @@ void vm_unlock(struct vm_locked *locked)
  * Get the vCPU with the given index from the given VM.
  * This assumes the index is valid, i.e. less than vm->vcpu_count.
  */
-struct vcpu *vm_get_vcpu(struct vm *vm, uint32_t vcpu_index)
+struct vcpu *vm_get_vcpu(struct vm *vm, spci_vcpu_index_t vcpu_index)
 {
 	assert(vcpu_index < vm->vcpu_count);
 	return &vm->vcpus[vcpu_index];
