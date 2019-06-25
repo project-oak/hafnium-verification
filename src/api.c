@@ -216,7 +216,7 @@ spci_vm_id_t api_vm_get_id(const struct vcpu *current)
 /**
  * Returns the number of VMs configured to run.
  */
-int64_t api_vm_get_count(void)
+spci_vm_count_t api_vm_get_count(void)
 {
 	return vm_get_count();
 }

@@ -23,7 +23,7 @@
 #include "vmapi/hf/call.h"
 
 static struct vm vms[MAX_VMS];
-static uint32_t vm_count;
+static spci_vm_count_t vm_count;
 
 bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 {
@@ -69,7 +69,7 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 	return true;
 }
 
-uint32_t vm_get_count(void)
+spci_vm_count_t vm_get_count(void)
 {
 	return vm_count;
 }
