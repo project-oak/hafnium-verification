@@ -20,6 +20,7 @@
 #include <stdint.h>
 
 #include "hf/assert.h"
+#include "hf/spci.h"
 
 #define PAGE_BITS 12
 #define PAGE_LEVEL_BITS 9
@@ -58,7 +59,7 @@ struct arch_vm {
 	 * on that CPU, which avoids contention and so no lock is needed to
 	 * access this field.
 	 */
-	uint32_t last_vcpu_on_cpu[MAX_CPUS];
+	spci_vcpu_index_t last_vcpu_on_cpu[MAX_CPUS];
 };
 
 /** Type to represent the register state of a vCPU.  */

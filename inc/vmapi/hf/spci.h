@@ -68,6 +68,7 @@ typedef uint16_t spci_vm_id_t;
  * different name to make the different semantics clear.
  */
 typedef spci_vm_id_t spci_vm_count_t;
+typedef uint16_t spci_vcpu_index_t;
 
 /** SPCI common message header. */
 struct spci_message {
