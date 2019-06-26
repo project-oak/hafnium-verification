@@ -228,7 +228,7 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
  * Convert a PSCI CPU / affinity ID for a secondary VM to the corresponding vCPU
  * index.
  */
-spci_vcpu_index_t vcpu_id_to_index(uint64_t vcpu_id)
+spci_vcpu_index_t vcpu_id_to_index(cpu_id_t vcpu_id)
 {
 	/* For now we use indices as IDs for the purposes of PSCI. */
 	return vcpu_id;
@@ -279,7 +279,7 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		break;
 
 	case PSCI_AFFINITY_INFO: {
-		uint64_t target_affinity = arg0;
+		cpu_id_t target_affinity = arg0;
 		uint32_t lowest_affinity_level = arg1;
 		struct vm *vm = vcpu->vm;
 		struct vcpu_locked target_vcpu;
@@ -326,7 +326,7 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 
 	case PSCI_CPU_ON: {
 		/* Parameter names as per PSCI specification. */
-		uint64_t target_cpu = arg0;
+		cpu_id_t target_cpu = arg0;
 		ipaddr_t entry_point_address = ipa_init(arg1);
 		uint64_t context_id = arg2;
 		spci_vcpu_index_t target_vcpu_index =

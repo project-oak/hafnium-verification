@@ -38,6 +38,9 @@ typedef uintptr_t uintvaddr_t;
 /** The integer type corresponding to the native register size. */
 typedef uint64_t uintreg_t;
 
+/** The ID of a physical or virtual CPU. */
+typedef uint64_t cpu_id_t;
+
 /**
  * The struct for storing a floating point register.
  *

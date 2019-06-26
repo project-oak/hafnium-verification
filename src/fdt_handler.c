@@ -126,7 +126,7 @@ bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end)
 	return true;
 }
 
-void fdt_find_cpus(const struct fdt_node *root, uint64_t *cpu_ids,
+void fdt_find_cpus(const struct fdt_node *root, cpu_id_t *cpu_ids,
 		   size_t *cpu_count)
 {
 	struct fdt_node n = *root;
