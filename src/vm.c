@@ -27,7 +27,8 @@
 static struct vm vms[MAX_VMS];
 static spci_vm_count_t vm_count;
 
-bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
+bool vm_init(spci_vcpu_count_t vcpu_count, struct mpool *ppool,
+	     struct vm **new_vm)
 {
 	uint32_t i;
 	struct vm *vm;

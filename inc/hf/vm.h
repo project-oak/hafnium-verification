@@ -78,7 +78,7 @@ struct vm {
 	spci_vm_id_t id;
 	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
-	uint32_t vcpu_count;
+	spci_vcpu_count_t vcpu_count;
 	struct vcpu vcpus[MAX_CPUS];
 	struct mm_ptable ptable;
 	struct mailbox mailbox;
@@ -97,7 +97,8 @@ struct vm_locked {
 	struct vm *vm;
 };
 
-bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm);
+bool vm_init(spci_vcpu_count_t vcpu_count, struct mpool *ppool,
+	     struct vm **new_vm);
 spci_vm_count_t vm_get_count(void);
 struct vm *vm_find(spci_vm_id_t id);
 struct vm_locked vm_lock(struct vm *vm);

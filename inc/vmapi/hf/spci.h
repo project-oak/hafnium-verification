@@ -68,7 +68,15 @@ typedef uint16_t spci_vm_id_t;
  * different name to make the different semantics clear.
  */
 typedef spci_vm_id_t spci_vm_count_t;
+
+/** The index of a vCPU within a particular VM. */
 typedef uint16_t spci_vcpu_index_t;
+
+/**
+ * A count of vCPUs. This has the same range as the vCPU indices but we give it
+ * a different name to make the different semantics clear.
+ */
+typedef spci_vcpu_index_t spci_vcpu_count_t;
 
 /** SPCI common message header. */
 struct spci_message {
