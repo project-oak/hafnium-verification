@@ -25,7 +25,8 @@
 void api_init(struct mpool *ppool);
 spci_vm_id_t api_vm_get_id(const struct vcpu *current);
 spci_vm_count_t api_vm_get_count(void);
-int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current);
+spci_vcpu_count_t api_vcpu_get_count(spci_vm_id_t vm_id,
+				     const struct vcpu *current);
 void api_regs_state_saved(struct vcpu *vcpu);
 struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id,
 				       spci_vcpu_index_t vcpu_idx,

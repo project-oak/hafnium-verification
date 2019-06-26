@@ -64,7 +64,7 @@ static inline spci_vm_count_t hf_vm_get_count(void)
 /**
  * Returns the number of VCPUs configured in the given secondary VM.
  */
-static inline int64_t hf_vcpu_get_count(spci_vm_id_t vm_id)
+static inline spci_vcpu_count_t hf_vcpu_get_count(spci_vm_id_t vm_id)
 {
 	return hf_call(HF_VCPU_GET_COUNT, vm_id, 0, 0);
 }

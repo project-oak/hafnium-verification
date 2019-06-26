@@ -224,20 +224,22 @@ spci_vm_count_t api_vm_get_count(void)
 }
 
 /**
- * Returns the number of vcpus configured in the given VM.
+ * Returns the number of vCPUs configured in the given VM, or 0 if there is no
+ * such VM or the caller is not the primary VM.
  */
-int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current)
+spci_vcpu_count_t api_vcpu_get_count(spci_vm_id_t vm_id,
+				     const struct vcpu *current)
 {
 	struct vm *vm;
 
 	/* Only the primary VM needs to know about vcpus for scheduling. */
 	if (current->vm->id != HF_PRIMARY_VM_ID) {
-		return -1;
+		return 0;
 	}
 
 	vm = vm_find(vm_id);
 	if (vm == NULL) {
-		return -1;
+		return 0;
 	}
 
 	return vm->vcpu_count;
