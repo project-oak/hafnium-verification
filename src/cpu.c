@@ -50,11 +50,11 @@ static void cpu_init(struct cpu *c)
 	sl_init(&c->lock);
 }
 
-void cpu_module_init(const uint64_t *cpu_ids, size_t count)
+void cpu_module_init(const cpu_id_t *cpu_ids, size_t count)
 {
 	uint32_t i;
 	uint32_t j;
-	uint64_t boot_cpu_id = cpus[0].id;
+	cpu_id_t boot_cpu_id = cpus[0].id;
 	bool found_boot_cpu = false;
 
 	cpu_count = count;
@@ -68,7 +68,7 @@ void cpu_module_init(const uint64_t *cpu_ids, size_t count)
 	j = cpu_count;
 	for (i = 0; i < cpu_count; ++i) {
 		struct cpu *c;
-		uint64_t id = cpu_ids[i];
+		cpu_id_t id = cpu_ids[i];
 
 		if (found_boot_cpu || id != boot_cpu_id) {
 			c = &cpus[--j];
@@ -132,7 +132,7 @@ void cpu_off(struct cpu *c)
 /**
  * Searches for a CPU based on its id.
  */
-struct cpu *cpu_find(uint64_t id)
+struct cpu *cpu_find(cpu_id_t id)
 {
 	size_t i;
 

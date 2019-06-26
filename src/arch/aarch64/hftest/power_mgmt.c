@@ -107,7 +107,7 @@ static_assert(POWER_STATUS_ON_PENDING == PSCI_RETURN_ON_PENDING,
 /**
  * Returns the power status of the given CPU.
  */
-enum power_status cpu_status(uint64_t cpu_id)
+enum power_status cpu_status(cpu_id_t cpu_id)
 {
 	uint32_t lowest_affinity_level = 0;
 

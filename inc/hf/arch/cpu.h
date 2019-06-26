@@ -41,7 +41,7 @@ void arch_irq_enable(void);
  * `arch_regs_set_pc_arg()`.
  */
 void arch_regs_reset(struct arch_regs *r, bool is_primary, spci_vm_id_t vm_id,
-		     uint64_t vcpu_id, paddr_t table);
+		     cpu_id_t vcpu_id, paddr_t table);
 
 /**
  * Updates the given registers so that when a vcpu runs, it starts off at the
