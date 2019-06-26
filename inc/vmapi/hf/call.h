@@ -125,8 +125,6 @@ static inline int64_t spci_msg_send(uint32_t attributes)
  * Called by secondary VMs to receive a message. The call can optionally block
  * until a message is received.
  *
- * If no message was received, the VM ID will be HF_INVALID_VM_ID.
- *
  * The mailbox must be cleared before a new message can be received.
  *
  * If no message is immediately available, `block` is true, and there are no
@@ -135,6 +133,12 @@ static inline int64_t spci_msg_send(uint32_t attributes)
  * enabled interrupt becomes pending. This matches the behaviour of the WFI
  * instruction on aarch64, except that a message becoming available is also
  * treated like a wake-up event.
+ *
+ * Returns:
+ *  - SPCI_SUCCESS if a message is successfully received.
+ *  - SPCI_INTERRUPTED if the caller is the primary VM or an interrupt happened
+ *    during the call.
+ *  - SPCI_RETRY if there was no pending message, and `block` was false.
  */
 static inline int32_t spci_msg_recv(int32_t attributes)
 {

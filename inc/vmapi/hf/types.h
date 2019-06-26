@@ -36,9 +36,6 @@ typedef uintptr_t hf_ipaddr_t;
 /** The ID of the primary VM which is responsible for scheduling. */
 #define HF_PRIMARY_VM_ID 0
 
-/* Invalid values for fields to indicate absence or errors. */
-#define HF_INVALID_VM_ID 0xffffffff
-
 /* Sleep value for an indefinite period of time. */
 #define HF_SLEEP_INDEFINITE 0xffffffffffffff
 
