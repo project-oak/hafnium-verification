@@ -258,15 +258,13 @@ Section Concrete.
     static bool mm_vm_get_attrs(struct mm_ptable *t, ptable_addr_t begin,
                                 ptable_addr_t end, uint64_t *attrs)
    *)
-  (* N.B. instead of operating on a passed-in reference and returning a boolean
-     saying whether it's valid, we will instead return an [option] type. *)
   (* N.B. instead of passing in a page table we pass in the vm whose root table
      we are searching *)
   Definition mm_vm_get_attrs
              (s : concrete_state)
              (t : ptable_pointer)
-             (begin end_ : physical_addr) : option mode :=
-    None. (* TODO *)
+             (begin end_ : physical_addr) : bool * attributes :=
+    (false, empty_attributes). (* TODO *)
   (*
     /**
     * Gets the mode of the give range of intermediate physical addresses if they
@@ -280,13 +278,11 @@ Section Concrete.
   (* N.B. the comment above the function means "the entire range of addresses
      has one consistent mode" and not "the range of addresses has the same
      mode as is indicated by the pointer passed in". *)
-  (* N.B. instead of operating on a passed-in reference and returning a boolean
-     saying whether it's valid, we will instead return an [option] type. *)
   Definition mm_vm_get_mode
              (s : concrete_state)
              (t : ptable_pointer)
-             (begin end_ : ipaddr) : option mode :=
-    None. (* TODO *)
+             (begin end_ : ipaddr) : bool * mode :=
+    (false, 0%N). (* TODO *)
 
   (*
     /**
@@ -305,8 +301,8 @@ Section Concrete.
              (begin : physical_addr)
              (end_ : physical_addr)
              (mode : mode)
-             (ppool : mpool) : option (concrete_state * mpool) :=
-    None. (* TODO *)
+             (ppool : mpool) : (bool * concrete_state * mpool) :=
+    (false, s, ppool).
 
   Definition mpool_fini (s : concrete_state) (ppool : mpool)
     : concrete_state := s. (* TODO *)
@@ -325,9 +321,8 @@ Section Concrete.
              (s : concrete_state)
              (begin : physical_addr)
              (end_ : physical_addr)
-             (ppool : mpool) : option (concrete_state * mpool) :=
-
-    None. (* TODO *)
+             (ppool : mpool) : bool * concrete_state * mpool :=
+    (false, s, ppool). (* TODO *)
 
   (*
   int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
@@ -448,8 +443,8 @@ Section Concrete.
              }
              *)
             match mm_vm_get_mode state from.(vm_root_ptable) begin end_ with
-            | None => FAIL
-            | Some orig_from_mode =>
+            | (false, _) => FAIL
+            | (true, orig_from_mode) =>
               (*
                 /*
                 * Ensure the memory range is valid for the sender. If it isn't, the
@@ -490,8 +485,8 @@ Section Concrete.
                            end)
                           || (match mm_vm_get_mode
                                       state to.(vm_root_ptable) begin end_ with
-                              | None => false
-                              | Some orig_to_mode =>
+                              | (false, _) => false
+                              | (true, orig_to_mode) =>
                                 (orig_to_mode & MM_MODE_UNOWNED)%N
                               end)))%bool
                 then FAIL (* first failure case *)
@@ -525,22 +520,22 @@ Section Concrete.
                                              pa_end
                                              from_mode
                                              local_page_pool with
-                    | None => FAIL
-                    | Some (new_state, new_local_page_pool) =>
+                    | (false, new_state, new_local_page_pool) => FAIL
+                    | (true, new_state, new_local_page_pool) =>
                       let state := new_state in
                       let local_page_pool := new_local_page_pool in
-                    (*
+                      (*
                       /* Clear the memory so no VM or device can see the previous contents. */
                       if (!api_clear_memory(pa_begin, pa_end, &local_page_pool)) {
                               goto fail_return_to_sender;
                       }
-                     *)
+                       *)
                       match api_clear_memory state
                                              pa_begin
                                              pa_end
                                              local_page_pool with
-                      | None => FAIL
-                      | Some (new_state, new_local_page_pool) =>
+                      | (false, new_state, new_local_page_pool) => FAIL
+                      | (true, new_state, new_local_page_pool) =>
                         let state := new_state in
                         let local_page_pool := new_local_page_pool in
                         
@@ -560,14 +555,14 @@ Section Concrete.
                                                  pa_end
                                                  to_mode
                                                  local_page_pool with
-                        | None =>
+                        | (false, new_state, new_local_page_pool) =>
                           (* TODO: the function needs to return some
                           state even if it fails, and we need to do
                           the defrag here and do the other extra
                           remapping steps in other failure cases. *)
                           FAIL
-                      | Some (new_state, new_local_page_pool) =>
-                        let state := new_state in
+                        | (true, new_state, new_local_page_pool) =>
+                          let state := new_state in
                         let local_page_pool := new_local_page_pool in
                         (*
                                   ret = 0;
@@ -592,5 +587,4 @@ End Concrete.
 
   (* TODO: fix failure cases *)
   (* TODO: nicer way of failing? *)
-  (* TODO: fix option functions so they always change the state and do return a bool *)
   (* TODO: separate different parts (mm, mpool, api, etc) into different files *)
