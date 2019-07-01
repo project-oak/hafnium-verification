@@ -111,7 +111,10 @@ Section Concrete.
       pa_offset : nat;
     }.
 
-  (* TODO: intermediate physical addresses, change stuff to use them *)
+  Axiom ipaddr : Type. (* intermediate physical address *)
+  Axiom ipa_add : ipaddr -> nat -> ipaddr.
+  Axiom ipa_addr : ipaddr -> nat. (* absolute address *)
+  Axiom pa_from_ipa : ipaddr -> physical_addr.
 
   Fixpoint page_lookup'
            (s : concrete_state)
@@ -208,7 +211,8 @@ Section Concrete.
   | INVALID
   .
 
-  Definition is_aligned (pa : physical_addr) := pa.(pa_offset) =? 0.
+  Definition is_aligned (absolute_addr page_size : nat ) :=
+    absolute_addr mod page_size =? 0.
 
   (*
     static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr)
@@ -281,7 +285,7 @@ Section Concrete.
   Definition mm_vm_get_mode
              (s : concrete_state)
              (t : ptable_pointer)
-             (begin end_ : physical_addr) : option mode :=
+             (begin end_ : ipaddr) : option mode :=
     None. (* TODO *)
 
   (*
@@ -310,9 +314,6 @@ Section Concrete.
   
   Local Notation "! x" := (negb x) (at level 100) : bool_scope.
 
-  (* TODO *)
-  Axiom ipa_add : physical_addr -> nat -> physical_addr.
-
   (*
     /**
     * Clears a region of physical memory by overwriting it with zeros. The data is
@@ -336,7 +337,7 @@ Section Concrete.
              {cp : concrete_params}
              (state : concrete_state)
              (vm_id : nat)
-             (addr : physical_addr)
+             (addr : ipaddr)
              (size : nat)
              (share : hf_share)
              (current : vm)
@@ -381,7 +382,8 @@ Section Concrete.
                   return -1;
           }
         *)
-        if (!is_aligned begin || !is_aligned end_)%bool
+        if (!is_aligned (ipa_addr begin) PAGE_SIZE
+            || !is_aligned (ipa_addr end_) PAGE_SIZE)%bool
         then (false, state)
         else
           (*
@@ -504,8 +506,8 @@ Section Concrete.
                       pa_begin = pa_from_ipa(begin);
                       pa_end = pa_from_ipa(end);
                      *)
-                    let pa_begin := begin in (* TODO: should not be identity *)
-                    let pa_end := end_ in (* TODO: should not be identity *)
+                    let pa_begin := pa_from_ipa begin in
+                    let pa_end := pa_from_ipa end_ in
 
                     (*
                       /*
@@ -591,5 +593,4 @@ End Concrete.
   (* TODO: fix failure cases *)
   (* TODO: nicer way of failing? *)
   (* TODO: fix option functions so they always change the state and do return a bool *)
-  (* TODO: intermediate physical addresses *)
   (* TODO: separate different parts (mm, mpool, api, etc) into different files *)
