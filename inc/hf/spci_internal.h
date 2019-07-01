@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include "vmapi/hf/spci.h"
-
 #define SPCI_VERSION_MAJOR 0x0
 #define SPCI_VERSION_MINOR 0x9
 
