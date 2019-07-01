@@ -26,8 +26,8 @@ import sys
 def Main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--directory", required=True)
-    parser.add_argument("--out_file", required=True)
-    parser.add_argument("--copy_out_file", required=True)
+    parser.add_argument("--copy_out_file", nargs=2,
+                        help="Copy file after building. Takes two params: <src> <dest>")
     args, make_args = parser.parse_known_args()
 
     os.chdir(args.directory)
@@ -36,7 +36,8 @@ def Main():
     if status != 0:
         return status
 
-    shutil.copyfile(args.out_file, args.copy_out_file)
+    if args.copy_out_file is not None:
+        shutil.copyfile(args.copy_out_file[0], args.copy_out_file[1])
     return 0
 
 
