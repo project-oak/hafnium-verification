@@ -597,6 +597,134 @@ static int64_t api_waiter_result(struct vm_locked locked_vm,
 }
 
 /**
+ * Configures the hypervisor's stage-1 view of the send and receive pages. The
+ * stage-1 page tables must be locked so memory cannot be taken by another core
+ * which could result in this transaction being unable to roll back in the case
+ * of an error.
+ */
+static bool api_vm_configure_stage1(struct vm_locked vm_locked,
+				    paddr_t pa_send_begin, paddr_t pa_send_end,
+				    paddr_t pa_recv_begin, paddr_t pa_recv_end,
+				    struct mpool *local_page_pool)
+{
+	bool ret;
+	struct mm_stage1_locked mm_stage1_locked = mm_lock_stage1();
+
+	/* Map the send page as read-only in the hypervisor address space. */
+	vm_locked.vm->mailbox.send =
+		mm_identity_map(mm_stage1_locked, pa_send_begin, pa_send_end,
+				MM_MODE_R, local_page_pool);
+	if (!vm_locked.vm->mailbox.send) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(mm_stage1_locked, local_page_pool);
+		goto fail;
+	}
+
+	/*
+	 * Map the receive page as writable in the hypervisor address space. On
+	 * failure, unmap the send page before returning.
+	 */
+	vm_locked.vm->mailbox.recv =
+		mm_identity_map(mm_stage1_locked, pa_recv_begin, pa_recv_end,
+				MM_MODE_W, local_page_pool);
+	if (!vm_locked.vm->mailbox.recv) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(mm_stage1_locked, local_page_pool);
+		goto fail_undo_send;
+	}
+
+	ret = true;
+	goto out;
+
+	/*
+	 * The following mappings will not require more memory than is available
+	 * in the local pool.
+	 */
+fail_undo_send:
+	vm_locked.vm->mailbox.send = NULL;
+	mm_unmap(mm_stage1_locked, pa_send_begin, pa_send_end, local_page_pool);
+
+fail:
+	ret = false;
+
+out:
+	mm_unlock_stage1(&mm_stage1_locked);
+
+	return ret;
+}
+
+/**
+ * Configures the send and receive pages in the VM stage-2 and hypervisor
+ * stage-1 page tables. Locking of the page tables combined with a local memory
+ * pool ensures there will always be enough memory to recover from any errors
+ * that arise.
+ */
+static bool api_vm_configure_pages(struct vm_locked vm_locked,
+				   paddr_t pa_send_begin, paddr_t pa_send_end,
+				   int orig_send_mode, paddr_t pa_recv_begin,
+				   paddr_t pa_recv_end, int orig_recv_mode)
+{
+	bool ret;
+	struct mpool local_page_pool;
+
+	/*
+	 * Create a local pool so any freed memory can't be used by another
+	 * thread. This is to ensure the original mapping can be restored if any
+	 * stage of the process fails.
+	 */
+	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
+
+	/* Take memory ownership away from the VM and mark as shared. */
+	if (!mm_vm_identity_map(
+		    &vm_locked.vm->ptable, pa_send_begin, pa_send_end,
+		    MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R | MM_MODE_W,
+		    NULL, &local_page_pool)) {
+		goto fail;
+	}
+
+	if (!mm_vm_identity_map(&vm_locked.vm->ptable, pa_recv_begin,
+				pa_recv_end,
+				MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R,
+				NULL, &local_page_pool)) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_vm_defrag(&vm_locked.vm->ptable, &local_page_pool);
+		goto fail_undo_send;
+	}
+
+	if (!api_vm_configure_stage1(vm_locked, pa_send_begin, pa_send_end,
+				     pa_recv_begin, pa_recv_end,
+				     &local_page_pool)) {
+		goto fail_undo_send_and_recv;
+	}
+
+	ret = true;
+	goto out;
+
+	/*
+	 * The following mappings will not require more memory than is available
+	 * in the local pool.
+	 */
+fail_undo_send_and_recv:
+	mm_vm_identity_map(&vm_locked.vm->ptable, pa_recv_begin, pa_recv_end,
+			   orig_recv_mode, NULL, &local_page_pool);
+
+fail_undo_send:
+	mm_vm_identity_map(&vm_locked.vm->ptable, pa_send_begin, pa_send_end,
+			   orig_send_mode, NULL, &local_page_pool);
+
+fail:
+	ret = false;
+
+out:
+	mpool_fini(&local_page_pool);
+
+	return ret;
+}
+
+/**
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
  *
@@ -611,15 +739,13 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 			 struct vcpu **next)
 {
 	struct vm *vm = current->vm;
-	struct vm_locked locked;
-	struct mm_stage1_locked mm_stage1_locked;
+	struct vm_locked vm_locked;
 	paddr_t pa_send_begin;
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
 	paddr_t pa_recv_end;
 	int orig_send_mode;
 	int orig_recv_mode;
-	struct mpool local_page_pool;
 	int64_t ret;
 
 	/* Fail if addresses are not page-aligned. */
@@ -648,8 +774,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 	 * TODO: the scope of the can be reduced but will require restructuring
 	 *       to keep a single unlock point.
 	 */
-	locked = vm_lock(vm);
-	mm_stage1_locked = mm_lock_stage1();
+	vm_locked = vm_lock(vm);
 
 	/* We only allow these to be setup once. */
 	if (vm->mailbox.send || vm->mailbox.recv) {
@@ -675,85 +800,21 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 		goto fail;
 	}
 
-	/*
-	 * Create a local pool so any freed memory can't be used by another
-	 * thread. This is to ensure the original mapping can be restored if any
-	 * stage of the process fails.
-	 */
-	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
-
-	/* Take memory ownership away from the VM and mark as shared. */
-	if (!mm_vm_identity_map(
-		    &vm->ptable, pa_send_begin, pa_send_end,
-		    MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R | MM_MODE_W,
-		    NULL, &local_page_pool)) {
-		goto fail_free_pool;
-	}
-
-	if (!mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
-				MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R,
-				NULL, &local_page_pool)) {
-		/* TODO: partial defrag of failed range. */
-		/* Recover any memory consumed in failed mapping. */
-		mm_vm_defrag(&vm->ptable, &local_page_pool);
-		goto fail_undo_send;
-	}
-
-	/* Map the send page as read-only in the hypervisor address space. */
-	vm->mailbox.send =
-		mm_identity_map(mm_stage1_locked, pa_send_begin, pa_send_end,
-				MM_MODE_R, &local_page_pool);
-	if (!vm->mailbox.send) {
-		/* TODO: partial defrag of failed range. */
-		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(mm_stage1_locked, &local_page_pool);
-		goto fail_undo_send_and_recv;
-	}
-
-	/*
-	 * Map the receive page as writable in the hypervisor address space. On
-	 * failure, unmap the send page before returning.
-	 */
-	vm->mailbox.recv =
-		mm_identity_map(mm_stage1_locked, pa_recv_begin, pa_recv_end,
-				MM_MODE_W, &local_page_pool);
-	if (!vm->mailbox.recv) {
-		/* TODO: partial defrag of failed range. */
-		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(mm_stage1_locked, &local_page_pool);
-		goto fail_undo_all;
+	if (!api_vm_configure_pages(vm_locked, pa_send_begin, pa_send_end,
+				    orig_send_mode, pa_recv_begin, pa_recv_end,
+				    orig_recv_mode)) {
+		goto fail;
 	}
 
 	/* Tell caller about waiters, if any. */
-	ret = api_waiter_result(locked, current, next);
+	ret = api_waiter_result(vm_locked, current, next);
 	goto exit;
-
-	/*
-	 * The following mappings will not require more memory than is available
-	 * in the local pool.
-	 */
-fail_undo_all:
-	vm->mailbox.send = NULL;
-	mm_unmap(mm_stage1_locked, pa_send_begin, pa_send_end,
-		 &local_page_pool);
-
-fail_undo_send_and_recv:
-	mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
-			   orig_recv_mode, NULL, &local_page_pool);
-
-fail_undo_send:
-	mm_vm_identity_map(&vm->ptable, pa_send_begin, pa_send_end,
-			   orig_send_mode, NULL, &local_page_pool);
-
-fail_free_pool:
-	mpool_fini(&local_page_pool);
 
 fail:
 	ret = -1;
 
 exit:
-	mm_unlock_stage1(&mm_stage1_locked);
-	vm_unlock(&locked);
+	vm_unlock(&vm_locked);
 
 	return ret;
 }
