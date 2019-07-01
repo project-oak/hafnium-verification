@@ -1,7 +1,7 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Lists.List.
 Require Import Coq.micromega.Lia.
-Require Import Hafnium.Tactics.
+Require Import Hafnium.Util.Tactics.
 Import ListNotations.
 
 (* perform inversion on list-based inductives in hypotheses *)
