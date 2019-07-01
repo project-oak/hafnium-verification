@@ -27,14 +27,16 @@ executable("test_binary") {
 
 linux_initrd("linux_test_initrd") {
   testonly = true
+
+  # Always use the aarch64_linux_clang toolchain to build test_binary
+  test_binary_target = ":test_binary(//build/toolchain:aarch64_linux_clang)"
   sources = [
-    get_label_info(":test_binary(//build/toolchain:aarch64_linux_clang)",
-                   "root_out_dir") + "/test_binary",
-    get_label_info("//driver:linux", "target_out_dir") + "/linux/hafnium.ko",
+    get_label_info(test_binary_target, "root_out_dir") + "/test_binary",
+    get_label_info("//driver:linux", "target_out_dir") + "/hafnium.ko",
   ]
   deps = [
-    ":test_binary(//build/toolchain:aarch64_linux_clang)",
     "//driver:linux",
+    test_binary_target,
   ]
 }
 
