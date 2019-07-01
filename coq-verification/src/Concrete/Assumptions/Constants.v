@@ -8,6 +8,9 @@ Import ListNotations.
 (* PAGE_SIZE is a natural number *)
 Axiom PAGE_SIZE : nat.
 
+(* PTEs per page -- natural number *)
+Axiom MM_PTE_PER_PAGE : nat.
+
 (* mm_mode flags are all natural numbers*)
 (* N.B. : mode flags are taken as *indices* in the binary number; this makes it
    easier to state that they are all distinct and makes it true by construction

@@ -1,4 +1,5 @@
 Require Import Coq.NArith.BinNat.
+Require Import Coq.Lists.List.
 
 (*** This file details how to represent some of the types in the source code
      using Coq types. ***)
@@ -17,3 +18,6 @@ Definition attributes := N.
 
 (* a page table entry (uint64_t) is represented by a binary natural number *)
 Definition pte_t := N.
+
+(* page tables are a list of PTEs *)
+Definition page_table := list pte_t.
