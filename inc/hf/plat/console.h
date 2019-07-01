@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "hf/mm.h"
 #include "hf/mpool.h"
 #include "hf/vm.h"
 
@@ -23,7 +24,8 @@
 void plat_console_init(void);
 
 /** Initialises any memory mappings that the console driver needs. */
-void plat_console_mm_init(struct mpool *ppool);
+void plat_console_mm_init(struct mm_stage1_locked stage1_locked,
+			  struct mpool *ppool);
 
 /** Initialises any per-VM memory mappings that the console driver needs. */
 void plat_console_vm_mm_init(struct vm *vm, struct mpool *ppool);

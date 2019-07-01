@@ -25,8 +25,10 @@
 #include "hf/mm.h"
 #include "hf/mpool.h"
 
-bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
+bool load_primary(struct mm_stage1_locked stage1_locked,
+		  const struct memiter *cpio, uintreg_t kernel_arg,
 		  struct memiter *initrd, struct mpool *ppool);
-bool load_secondary(const struct memiter *cpio,
+bool load_secondary(struct mm_stage1_locked stage1_locked,
+		    const struct memiter *cpio,
 		    const struct boot_params *params,
 		    struct boot_params_update *update, struct mpool *ppool);
