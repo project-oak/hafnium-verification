@@ -1,7 +1,7 @@
 Require Import Coq.Lists.List.
 Require Import Coq.Arith.PeanoNat.
-Require Import Hafnium.ListUtil.
-Require Import Hafnium.Tactics.
+Require Import Hafnium.Util.List.
+Require Import Hafnium.Util.Tactics.
 Import ListNotations.
 
 (*** High-level model : describes the abstract state of the Hafnium system ***)
