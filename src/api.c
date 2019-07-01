@@ -35,10 +35,10 @@
  * acquisition of locks held concurrently by the same physical CPU. Our current
  * ordering requirements are as follows:
  *
- * vm::lock -> vcpu::lock
+ * vm::stage1_locked -> vcpu::stage1_locked -> mm_stage1_lock
  *
- * Locks of the same kind require the lock of lowest address to be locked first,
- * see `sl_lock_both()`.
+ * Locks of the same kind require the stage1_locked of lowest address to be
+ * locked first, see `sl_lock_both()`.
  */
 
 static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
@@ -354,13 +354,13 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	/*
 	 * Wait until the registers become available. All locks must be
 	 * released between iterations of this loop to avoid potential deadlocks
-	 * if, on any path, a lock needs to be taken after taking the decision
-	 * to switch context but before the registers have been saved.
+	 * if, on any path, a stage1_locked needs to be taken after taking the
+	 * decision to switch context but before the registers have been saved.
 	 *
-	 * The VM lock is not needed in the common case so it must only be taken
-	 * when it is going to be needed. This ensures there are no inter-vCPU
-	 * dependencies in the common run case meaning the sensitive context
-	 * switch performance is consistent.
+	 * The VM stage1_locked is not needed in the common case so it must only
+	 * be taken when it is going to be needed. This ensures there are no
+	 * inter-vCPU dependencies in the common run case meaning the sensitive
+	 * context switch performance is consistent.
 	 */
 	for (;;) {
 		sl_lock(&vcpu->lock);
@@ -612,6 +612,7 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 {
 	struct vm *vm = current->vm;
 	struct vm_locked locked;
+	struct mm_stage1_locked mm_stage1_locked;
 	paddr_t pa_send_begin;
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
@@ -639,7 +640,16 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 		return -1;
 	}
 
+	/*
+	 * The hypervisor's memory map must be locked for the duration of this
+	 * operation to ensure there will be sufficient memory to recover from
+	 * any failures.
+	 *
+	 * TODO: the scope of the can be reduced but will require restructuring
+	 *       to keep a single unlock point.
+	 */
 	locked = vm_lock(vm);
+	mm_stage1_locked = mm_lock_stage1();
 
 	/* We only allow these to be setup once. */
 	if (vm->mailbox.send || vm->mailbox.recv) {
@@ -690,12 +700,13 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 	}
 
 	/* Map the send page as read-only in the hypervisor address space. */
-	vm->mailbox.send = mm_identity_map(pa_send_begin, pa_send_end,
-					   MM_MODE_R, &local_page_pool);
+	vm->mailbox.send =
+		mm_identity_map(mm_stage1_locked, pa_send_begin, pa_send_end,
+				MM_MODE_R, &local_page_pool);
 	if (!vm->mailbox.send) {
 		/* TODO: partial defrag of failed range. */
 		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(&local_page_pool);
+		mm_defrag(mm_stage1_locked, &local_page_pool);
 		goto fail_undo_send_and_recv;
 	}
 
@@ -703,12 +714,13 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 	 * Map the receive page as writable in the hypervisor address space. On
 	 * failure, unmap the send page before returning.
 	 */
-	vm->mailbox.recv = mm_identity_map(pa_recv_begin, pa_recv_end,
-					   MM_MODE_W, &local_page_pool);
+	vm->mailbox.recv =
+		mm_identity_map(mm_stage1_locked, pa_recv_begin, pa_recv_end,
+				MM_MODE_W, &local_page_pool);
 	if (!vm->mailbox.recv) {
 		/* TODO: partial defrag of failed range. */
 		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(&local_page_pool);
+		mm_defrag(mm_stage1_locked, &local_page_pool);
 		goto fail_undo_all;
 	}
 
@@ -722,7 +734,8 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 	 */
 fail_undo_all:
 	vm->mailbox.send = NULL;
-	mm_unmap(pa_send_begin, pa_send_end, &local_page_pool);
+	mm_unmap(mm_stage1_locked, pa_send_begin, pa_send_end,
+		 &local_page_pool);
 
 fail_undo_send_and_recv:
 	mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
@@ -739,6 +752,7 @@ fail:
 	ret = -1;
 
 exit:
+	mm_unlock_stage1(&mm_stage1_locked);
 	vm_unlock(&locked);
 
 	return ret;
@@ -1203,21 +1217,33 @@ static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
 	 *       the changes to stage-1 tables and will allow only local
 	 *       invalidation.
 	 */
-	void *ptr = mm_identity_map(begin, end, MM_MODE_W, ppool);
+	bool ret;
+	struct mm_stage1_locked stage1_locked = mm_lock_stage1();
+	void *ptr =
+		mm_identity_map(stage1_locked, begin, end, MM_MODE_W, ppool);
 	size_t size = pa_difference(begin, end);
 
 	if (!ptr) {
 		/* TODO: partial defrag of failed range. */
 		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(ppool);
-		return false;
+		mm_defrag(stage1_locked, ppool);
+		goto fail;
 	}
 
 	memset_s(ptr, size, 0, size);
 	arch_mm_write_back_dcache(ptr, size);
-	mm_unmap(begin, end, ppool);
+	mm_unmap(stage1_locked, begin, end, ppool);
 
-	return true;
+	ret = true;
+	goto out;
+
+fail:
+	ret = false;
+
+out:
+	mm_unlock_stage1(&stage1_locked);
+
+	return ret;
 }
 
 /**

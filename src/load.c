@@ -39,13 +39,13 @@
  * disabled. When switching to the partitions, the caching is initially disabled
  * so the data must be available without the cache.
  */
-static bool copy_to_unmapped(paddr_t to, const void *from, size_t size,
-			     struct mpool *ppool)
+static bool copy_to_unmapped(struct mm_stage1_locked stage1_locked, paddr_t to,
+			     const void *from, size_t size, struct mpool *ppool)
 {
 	paddr_t to_end = pa_add(to, size);
 	void *ptr;
 
-	ptr = mm_identity_map(to, to_end, MM_MODE_W, ppool);
+	ptr = mm_identity_map(stage1_locked, to, to_end, MM_MODE_W, ppool);
 	if (!ptr) {
 		return false;
 	}
@@ -53,7 +53,7 @@ static bool copy_to_unmapped(paddr_t to, const void *from, size_t size,
 	memcpy_s(ptr, size, from, size);
 	arch_mm_write_back_dcache(ptr, size);
 
-	mm_unmap(to, to_end, ppool);
+	mm_unmap(stage1_locked, to, to_end, ppool);
 
 	return true;
 }
@@ -107,7 +107,8 @@ static bool find_file(const struct memiter *cpio, const char *name,
 /**
  * Loads the primary VM.
  */
-bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
+bool load_primary(struct mm_stage1_locked stage1_locked,
+		  const struct memiter *cpio, uintreg_t kernel_arg,
 		  struct memiter *initrd, struct mpool *ppool)
 {
 	struct memiter it;
@@ -119,8 +120,8 @@ bool load_primary(const struct memiter *cpio, uintreg_t kernel_arg,
 	}
 
 	dlog("Copying primary to %p\n", pa_addr(primary_begin));
-	if (!copy_to_unmapped(primary_begin, it.next, it.limit - it.next,
-			      ppool)) {
+	if (!copy_to_unmapped(stage1_locked, primary_begin, it.next,
+			      it.limit - it.next, ppool)) {
 		dlog("Unable to relocate kernel for primary vm.\n");
 		return false;
 	}
@@ -247,7 +248,8 @@ static bool update_reserved_ranges(struct boot_params_update *update,
  * Loads all secondary VMs into the memory ranges from the given params.
  * Memory reserved for the VMs is added to the `reserved_ranges` of `update`.
  */
-bool load_secondary(const struct memiter *cpio,
+bool load_secondary(struct mm_stage1_locked stage1_locked,
+		    const struct memiter *cpio,
 		    const struct boot_params *params,
 		    struct boot_params_update *update, struct mpool *ppool)
 {
@@ -317,8 +319,9 @@ bool load_secondary(const struct memiter *cpio,
 			continue;
 		}
 
-		if (!copy_to_unmapped(secondary_mem_begin, kernel.next,
-				      kernel.limit - kernel.next, ppool)) {
+		if (!copy_to_unmapped(stage1_locked, secondary_mem_begin,
+				      kernel.next, kernel.limit - kernel.next,
+				      ppool)) {
 			dlog("Unable to copy kernel\n");
 			continue;
 		}

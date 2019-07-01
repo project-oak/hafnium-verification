@@ -55,6 +55,7 @@ static_assert(
 /* clang-format on */
 
 static struct mm_ptable ptable;
+static struct spinlock ptable_lock;
 
 static bool mm_stage2_invalidate = false;
 
@@ -861,14 +862,33 @@ bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
 	return ret;
 }
 
+static struct mm_stage1_locked mm_stage1_lock_unsafe(void)
+{
+	return (struct mm_stage1_locked){.ptable = &ptable};
+}
+
+struct mm_stage1_locked mm_lock_stage1(void)
+{
+	sl_lock(&ptable_lock);
+	return mm_stage1_lock_unsafe();
+}
+
+void mm_unlock_stage1(struct mm_stage1_locked *lock)
+{
+	assert(lock->ptable == &ptable);
+	sl_unlock(&ptable_lock);
+	lock->ptable = NULL;
+}
+
 /**
  * Updates the hypervisor page table such that the given physical address range
  * is mapped into the address space at the corresponding address range in the
  * architecture-agnostic mode provided.
  */
-void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
+void *mm_identity_map(struct mm_stage1_locked stage1_locked, paddr_t begin,
+		      paddr_t end, int mode, struct mpool *ppool)
 {
-	if (mm_ptable_identity_update(&ptable, begin, end,
+	if (mm_ptable_identity_update(stage1_locked.ptable, begin, end,
 				      arch_mm_mode_to_stage1_attrs(mode),
 				      MM_FLAG_STAGE1, ppool)) {
 		return ptr_from_va(va_from_pa(begin));
@@ -881,13 +901,22 @@ void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
  * Updates the hypervisor table such that the given physical address range is
  * not mapped in the address space.
  */
-bool mm_unmap(paddr_t begin, paddr_t end, struct mpool *ppool)
+bool mm_unmap(struct mm_stage1_locked stage1_locked, paddr_t begin, paddr_t end,
+	      struct mpool *ppool)
 {
 	return mm_ptable_identity_update(
-		&ptable, begin, end,
+		stage1_locked.ptable, begin, end,
 		arch_mm_mode_to_stage1_attrs(MM_MODE_UNOWNED | MM_MODE_INVALID |
 					     MM_MODE_SHARED),
 		MM_FLAG_STAGE1 | MM_FLAG_UNMAP, ppool);
+}
+
+/**
+ * Defragments the hypervisor page table.
+ */
+void mm_defrag(struct mm_stage1_locked stage1_locked, struct mpool *ppool)
+{
+	mm_ptable_defrag(stage1_locked.ptable, MM_FLAG_STAGE1, ppool);
 }
 
 /**
@@ -895,6 +924,9 @@ bool mm_unmap(paddr_t begin, paddr_t end, struct mpool *ppool)
  */
 bool mm_init(struct mpool *ppool)
 {
+	/* Locking is not enabled yet so fake it, */
+	struct mm_stage1_locked stage1_locked = mm_stage1_lock_unsafe();
+
 	dlog("text: 0x%x - 0x%x\n", pa_addr(layout_text_begin()),
 	     pa_addr(layout_text_end()));
 	dlog("rodata: 0x%x - 0x%x\n", pa_addr(layout_rodata_begin()),
@@ -908,16 +940,16 @@ bool mm_init(struct mpool *ppool)
 	}
 
 	/* Let console driver map pages for itself. */
-	plat_console_mm_init(ppool);
+	plat_console_mm_init(stage1_locked, ppool);
 
 	/* Map each section. */
-	mm_identity_map(layout_text_begin(), layout_text_end(), MM_MODE_X,
-			ppool);
+	mm_identity_map(stage1_locked, layout_text_begin(), layout_text_end(),
+			MM_MODE_X, ppool);
 
-	mm_identity_map(layout_rodata_begin(), layout_rodata_end(), MM_MODE_R,
-			ppool);
+	mm_identity_map(stage1_locked, layout_rodata_begin(),
+			layout_rodata_end(), MM_MODE_R, ppool);
 
-	mm_identity_map(layout_data_begin(), layout_data_end(),
+	mm_identity_map(stage1_locked, layout_data_begin(), layout_data_end(),
 			MM_MODE_R | MM_MODE_W, ppool);
 
 	return arch_mm_init(ptable.root, true);
@@ -926,12 +958,4 @@ bool mm_init(struct mpool *ppool)
 bool mm_cpu_init(void)
 {
 	return arch_mm_init(ptable.root, false);
-}
-
-/**
- * Defragments the hypervisor page table.
- */
-void mm_defrag(struct mpool *ppool)
-{
-	mm_ptable_defrag(&ptable, MM_FLAG_STAGE1, ppool);
 }

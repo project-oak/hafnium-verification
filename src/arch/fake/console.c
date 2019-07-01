@@ -25,7 +25,8 @@ void plat_console_init(void)
 {
 }
 
-void plat_console_mm_init(struct mpool *ppool)
+void plat_console_mm_init(struct mm_stage1_locked stage1_locked,
+			  struct mpool *ppool)
 {
 }
 
