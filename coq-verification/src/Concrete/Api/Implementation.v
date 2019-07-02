@@ -307,8 +307,9 @@ Definition api_share_memory
                                                pa_end
                                                to_mode
                                                local_page_pool with
-                      | (false, new_state, new_local_page_pool) =>
-                        (* TODO: defrag *)
+                      | (false, state, local_page_pool) =>
+                        let '(_, state, local_page_pool) :=
+                            mm_vm_defrag state from.(vm_root_ptable) local_page_pool in
                         goto_fail_return_to_sender
                           new_state
                           new_local_page_pool
