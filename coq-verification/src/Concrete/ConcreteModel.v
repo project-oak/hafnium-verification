@@ -90,9 +90,6 @@ Section Concrete.
              (ppool : mpool) : (bool * concrete_state * mpool) :=
     (false, s, ppool).
 
-  Definition mpool_fini (s : concrete_state) (ppool : mpool)
-    : concrete_state := s. (* TODO *)
-
   (*
     /**
     * Clears a region of physical memory by overwriting it with zeros. The data is
@@ -346,8 +343,8 @@ Section Concrete.
                           FAIL
                         | (true, new_state, new_local_page_pool) =>
                           let state := new_state in
-                        let local_page_pool := new_local_page_pool in
-                        (*
+                          let local_page_pool := new_local_page_pool in
+                          (*
                                   ret = 0;
                                   goto out;
                           out:
@@ -355,16 +352,24 @@ Section Concrete.
                                   sl_unlock(&to->lock);
                                   mpool_fini(&local_page_pool);
                                   return ret;
-                         *)
-                        let state := mpool_fini state local_page_pool in
-                        (true, state)
+                           *)
+                          match mpool_fini local_page_pool with
+                          | Some new_api_page_pool =>
+                            (* update api pool and return success + new state *)
+                            let state :=
+                                {|
+                                  ptable_lookup := state.(ptable_lookup);
+                                  api_page_pool := new_api_page_pool;
+                                |} in
+                            (true, state)
+                          | None => FAIL
+                          end
                         end
                       end
                     end
-              
             end
           end
-  end.
+      end.
 
 End Concrete.
 
