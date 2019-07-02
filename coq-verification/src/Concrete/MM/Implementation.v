@@ -101,12 +101,15 @@ Definition mm_vm_defrag
   */
   void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
  *)
+(* N.B. the original code returns a [void *] that is NULL if the operation
+   failed; we will return a boolean instead, since we don't currently ever do
+   anything with the pointer except check if it's NULL. *)
 Definition mm_identity_map
            (s : concrete_state)
            (begin end_ : paddr_t)
            (mode : mode_t)
-           (ppool : mpool) : (concrete_state * mpool) :=
-  (s, ppool). (* TODO *)
+           (ppool : mpool) : (bool * concrete_state * mpool) :=
+  (false, s, ppool). (* TODO *)
 
 (*
   /**
@@ -118,5 +121,15 @@ Definition mm_identity_map
 Definition mm_unmap (s : concrete_state) (begin end_ : paddr_t) (ppool : mpool)
   : (bool * concrete_state * mpool) :=
   (false, s, ppool). (* TODO *)
+
+(*
+/**
+ * Defragments the hypervisor page table.
+ */
+void mm_defrag(struct mpool *ppool)
+ *)
+Definition mm_defrag (s : concrete_state) (ppool : mpool)
+  : (concrete_state * mpool) :=
+  (s, ppool). (* TODO *)
 
 (* TODO: deindent the C code in this file *)
