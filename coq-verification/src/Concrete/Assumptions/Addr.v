@@ -17,4 +17,6 @@ Axiom ipa_add : ipaddr_t -> size_t -> ipaddr_t.
 
 Axiom pa_from_ipa : ipaddr_t -> paddr_t.
 
+Axiom is_aligned : uintpaddr_t -> nat (* PAGE_SIZE *) -> bool.
+
 (* TODO: add axioms for correctness properties, as needed *)

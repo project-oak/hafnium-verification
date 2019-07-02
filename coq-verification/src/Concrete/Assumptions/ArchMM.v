@@ -27,3 +27,7 @@ Axiom arch_mm_pte_is_table : pte_t -> level -> bool.
 Axiom arch_mm_table_from_pte : pte_t -> level -> paddr_t.
 
 Axiom arch_mm_pte_attrs : pte_t -> level -> attributes.
+
+Axiom arch_mm_stage2_attrs_to_mode : attributes -> mode_t.
+
+Axiom arch_mm_stage1_attrs_to_mode : attributes -> mode_t.
