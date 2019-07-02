@@ -23,11 +23,7 @@ Section Concrete.
   .
 
   Definition ptable_addr_t : Type := uintvaddr_t.
-
-  (* boilerplate for readability *)
   Bind Scope N_scope with ptable_addr_t.
-  Local Coercion N.of_nat : nat >-> N. (* change nat to N automatically *)
-  Set Printing Coercions. (* when printing, show N.of_nat explicitly *)
 
   (*
     static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr)
