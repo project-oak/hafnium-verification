@@ -3,13 +3,14 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.NArith.BinNat.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.ArchMM.
 Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
 Require Import Hafnium.Concrete.Assumptions.PageTables.
-Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.MM.Datatypes.
 
 (*** This file defines the state type for the concrete model and relates it to
      the abstract state. ***)

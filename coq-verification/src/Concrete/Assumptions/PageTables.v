@@ -4,6 +4,7 @@ Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.ArchMM.
 Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Datatypes.
+Require Import Hafnium.Concrete.MM.Datatypes.
 
 (*** This file encodes in Coq how we expect page table lookups to work. It should
      be considered part of the TCB, because the proofs rely on this transcription

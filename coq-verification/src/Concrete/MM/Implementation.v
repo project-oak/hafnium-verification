@@ -14,14 +14,6 @@ Require Import Hafnium.Concrete.Assumptions.Mpool.
 Definition ptable_addr_t : Type := uintvaddr_t.
 Bind Scope N_scope with ptable_addr_t.
 
-(*
-struct mm_ptable {
-	/** Address of the root of the page table. */
-	paddr_t root;
-};
- *)
-Record mm_ptable := { root : paddr_t }.
-
 (* static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr) *)
 Definition mm_round_down_to_page (addr : ptable_addr_t) : ptable_addr_t :=
   (* return addr & ~((ptable_addr_t)(PAGE_SIZE - 1)); *)
