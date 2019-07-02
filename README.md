@@ -8,7 +8,7 @@ of Hafnium's security using formal verification.
 
 ## Prerequisite
 
-- Hafnium: https://https://hafnium.googlesource.com/hafnium
+- Hafnium: https://hafnium.googlesource.com/hafnium
 
 ## Disclaimer
 
