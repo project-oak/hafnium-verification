@@ -40,8 +40,50 @@ Definition api_share_memory
   (* returns success boolean and new state *)
   : bool * concrete_state :=
 
-  (* on failure, return "false" for success and old state *)
-  let FAIL := (false, state) in
+  (** first, we transcribe the goto locations so we can reuse them **)
+
+  (*
+    fail_return_to_sender:
+	mm_vm_identity_map(&from->ptable, pa_begin, pa_end, orig_from_mode,
+			   NULL, &local_page_pool);
+     fail:
+         ret = -1;
+     out:
+         sl_unlock(&from->lock);
+         sl_unlock(&to->lock);
+         mpool_fini(&local_page_pool);
+         return ret;
+   *)
+  let goto_out :=
+      (fun (state : concrete_state) (local_page_pool : mpool) (success : bool) =>
+         match mpool_fini local_page_pool with
+         | Some new_api_page_pool =>
+           (* update api pool and return success + new state *)
+           let state :=
+               {|
+                 ptable_lookup := state.(ptable_lookup);
+                 api_page_pool := new_api_page_pool;
+               |} in
+           (success, state)
+         | None => (success, state) (* this means there was no fallback pool *)
+         end) in
+
+  let goto_fail :=
+      (fun (state : concrete_state) (local_page_pool : mpool) =>
+         goto_out state local_page_pool false) in
+
+  let goto_fail_return_to_sender :=
+      (fun (state : concrete_state) (local_page_pool : mpool)
+           (from : vm) (pa_begin pa_end : paddr_t) (orig_from_mode : mode_t) =>
+         (* N.B. ignore the success boolean, as the code does *)
+         let '(_, state, local_page_pool) :=
+             mm_vm_identity_map state
+                                (from.(vm_root_ptable))
+                                pa_begin
+                                pa_end
+                                orig_from_mode
+                                local_page_pool in
+         goto_fail state local_page_pool) in
 
   (* struct vm *from = current->vm; *)
   let from := current in
@@ -53,7 +95,7 @@ Definition api_share_memory
     }
    *)
   if (vm_id =? from.(id))
-  then FAIL
+  then (false, state)
   else
     (*
       /* Ensure the target VM exists. */
@@ -63,7 +105,7 @@ Definition api_share_memory
       }
      *)
     match vm_find vm_id with
-    | None => FAIL
+    | None => (false, state)
     | Some to =>
 
       (*
@@ -122,7 +164,7 @@ Definition api_share_memory
                (0, 0)%N
              end) in
         match share with
-        | INVALID => FAIL
+        | INVALID => (false, state)
         | _ =>
           (*
             /*
@@ -145,7 +187,7 @@ Definition api_share_memory
            }
            *)
           match mm_vm_get_mode state from.(vm_root_ptable) begin end_ with
-          | (false, _) => FAIL
+          | (false, _) => goto_fail state local_page_pool
           | (true, orig_from_mode) =>
             (*
               /*
@@ -158,7 +200,7 @@ Definition api_share_memory
               }
              *)
             if (orig_from_mode & MM_MODE_INVALID)%N
-            then FAIL
+            then goto_fail state local_page_pool
             else
               (*
                 /*
@@ -191,13 +233,13 @@ Definition api_share_memory
                             | (true, orig_to_mode) =>
                               (orig_to_mode & MM_MODE_UNOWNED)%N
                             end)))%bool
-              then FAIL (* first failure case *)
+              then goto_fail state local_page_pool (* first failure case *)
               else
                 (* we have to handle the else-if case separately, checking
                    MM_MODE_UNOWNED again *)
                 if (!(orig_from_mode & MM_MODE_UNOWNED)%N
                      && (orig_from_mode & MM_MODE_SHARED)%N)%bool
-                then FAIL
+                then goto_fail state local_page_pool
                 else
                   (*
                     pa_begin = pa_from_ipa(begin);
@@ -222,7 +264,8 @@ Definition api_share_memory
                                            pa_end
                                            from_mode
                                            local_page_pool with
-                  | (false, new_state, new_local_page_pool) => FAIL
+                  | (false, new_state, new_local_page_pool) =>
+                    goto_fail new_state new_local_page_pool
                   | (true, new_state, new_local_page_pool) =>
                     let state := new_state in
                     let local_page_pool := new_local_page_pool in
@@ -236,7 +279,14 @@ Definition api_share_memory
                                            pa_begin
                                            pa_end
                                            local_page_pool with
-                    | (false, new_state, new_local_page_pool) => FAIL
+                    | (false, new_state, new_local_page_pool) =>
+                      goto_fail_return_to_sender
+                        new_state
+                        new_local_page_pool
+                        from
+                        pa_begin
+                        pa_end
+                        orig_from_mode
                     | (true, new_state, new_local_page_pool) =>
                       let state := new_state in
                       let local_page_pool := new_local_page_pool in
@@ -258,40 +308,26 @@ Definition api_share_memory
                                                to_mode
                                                local_page_pool with
                       | (false, new_state, new_local_page_pool) =>
-                        (* TODO: the function needs to return some
-                        state even if it fails, and we need to do
-                        the defrag here and do the other extra
-                        remapping steps in other failure cases. *)
-                        FAIL
+                        (* TODO: defrag *)
+                        goto_fail_return_to_sender
+                          new_state
+                          new_local_page_pool
+                          from
+                          pa_begin
+                          pa_end
+                          orig_from_mode
                       | (true, new_state, new_local_page_pool) =>
                         let state := new_state in
                         let local_page_pool := new_local_page_pool in
                         (*
                                 ret = 0;
                                 goto out;
-                        out:
-                                sl_unlock(&from->lock);
-                                sl_unlock(&to->lock);
-                                mpool_fini(&local_page_pool);
-                                return ret;
                          *)
-                        match mpool_fini local_page_pool with
-                        | Some new_api_page_pool =>
-                          (* update api pool and return success + new state *)
-                          let state :=
-                              {|
-                                ptable_lookup := state.(ptable_lookup);
-                                api_page_pool := new_api_page_pool;
-                              |} in
-                          (true, state)
-                        | None => FAIL
-                        end
+                        let success := true in
+                        goto_out state local_page_pool success
                       end
                     end
                   end
           end
         end
     end.
-
-(* TODO: fix failure cases *)
-(* TODO: nicer way of failing? *)
