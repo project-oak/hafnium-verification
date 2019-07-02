@@ -11,6 +11,8 @@ Axiom paddr_t : Type.
 
 Axiom pa_addr : paddr_t -> uintpaddr_t.
 
+Axiom pa_difference : paddr_t -> paddr_t -> size_t.
+
 Axiom ipa_addr : ipaddr_t -> uintpaddr_t.
 
 Axiom ipa_add : ipaddr_t -> size_t -> ipaddr_t.
