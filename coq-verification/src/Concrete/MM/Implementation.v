@@ -92,3 +92,31 @@ Definition mm_vm_defrag
            (s : concrete_state) (t : ptable_pointer) (ppool : mpool)
   : (bool * concrete_state * mpool) :=
   (false, s, ppool). (* TODO *)
+
+(*
+  /**
+  * Updates the hypervisor page table such that the given physical address range
+  * is mapped into the address space at the corresponding address range in the
+  * architecture-agnostic mode provided.
+  */
+  void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool)
+ *)
+Definition mm_identity_map
+           (s : concrete_state)
+           (begin end_ : paddr_t)
+           (mode : mode_t)
+           (ppool : mpool) : (concrete_state * mpool) :=
+  (s, ppool). (* TODO *)
+
+(*
+  /**
+   * Updates the hypervisor table such that the given physical address range is
+   * not mapped in the address space.
+   */
+  bool mm_unmap(paddr_t begin, paddr_t end, struct mpool *ppool)
+ *)
+Definition mm_unmap (s : concrete_state) (begin end_ : paddr_t) (ppool : mpool)
+  : (bool * concrete_state * mpool) :=
+  (false, s, ppool). (* TODO *)
+
+(* TODO: deindent the C code in this file *)
