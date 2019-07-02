@@ -14,13 +14,6 @@ Import ListNotations.
 (*** Low-level model : describes the concrete state of the Hafnium system ***)
 
 Section Concrete.
-  (* hf_share enum *)
-  Inductive hf_share :=
-  | HF_MEMORY_GIVE
-  | HF_MEMORY_LEND
-  | HF_MEMORY_SHARE
-  | INVALID
-  .
 
   Definition ptable_addr_t : Type := uintvaddr_t.
   Bind Scope N_scope with ptable_addr_t.

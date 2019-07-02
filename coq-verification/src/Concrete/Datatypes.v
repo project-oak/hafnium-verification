@@ -25,3 +25,11 @@ Definition pte_t := N.
 
 (* page tables are a list of PTEs *)
 Definition page_table := list pte_t.
+
+(* hf_share enum *)
+Inductive hf_share :=
+| HF_MEMORY_GIVE
+| HF_MEMORY_LEND
+| HF_MEMORY_SHARE
+| INVALID
+.
