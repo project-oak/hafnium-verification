@@ -19,7 +19,6 @@
 
 #include "hf/arch/vm/power_mgmt.h"
 
-#include "hf/assert.h"
 #include "hf/mm.h"
 #include "hf/std.h"
 

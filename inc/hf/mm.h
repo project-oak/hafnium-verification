@@ -23,8 +23,8 @@
 #include "hf/arch/mm.h"
 
 #include "hf/addr.h"
-#include "hf/assert.h"
 #include "hf/mpool.h"
+#include "hf/static_assert.h"
 
 /* Keep macro alignment */
 /* clang-format off */

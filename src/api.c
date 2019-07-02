@@ -19,11 +19,12 @@
 #include "hf/arch/cpu.h"
 #include "hf/arch/timer.h"
 
-#include "hf/assert.h"
+#include "hf/check.h"
 #include "hf/dlog.h"
 #include "hf/mm.h"
 #include "hf/spci.h"
 #include "hf/spinlock.h"
+#include "hf/static_assert.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
