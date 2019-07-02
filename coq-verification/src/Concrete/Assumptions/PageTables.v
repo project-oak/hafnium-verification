@@ -25,10 +25,10 @@ Axiom offset : uintpaddr_t -> nat.
 Axiom ptable_pointer_from_address : paddr_t -> ptable_pointer.
 
 Axiom page_table_size :
-  forall ptable : page_table, length ptable = MM_PTE_PER_PAGE.
+  forall ptable : mm_page_table, length ptable.(entries) = MM_PTE_PER_PAGE.
 
-Definition get_entry (ptable : page_table) (i : nat) : option pte_t :=
-  nth_error ptable i.
+Definition get_entry (ptable : mm_page_table) (i : nat) : option pte_t :=
+  nth_error ptable.(entries) i.
 
 Definition get_index (level : nat) (a : uintpaddr_t) : nat :=
   match level with
@@ -43,7 +43,7 @@ Definition get_index (level : nat) (a : uintpaddr_t) : nat :=
    valid/present; rather, the lookup should return [Some] for any
    valid input, but the PTE returned might be absent or invalid. *)
 Fixpoint page_lookup'
-         (ptable_lookup : ptable_pointer -> page_table)
+         (ptable_lookup : ptable_pointer -> mm_page_table)
          (a : uintpaddr_t)
          (ptr : ptable_pointer)
          (* encode the level as (4 - level), so Coq knows this terminates *)
@@ -68,7 +68,7 @@ Fixpoint page_lookup'
   end.
 
 Definition page_lookup
-           (ptable_lookup : ptable_pointer -> page_table)
+           (ptable_lookup : ptable_pointer -> mm_page_table)
            (root_ptable : ptable_pointer)
            (a : uintpaddr_t) : option pte_t :=
   page_lookup' ptable_lookup a root_ptable 4.

@@ -20,10 +20,7 @@ struct mm_ptable {
 	paddr_t root;
 };
  *)
-Record mm_ptable :=
-  {
-    root : paddr_t;
-  }.
+Record mm_ptable := { root : paddr_t }.
 
 (* static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr) *)
 Definition mm_round_down_to_page (addr : ptable_addr_t) : ptable_addr_t :=
@@ -93,7 +90,6 @@ Definition mm_vm_identity_map
            (ppool : mpool) : (bool * concrete_state * mpool) :=
   (false, s, ppool).
 
-(* TODO: use mm_ptable here and everywhere appropriate (eg vms) *)
 (*
   /**
    * Defragments the VM page table.

@@ -23,9 +23,6 @@ Definition mode_t := N.
 (* a page table entry (uint64_t) is represented by a binary natural number *)
 Definition pte_t := N.
 
-(* page tables are a list of PTEs *)
-Definition page_table := list pte_t.
-
 (* hf_share enum *)
 Inductive hf_share :=
 | HF_MEMORY_GIVE
@@ -33,3 +30,10 @@ Inductive hf_share :=
 | HF_MEMORY_SHARE
 | INVALID
 .
+
+(*
+struct mm_page_table {
+	alignas(PAGE_SIZE) pte_t entries[MM_PTE_PER_PAGE];
+};
+ *)
+Record mm_page_table := { entries : list pte_t }.

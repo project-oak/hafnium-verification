@@ -30,7 +30,7 @@ Class concrete_params :=
 Record concrete_state :=
   {
     (* representation of the state of page tables in memory *)
-    ptable_lookup : ptable_pointer -> page_table;
+    ptable_lookup : ptable_pointer -> mm_page_table;
     api_page_pool : mpool;
   }.
 
