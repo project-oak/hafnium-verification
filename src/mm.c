@@ -19,10 +19,11 @@
 #include <stdatomic.h>
 #include <stdint.h>
 
-#include "hf/assert.h"
+#include "hf/check.h"
 #include "hf/dlog.h"
 #include "hf/layout.h"
 #include "hf/plat/console.h"
+#include "hf/static_assert.h"
 
 /**
  * This file has functions for managing the level 1 and 2 page tables used by
@@ -500,7 +501,7 @@ static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
 	 * Assert condition to communicate the API constraint of mm_max_level(),
 	 * that isn't encoded in the types, to the static analyzer.
 	 */
-	assert(root_level >= 2);
+	CHECK(root_level >= 2);
 
 	/* Cap end to stay within the bounds of the page table. */
 	if (end > ptable_end) {
@@ -875,7 +876,7 @@ struct mm_stage1_locked mm_lock_stage1(void)
 
 void mm_unlock_stage1(struct mm_stage1_locked *lock)
 {
-	assert(lock->ptable == &ptable);
+	CHECK(lock->ptable == &ptable);
 	sl_unlock(&ptable_lock);
 	lock->ptable = NULL;
 }

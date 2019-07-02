@@ -17,8 +17,8 @@
 #include <stdalign.h>
 #include <stdint.h>
 
-#include "hf/assert.h"
 #include "hf/mm.h"
+#include "hf/static_assert.h"
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"

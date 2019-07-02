@@ -19,13 +19,13 @@
 #include <stdbool.h>
 
 #include "hf/api.h"
-#include "hf/assert.h"
 #include "hf/boot_params.h"
 #include "hf/dlog.h"
 #include "hf/layout.h"
 #include "hf/memiter.h"
 #include "hf/mm.h"
 #include "hf/plat/console.h"
+#include "hf/static_assert.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 

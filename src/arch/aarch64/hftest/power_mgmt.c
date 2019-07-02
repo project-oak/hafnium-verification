@@ -16,8 +16,9 @@
 
 #include "hf/arch/vm/power_mgmt.h"
 
-#include "hf/assert.h"
+#include "hf/check.h"
 #include "hf/spinlock.h"
+#include "hf/static_assert.h"
 
 #include "vmapi/hf/call.h"
 

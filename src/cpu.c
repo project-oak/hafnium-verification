@@ -21,6 +21,7 @@
 #include "hf/arch/cpu.h"
 
 #include "hf/api.h"
+#include "hf/check.h"
 #include "hf/dlog.h"
 #include "hf/spci.h"
 #include "hf/std.h"
@@ -208,7 +209,7 @@ spci_vcpu_index_t vcpu_index(const struct vcpu *vcpu)
 {
 	size_t index = vcpu - vcpu->vm->vcpus;
 
-	assert(index < UINT16_MAX);
+	CHECK(index < UINT16_MAX);
 	return index;
 }
 
@@ -251,7 +252,7 @@ bool vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 	struct vm *vm = vcpu->vm;
 	bool vcpu_was_off;
 
-	assert(vm->id != HF_PRIMARY_VM_ID);
+	CHECK(vm->id != HF_PRIMARY_VM_ID);
 
 	vcpu_locked = vcpu_lock(vcpu);
 	vcpu_was_off = vcpu_is_off(vcpu_locked);

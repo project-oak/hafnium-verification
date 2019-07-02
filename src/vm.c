@@ -17,6 +17,7 @@
 #include "hf/vm.h"
 
 #include "hf/api.h"
+#include "hf/check.h"
 #include "hf/cpu.h"
 #include "hf/spci.h"
 #include "hf/std.h"
@@ -115,6 +116,6 @@ void vm_unlock(struct vm_locked *locked)
  */
 struct vcpu *vm_get_vcpu(struct vm *vm, spci_vcpu_index_t vcpu_index)
 {
-	assert(vcpu_index < vm->vcpu_count);
+	CHECK(vcpu_index < vm->vcpu_count);
 	return &vm->vcpus[vcpu_index];
 }

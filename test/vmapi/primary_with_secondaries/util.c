@@ -18,6 +18,7 @@
 
 #include "hf/mm.h"
 #include "hf/spci.h"
+#include "hf/static_assert.h"
 
 #include "vmapi/hf/call.h"
 

@@ -16,8 +16,8 @@
 
 #include "offsets.h"
 
-#include "hf/assert.h"
 #include "hf/cpu.h"
+#include "hf/static_assert.h"
 
 #define CHECK_OFFSET(name, type, field) \
 	CHECK_OFFSET_1(#name, name, offsetof(type, field))
