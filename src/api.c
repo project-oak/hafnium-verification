@@ -645,7 +645,8 @@ static bool api_vm_configure_stage1(struct vm_locked vm_locked,
 	 */
 fail_undo_send:
 	vm_locked.vm->mailbox.send = NULL;
-	mm_unmap(mm_stage1_locked, pa_send_begin, pa_send_end, local_page_pool);
+	CHECK(mm_unmap(mm_stage1_locked, pa_send_begin, pa_send_end,
+		       local_page_pool));
 
 fail:
 	ret = false;
@@ -709,12 +710,14 @@ static bool api_vm_configure_pages(struct vm_locked vm_locked,
 	 * in the local pool.
 	 */
 fail_undo_send_and_recv:
-	mm_vm_identity_map(&vm_locked.vm->ptable, pa_recv_begin, pa_recv_end,
-			   orig_recv_mode, NULL, &local_page_pool);
+	CHECK(mm_vm_identity_map(&vm_locked.vm->ptable, pa_recv_begin,
+				 pa_recv_end, orig_recv_mode, NULL,
+				 &local_page_pool));
 
 fail_undo_send:
-	mm_vm_identity_map(&vm_locked.vm->ptable, pa_send_begin, pa_send_end,
-			   orig_send_mode, NULL, &local_page_pool);
+	CHECK(mm_vm_identity_map(&vm_locked.vm->ptable, pa_send_begin,
+				 pa_send_end, orig_send_mode, NULL,
+				 &local_page_pool));
 
 fail:
 	ret = false;
@@ -1449,8 +1452,8 @@ int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
 	goto out;
 
 fail_return_to_sender:
-	mm_vm_identity_map(&from->ptable, pa_begin, pa_end, orig_from_mode,
-			   NULL, &local_page_pool);
+	CHECK(mm_vm_identity_map(&from->ptable, pa_begin, pa_end,
+				 orig_from_mode, NULL, &local_page_pool));
 
 fail:
 	ret = -1;
