@@ -18,12 +18,44 @@ Require Import Hafnium.Concrete.MM.Implementation.
   */
   static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
  *)
+(* TODO: for now, we aren't modelling anything about what data actually exists at
+   a given address -- only who can look up that address. So we ignore the
+   [memset_s] and [arch_mm_write_back_dcache] calls. Eventually, we will need to
+   think of a strategy for modelling this (at both the abstract and concrete
+   levels) if we want to be able to make claims about it. *)
+(* N.B. current mm_identity_map transcription returns false for a null pointer
+   and true otherwise *)
 Definition api_clear_memory
-           (s : concrete_state)
+           (state : concrete_state)
            (begin : paddr_t)
            (end_ : paddr_t)
            (ppool : mpool) : bool * concrete_state * mpool :=
-  (false, s, ppool). (* TODO *)
+  (* void *ptr = mm_identity_map(begin, end, MM_MODE_W, ppool); *)
+  let '(ptr_nonnull, state, ppool) :=
+      mm_identity_map state begin end_ MM_MODE_W ppool in
+  (* size_t size = pa_difference(begin, end); *)
+  let size := pa_difference begin end_ in
+  (*
+    if (!ptr) {
+            /* TODO: partial defrag of failed range. */
+            /* Recover any memory consumed in failed mapping. */
+            mm_defrag(ppool);
+            return false;
+    }
+    *)
+  if (!ptr_nonnull)%bool
+  then
+    let '(state, ppool) := mm_defrag state ppool in
+    (false, state, ppool)
+  else
+    (*
+	memset_s(ptr, size, 0, size);
+	arch_mm_write_back_dcache(ptr, size);
+	mm_unmap(begin, end, ppool);
+	return true;
+     *)
+    let '(_, state, ppool) := mm_unmap state begin end_ ppool in
+    (true, state, ppool).
 
 (*
 int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
