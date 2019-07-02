@@ -15,11 +15,15 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 (*** This file defines the state type for the concrete model and relates it to
      the abstract state. ***)
 
+(* TODO: make naming more consistent by calling [id] [vm_id] *)
 Record vm :=
   {
-    vm_root_ptable : ptable_pointer;
+    vm_ptable : mm_ptable;
     id : nat;
   }.
+
+Definition vm_root_ptable (v : vm) : ptable_pointer :=
+  ptable_pointer_from_address v.(vm_ptable).(root).
 
 (* starting parameters -- don't change *)
 Class concrete_params :=
