@@ -32,7 +32,7 @@ int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
 Definition api_share_memory
            {cp : concrete_params}
            (state : concrete_state)
-           (vm_id : nat)
+           (vid : nat) (* named [vid] because [vm_id] is a field name in [vm] *)
            (addr : ipaddr_t)
            (size : size_t)
            (share : hf_share)
@@ -94,7 +94,7 @@ Definition api_share_memory
        return -1;
     }
    *)
-  if (vm_id =? from.(id))
+  if (vid =? from.(vm_id))
   then (false, state)
   else
     (*
@@ -104,7 +104,7 @@ Definition api_share_memory
               return -1;
       }
      *)
-    match vm_find vm_id with
+    match vm_find vid with
     | None => (false, state)
     | Some to =>
 

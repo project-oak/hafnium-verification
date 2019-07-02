@@ -15,11 +15,10 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 (*** This file defines the state type for the concrete model and relates it to
      the abstract state. ***)
 
-(* TODO: make naming more consistent by calling [id] [vm_id] *)
 Record vm :=
   {
     vm_ptable : mm_ptable;
-    id : nat;
+    vm_id : nat;
   }.
 
 Definition vm_root_ptable (v : vm) : ptable_pointer :=
@@ -49,7 +48,7 @@ Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   True.
 
 Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
-  find (fun v => (v.(id) =? vid)) vms.
+  find (fun v => (v.(vm_id) =? vid)) vms.
 
 Definition vm_page_valid (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
   exists e : pte_t,
