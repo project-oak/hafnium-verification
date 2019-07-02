@@ -28,7 +28,7 @@ Definition api_clear_memory
 (*
 int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
                        enum hf_share share, struct vcpu *current)
-*)
+ *)
 Definition api_share_memory
            {cp : concrete_params}
            (state : concrete_state)
@@ -40,7 +40,8 @@ Definition api_share_memory
   (* returns success boolean and new state *)
   : bool * concrete_state :=
 
-  let FAIL := (false, state) in (* on failure, return "false" for success and old state *)
+  (* on failure, return "false" for success and old state *)
+  let FAIL := (false, state) in
 
   (* struct vm *from = current->vm; *)
   let from := current in
@@ -50,7 +51,7 @@ Definition api_share_memory
     if (vm_id == from->id) {
        return -1;
     }
-  *)
+   *)
   if (vm_id =? from.(id))
   then FAIL
   else
@@ -77,7 +78,7 @@ Definition api_share_memory
             !is_aligned(ipa_addr(end), PAGE_SIZE)) {
                 return -1;
         }
-      *)
+       *)
       if (!is_aligned (ipa_addr begin) PAGE_SIZE
           || !is_aligned (ipa_addr end_) PAGE_SIZE)%bool
       then (false, state)
@@ -107,19 +108,19 @@ Definition api_share_memory
             (match share with
              | HF_MEMORY_GIVE =>
                ([ MM_MODE_INVALID | MM_MODE_UNOWNED ],
-               [ MM_MODE_R | MM_MODE_W | MM_MODE_X])%N
-            | HF_MEMORY_LEND =>
+                [ MM_MODE_R | MM_MODE_W | MM_MODE_X])%N
+             | HF_MEMORY_LEND =>
                ( [ MM_MODE_INVALID ],
-               [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED ])%N
-            | HF_MEMORY_SHARE =>
+                 [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED ])%N
+             | HF_MEMORY_SHARE =>
                ([ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_SHARED ],
-               [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED | MM_MODE_SHARED ])%N
-            | INVALID =>
-              (* unlike in the reference code, we need to return garbage here rather than
+                [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED | MM_MODE_SHARED ])%N
+             | INVALID =>
+               (* unlike in the reference code, we need to return garbage here rather than
                  returning, and can protect ourselves by checking if [share] was invalid
                  before continuing *)
-              (0, 0)%N
-            end) in
+               (0, 0)%N
+             end) in
         match share with
         | INVALID => FAIL
         | _ =>
@@ -294,4 +295,3 @@ Definition api_share_memory
 
 (* TODO: fix failure cases *)
 (* TODO: nicer way of failing? *)
-  (* TODO: separate different parts (mm, mpool, api, etc) into different files *)
