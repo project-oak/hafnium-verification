@@ -2,207 +2,18 @@ Require Import Coq.Lists.List.
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.NArith.BinNat.
 Require Import Hafnium.AbstractModel.
+Require Import Hafnium.Concrete.State.
+Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.Assumptions.Addr.
+Require Import Hafnium.Concrete.Assumptions.Constants.
+Require Import Hafnium.Concrete.Assumptions.Datatypes.
+Require Import Hafnium.Concrete.Assumptions.Mpool.
 Import ListNotations.
 
 (*** Low-level model : describes the concrete state of the Hafnium system ***)
 
 Section Concrete.
-  Context {ptable_pointer : Type}.
-
-  Context {PAGE_SIZE : nat}.
-
-  (* memory modes *)
-  (* Note : mode flags are taken as *indices* in the binary number*) 
-  Context (MM_MODE_R MM_MODE_W MM_MODE_X : N)
-          (MM_MODE_INVALID MM_MODE_UNOWNED MM_MODE_SHARED : N).
-
-  (* boilerplate : nicer display of memory mode operations *)
-  Local Notation mode := N.
-  Local Notation "[ x | .. | y ]" :=
-    (N.setbit .. (N.setbit 0 x) .. y)
-      (at level 49, y at level 0, only parsing) : N_scope.
-  Local Notation "x & y " := 
-    (N.testbit x y)
-      (at level 49, y at level 0, only parsing) : N_scope.
-
-  (* leave page attributes abstract to avoid assumptions about implementation *)
-  Context {attributes : Type}
-          {invalid : attributes -> bool}
-          {unowned : attributes -> bool}
-          {shared  : attributes -> bool}.
-  Context {attrs_to_mode : attributes -> N}.
-  Context {empty_attributes : attributes}
-          {set_invalid : attributes -> attributes}
-          {set_unowned : attributes -> attributes}
-          {set_shared : attributes -> attributes}
-          {set_RWX : attributes -> attributes}.
-  Context {absent_attributes : attributes}
-          {absent_attributes_invalid : invalid absent_attributes = true}.
-
-  (* TODO: add fallback? *)
-  (* TODO: make abstract? *)
-  Definition mpool := list ptable_pointer.
-  Definition mpool_alloc (mp : mpool) : option (mpool * ptable_pointer) :=
-    match mp with
-    | nil => None
-    | ptr :: mp' => Some (mp', ptr)
-    end.
-  Definition mpool_free (mp : mpool) ptr : mpool := ptr :: mp.
-
-  (* the way we have constructed mpools, they always allocate the most recently
-     freed memory  anyway, fallbacks don't need special treatment. *)
-  Definition mpool_init_with_fallback (fallback : mpool) := fallback.
-
-  (* page table entry -- can be absent, table, or block *)
-  Inductive pte : Type :=
-  | AbsentPTE : pte
-  | TablePTE : forall (next : ptable_pointer), pte
-  | BlockPTE : forall (attrs : attributes), pte
-  .
-
-  Definition page_table := list pte. (* TODO : fix size *)
-
-  Record vm :=
-    {
-      vm_root_ptable : ptable_pointer;
-      id : nat;
-    }.
-
-  (* starting parameters -- don't change *)
-  Class concrete_params :=
-    {
-      vms : list vm;
-      hafnium_root_ptable : ptable_pointer;
-    }.
-
-  Record concrete_state :=
-    {
-      (* representation of the state of page tables in memory *)
-      ptable_lookup : ptable_pointer -> page_table;
-      api_page_pool : mpool;
-    }.
-
-  (* the part of a physical address that relates to page tables*)
-  Record page_addr :=
-    {
-      lvl0_index : nat; (* index in root page table *)
-      lvl1_index : nat; (* index in level-1 page table *)
-      lvl2_index : nat; (* index in level-2 page table *)
-      lvl3_index : nat; (* index in level-3 page table *)
-    }.
-
-  Definition get_index (lvl : nat) (a : page_addr) : nat :=
-    match lvl with
-    | 0 => a.(lvl0_index)
-    | 1 => a.(lvl1_index)
-    | 2 => a.(lvl2_index)
-    | 3 => a.(lvl3_index)
-    | _ => 0 (* invalid level *)
-    end.
-
-  Definition get_entry (ptable : page_table) (i : nat) : pte :=
-    nth_default AbsentPTE ptable i.
-  
-  (* physical address: page address + offset in page table *)
-  (* TODO: explain the "physical address" terminology *)
-  Record physical_addr :=
-    {
-      pa_page : page_addr;
-      pa_offset : nat;
-    }.
-
-  Axiom ipaddr : Type. (* intermediate physical address *)
-  Axiom ipa_add : ipaddr -> nat -> ipaddr.
-  Axiom ipa_addr : ipaddr -> nat. (* absolute address *)
-  Axiom pa_from_ipa : ipaddr -> physical_addr.
-
-  Fixpoint page_lookup'
-           (s : concrete_state)
-           (a : page_addr)
-           (ptr : ptable_pointer)
-           (* encode the level as (4 - level), so Coq knows this terminates *)
-           (lvls_to_go : nat)
-    : pte :=
-    match lvls_to_go with
-    | 0 => AbsentPTE
-    | S lvls_to_go' =>
-      let lvl := 4 - lvls_to_go in
-      let ptable := s.(ptable_lookup) ptr in
-      match (get_entry ptable (get_index lvl a)) with
-      | TablePTE next_ptr => page_lookup' s a next_ptr lvls_to_go'
-      | x => x
-      end
-    end.
-
-  (* TODO: is this an API function? *)
-  Definition vm_page_lookup
-             (s : concrete_state) (v : vm) (a : page_addr) : pte :=
-    page_lookup' s a v.(vm_root_ptable) 4.
-  Definition hafnium_page_lookup
-             {cp : concrete_params}
-             (s : concrete_state)
-             (a : page_addr) : pte :=
-    page_lookup' s a hafnium_root_ptable 4.
-
-  Definition get_attrs (e : pte) : attributes :=
-    match e with
-    | BlockPTE attrs => attrs
-    | AbsentPTE => absent_attributes
-    | TablePTE _ =>
-      (* shouldn't get here; can't get attributes from a table *)
-      absent_attributes
-    end.
-  
-
-  (* TODO: move to AbstractModel *)
-  Arguments owned_by {_} {_} _.
-  Arguments accessible_by {_} {_} _.
-  Definition abstract_state_equiv
-             (s1 s2 : @abstract_state page_addr nat) : Prop :=
-    (forall a, s1.(owned_by) a = s2.(owned_by) a)
-    /\ (forall e a,
-           In e (s1.(accessible_by) a) <-> In e (s2.(accessible_by) a)).
-
-  (* for every API function, we need to prove that if the concrete state (is
-     itself valid and) represents a valid abstract state before the call, then
-     the concrete state after the call (is also valid and) represents a valid
-     abstract state *)
-
-  Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
-    nth_error vms vid.
-
-  Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
-    (* Possible constraints:
-          - Block PTEs have the valid bit set
-          - page tables have a constant size
-          - page table indices are always below page table size
-          - vm_id corresponds to a VM's place in the vms list
-     *)
-    True.
-
-  Definition represents
-             {cp : concrete_params}
-             (abst : @abstract_state page_addr nat)
-             (conc : concrete_state) : Prop :=
-    is_valid conc
-    /\ (forall (vid : nat) (a : page_addr),
-        In (inl vid) (abst.(accessible_by) a) <->
-           (exists v : vm,
-               vm_find vid = Some v
-               /\ invalid (get_attrs (conc.(vm_page_lookup) v a)) = false))
-    /\ (forall (a : page_addr),
-           In (inr hid) (abst.(accessible_by) a) <->
-           (invalid (get_attrs (conc.(hafnium_page_lookup) a)) = false))
-    /\ (forall (vid : nat) (a : page_addr),
-           abst.(owned_by) a = inl vid <->
-           (exists v : vm,
-               vm_find vid = Some v
-               /\ unowned (get_attrs (conc.(vm_page_lookup) v a)) = false))
-    /\ (forall (a : page_addr),
-           abst.(owned_by) a = inr hid <->
-           (unowned (get_attrs (conc.(hafnium_page_lookup) a)) = false))
-  .
-
   (* hf_share enum *)
   Inductive hf_share :=
   | HF_MEMORY_GIVE
@@ -211,40 +22,26 @@ Section Concrete.
   | INVALID
   .
 
-  Definition is_aligned (absolute_addr page_size : nat ) :=
-    absolute_addr mod page_size =? 0.
+  Definition ptable_addr_t : Type := uintvaddr_t.
+
+  (* boilerplate for readability *)
+  Bind Scope N_scope with ptable_addr_t.
+  Local Coercion N.of_nat : nat >-> N. (* change nat to N automatically *)
+  Set Printing Coercions. (* when printing, show N.of_nat explicitly *)
 
   (*
     static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr)
     *)
-  Definition mm_round_down_to_page (addr : physical_addr) : physical_addr :=
-    {|
-      pa_page := addr.(pa_page);
-      pa_offset := 0;
-    |}.
-
-  Definition page_addr_to_int (a : page_addr) : nat :=
-    fold_right
-      (fun lvl out =>
-         out + (get_index lvl a) * (PAGE_SIZE ^ (3 - lvl)))
-      0 (seq 0 4).
-
-  Definition int_to_page_addr (n : nat) : page_addr :=
-    {|
-      lvl0_index := (n / PAGE_SIZE ^ 3);
-      lvl1_index := (n / PAGE_SIZE ^ 2) mod PAGE_SIZE;
-      lvl2_index := (n / PAGE_SIZE) mod PAGE_SIZE;
-      lvl3_index := n mod PAGE_SIZE;
-    |}.
+  Definition mm_round_down_to_page (addr : ptable_addr_t) : ptable_addr_t :=
+    (* return addr & ~((ptable_addr_t)(PAGE_SIZE - 1)); *)
+     N.land addr (N.lnot (PAGE_SIZE - 1) (N.size addr)).
 
   (*
     static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
     *)
-  Definition mm_round_up_to_page (addr : physical_addr) : physical_addr :=
-    {|
-      pa_page := int_to_page_addr (page_addr_to_int (addr.(pa_page)) + 1);
-      pa_offset := 0;
-    |}.
+  Definition mm_round_up_to_page (addr : ptable_addr_t) : ptable_addr_t :=
+    (* return mm_round_down_to_page(addr + PAGE_SIZE - 1); *)
+    mm_round_down_to_page (addr + PAGE_SIZE - 1).
 
   (*
     /**
@@ -263,8 +60,8 @@ Section Concrete.
   Definition mm_vm_get_attrs
              (s : concrete_state)
              (t : ptable_pointer)
-             (begin end_ : physical_addr) : bool * attributes :=
-    (false, empty_attributes). (* TODO *)
+             (begin end_ : ptable_addr_t) : bool * attributes :=
+    (false, 0%N). (* TODO *)
   (*
     /**
     * Gets the mode of the give range of intermediate physical addresses if they
@@ -281,7 +78,7 @@ Section Concrete.
   Definition mm_vm_get_mode
              (s : concrete_state)
              (t : ptable_pointer)
-             (begin end_ : ipaddr) : bool * mode :=
+             (begin end_ : ipaddr_t) : bool * mode_t :=
     (false, 0%N). (* TODO *)
 
   (*
@@ -298,17 +95,14 @@ Section Concrete.
   Definition mm_vm_identity_map
              (s : concrete_state)
              (t : ptable_pointer)
-             (begin : physical_addr)
-             (end_ : physical_addr)
-             (mode : mode)
+             (begin : paddr_t)
+             (end_ : paddr_t)
+             (mode : mode_t)
              (ppool : mpool) : (bool * concrete_state * mpool) :=
     (false, s, ppool).
 
   Definition mpool_fini (s : concrete_state) (ppool : mpool)
     : concrete_state := s. (* TODO *)
-
-  
-  Local Notation "! x" := (negb x) (at level 100) : bool_scope.
 
   (*
     /**
@@ -319,8 +113,8 @@ Section Concrete.
    *)
   Definition api_clear_memory
              (s : concrete_state)
-             (begin : physical_addr)
-             (end_ : physical_addr)
+             (begin : paddr_t)
+             (end_ : paddr_t)
              (ppool : mpool) : bool * concrete_state * mpool :=
     (false, s, ppool). (* TODO *)
 
@@ -332,8 +126,8 @@ Section Concrete.
              {cp : concrete_params}
              (state : concrete_state)
              (vm_id : nat)
-             (addr : ipaddr)
-             (size : nat)
+             (addr : ipaddr_t)
+             (size : size_t)
              (share : hf_share)
              (current : vm)
     (* returns success boolean and new state *)
@@ -408,7 +202,7 @@ Section Concrete.
                  ([ MM_MODE_INVALID | MM_MODE_UNOWNED ],
                  [ MM_MODE_R | MM_MODE_W | MM_MODE_X])%N
               | HF_MEMORY_LEND =>
-                 ( MM_MODE_INVALID,
+                 ( [ MM_MODE_INVALID ],
                  [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED ])%N
               | HF_MEMORY_SHARE =>
                  ([ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_SHARED ],

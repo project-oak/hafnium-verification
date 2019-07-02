@@ -2,6 +2,8 @@
 src/AbstractModel.v
 src/Concrete/ConcreteModel.v
 src/Concrete/Datatypes.v
+src/Concrete/Notations.v
+src/Concrete/State.v
 src/Util/List.v
 src/Util/Tactics.v
 src/Concrete/Assumptions/Addr.v
