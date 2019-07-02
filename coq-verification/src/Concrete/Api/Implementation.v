@@ -1,18 +1,15 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.NArith.BinNat.
-Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.Constants.
-Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
 Require Import Hafnium.Concrete.MM.Implementation.
 
-(*** Low-level model : describes the concrete state of the Hafnium system ***)
-
-Section Concrete.
+(*** This file transcribes necessary functions from mm.c, with the original C in
+     comments alongside. ***)
 
   (*
     /**
@@ -294,8 +291,6 @@ Section Concrete.
             end
           end
       end.
-
-End Concrete.
 
   (* TODO: fix failure cases *)
   (* TODO: nicer way of failing? *)
