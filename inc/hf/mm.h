@@ -86,7 +86,7 @@ struct mm_ptable {
 	paddr_t root;
 };
 
-/** Represents the curretly locked stage-1 page table of the hypervisor. */
+/** Represents the currently locked stage-1 page table of the hypervisor. */
 struct mm_stage1_locked {
 	struct mm_ptable *ptable;
 };
