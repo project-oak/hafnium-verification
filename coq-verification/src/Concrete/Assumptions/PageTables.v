@@ -44,7 +44,7 @@ Definition get_index (level : nat) (a : uintpaddr_t) : nat :=
    valid/present; rather, the lookup should return [Some] for any
    valid input, but the PTE returned might be absent or invalid. *)
 Fixpoint page_lookup'
-         (ptable_lookup : ptable_pointer -> mm_page_table)
+         (ptable_deref : ptable_pointer -> mm_page_table)
          (a : uintpaddr_t)
          (ptr : ptable_pointer)
          (* encode the level as (4 - level), so Coq knows this terminates *)
@@ -54,7 +54,7 @@ Fixpoint page_lookup'
   | 0 => None
   | S lvls_to_go' =>
     let lvl := 4 - lvls_to_go in
-    let ptable := ptable_lookup ptr in
+    let ptable := ptable_deref ptr in
     match (get_entry ptable (get_index lvl a)) with
     | Some pte =>
       if (arch_mm_pte_is_table pte lvl)
@@ -62,14 +62,14 @@ Fixpoint page_lookup'
         (* follow the pointer to the next table *)
         let next_ptr := ptable_pointer_from_address
                           (arch_mm_table_from_pte pte lvl) in
-           page_lookup' ptable_lookup a next_ptr lvls_to_go'
+           page_lookup' ptable_deref a next_ptr lvls_to_go'
       else Some pte
     | None => None
     end
   end.
 
 Definition page_lookup
-           (ptable_lookup : ptable_pointer -> mm_page_table)
+           (ptable_deref : ptable_pointer -> mm_page_table)
            (root_ptable : ptable_pointer)
            (a : uintpaddr_t) : option pte_t :=
-  page_lookup' ptable_lookup a root_ptable 4.
+  page_lookup' ptable_deref a root_ptable 4.
