@@ -134,7 +134,7 @@ static bool mm_ptable_get_attrs_level(struct mm_page_table *table,
 				      uint64_t *attrs)
  *)
 Fixpoint mm_ptable_get_attrs_level
-           (ptable_lookup : ptable_pointer -> mm_page_table)
+           (ptable_deref : ptable_pointer -> mm_page_table)
            (table : mm_page_table)
            (begin end_ : ptable_addr_t)
            (level : nat)
@@ -181,8 +181,8 @@ Fixpoint mm_ptable_get_attrs_level
                          return false;
                      } *)
                match (mm_ptable_get_attrs_level
-                        ptable_lookup
-                        (ptable_lookup
+                        ptable_deref
+                        (ptable_deref
                            (mm_page_table_from_pa
                               (arch_mm_table_from_pte pte level)))
                         begin end_ level_minus1 got_attrs attrs) with
@@ -289,7 +289,7 @@ Definition mm_vm_get_attrs
     (* N.B. see note in MM/Datatypes.v about index into mm_page_table struct *)
     (* table = &mm_page_table_from_pa(t->root)[mm_index(begin, root_level)]; *)
     let table :=
-        (s.(ptable_lookup)
+        (s.(ptable_deref)
              (mm_page_table_from_pa
                 t.(root))) {{ (mm_index begin root_level) }} in
     (*
@@ -311,7 +311,7 @@ Definition mm_vm_get_attrs
              then state (* no-op *)
              else
                match mm_ptable_get_attrs_level
-                       s.(ptable_lookup) table begin end_ max_level got_attrs attrs with
+                       s.(ptable_deref) table begin end_ max_level got_attrs attrs with
                | (false, attrs) =>
                  (* set get_attrs to false and loop_done to true to exit and
                     return false *)

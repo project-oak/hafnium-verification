@@ -31,12 +31,10 @@ Class concrete_params :=
     hafnium_root_ptable : ptable_pointer;
   }.
 
-(* TODO: rename ptable_lookup to ptable_deref to remove confusion with page
-   table lookups *)
 Record concrete_state :=
   {
     (* representation of the state of page tables in memory *)
-    ptable_lookup : ptable_pointer -> mm_page_table;
+    ptable_deref : ptable_pointer -> mm_page_table;
     api_page_pool : mpool;
   }.
 
@@ -54,13 +52,13 @@ Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
 
 Definition vm_page_valid (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
   exists e : pte_t,
-    page_lookup s.(ptable_lookup) v.(vm_root_ptable) a.(pa_addr) = Some e
+    page_lookup s.(ptable_deref) v.(vm_root_ptable) a.(pa_addr) = Some e
     /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
 
 Definition haf_page_valid
            {cp : concrete_params} (s : concrete_state) (a : paddr_t) : Prop :=
   exists e : pte_t,
-    page_lookup s.(ptable_lookup) hafnium_root_ptable a.(pa_addr) = Some e
+    page_lookup s.(ptable_deref) hafnium_root_ptable a.(pa_addr) = Some e
     /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
 
 Local Definition owned (mode : mode_t) : Prop :=
@@ -68,14 +66,14 @@ Local Definition owned (mode : mode_t) : Prop :=
 
 Definition vm_page_owned (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
   exists e : pte_t,
-    page_lookup s.(ptable_lookup) v.(vm_root_ptable) a.(pa_addr) = Some e
+    page_lookup s.(ptable_deref) v.(vm_root_ptable) a.(pa_addr) = Some e
     /\ forall lvl,
       owned (arch_mm_stage2_attrs_to_mode (arch_mm_pte_attrs e lvl)).
 
 Definition haf_page_owned
            {cp : concrete_params} (s : concrete_state) (a : paddr_t) : Prop :=
   exists e : pte_t,
-    page_lookup s.(ptable_lookup) hafnium_root_ptable a.(pa_addr) = Some e
+    page_lookup s.(ptable_deref) hafnium_root_ptable a.(pa_addr) = Some e
     /\ forall lvl,
       owned (arch_mm_stage1_attrs_to_mode (arch_mm_pte_attrs e lvl)).
 

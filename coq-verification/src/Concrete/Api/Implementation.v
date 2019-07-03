@@ -93,7 +93,7 @@ Definition api_share_memory
            (* update api pool and return success + new state *)
            let state :=
                {|
-                 ptable_lookup := state.(ptable_lookup);
+                 ptable_deref := state.(ptable_deref);
                  api_page_pool := new_api_page_pool;
                |} in
            (success, state)
