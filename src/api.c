@@ -36,7 +36,7 @@
  * acquisition of locks held concurrently by the same physical CPU. Our current
  * ordering requirements are as follows:
  *
- * vm::stage1_locked -> vcpu::stage1_locked -> mm_stage1_lock
+ * vm::lock -> vcpu::lock -> mm_stage1_lock
  *
  * Locks of the same kind require the stage1_locked of lowest address to be
  * locked first, see `sl_lock_both()`.
