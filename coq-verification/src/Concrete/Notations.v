@@ -12,9 +12,14 @@ Definition mm_mode_get_flag (m : int) (flag : nat) : bool :=
 Notation "[ x | .. | y ]" :=
   (mm_mode_set_flag .. (mm_mode_set_flag 0 x) .. y)
     (at level 49, y at level 0, only parsing) : N_scope.
+Notation "x & y" :=
+  (N.land x y) (at level 49, y at level 0, only parsing) : N_scope.
 Notation "x & y " :=
   (mm_mode_get_flag x y)
-    (at level 49, y at level 0, only parsing) : N_scope.
+    (at level 49, y at level 0, only parsing) : bool_scope.
+Notation "x &~ y" := (N.land x (N.lnot y (N.size x))) (at level 199) : N_scope.
+Infix ">>" := N.shiftr (at level 199) : N_scope.
+Infix "<<" := N.shiftl (at level 199) : N_scope.
 
 Bind Scope N_scope with mode_t.
 Bind Scope N_scope with attributes.
