@@ -186,7 +186,7 @@ Definition mm_vm_get_attrs
     let table :=
         (s.(ptable_lookup)
              (mm_page_table_from_pa
-                t.(root))) [[ (mm_index begin root_level) ]] in
+                t.(root))) {{ (mm_index begin root_level) }} in
     (*
       while (begin < end) {
               if (!mm_ptable_get_attrs_level(table, begin, end, max_level,
@@ -213,7 +213,7 @@ Definition mm_vm_get_attrs
                  (begin, table, false, attrs, true)
                | (true, attrs) =>
                  let got_attrs := true in
-                 let table := table[[ 1 ]] in
+                 let table := table{{ 1 }} in
                  let begin := mm_start_of_next_block begin root_table_size in
                  let loop_done := false in
                  (begin, table, got_attrs, attrs, loop_done)
