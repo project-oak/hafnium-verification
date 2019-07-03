@@ -43,24 +43,6 @@ Definition mm_vm_get_attrs
            (t : ptable_pointer)
            (begin end_ : ptable_addr_t) : bool * attributes :=
   (false, 0%N). (* TODO *)
-(*
-  /**
-  * Gets the mode of the give range of intermediate physical addresses if they
-  * are mapped with the same mode.
-  *
-  * Returns true if the range is mapped with the same mode and false otherwise.
-  */
-  bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
-       int *mode)
- *)
-(* N.B. the comment above the function means "the entire range of addresses
-   has one consistent mode" and not "the range of addresses has the same
-   mode as is indicated by the pointer passed in". *)
-Definition mm_vm_get_mode
-           (s : concrete_state)
-           (t : ptable_pointer)
-           (begin end_ : ipaddr_t) : bool * mode_t :=
-  (false, 0%N). (* TODO *)
 
 (*
   /**
@@ -92,6 +74,25 @@ Definition mm_vm_defrag
            (s : concrete_state) (t : ptable_pointer) (ppool : mpool)
   : (bool * concrete_state * mpool) :=
   (false, s, ppool). (* TODO *)
+
+(*
+  /**
+  * Gets the mode of the give range of intermediate physical addresses if they
+  * are mapped with the same mode.
+  *
+  * Returns true if the range is mapped with the same mode and false otherwise.
+  */
+  bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
+       int *mode)
+ *)
+(* N.B. the comment above the function means "the entire range of addresses
+   has one consistent mode" and not "the range of addresses has the same
+   mode as is indicated by the pointer passed in". *)
+Definition mm_vm_get_mode
+           (s : concrete_state)
+           (t : ptable_pointer)
+           (begin end_ : ipaddr_t) : bool * mode_t :=
+  (false, 0%N). (* TODO *)
 
 (*
   /**
