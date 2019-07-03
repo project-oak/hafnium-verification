@@ -3,6 +3,7 @@ Require Import Coq.Lists.List.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.State.
+Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.ArchMM.
 Require Import Hafnium.Concrete.Assumptions.Constants.
@@ -63,6 +64,20 @@ Definition mm_start_of_next_block (addr : ptable_addr_t) (block_size : size_t)
 
 (*
 /**
+ * For a given address, calculates the maximum (plus one) address that can be
+ * represented by the same table at the given level.
+ */
+static ptable_addr_t mm_level_end(ptable_addr_t addr, uint8_t level)
+ *)
+Definition mm_level_end (addr : ptable_addr_t) (level : nat) : ptable_addr_t :=
+  (* size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS; *)
+  let offset : size_t := PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS in
+
+  (* return ((addr >> offset) + 1) << offset; *)
+  ((addr >> offset) + 1) << offset.
+
+(*
+/**
  * For a given address, calculates the index at which its entry is stored in a
  * table at the given level.
  */
@@ -118,14 +133,104 @@ static bool mm_ptable_get_attrs_level(struct mm_page_table *table,
 				      uint8_t level, bool got_attrs,
 				      uint64_t *attrs)
  *)
-Definition mm_ptable_get_attrs_level
+Fixpoint mm_ptable_get_attrs_level
+           (ptable_lookup : ptable_pointer -> mm_page_table)
            (table : mm_page_table)
            (begin end_ : ptable_addr_t)
            (level : nat)
            (got_attrs : bool)
            (attrs : attributes)
   : bool * attributes :=
-  (false, attrs). (* TODO *)
+  (* pte_t *pte = &table->entries[mm_index(begin, level)]; *)
+  (* N.B. I'm storing the index instead of a pointer *)
+  let pte_index := mm_index begin level in
+
+  (* ptable_addr_t level_end = mm_level_end(begin, level); *)
+  let level_end := mm_level_end begin level in
+
+  (* size_t entry_size = mm_entry_size(level); *)
+  let entry_size := mm_entry_size level in
+
+  (* /* Cap end so that we don't go over the current level max. */
+     if (end > level_end) {
+             end = level_end;
+     } *)
+  let end_ := if (level_end <? end_)%N then level_end else end_ in
+
+  (* /* Check that each entry is owned. */
+     while (begin < end) { *)
+  let '(begin, pte_index, got_attrs, attrs) :=
+      while_loop
+        (max_iterations := N.to_nat (end_ - begin))
+        (fun _ => (begin <? end_)%N)
+        (begin, pte_index, got_attrs, attrs)
+        (fun '(begin, pte_index, got_attrs, attrs) =>
+           let pte := table[[ pte_index ]] in
+           if arch_mm_pte_is_table pte level
+           then
+             match level with
+             | 0 =>
+               (* shouldn't get here -- no tables at level 0 *)
+               (begin, pte_index, got_attrs, attrs, break)
+             | S (level_minus1) =>
+               (* if (!mm_ptable_get_attrs_level(
+                           mm_page_table_from_pa(
+                                   arch_mm_table_from_pte( *pte,
+                                                          level)),
+                           begin, end, level - 1, got_attrs, attrs)) {
+                         return false;
+                     } *)
+               match (mm_ptable_get_attrs_level
+                        ptable_lookup
+                        (ptable_lookup
+                           (mm_page_table_from_pa
+                              (arch_mm_table_from_pte pte level)))
+                        begin end_ level_minus1 got_attrs attrs) with
+               | (false, attrs) =>
+                 let got_attrs := false in
+                 (begin, pte_index, got_attrs, attrs, break)
+               | (true, attrs) =>
+                 (* end of case, go to end of function:
+
+                    begin = mm_start_of_next_block(begin, entry_size);
+                    pte++; *)
+                 let begin := mm_start_of_next_block begin entry_size in
+                 let pte_index := S pte_index in
+                 (begin, pte_index, got_attrs, attrs, continue)
+               end
+             end
+           else
+             (* if (!got_attrs) {
+                        *attrs = arch_mm_pte_attrs( *pte, level);
+                        got_attrs = true;
+                } else if (arch_mm_pte_attrs( *pte, level) != *attrs) {
+                        return false;
+                } *)
+             if (!got_attrs)%bool
+             then
+               let attrs := arch_mm_pte_attrs pte level in
+               let got_attrs := true in
+               (* end of case, go to end of function:
+
+                  begin = mm_start_of_next_block(begin, entry_size);
+                  pte++; *)
+               let begin := mm_start_of_next_block begin entry_size in
+               let pte_index := S pte_index in
+               (begin, pte_index, got_attrs, attrs, continue)
+             else if (!(arch_mm_pte_attrs pte level =? attrs)%N)%bool
+                  then
+                    let got_attrs := false in
+                    (begin, pte_index, got_attrs, attrs, break)
+                  else
+                    (* end of case, go to end of function:
+
+                       begin = mm_start_of_next_block(begin, entry_size);
+                       pte++; *)
+                    let begin := mm_start_of_next_block begin entry_size in
+                    let pte_index := S pte_index in
+                    (begin, pte_index, got_attrs, attrs, continue)) in
+  (* return got_attrs *)
+  (got_attrs, attrs).
 
 (*
 /**
@@ -206,7 +311,7 @@ Definition mm_vm_get_attrs
              then state (* no-op *)
              else
                match mm_ptable_get_attrs_level
-                       table begin end_ max_level got_attrs attrs with
+                       s.(ptable_lookup) table begin end_ max_level got_attrs attrs with
                | (false, attrs) =>
                  (* set get_attrs to false and loop_done to true to exit and
                     return false *)
