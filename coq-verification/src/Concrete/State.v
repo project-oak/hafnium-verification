@@ -31,6 +31,8 @@ Class concrete_params :=
     hafnium_root_ptable : ptable_pointer;
   }.
 
+(* TODO: rename ptable_lookup to ptable_deref to remove confusion with page
+   table lookups *)
 Record concrete_state :=
   {
     (* representation of the state of page tables in memory *)
@@ -62,7 +64,7 @@ Definition haf_page_valid
     /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
 
 Local Definition owned (mode : mode_t) : Prop :=
-  (mode & MM_MODE_UNOWNED)%N = false.
+  (mode & MM_MODE_UNOWNED)%bool = false.
 
 Definition vm_page_owned (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
   exists e : pte_t,

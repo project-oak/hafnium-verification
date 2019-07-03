@@ -254,7 +254,7 @@ Definition api_share_memory
               (* N.B. the case structure looks a little different here
                  because of functional/imperative differences -- each failure
                  case is handled as one big boolean *)
-              if (((orig_from_mode & MM_MODE_UNOWNED)%N)
+              if ((orig_from_mode & MM_MODE_UNOWNED)
                     && ((match share with
                          | HF_MEMORY_GIVE => false
                          | _ => true
@@ -263,14 +263,14 @@ Definition api_share_memory
                                     state to.(vm_root_ptable) begin end_ with
                             | (false, _) => false
                             | (true, orig_to_mode) =>
-                              (orig_to_mode & MM_MODE_UNOWNED)%N
+                              (orig_to_mode & MM_MODE_UNOWNED)
                             end)))%bool
               then goto_fail state local_page_pool (* first failure case *)
               else
                 (* we have to handle the else-if case separately, checking
                    MM_MODE_UNOWNED again *)
-                if (!(orig_from_mode & MM_MODE_UNOWNED)%N
-                     && (orig_from_mode & MM_MODE_SHARED)%N)%bool
+                if (!(orig_from_mode & MM_MODE_UNOWNED)
+                     && (orig_from_mode & MM_MODE_SHARED))%bool
                 then goto_fail state local_page_pool
                 else
                   (*
