@@ -118,6 +118,25 @@ Definition mm_root_table_count (flags : int) : nat :=
 
 (*
 /**
+ * Updates the given table such that the given physical address range is mapped
+ * or not mapped into the address space with the architecture-agnostic mode
+ * provided.
+ */
+static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
+				      paddr_t pa_end, uint64_t attrs, int flags,
+				      struct mpool *ppool)
+ *)
+Definition mm_ptable_identity_update
+           (s : concrete_state)
+           (t : ptable_pointer)
+           (pa_begin pa_end : paddr_t)
+           (attrs : attributes)
+           (flags : int)
+           (ppool : mpool) : bool * concrete_state * mpool :=
+  (false, s, ppool). (* TODO *)
+
+(*
+/**
  * Gets the attributes applied to the given range of stage-2 addresses at the
  * given level.
  *
@@ -348,7 +367,21 @@ Definition mm_vm_identity_map
            (end_ : paddr_t)
            (mode : mode_t)
            (ppool : mpool) : (bool * concrete_state * mpool) :=
-  (false, s, ppool).
+  (* int flags = 0; *)
+  let flags : int := 0 in
+
+  (* bool success = mm_ptable_identity_update(
+              t, begin, end, arch_mm_mode_to_stage2_attrs(mode), flags,
+              ppool); *)
+  let '(success, state, ppool) :=
+      mm_ptable_identity_update
+        s t begin end_ (arch_mm_mode_to_stage2_attrs mode) flags ppool in
+
+  (* N.B. since we're assuming ipa is NULL we can skip the if clause that sets
+     it if it's not null *)
+
+  (* return success *)
+  (success, state, ppool).
 
 (*
   /**
