@@ -1,11 +1,14 @@
 Require Import Coq.NArith.BinNat.
+Require Import Coq.Lists.List.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Assumptions.Addr.
+Require Import Hafnium.Concrete.Assumptions.ArchMM.
 Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
+Require Import Hafnium.Concrete.MM.Datatypes.
 
 (*** This file transcribes necessary functions from mm.c, with the original C in
      comments alongside. ***)
@@ -14,15 +17,115 @@ Require Import Hafnium.Concrete.Assumptions.Mpool.
 Definition ptable_addr_t : Type := uintvaddr_t.
 Bind Scope N_scope with ptable_addr_t.
 
+(*
+/**
+ * Get the page table from the physical address.
+ */
+static struct mm_page_table *mm_page_table_from_pa(paddr_t pa)
+ *)
+Definition mm_page_table_from_pa (pa : paddr_t) : ptable_pointer :=
+  (* return ptr_from_va(va_from_pa(pa)); *)
+  ptr_from_va (va_from_pa pa).
+
 (* static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr) *)
 Definition mm_round_down_to_page (addr : ptable_addr_t) : ptable_addr_t :=
   (* return addr & ~((ptable_addr_t)(PAGE_SIZE - 1)); *)
-   N.land addr (N.lnot (PAGE_SIZE - 1) (N.size addr)).
+  addr &~ (PAGE_SIZE - 1).
 
 (* static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr) *)
 Definition mm_round_up_to_page (addr : ptable_addr_t) : ptable_addr_t :=
   (* return mm_round_down_to_page(addr + PAGE_SIZE - 1); *)
   mm_round_down_to_page (addr + PAGE_SIZE - 1).
+
+(*
+/**
+ * Calculates the size of the address space represented by a page table entry at
+ * the given level.
+ */
+static size_t mm_entry_size(uint8_t level)
+ *)
+Definition mm_entry_size (level : nat) : size_t :=
+  (* return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS); *)
+  N.to_nat (1 << (PAGE_BITS + level * PAGE_LEVEL_BITS)).
+
+(*
+/**
+ * Gets the address of the start of the next block of the given size. The size
+ * must be a power of two.
+ */
+static ptable_addr_t mm_start_of_next_block(ptable_addr_t addr,
+					    size_t block_size)
+ *)
+Definition mm_start_of_next_block (addr : ptable_addr_t) (block_size : size_t)
+  : ptable_addr_t :=
+  (* return (addr + block_size) & ~(block_size - 1); *)
+  (addr + block_size) &~ (block_size - 1).
+
+(*
+/**
+ * For a given address, calculates the index at which its entry is stored in a
+ * table at the given level.
+ */
+static size_t mm_index(ptable_addr_t addr, uint8_t level)
+ *)
+Definition mm_index (addr : ptable_addr_t) (level : nat) : size_t :=
+  (* ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS); *)
+  let v : ptable_addr_t := (addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N in
+
+  (* return v & ((UINT64_C(1) << PAGE_LEVEL_BITS) - 1); *)
+  N.to_nat (v & ((1 << PAGE_LEVEL_BITS) - 1)).
+
+(*
+/**
+ * Returns the maximum level in the page table given the flags.
+ */
+static uint8_t mm_max_level(int flags)
+*)
+Definition mm_max_level (flags : int) : nat :=
+  (* return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_max_level()
+                                     : arch_mm_stage2_max_level(); *)
+  if (flags & MM_FLAG_STAGE1)%bool
+  then arch_mm_stage1_max_level
+  else arch_mm_stage2_max_level.
+
+(*
+/**
+ * Returns the number of root-level tables given the flags.
+ */
+static uint8_t mm_root_table_count(int flags)
+ *)
+Definition mm_root_table_count (flags : int) : nat :=
+  (* return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_root_table_count()
+                                     : arch_mm_stage2_root_table_count(); *)
+  if (flags & MM_FLAG_STAGE1)%bool
+  then arch_mm_stage1_root_table_count
+  else arch_mm_stage2_root_table_count.
+
+(*
+/**
+ * Gets the attributes applied to the given range of stage-2 addresses at the
+ * given level.
+ *
+ * The `got_attrs` argument is initially passed as false until `attrs` contains
+ * attributes of the memory region at which point it is passed as true.
+ *
+ * The value returned in `attrs` is only valid if the function returns true.
+ *
+ * Returns true if the whole range has the same attributes and false otherwise.
+ */
+static bool mm_ptable_get_attrs_level(struct mm_page_table *table,
+				      ptable_addr_t begin, ptable_addr_t end,
+				      uint8_t level, bool got_attrs,
+				      uint64_t *attrs)
+ *)
+Definition mm_ptable_get_attrs_level
+           (table : mm_page_table)
+           (begin end_ : ptable_addr_t)
+           (level : nat)
+           (got_attrs : bool)
+           (attrs : attributes)
+  : bool * attributes :=
+  (false, attrs). (* TODO *)
 
 (*
 /**
@@ -40,9 +143,87 @@ static bool mm_vm_get_attrs(struct mm_ptable *t, ptable_addr_t begin,
    we are searching *)
 Definition mm_vm_get_attrs
            (s : concrete_state)
-           (t : ptable_pointer)
+           (t : mm_ptable)
            (begin end_ : ptable_addr_t) : bool * attributes :=
-  (false, 0%N). (* TODO *)
+
+  (* int flags = 0; *)
+  let flags : int := 0 in
+
+  (* uint8_t max_level = mm_max_level(flags); *)
+  let max_level := mm_max_level flags in
+
+  (* uint8_t root_level = max_level + 1; *)
+  let root_level := max_level + 1 in
+
+  (* size_t root_table_size = mm_entry_size(root_level); *)
+  let root_table_size : size_t := mm_entry_size root_level in
+
+  (* ptable_addr_t ptable_end =
+          mm_root_table_count(flags) * mm_entry_size(root_level); *)
+  let ptable_end := mm_root_table_count flags * mm_entry_size root_level in
+
+  (* bool got_attrs = false; *)
+  let got_attrs := false in
+
+  (* begin = mm_round_down_to_page(begin); *)
+  let begin := mm_round_down_to_page begin in
+
+  (* end = mm_round_up_to_page(end); *)
+  let end_ := mm_round_up_to_page(end_) in
+
+  (*
+     /* Fail if the addresses are out of range. */
+     if (end > ptable_end) {
+             return false;
+     }
+   *)
+  if (ptable_end <? end_)%N
+  then (false, 0%N)
+  else
+
+    (* N.B. see note in MM/Datatypes.v about index into mm_page_table struct *)
+    (* table = &mm_page_table_from_pa(t->root)[mm_index(begin, root_level)]; *)
+    let table :=
+        (s.(ptable_lookup)
+             (mm_page_table_from_pa
+                t.(root))) [[ (mm_index begin root_level) ]] in
+    (*
+      while (begin < end) {
+              if (!mm_ptable_get_attrs_level(table, begin, end, max_level,
+                                             got_attrs, attrs)) {
+                      return false;
+              }
+              got_attrs = true;
+              begin = mm_start_of_next_block(begin, root_table_size);
+              table++;
+      }
+     *)
+    let '(_, _, got_attrs, attrs, _) :=
+        fold_right
+          (fun _ (state : (ptable_addr_t * mm_page_table * bool * attributes * bool)) =>
+             let '(begin, table, got_attrs, attrs, loop_done) := state in
+             if loop_done
+             then state (* no-op *)
+             else
+               match mm_ptable_get_attrs_level
+                       table begin end_ max_level got_attrs attrs with
+               | (false, attrs) =>
+                 (* set get_attrs to false and loop_done to true to exit and
+                    return false *)
+                 (begin, table, false, attrs, true)
+               | (true, attrs) =>
+                 let got_attrs := true in
+                 let table := table[[ 1 ]] in
+                 let begin := mm_start_of_next_block begin root_table_size in
+                 let loop_done := false in
+                 (begin, table, got_attrs, attrs, loop_done)
+               end)
+          (begin, table, got_attrs, 0%N, false)
+          (* continue running the loop a maximum of (end_ - begin) times. Since
+             mm_start_of_next block increases [begin] by at least one, the loop
+             will reach its exit condition before running out of fuel. *)
+          (seq (N.to_nat begin) (N.to_nat end_)) in
+    (got_attrs, attrs).
 
 (*
 /**
