@@ -52,4 +52,8 @@ Definition index_into_mm_page_table_struct (table : mm_page_table) (i : nat)
   : mm_page_table :=
   {| entries := skipn i table.(entries) ++ repeat out_of_bounds_access_pte i |}.
 
-Notation "x [[ y ]]" := (index_into_mm_page_table_struct x y) (at level 199, only parsing).
+Notation "x {{ y }}" := (index_into_mm_page_table_struct x y) (at level 199, only parsing).
+
+(* separate notation for getting the PTE at an index *)
+Notation "x [[ y ]]" :=
+  (nth_default out_of_bounds_access_pte x.(entries) y) (at level 199, only parsing).
