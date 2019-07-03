@@ -38,8 +38,8 @@
  *
  * vm::lock -> vcpu::lock -> mm_stage1_lock
  *
- * Locks of the same kind require the stage1_locked of lowest address to be
- * locked first, see `sl_lock_both()`.
+ * Locks of the same kind require the lock of lowest address to be locked first,
+ * see `sl_lock_both()`.
  */
 
 static_assert(HF_MAILBOX_SIZE == PAGE_SIZE,
@@ -353,15 +353,15 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	bool ret;
 
 	/*
-	 * Wait until the registers become available. All locks must be
-	 * released between iterations of this loop to avoid potential deadlocks
-	 * if, on any path, a stage1_locked needs to be taken after taking the
-	 * decision to switch context but before the registers have been saved.
+	 * Wait until the registers become available. All locks must be released
+	 * between iterations of this loop to avoid potential deadlocks if, on
+	 * any path, a lock needs to be taken after taking the decision to
+	 * switch context but before the registers have been saved.
 	 *
-	 * The VM stage1_locked is not needed in the common case so it must only
-	 * be taken when it is going to be needed. This ensures there are no
-	 * inter-vCPU dependencies in the common run case meaning the sensitive
-	 * context switch performance is consistent.
+	 * The VM lock is not needed in the common case so it must only be taken
+	 * when it is going to be needed. This ensures there are no inter-vCPU
+	 * dependencies in the common run case meaning the sensitive context
+	 * switch performance is consistent.
 	 */
 	for (;;) {
 		sl_lock(&vcpu->lock);
