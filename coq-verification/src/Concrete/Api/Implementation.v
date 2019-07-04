@@ -273,11 +273,9 @@ Definition api_share_memory
                                            pa_end
                                            from_mode
                                            local_page_pool with
-                  | (false, new_state, new_local_page_pool) =>
-                    goto_fail new_state new_local_page_pool
-                  | (true, new_state, new_local_page_pool) =>
-                    let state := new_state in
-                    let local_page_pool := new_local_page_pool in
+                  | (false, state, local_page_pool) =>
+                    goto_fail state local_page_pool
+                  | (true, state, local_page_pool) =>
                     (* /* Clear the memory so no VM or device can see the previous contents. */
                        if (!api_clear_memory(pa_begin, pa_end, &local_page_pool)) {
                                goto fail_return_to_sender;
@@ -286,17 +284,15 @@ Definition api_share_memory
                                            pa_begin
                                            pa_end
                                            local_page_pool with
-                    | (false, new_state, new_local_page_pool) =>
+                    | (false, state, local_page_pool) =>
                       goto_fail_return_to_sender
-                        new_state
-                        new_local_page_pool
+                        state
+                        local_page_pool
                         from
                         pa_begin
                         pa_end
                         orig_from_mode
-                    | (true, new_state, new_local_page_pool) =>
-                      let state := new_state in
-                      let local_page_pool := new_local_page_pool in
+                    | (true, state, local_page_pool) =>
 
                       (* /* Complete the transfer by mapping the memory into the recipient. */
                          if (!mm_vm_identity_map(&to->ptable, pa_begin, pa_end, to_mode, NULL,
@@ -316,15 +312,13 @@ Definition api_share_memory
                         let '(_, state, local_page_pool) :=
                             mm_vm_defrag state from.(vm_ptable) local_page_pool in
                         goto_fail_return_to_sender
-                          new_state
-                          new_local_page_pool
+                          state
+                          local_page_pool
                           from
                           pa_begin
                           pa_end
                           orig_from_mode
-                      | (true, new_state, new_local_page_pool) =>
-                        let state := new_state in
-                        let local_page_pool := new_local_page_pool in
+                      | (true, state, local_page_pool) =>
 
                         (* ret = 0;
                            goto out; *)
