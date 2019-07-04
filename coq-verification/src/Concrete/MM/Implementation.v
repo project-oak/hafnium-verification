@@ -61,6 +61,17 @@ Definition mm_start_of_next_block (addr : ptable_addr_t) (block_size : size_t)
 
 (*
 /**
+ * Gets the physical address of the start of the next block of the given size.
+ * The size must be a power of two.
+ */
+static paddr_t mm_pa_start_of_next_block(paddr_t pa, size_t block_size) *)
+Definition mm_pa_start_of_next_block (pa : paddr_t) (block_size : size_t)
+  : paddr_t :=
+  (* return pa_init((pa_addr(pa) + block_size) & ~(block_size - 1)); *)
+  pa_init (pa_addr pa + block_size &~ (block_size - 1)).
+
+(*
+/**
  * For a given address, calculates the maximum (plus one) address that can be
  * represented by the same table at the given level.
  */
@@ -112,6 +123,64 @@ Definition mm_root_table_count (flags : int) : nat :=
 
 (*
 /**
+ * Frees all page-table-related memory associated with the given pte at the
+ * given level, including any subtables recursively.
+ */
+static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool) *)
+Definition mm_free_page_pte
+           (s : concrete_state) (pte : pte_t) (level : nat) (ppool : mpool)
+  : concrete_state * mpool :=
+  (s, ppool). (* TODO *)
+
+(*
+/**
+ * Replaces a page table entry with the given value. If both old and new values
+ * are valid, it performs a break-before-make sequence where it first writes an
+ * invalid value to the PTE, flushes the TLB, then writes the actual new value.
+ * This is to prevent cases where CPUs have different 'valid' values in their
+ * TLBs, which may result in issues for example in cache coherency.
+ */
+static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
+			     uint8_t level, int flags, struct mpool *ppool) *)
+Definition mm_replace_entry
+           (s : concrete_state)
+           (begin : ptable_addr_t)
+           (pte new_pte : pte_t)
+           (level : nat)
+           (flags : int)
+           (ppool : mpool) : concrete_state * mpool :=
+  (s, ppool). (* TODO *)
+
+(*
+/**
+ * Populates the provided page table entry with a reference to another table if
+ * needed, that is, if it does not yet point to another table.
+ *
+ * Returns a pointer to the table the entry now points to.
+ */
+static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
+						   pte_t *pte, uint8_t level,
+						   int flags,
+						   struct mpool *ppool) *)
+Definition mm_populate_table_pte
+           (s : concrete_state)
+           (begin : ptable_addr_t)
+           (pte : pte_t)
+           (level : nat)
+           (flags : int)
+           (ppool : mpool) : option mm_page_table * concrete_state * mpool :=
+  (None, s, ppool). (* TODO *)
+
+(*
+/**
+ * Returns whether all entries in this table are absent.
+ */
+static bool mm_page_table_is_empty(struct mm_page_table *table, uint8_t level) *)
+Definition mm_page_table_is_empty(table : mm_page_table) (level : nat) : bool :=
+  false. (* TODO *)
+
+(*
+/**
  * Updates the page table at the given level to map the given address range to a
  * physical range using the provided (architecture-specific) attributes. Or if
  * MM_FLAG_UNMAP is set, unmap the given range instead.
@@ -132,7 +201,150 @@ Definition mm_map_level
            (level : nat)
            (flags : int)
            (ppool : mpool) : bool * concrete_state * mpool :=
-  (false, s, ppool). (* TODO *)
+
+  (* pte_t *pte = &table->entries[mm_index(begin, level)]; *)
+  (* N.B. storing the index instead of a pointer *)
+  let pte_index := mm_index begin level in
+
+  (* ptable_addr_t level_end = mm_level_end(begin, level); *)
+  let level_end := mm_level_end begin level in
+
+  (* size_t entry_size = mm_entry_size(level); *)
+  let entry_size := mm_entry_size level in
+
+  (* bool commit = flags & MM_FLAG_COMMIT; *)
+  let commit : bool := (!((flags & MM_FLAG_COMMIT) =? 0)%N)%bool in
+
+  (* bool unmap = flags & MM_FLAG_UNMAP; *)
+  let unmap : bool := (!((flags & MM_FLAG_UNMAP) =? 0)%N)%bool in
+
+  (* /* Cap end so that we don't go over the current level max. */
+        if (end > level_end) {
+                end = level_end;
+        } *)
+  let end_ := N.min level_end end_ in
+
+  (* /* Fill each entry in the table. */
+     while (begin < end) { *)
+  let '(s, begin, pa, pte_index, failed, ppool) :=
+      while_loop
+        (max_iterations := N.to_nat (end_ - begin))
+        (fun _ => (begin <? end_)%N)
+        (s, begin, pa, pte_index, false, ppool)
+        (fun '(s, begin, pa, pte_index, failed, ppool) =>
+           let pte := table[[ pte_index ]] in
+
+           (* if (unmap ? !arch_mm_pte_is_present( *pte, level)
+                        : arch_mm_pte_is_block( *pte, level) &&
+                                  arch_mm_pte_attrs( *pte, level) == attrs) {
+                      /*
+                       * If the entry is already mapped with the right
+                       * attributes, or already absent in the case of
+                       * unmapping, no need to do anything; carry on to the
+                       * next entry.
+                       */ *)
+           if ((if unmap
+                then !arch_mm_pte_is_present pte level
+                else arch_mm_pte_is_block pte level)
+                 && (arch_mm_pte_attrs pte level =? attrs)%N)%bool
+           then
+             (* done; continue to the next entry *)
+             (* begin = mm_start_of_next_block(begin, entry_size);
+                pa = mm_pa_start_of_next_block(pa, entry_size);
+                pte++; *)
+             let begin := mm_start_of_next_block begin entry_size in
+             let pa := mm_pa_start_of_next_block pa entry_size in
+             let pte_index := S pte_index in
+             (s, begin, pa, pte_index, failed, ppool, continue)
+           else
+             (* } else if ((end - begin) >= entry_size &&
+                  (unmap || arch_mm_is_block_allowed(level)) &&
+                  (begin & (entry_size - 1)) == 0) { *)
+             if ((entry_size <=? (end_ - begin))%N
+                   && (unmap || arch_mm_is_block_allowed level)
+                   && ((begin & (entry_size - 1)) =? 0)%N)%bool
+             then
+               (* /*
+                   * If the entire entry is within the region we want to
+                   * map, map/unmap the whole entry.
+                   */
+                  if (commit) {
+                          pte_t new_pte =
+                                  unmap ? arch_mm_absent_pte(level)
+                                        : arch_mm_block_pte(level, pa,
+                                                            attrs);
+                          mm_replace_entry(begin, pte, new_pte, level,
+                                           flags, ppool);
+                  } *)
+               let '(s, ppool) :=
+                   if commit
+                   then let new_pte := if unmap
+                                       then arch_mm_absent_pte level
+                                       else arch_mm_block_pte level pa attrs in
+                        mm_replace_entry s begin pte new_pte level flags ppool
+                   else (s, ppool) in
+
+               (* done; continue to the next entry *)
+               (* begin = mm_start_of_next_block(begin, entry_size);
+                  pa = mm_pa_start_of_next_block(pa, entry_size);
+                  pte++; *)
+               let begin := mm_start_of_next_block begin entry_size in
+               let pa := mm_pa_start_of_next_block pa entry_size in
+               let pte_index := S pte_index in
+               (s, begin, pa, pte_index, failed, ppool, continue)
+             else
+               (* /*
+                   * If the entry is already a subtable get it; otherwise
+                   * replace it with an equivalent subtable and get that.
+                   */
+                  struct mm_page_table *nt = mm_populate_table_pte(
+                          begin, pte, level, flags, ppool); *)
+               let '(nt, s, ppool) :=
+                   mm_populate_table_pte s begin pte level flags ppool in
+
+               (* if (nt == NULL) {
+                          return false;
+                  } *)
+               match nt with
+               | None =>
+                 let failed := true in
+                 (s, begin, pa, pte_index, failed, ppool, break)
+               | Some nt =>
+                 (* /*
+                  * If the subtable is now empty, replace it with an
+                  * absent entry at this level. We never need to do
+                  * break-before-makes here because we are assigning
+                  * an absent value.
+                  */
+                     if (commit && unmap &&
+                         mm_page_table_is_empty(nt, level - 1)) {
+                             pte_t v = *pte;
+                             *pte = arch_mm_absent_pte(level);
+                             mm_free_page_pte(v, level, ppool);
+                     } *)
+                 let '(pte, s, ppool) :=
+                     if (commit && unmap &&
+                                mm_page_table_is_empty nt (level - 1))%bool
+                     then
+                       let v := pte in
+                       let pte := arch_mm_absent_pte level in
+                       let '(s, ppool) := mm_free_page_pte s v level ppool in
+                       (pte, s, ppool)
+                     else (pte, s, ppool) in
+                 (* done; continue to the next entry *)
+                 (* begin = mm_start_of_next_block(begin, entry_size);
+                  pa = mm_pa_start_of_next_block(pa, entry_size);
+                  pte++; *)
+                 let begin := mm_start_of_next_block begin entry_size in
+                 let pa := mm_pa_start_of_next_block pa entry_size in
+                 let pte_index := S pte_index in
+                 (s, begin, pa, pte_index, failed, ppool, continue)
+               end) in
+
+  (* return true; *)
+  (* N.B. have to check here if the loop returned false partway through *)
+  let success := (!failed)%bool in
+  (success, s, ppool).
 
 (*
 /**
