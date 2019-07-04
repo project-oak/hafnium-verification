@@ -118,6 +118,26 @@ Definition mm_root_table_count (flags : int) : nat :=
 
 (*
 /**
+ * Updates the page table from the root to map the given address range to a
+ * physical range using the provided (architecture-specific) attributes. Or if
+ * MM_FLAG_UNMAP is set, unmap the given range instead.
+ */
+static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
+                        ptable_addr_t end, uint64_t attrs, uint8_t root_level,
+                        int flags, struct mpool *ppool)
+ *)
+Definition mm_map_root
+           (s : concrete_state)
+           (t : ptable_pointer)
+           (begin end_ : ptable_addr_t)
+           (attrs : attributes)
+           (root_level : nat)
+           (flags : int)
+           (ppool : mpool) : bool * concrete_state * mpool :=
+  (false, s, ppool). (* TODO *)
+
+(*
+/**
  * Updates the given table such that the given physical address range is mapped
  * or not mapped into the address space with the architecture-agnostic mode
  * provided.
@@ -133,7 +153,57 @@ Definition mm_ptable_identity_update
            (attrs : attributes)
            (flags : int)
            (ppool : mpool) : bool * concrete_state * mpool :=
-  (false, s, ppool). (* TODO *)
+  (* uint8_t root_level = mm_max_level(flags) + 1; *)
+  let root_level := mm_max_level flags + 1 in
+
+  (* ptable_addr_t ptable_end =
+             mm_root_table_count(flags) * mm_entry_size(root_level); *)
+  let ptable_end := mm_root_table_count flags * mm_entry_size root_level in
+
+  (* ptable_addr_t end = mm_round_up_to_page(pa_addr(pa_end)); *)
+  let end_ := mm_round_up_to_page (pa_addr pa_end) in
+
+  (* ptable_addr_t begin = pa_addr(arch_mm_clear_pa(pa_begin)); *)
+  let begin := pa_addr (arch_mm_clear_pa pa_begin) in
+
+  (* assert(root_level >= 2); *)
+  (* SKIPPED *)
+
+  (* /* Cap end to stay within the bounds of the page table. */
+     if (end > ptable_end) {
+             end = ptable_end;
+     } *)
+  let end_ := N.min ptable_end end_ in
+
+  (* /*
+      * Do it in two steps to prevent leaving the table in a halfway updated
+      * state. In such a two-step implementation, the table may be left with
+      * extra internal tables, but no different mapping on failure.
+      */
+     if (!mm_map_root(t, begin, end, attrs, root_level, flags, ppool) ||
+         !mm_map_root(t, begin, end, attrs, root_level,
+                      flags | MM_FLAG_COMMIT, ppool)) {
+             return false;
+     } *)
+  match mm_map_root s t begin end_ attrs root_level flags ppool with
+  | (false, s, ppool) => (false, s, ppool)
+  | (true, s, ppool) =>
+    let flags := (flags ||| MM_FLAG_COMMIT)%N in
+    match mm_map_root s t begin end_ attrs root_level flags ppool with
+    | (false, s, ppool) => (false, s, ppool)
+    | (true, s, ppool) =>
+      (* /* Invalidate the tlb. */
+	 if ((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) {
+                 mm_invalidate_tlb(begin, end, flags);
+         } *)
+      (* N.B. we're not yet modelling the TLB or cache, but should probably do so
+         in the future. *)
+      (* SKIPPED *)
+
+      (* return true; *)
+      (true, s, ppool)
+    end
+  end.
 
 (*
 /**

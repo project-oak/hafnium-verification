@@ -41,3 +41,5 @@ Axiom arch_mm_stage2_root_table_count : nat.
 Axiom arch_mm_stage1_root_table_count : nat.
 
 Axiom arch_mm_mode_to_stage2_attrs : mode_t -> attributes.
+
+Axiom arch_mm_clear_pa : paddr_t -> paddr_t.
