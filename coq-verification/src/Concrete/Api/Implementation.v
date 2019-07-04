@@ -181,14 +181,14 @@ Definition api_share_memory
         let '(from_mode, to_mode) :=
             (match share with
              | HF_MEMORY_GIVE =>
-               ([ MM_MODE_INVALID | MM_MODE_UNOWNED ],
-                [ MM_MODE_R | MM_MODE_W | MM_MODE_X])%N
+               (MM_MODE_INVALID ||| MM_MODE_UNOWNED,
+                MM_MODE_R ||| MM_MODE_W ||| MM_MODE_X)%N
              | HF_MEMORY_LEND =>
-               ( [ MM_MODE_INVALID ],
-                 [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED ])%N
+               ( MM_MODE_INVALID,
+                 MM_MODE_R ||| MM_MODE_W ||| MM_MODE_X ||| MM_MODE_UNOWNED)%N
              | HF_MEMORY_SHARE =>
-               ([ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_SHARED ],
-                [ MM_MODE_R | MM_MODE_W | MM_MODE_X | MM_MODE_UNOWNED | MM_MODE_SHARED ])%N
+               (MM_MODE_R ||| MM_MODE_W ||| MM_MODE_X ||| MM_MODE_SHARED,
+                MM_MODE_R ||| MM_MODE_W ||| MM_MODE_X ||| MM_MODE_UNOWNED ||| MM_MODE_SHARED)%N
              | INVALID =>
                (* unlike in the reference code, we need to return garbage here rather than
                  returning, and can protect ourselves by checking if [share] was invalid
@@ -231,7 +231,7 @@ Definition api_share_memory
                       goto fail;
               }
              *)
-            if (orig_from_mode & MM_MODE_INVALID)%N
+            if (!((orig_from_mode & MM_MODE_INVALID) =? 0)%N)%bool
             then goto_fail state local_page_pool
             else
               (*
@@ -254,7 +254,8 @@ Definition api_share_memory
               (* N.B. the case structure looks a little different here
                  because of functional/imperative differences -- each failure
                  case is handled as one big boolean *)
-              if ((orig_from_mode & MM_MODE_UNOWNED)
+              if (
+                  (!(orig_from_mode & MM_MODE_UNOWNED) =? 0)%N
                     && ((match share with
                          | HF_MEMORY_GIVE => false
                          | _ => true
@@ -263,14 +264,14 @@ Definition api_share_memory
                                     state to.(vm_root_ptable) begin end_ with
                             | (false, _) => false
                             | (true, orig_to_mode) =>
-                              (orig_to_mode & MM_MODE_UNOWNED)
+                              !((orig_to_mode & MM_MODE_UNOWNED) =? 0)%N
                             end)))%bool
               then goto_fail state local_page_pool (* first failure case *)
               else
                 (* we have to handle the else-if case separately, checking
                    MM_MODE_UNOWNED again *)
-                if (!(orig_from_mode & MM_MODE_UNOWNED)
-                     && (orig_from_mode & MM_MODE_SHARED))%bool
+                if (((orig_from_mode & MM_MODE_UNOWNED) =? 0)%N
+                     && !((orig_from_mode & MM_MODE_SHARED) =? 0)%N)%bool
                 then goto_fail state local_page_pool
                 else
                   (*

@@ -99,9 +99,9 @@ static uint8_t mm_max_level(int flags)
 Definition mm_max_level (flags : int) : nat :=
   (* return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_max_level()
                                      : arch_mm_stage2_max_level(); *)
-  if (flags & MM_FLAG_STAGE1)%bool
-  then arch_mm_stage1_max_level
-  else arch_mm_stage2_max_level.
+  if ((flags & MM_FLAG_STAGE1) =? 0)%N
+  then arch_mm_stage2_max_level
+  else arch_mm_stage1_max_level.
 
 (*
 /**
@@ -112,9 +112,9 @@ static uint8_t mm_root_table_count(int flags)
 Definition mm_root_table_count (flags : int) : nat :=
   (* return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_root_table_count()
                                      : arch_mm_stage2_root_table_count(); *)
-  if (flags & MM_FLAG_STAGE1)%bool
-  then arch_mm_stage1_root_table_count
-  else arch_mm_stage2_root_table_count.
+  if ((flags & MM_FLAG_STAGE1) =? 0)%N
+  then arch_mm_stage2_root_table_count
+  else arch_mm_stage1_root_table_count.
 
 (*
 /**
