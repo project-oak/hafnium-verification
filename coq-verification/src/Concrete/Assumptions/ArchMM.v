@@ -14,7 +14,7 @@ Local Notation level := nat.
 
 Axiom arch_mm_absent_pte : level -> pte_t.
 
-Axiom arch_mm_block_pte : level -> paddr_t -> attributes.
+Axiom arch_mm_block_pte : level -> paddr_t -> attributes -> pte_t.
 
 Axiom arch_mm_pte_is_present : pte_t -> level -> bool.
 
@@ -43,3 +43,5 @@ Axiom arch_mm_stage1_root_table_count : nat.
 Axiom arch_mm_mode_to_stage2_attrs : mode_t -> attributes.
 
 Axiom arch_mm_clear_pa : paddr_t -> paddr_t.
+
+Axiom arch_mm_is_block_allowed : level -> bool.
