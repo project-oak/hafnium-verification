@@ -53,7 +53,7 @@ Definition mm_entry_size (level : nat) : size_t :=
  * must be a power of two.
  */
 static ptable_addr_t mm_start_of_next_block(ptable_addr_t addr,
-					    size_t block_size) *)
+                                            size_t block_size) *)
 Definition mm_start_of_next_block (addr : ptable_addr_t) (block_size : size_t)
   : ptable_addr_t :=
   (* return (addr + block_size) & ~(block_size - 1); *)
@@ -112,6 +112,30 @@ Definition mm_root_table_count (flags : int) : nat :=
 
 (*
 /**
+ * Updates the page table at the given level to map the given address range to a
+ * physical range using the provided (architecture-specific) attributes. Or if
+ * MM_FLAG_UNMAP is set, unmap the given range instead.
+ *
+ * This function calls itself recursively if it needs to update additional
+ * levels, but the recursion is bound by the maximum number of levels in a page
+ * table.
+ */
+static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
+                         uint64_t attrs, struct mm_page_table *table,
+                         uint8_t level, int flags, struct mpool *ppool) *)
+Definition mm_map_level
+           (s : concrete_state)
+           (begin end_ : ptable_addr_t)
+           (pa : paddr_t)
+           (attrs : attributes)
+           (table : mm_page_table)
+           (level : nat)
+           (flags : int)
+           (ppool : mpool) : bool * concrete_state * mpool :=
+  (false, s, ppool). (* TODO *)
+
+(*
+/**
  * Updates the page table from the root to map the given address range to a
  * physical range using the provided (architecture-specific) attributes. Or if
  * MM_FLAG_UNMAP is set, unmap the given range instead.
@@ -121,13 +145,54 @@ static bool mm_map_root(struct mm_ptable *t, ptable_addr_t begin,
                         int flags, struct mpool *ppool) *)
 Definition mm_map_root
            (s : concrete_state)
-           (t : ptable_pointer)
+           (t : mm_ptable)
            (begin end_ : ptable_addr_t)
            (attrs : attributes)
            (root_level : nat)
            (flags : int)
            (ppool : mpool) : bool * concrete_state * mpool :=
-  (false, s, ppool). (* TODO *)
+  (* size_t root_table_size = mm_entry_size(root_level); *)
+  let root_table_size := mm_entry_size root_level in
+
+  (* struct mm_page_table *table =
+             &mm_page_table_from_pa(t->root)[mm_index(begin, root_level)]; *)
+  let table :=
+      (s.(ptable_deref)
+           (mm_page_table_from_pa
+              t.(root))) {{ (mm_index begin root_level) }} in
+
+  (* while (begin < end) { *)
+  let '(s, begin, table, failed, ppool) :=
+      while_loop
+        (max_iterations := N.to_nat (end_ - begin))
+        (fun _ => (begin <? end_)%N)
+        (s, begin, table, false, ppool)
+        (fun '(s, begin, table, failed, ppool) =>
+
+           (* if (!mm_map_level(begin, end, pa_init(begin), attrs, table,
+                                  root_level - 1, flags, ppool)) {
+                      return false;
+              } *)
+           match mm_map_level s begin end_ (pa_init begin) attrs table
+                              (root_level - 1) flags ppool with
+           | (false, s, ppool) =>
+             let failed := true in
+             (s, begin, table, failed, ppool, break)
+           | (true, s, ppool) =>
+
+             (* begin = mm_start_of_next_block(begin, root_table_size); *)
+             let begin := mm_start_of_next_block begin root_table_size in
+
+             (* table++; *)
+             let table := table {{ 1 }} in
+
+             (s, begin, table, failed, ppool, continue)
+           end) in
+
+  (* return true; *)
+  (* N.B. we have to check here if the while loop failed partway through *)
+  let success := (!failed)%bool in
+  (success, s, ppool).
 
 (*
 /**
@@ -136,11 +201,11 @@ Definition mm_map_root
  * provided.
  */
 static bool mm_ptable_identity_update(struct mm_ptable *t, paddr_t pa_begin,
-				      paddr_t pa_end, uint64_t attrs, int flags,
-				      struct mpool *ppool) *)
+                                      paddr_t pa_end, uint64_t attrs, int flags,
+                                      struct mpool *ppool) *)
 Definition mm_ptable_identity_update
            (s : concrete_state)
-           (t : ptable_pointer)
+           (t : mm_ptable)
            (pa_begin pa_end : paddr_t)
            (attrs : attributes)
            (flags : int)
@@ -185,7 +250,7 @@ Definition mm_ptable_identity_update
     | (false, s, ppool) => (false, s, ppool)
     | (true, s, ppool) =>
       (* /* Invalidate the tlb. */
-	 if ((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) {
+         if ((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) {
                  mm_invalidate_tlb(begin, end, flags);
          } *)
       (* N.B. we're not yet modelling the TLB or cache, but should probably do so
@@ -210,9 +275,9 @@ Definition mm_ptable_identity_update
  * Returns true if the whole range has the same attributes and false otherwise.
  */
 static bool mm_ptable_get_attrs_level(struct mm_page_table *table,
-				      ptable_addr_t begin, ptable_addr_t end,
-				      uint8_t level, bool got_attrs,
-				      uint64_t *attrs) *)
+                                      ptable_addr_t begin, ptable_addr_t end,
+                                      uint8_t level, bool got_attrs,
+                                      uint64_t *attrs) *)
 Fixpoint mm_ptable_get_attrs_level
            (ptable_deref : ptable_pointer -> mm_page_table)
            (table : mm_page_table)
@@ -415,7 +480,7 @@ bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
    I've found so far. *)
 Definition mm_vm_identity_map
            (s : concrete_state)
-           (t : ptable_pointer)
+           (t : mm_ptable)
            (begin : paddr_t)
            (end_ : paddr_t)
            (mode : mode_t)
@@ -445,7 +510,7 @@ Definition mm_vm_identity_map
  */
 void mm_vm_defrag(struct mm_ptable *t, struct mpool *ppool) *)
 Definition mm_vm_defrag
-           (s : concrete_state) (t : ptable_pointer) (ppool : mpool)
+           (s : concrete_state) (t : mm_ptable) (ppool : mpool)
   : (bool * concrete_state * mpool) :=
   (false, s, ppool). (* TODO *)
 
@@ -463,7 +528,7 @@ bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
    mode as is indicated by the pointer passed in". *)
 Definition mm_vm_get_mode
            (s : concrete_state)
-           (t : ptable_pointer)
+           (t : mm_ptable)
            (begin end_ : ipaddr_t) : bool * mode_t :=
   (false, 0%N). (* TODO *)
 

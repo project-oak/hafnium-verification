@@ -105,7 +105,7 @@ Definition api_share_memory
          (* N.B. ignore the success boolean, as the code does *)
          let '(_, state, local_page_pool) :=
              mm_vm_identity_map state
-                                (from.(vm_root_ptable))
+                                (from.(vm_ptable))
                                 pa_begin
                                 pa_end
                                 orig_from_mode
@@ -201,7 +201,7 @@ Definition api_share_memory
               if (!mm_vm_get_mode(&from->ptable, begin, end, &orig_from_mode)) {
                       goto fail;
               } *)
-          match mm_vm_get_mode state from.(vm_root_ptable) begin end_ with
+          match mm_vm_get_mode state from.(vm_ptable) begin end_ with
           | (false, _) => goto_fail state local_page_pool
           | (true, orig_from_mode) =>
             (* /*
@@ -240,7 +240,7 @@ Definition api_share_memory
                          | _ => true
                          end)
                         || (match mm_vm_get_mode
-                                    state to.(vm_root_ptable) begin end_ with
+                                    state to.(vm_ptable) begin end_ with
                             | (false, _) => false
                             | (true, orig_to_mode) =>
                               !((orig_to_mode & MM_MODE_UNOWNED) =? 0)%N
@@ -268,7 +268,7 @@ Definition api_share_memory
                               goto fail;
                       } *)
                   match mm_vm_identity_map state
-                                           (from.(vm_root_ptable))
+                                           (from.(vm_ptable))
                                            pa_begin
                                            pa_end
                                            from_mode
@@ -307,14 +307,14 @@ Definition api_share_memory
                                  goto fail_return_to_sender;
                          } *)
                       match mm_vm_identity_map state
-                                               (to.(vm_root_ptable))
+                                               (to.(vm_ptable))
                                                pa_begin
                                                pa_end
                                                to_mode
                                                local_page_pool with
                       | (false, state, local_page_pool) =>
                         let '(_, state, local_page_pool) :=
-                            mm_vm_defrag state from.(vm_root_ptable) local_page_pool in
+                            mm_vm_defrag state from.(vm_ptable) local_page_pool in
                         goto_fail_return_to_sender
                           new_state
                           new_local_page_pool
