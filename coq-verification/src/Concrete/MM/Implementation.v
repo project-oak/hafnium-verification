@@ -14,6 +14,12 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 (*** This file transcribes necessary functions from mm.c, with the original C in
      comments alongside. ***)
 
+(* TODO: standardize the "SKIPPED" keyword as an indication that some C code is
+   not being transcribed *)
+(* TODO: make the begin-comment and end-comment parentheses on the same lines as
+   copied C code instead of the lines above and below so there's less gratuitious
+   use of space for the copied code. *)
+
 (* typedef uintvaddr_t ptable_addr_t; *)
 Definition ptable_addr_t : Type := uintvaddr_t.
 Bind Scope N_scope with ptable_addr_t.
