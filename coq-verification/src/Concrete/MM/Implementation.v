@@ -14,9 +14,6 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 (*** This file transcribes necessary functions from mm.c, with the original C in
      comments alongside. ***)
 
-(* TODO: standardize the "SKIPPED" keyword as an indication that some C code is
-   not being transcribed *)
-
 (* typedef uintvaddr_t ptable_addr_t; *)
 Definition ptable_addr_t : Type := uintvaddr_t.
 Bind Scope N_scope with ptable_addr_t.
@@ -433,8 +430,11 @@ Definition mm_vm_identity_map
       mm_ptable_identity_update
         s t begin end_ (arch_mm_mode_to_stage2_attrs mode) flags ppool in
 
-  (* N.B. since we're assuming ipa is NULL we can skip the if clause that sets
-     it if it's not null *)
+  (* if (success && ipa != NULL) {
+             *ipa = ipa_from_pa(begin);
+     } *)
+  (* Since we assume ipa = NULL, we can skip the if clause *)
+  (* SKIPPED *)
 
   (* return success *)
   (success, state, ppool).
