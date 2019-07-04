@@ -62,7 +62,7 @@ Definition haf_page_valid
     /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
 
 Local Definition owned (mode : mode_t) : Prop :=
-  (mode & MM_MODE_UNOWNED)%bool = false.
+  (mode & MM_MODE_UNOWNED)%N <> 0.
 
 Definition vm_page_owned (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
   exists e : pte_t,
