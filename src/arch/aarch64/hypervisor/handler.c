@@ -116,9 +116,25 @@ static void dsb_nsh(void)
  */
 static void invalidate_vm_tlb(void)
 {
+	/*
+	 * Ensure that the last VTTBR write has taken effect so we invalidate
+	 * the right set of TLB entries.
+	 */
 	isb();
+
 	__asm__ volatile("tlbi vmalle1");
+
+	/*
+	 * Ensure that no instructions are fetched for the VM until after the
+	 * TLB invalidation has taken effect.
+	 */
 	isb();
+
+	/*
+	 * Ensure that no data reads or writes for the VM happen until after the
+	 * TLB invalidation has taken effect. Non-sharable is enough because the
+	 * TLB is local to the CPU.
+	 */
 	dsb_nsh();
 }
 
