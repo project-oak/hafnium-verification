@@ -46,10 +46,13 @@ Definition api_clear_memory
     (false, state, ppool)
   else
     (* memset_s(ptr, size, 0, size);
-       arch_mm_write_back_dcache(ptr, size);
-       mm_unmap(begin, end, ppool);
-       return true; *)
+       arch_mm_write_back_dcache(ptr, size); *)
+    (* SKIPPED *)
+
+    (* mm_unmap(begin, end, ppool); *)
     let '(_, state, ppool) := mm_unmap state begin end_ ppool in
+
+    (* return true; *)
     (true, state, ppool).
 
 (*
