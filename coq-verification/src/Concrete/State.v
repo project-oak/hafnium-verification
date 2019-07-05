@@ -38,6 +38,18 @@ Record concrete_state :=
     api_page_pool : mpool;
   }.
 
+Definition reassign_pointer
+           (s : concrete_state) (ptr : ptable_pointer) (t : mm_page_table)
+  : concrete_state :=
+  {|
+    ptable_deref :=
+      (fun ptr' =>
+         if ptable_pointer_eq_dec ptr ptr'
+         then t
+         else s.(ptable_deref) ptr);
+    api_page_pool := s.(api_page_pool);
+  |}.
+
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   (* Possible constraints:
         - Block PTEs have the valid bit set

@@ -18,6 +18,9 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 Definition ptable_addr_t : Type := uintvaddr_t.
 Bind Scope N_scope with ptable_addr_t.
 
+(* static bool mm_stage2_invalidate = false; *)
+Definition mm_stage2_invalidate := false.
+
 (*
 /**
  * Get the page table from the physical address.
@@ -123,6 +126,24 @@ Definition mm_root_table_count (flags : int) : nat :=
 
 (*
 /**
+ * Invalidates the TLB for the given address range.
+ */
+static void mm_invalidate_tlb(ptable_addr_t begin, ptable_addr_t end, int flags) *)
+Definition mm_invalidate_tlb
+           (s : concrete_state)
+           (begin end_ : ptable_addr_t)
+           (flags : int) : concrete_state :=
+  (* if (flags & MM_FLAG_STAGE1) {
+             arch_mm_invalidate_stage1_range(va_init(begin), va_init(end));
+     } else {
+             arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
+     } *)
+  (* N.B. this is a no-op right now because we aren't currently modelling the TLB *)
+  (* SKIPPED *)
+  s.
+
+(*
+/**
  * Frees all page-table-related memory associated with the given pte at the
  * given level, including any subtables recursively.
  */
@@ -165,7 +186,6 @@ Fixpoint mm_free_page_pte
     (s, ppool)
     end.
 
-
 (*
 /**
  * Replaces a page table entry with the given value. If both old and new values
@@ -176,14 +196,58 @@ Fixpoint mm_free_page_pte
  */
 static void mm_replace_entry(ptable_addr_t begin, pte_t *pte, pte_t new_pte,
 			     uint8_t level, int flags, struct mpool *ppool) *)
+(* N.B. instead of taking in a pointer to the PTE being replaced, we take in the
+   page table and an index. This is because, in a functional language, we can't
+   just change the underlying data of a pointer -- we have to construct a new
+   table with the entry replaced and return it, and for that we need to know
+   what's in the old table and where the old PTE is located. *)
 Definition mm_replace_entry
            (s : concrete_state)
            (begin : ptable_addr_t)
-           (pte new_pte : pte_t)
+           (t : mm_page_table)
+           (pte_index : nat)
+           (new_pte : pte_t)
            (level : nat)
            (flags : int)
-           (ppool : mpool) : concrete_state * mpool :=
-  (s, ppool). (* TODO *)
+           (ppool : mpool) : mm_page_table * concrete_state * mpool :=
+
+  (* pte_t v = *pte; *)
+  let pte := t [[ pte_index ]] in
+  let v := pte in
+
+  (* /*
+      * We need to do the break-before-make sequence if both values are
+      * present and the TLB is being invalidated.
+      */
+     if (((flags & MM_FLAG_STAGE1) || mm_stage2_invalidate) &&
+         arch_mm_pte_is_valid(v, level) &&
+         arch_mm_pte_is_valid(new_pte, level)) {
+             *pte = arch_mm_absent_pte(level);
+             mm_invalidate_tlb(begin, begin + mm_entry_size(level), flags);
+     } *)
+  (* TODO: make a != notation so that we don't need the (! (_ =? 0)%N)%bool
+     nonsense *)
+  let '(t, s) :=
+      if ((!((flags & MM_FLAG_STAGE1) =? 0)%N || mm_stage2_invalidate)
+            && arch_mm_pte_is_valid v level
+            && arch_mm_pte_is_valid new_pte level)%bool
+      then
+        let t := t.(mm_page_table_replace_entry)
+                     (arch_mm_absent_pte level) pte_index in
+        let s :=
+            mm_invalidate_tlb s begin (begin + mm_entry_size level) flags in
+        (t, s)
+      else (t, s) in
+
+  (* /* Assign the new pte. */
+     *pte = new_pte; *)
+  let t := t.(mm_page_table_replace_entry) new_pte pte_index in
+
+  (* /* Free pages that aren't in use anymore. */
+       mm_free_page_pte(v, level, ppool); *)
+  let '(s, ppool) := mm_free_page_pte s v level ppool in
+
+  (t, s, ppool).
 
 (*
 /**
@@ -234,7 +298,7 @@ Definition mm_map_level
            (table : mm_page_table)
            (level : nat)
            (flags : int)
-           (ppool : mpool) : bool * concrete_state * mpool :=
+           (ppool : mpool) : bool * mm_page_table * concrete_state * mpool :=
 
   (* pte_t *pte = &table->entries[mm_index(begin, level)]; *)
   (* N.B. storing the index instead of a pointer *)
@@ -260,13 +324,13 @@ Definition mm_map_level
 
   (* /* Fill each entry in the table. */
      while (begin < end) { *)
-  let '(s, begin, pa, pte_index, failed, ppool) :=
+  let '(s, begin, pa, table, pte_index, failed, ppool) :=
       while_loop
         (max_iterations := N.to_nat (end_ - begin))
         (fun _ => (begin <? end_)%N)
-        (s, begin, pa, pte_index, false, ppool)
-        (fun '(s, begin, pa, pte_index, failed, ppool) =>
-           let pte := table[[ pte_index ]] in
+        (s, begin, pa, table, pte_index, false, ppool)
+        (fun '(s, begin, pa, table, pte_index, failed, ppool) =>
+           let pte := table [[ pte_index ]] in
 
            (* if (unmap ? !arch_mm_pte_is_present( *pte, level)
                         : arch_mm_pte_is_block( *pte, level) &&
@@ -289,7 +353,7 @@ Definition mm_map_level
              let begin := mm_start_of_next_block begin entry_size in
              let pa := mm_pa_start_of_next_block pa entry_size in
              let pte_index := S pte_index in
-             (s, begin, pa, pte_index, failed, ppool, continue)
+             (s, begin, pa, table, pte_index, failed, ppool, continue)
            else
              (* } else if ((end - begin) >= entry_size &&
                   (unmap || arch_mm_is_block_allowed(level)) &&
@@ -310,13 +374,13 @@ Definition mm_map_level
                           mm_replace_entry(begin, pte, new_pte, level,
                                            flags, ppool);
                   } *)
-               let '(s, ppool) :=
+               let '(table, s, ppool) :=
                    if commit
                    then let new_pte := if unmap
                                        then arch_mm_absent_pte level
                                        else arch_mm_block_pte level pa attrs in
-                        mm_replace_entry s begin pte new_pte level flags ppool
-                   else (s, ppool) in
+                        mm_replace_entry s begin table pte_index new_pte level flags ppool
+                   else (table, s, ppool) in
 
                (* done; continue to the next entry *)
                (* begin = mm_start_of_next_block(begin, entry_size);
@@ -325,7 +389,7 @@ Definition mm_map_level
                let begin := mm_start_of_next_block begin entry_size in
                let pa := mm_pa_start_of_next_block pa entry_size in
                let pte_index := S pte_index in
-               (s, begin, pa, pte_index, failed, ppool, continue)
+               (s, begin, pa, table, pte_index, failed, ppool, continue)
              else
                (* /*
                    * If the entry is already a subtable get it; otherwise
@@ -342,7 +406,7 @@ Definition mm_map_level
                match nt with
                | None =>
                  let failed := true in
-                 (s, begin, pa, pte_index, failed, ppool, break)
+                 (s, begin, pa, table, pte_index, failed, ppool, break)
                | Some nt =>
                  (* /*
                   * If the subtable is now empty, replace it with an
@@ -361,7 +425,12 @@ Definition mm_map_level
                                 mm_page_table_is_empty nt (level - 1))%bool
                      then
                        let v := pte in
-                       let pte := arch_mm_absent_pte level in
+                       (* N.B. in functional programming we can't edit data under
+                          a pointer, so we need to construct a new table and pass
+                          it along. *)
+                       let table :=
+                           table.(mm_page_table_replace_entry)
+                                   (arch_mm_absent_pte level) pte_index in
                        let '(s, ppool) := mm_free_page_pte s v level ppool in
                        (pte, s, ppool)
                      else (pte, s, ppool) in
@@ -372,13 +441,13 @@ Definition mm_map_level
                  let begin := mm_start_of_next_block begin entry_size in
                  let pa := mm_pa_start_of_next_block pa entry_size in
                  let pte_index := S pte_index in
-                 (s, begin, pa, pte_index, failed, ppool, continue)
+                 (s, begin, pa, table, pte_index, failed, ppool, continue)
                end) in
 
   (* return true; *)
   (* N.B. have to check here if the loop returned false partway through *)
   let success := (!failed)%bool in
-  (success, s, ppool).
+  (success, table, s, ppool).
 
 (*
 /**
@@ -421,10 +490,10 @@ Definition mm_map_root
               } *)
            match mm_map_level s begin end_ (pa_init begin) attrs table
                               (root_level - 1) flags ppool with
-           | (false, s, ppool) =>
+           | (false, table, s, ppool) =>
              let failed := true in
              (s, begin, table, failed, ppool, break)
-           | (true, s, ppool) =>
+           | (true, table, s, ppool) =>
 
              (* begin = mm_start_of_next_block(begin, root_table_size); *)
              let begin := mm_start_of_next_block begin root_table_size in
@@ -434,6 +503,12 @@ Definition mm_map_root
 
              (s, begin, table, failed, ppool, continue)
            end) in
+
+  (* Functional-program bookkeeping: the C code has edited the table under the
+     pointer. Since functional code can't do that, it has returned to us a new
+     table, so now we need to put that new table under the old pointer in the new
+     state that we return. *)
+  let s := s.(reassign_pointer) (mm_page_table_from_pa t.(root)) table in
 
   (* return true; *)
   (* N.B. we have to check here if the while loop failed partway through *)
