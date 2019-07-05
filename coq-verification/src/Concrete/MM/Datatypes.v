@@ -1,5 +1,6 @@
 Require Import Coq.Lists.List.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Util.List.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 
 (*** This file transcribes some datatypes found in mm.h, with original C in
@@ -19,6 +20,11 @@ struct mm_ptable {
 };
  *)
 Record mm_ptable := { root : paddr_t }.
+
+(* Shortcut definition for replacing the PTE at a given index *)
+Definition mm_page_table_replace_entry
+           (t : mm_page_table) (pte : pte_t) (index : nat) : mm_page_table :=
+  {| entries := set_nth t.(entries) pte index |}.
 
 (*
   Some of the code in mm.c looks like this:

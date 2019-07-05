@@ -4,3 +4,7 @@
 
 (* pointers to page tables *)
 Axiom ptable_pointer : Type.
+
+(* equality between pointers is decidable *)
+Axiom ptable_pointer_eq_dec :
+  forall ptr1 ptr2 : ptable_pointer, {ptr1 = ptr2} + {ptr1 <> ptr2}.
