@@ -108,9 +108,9 @@ static uint8_t mm_max_level(int flags) *)
 Definition mm_max_level (flags : int) : nat :=
   (* return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_max_level()
                                      : arch_mm_stage2_max_level(); *)
-  if ((flags & MM_FLAG_STAGE1) =? 0)%N
-  then arch_mm_stage2_max_level
-  else arch_mm_stage1_max_level.
+  if (flags & MM_FLAG_STAGE1 != 0)%bool
+  then arch_mm_stage1_max_level
+  else arch_mm_stage2_max_level.
 
 (*
 /**
@@ -120,9 +120,9 @@ static uint8_t mm_root_table_count(int flags) *)
 Definition mm_root_table_count (flags : int) : nat :=
   (* return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_root_table_count()
                                      : arch_mm_stage2_root_table_count(); *)
-  if ((flags & MM_FLAG_STAGE1) =? 0)%N
-  then arch_mm_stage2_root_table_count
-  else arch_mm_stage1_root_table_count.
+  if (flags & MM_FLAG_STAGE1 != 0)%bool
+  then arch_mm_stage1_root_table_count
+  else arch_mm_stage2_root_table_count.
 
 (*
 /**
@@ -225,10 +225,8 @@ Definition mm_replace_entry
              *pte = arch_mm_absent_pte(level);
              mm_invalidate_tlb(begin, begin + mm_entry_size(level), flags);
      } *)
-  (* TODO: make a != notation so that we don't need the (! (_ =? 0)%N)%bool
-     nonsense *)
   let '(t, s) :=
-      if ((!((flags & MM_FLAG_STAGE1) =? 0)%N || mm_stage2_invalidate)
+      if (((flags & MM_FLAG_STAGE1 != 0) || mm_stage2_invalidate)
             && arch_mm_pte_is_valid v level
             && arch_mm_pte_is_valid new_pte level)%bool
       then
@@ -311,10 +309,10 @@ Definition mm_map_level
   let entry_size := mm_entry_size level in
 
   (* bool commit = flags & MM_FLAG_COMMIT; *)
-  let commit : bool := (!((flags & MM_FLAG_COMMIT) =? 0)%N)%bool in
+  let commit : bool := (flags & MM_FLAG_COMMIT != 0)%bool in
 
   (* bool unmap = flags & MM_FLAG_UNMAP; *)
-  let unmap : bool := (!((flags & MM_FLAG_UNMAP) =? 0)%N)%bool in
+  let unmap : bool := (flags & MM_FLAG_UNMAP != 0)%bool in
 
   (* /* Cap end so that we don't go over the current level max. */
         if (end > level_end) {
