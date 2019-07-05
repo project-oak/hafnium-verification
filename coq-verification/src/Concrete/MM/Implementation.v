@@ -102,6 +102,26 @@ Definition mm_index (addr : ptable_addr_t) (level : nat) : size_t :=
 
 (*
 /**
+ * Allocates a new page table.
+ */
+static struct mm_page_table *mm_alloc_page_tables(size_t count,
+						  struct mpool *ppool) *)
+(* N.B. the C returns a null pointer on failure; we represent this with an
+   [option] such that [None] represents NULL *)
+Definition mm_alloc_page_tables (count : size_t) (ppool : mpool)
+  : option (mpool * ptable_pointer) :=
+  (* if (count == 1) {
+             return mpool_alloc(ppool);
+     } *)
+  if (Nat.eqb count 1)
+  then mpool_alloc ppool
+  else
+    (* return mpool_alloc_contiguous(ppool, count, count); *)
+    mpool_alloc_contiguous ppool count count
+.
+
+(*
+/**
  * Returns the maximum level in the page table given the flags.
  */
 static uint8_t mm_max_level(int flags) *)
@@ -258,14 +278,106 @@ static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 						   pte_t *pte, uint8_t level,
 						   int flags,
 						   struct mpool *ppool) *)
+(* N.B. instead of taking in a pointer to the PTE being replaced, we take in the
+   page table and an index; see the note above mm_replace_entry. *)
 Definition mm_populate_table_pte
            (s : concrete_state)
            (begin : ptable_addr_t)
-           (pte : pte_t)
+           (t : mm_page_table)
+           (pte_index : nat)
            (level : nat)
            (flags : int)
-           (ppool : mpool) : option mm_page_table * concrete_state * mpool :=
-  (None, s, ppool). (* TODO *)
+           (ppool : mpool)
+  : mm_page_table (* new state of [t] *)
+    * option mm_page_table (* newly created table, [None] = null pointer *)
+    * concrete_state * mpool :=
+
+  (* pte_t v = *pte; *)
+  let pte := t [[ pte_index ]] in
+  let v := pte in
+
+  (* uint8_t level_below = level - 1; *)
+  let level_below := level - 1 in
+
+  (* /* Just return pointer to table if it's already populated. */
+     if (arch_mm_pte_is_table(v, level)) {
+             return mm_page_table_from_pa(arch_mm_table_from_pte(v, level));
+     } *)
+  if (arch_mm_pte_is_table v level)
+  then
+    let t :=
+        s.(ptable_deref)
+            (mm_page_table_from_pa (arch_mm_table_from_pte v level)) in
+    (t, Some t, s, ppool)
+  else
+
+    (* /* Allocate a new table. */
+       ntable = mm_alloc_page_tables(1, ppool);
+       if (ntable == NULL) {
+               dlog("Failed to allocate memory for page table\n");
+               return NULL;
+       } *)
+    match mm_alloc_page_tables 1 ppool with
+    | None => (t, None, s, ppool)
+    | Some (ppool, ntable_ptr) =>
+      let ntable := s.(ptable_deref) ntable_ptr in
+
+      (* /* Determine template for new pte and its increment. */
+         if (arch_mm_pte_is_block(v, level)) {
+                 inc = mm_entry_size(level_below);
+                 new_pte = arch_mm_block_pte(level_below,
+                                             arch_mm_block_from_pte(v, level),
+                                             arch_mm_pte_attrs(v, level));
+         } else {
+                 inc = 0;
+                 new_pte = arch_mm_absent_pte(level_below);
+         } *)
+      let '(inc, new_pte) :=
+          if (arch_mm_pte_is_block v level)
+          then
+            let inc := mm_entry_size level_below in
+            let new_pte := arch_mm_block_pte
+                             level_below
+                             (arch_mm_block_from_pte v level)
+                             (arch_mm_pte_attrs v level) in
+            (inc, new_pte)
+          else
+            (0, arch_mm_absent_pte level_below) in
+
+      (* /* Initialise entries in the new table. */
+         for (i = 0; i < MM_PTE_PER_PAGE; i++) {
+                 ntable->entries[i] = new_pte;
+                 new_pte += inc;
+         } *)
+      (* TODO: what exactly does [new_pte += inc] mean? [new_pte] is not a
+         pointer, just a plain pte_t. What does incrementing the number
+         change about the entry? *)
+      let '(ntable, new_pte) :=
+          fold_right
+            (fun i '(ntable, new_pte) =>
+               let ntable := ntable.(mm_page_table_replace_entry) new_pte i in
+               let new_pte := (new_pte + inc)%N in
+               (ntable, new_pte))
+            (ntable, new_pte)
+            (seq 0 MM_PTE_PER_PAGE) in
+
+      (* /* Ensure initialisation is visible before updating the pte. */
+         atomic_thread_fence(memory_order_release); *)
+      (* N.B. not yet modelling concurrency *)
+      (* SKIPPED *)
+
+      (* /* Replace the pte entry, doing a break-before-make if needed. */
+         mm_replace_entry(begin, pte,
+                          arch_mm_table_pte(level, pa_init((uintpaddr_t)ntable)),
+                          level, flags, ppool); *)
+      let '(t, s, ppool) :=
+          mm_replace_entry
+            s begin t pte_index
+            (arch_mm_table_pte level ntable_ptr) level flags ppool in
+
+      (* return ntable; *)
+      (t, Some ntable, s, ppool)
+    end.
 
 (*
 /**
@@ -273,7 +385,21 @@ Definition mm_populate_table_pte
  */
 static bool mm_page_table_is_empty(struct mm_page_table *table, uint8_t level) *)
 Definition mm_page_table_is_empty(table : mm_page_table) (level : nat) : bool :=
-  false. (* TODO *)
+  (* for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+             if (arch_mm_pte_is_present(table->entries[i], level)) {
+                     return false;
+             }
+     }
+     return true; *)
+
+  let success := true in
+  fold_right
+    (fun i success =>
+       if arch_mm_pte_is_present (table[[ i ]]) level
+       then false
+       else success)
+    success
+    (seq 0 MM_PTE_PER_PAGE).
 
 (*
 /**
@@ -395,8 +521,9 @@ Definition mm_map_level
                    */
                   struct mm_page_table *nt = mm_populate_table_pte(
                           begin, pte, level, flags, ppool); *)
-               let '(nt, s, ppool) :=
-                   mm_populate_table_pte s begin pte level flags ppool in
+               let '(table, nt, s, ppool) :=
+                   mm_populate_table_pte
+                     s begin table pte_index level flags ppool in
 
                (* if (nt == NULL) {
                           return false;

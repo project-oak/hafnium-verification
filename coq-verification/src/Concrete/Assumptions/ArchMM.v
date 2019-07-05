@@ -16,6 +16,9 @@ Axiom arch_mm_absent_pte : level -> pte_t.
 
 Axiom arch_mm_block_pte : level -> paddr_t -> attributes -> pte_t.
 
+(* N.B. we take in a ptable_pointer instead of a paddr_t here *)
+Axiom arch_mm_table_pte : level -> ptable_pointer -> pte_t.
+
 Axiom arch_mm_pte_is_present : pte_t -> level -> bool.
 
 Axiom arch_mm_pte_is_valid : pte_t -> level -> bool.
@@ -24,6 +27,7 @@ Axiom arch_mm_pte_is_block : pte_t -> level -> bool.
 
 Axiom arch_mm_pte_is_table : pte_t -> level -> bool.
 
+(* TODO: should this return ptable_pointer? *)
 Axiom arch_mm_table_from_pte : pte_t -> level -> paddr_t.
 
 Axiom arch_mm_pte_attrs : pte_t -> level -> attributes.
@@ -45,3 +49,5 @@ Axiom arch_mm_mode_to_stage2_attrs : mode_t -> attributes.
 Axiom arch_mm_clear_pa : paddr_t -> paddr_t.
 
 Axiom arch_mm_is_block_allowed : level -> bool.
+
+Axiom arch_mm_block_from_pte : pte_t -> level -> paddr_t.

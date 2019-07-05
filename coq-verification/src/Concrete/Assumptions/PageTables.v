@@ -25,6 +25,8 @@ Axiom offset : uintpaddr_t -> nat.
    ptable_pointer out of it *)
 Axiom ptable_pointer_from_address : paddr_t -> ptable_pointer.
 
+(* TODO : this is not true by construction of the current type -- either type
+   needs to have a tuple or this needs to in preconditions of lemmas. *)
 Axiom page_table_size :
   forall ptable : mm_page_table, length ptable.(entries) = MM_PTE_PER_PAGE.
 

@@ -20,4 +20,6 @@ Axiom mpool_alloc : mpool -> option (mpool * ptable_pointer).
 (* Return the new state of the mpool *)
 Axiom mpool_free : mpool -> ptable_pointer -> mpool.
 
-(* TODO: add axioms for correctness properties, as needed *)
+(* allocate contiguous locations *)
+Axiom mpool_alloc_contiguous :
+  mpool -> size_t -> size_t -> option (mpool * ptable_pointer).
