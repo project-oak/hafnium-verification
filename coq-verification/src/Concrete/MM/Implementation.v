@@ -127,10 +127,44 @@ Definition mm_root_table_count (flags : int) : nat :=
  * given level, including any subtables recursively.
  */
 static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool) *)
-Definition mm_free_page_pte
+Fixpoint mm_free_page_pte
            (s : concrete_state) (pte : pte_t) (level : nat) (ppool : mpool)
   : concrete_state * mpool :=
-  (s, ppool). (* TODO *)
+
+  (* if (!arch_mm_pte_is_table(pte, level)) {
+             return;
+     } *)
+  if (!(arch_mm_pte_is_table pte level))%bool
+  then (s, ppool)
+  else
+    match level with
+    | 0 =>
+      (* shouldn't get here. since the entry is a table *)
+      (s, ppool)
+    | S level_minus1 =>
+
+      (* /* Recursively free any subtables. */
+         table = mm_page_table_from_pa(arch_mm_table_from_pte(pte, level)); *)
+      let table :=
+          (mm_page_table_from_pa (arch_mm_table_from_pte pte level)) in
+
+      (* for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+                  mm_free_page_pte(table->entries[i], level - 1, ppool);
+         } *)
+      let '(s, ppool) :=
+          fold_right
+            (fun i '(s, ppool) =>
+               mm_free_page_pte
+                 s ((s.(ptable_deref) table)[[i]]) level_minus1 ppool)
+            (s, ppool)
+            (seq 0 MM_PTE_PER_PAGE) in
+
+    (* /* Free the table itself. */
+       mpool_free(ppool, table); *)
+    let ppool := mpool_free ppool table in
+    (s, ppool)
+    end.
+
 
 (*
 /**
