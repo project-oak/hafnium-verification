@@ -952,13 +952,42 @@ Definition mm_vm_identity_map
 
 (*
 /**
+ * Defragments the given PTE by recursively replacing any tables with blocks or
+ * absent entries where possible.
+ */
+static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
+				    struct mpool *ppool) *)
+Definition mm_ptable_defrag_entry
+           (s : concrete_state)
+           (entry : pte_t)
+           (level : nat)
+           (ppool : mpool) : pte_t * concrete_state * mpool :=
+  (entry, s, ppool). (* TODO *)
+
+(*
+/**
+ * Defragments the given page table by converting page table references to
+ * blocks whenever possible.
+ */
+static void mm_ptable_defrag(struct mm_ptable *t, int flags,
+			     struct mpool *ppool) *)
+Definition mm_ptable_defrag
+           (s : concrete_state)
+           (t : mm_ptable)
+           (flags : int)
+           (ppool : mpool) : concrete_state * mpool :=
+  (s, ppool). (* TODO *)
+
+(*
+/**
  * Defragments the VM page table.
  */
 void mm_vm_defrag(struct mm_ptable *t, struct mpool *ppool) *)
 Definition mm_vm_defrag
            (s : concrete_state) (t : mm_ptable) (ppool : mpool)
-  : (bool * concrete_state * mpool) :=
-  (false, s, ppool). (* TODO *)
+  : (concrete_state * mpool) :=
+  (* mm_ptable_defrag(t, 0, ppool); *)
+  mm_ptable_defrag s t 0 ppool.
 
 (*
 /**

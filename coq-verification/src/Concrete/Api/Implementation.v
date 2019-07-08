@@ -309,7 +309,7 @@ Definition api_share_memory
                                                to_mode
                                                local_page_pool with
                       | (false, state, local_page_pool) =>
-                        let '(_, state, local_page_pool) :=
+                        let '(state, local_page_pool) :=
                             mm_vm_defrag state from.(vm_ptable) local_page_pool in
                         goto_fail_return_to_sender
                           state
