@@ -989,7 +989,50 @@ Definition mm_ptable_defrag
            (t : mm_ptable)
            (flags : int)
            (ppool : mpool) : concrete_state * mpool :=
-  (s, ppool). (* TODO *)
+  (* struct mm_page_table *tables = mm_page_table_from_pa(t->root); *)
+  let tables := mm_page_table_from_pa t.(root) in
+
+  (* uint8_t level = mm_max_level(flags); *)
+  let level := mm_max_level flags in
+
+  (* uint8_t root_table_count = mm_root_table_count(flags); *)
+  let root_table_count := mm_root_table_count flags in
+
+  (* /*
+      * Loop through each entry in the table. If it points to another table,
+      * check if that table can be replaced by a block or an absent entry.
+      */
+     for (i = 0; i < root_table_count; ++i) {
+             for (j = 0; j < MM_PTE_PER_PAGE; ++j) {
+                     tables[i].entries[j] = mm_ptable_defrag_entry(
+                             tables[i].entries[j], level, ppool);
+             }
+     } *)
+  let '(s, ppool) :=
+      fold_right
+        (fun i '(s, ppool) =>
+           let table_ptr := nth_default null_pointer tables i in
+           let table := s.(ptable_deref) table_ptr in
+           let '(table, s, ppool) :=
+               fold_right
+                 (fun j '(table, s, ppool) =>
+                    let '(new_pte, s, ppool) :=
+                        mm_ptable_defrag_entry s (table[[j]]) level ppool in
+                    let table := mm_page_table_replace_entry table new_pte j in
+                    (table, s, ppool))
+                 (table, s, ppool)
+                 (seq 0 MM_PTE_PER_PAGE) in
+
+           (* Functional-program bookkeeping: the C code has edited the table
+              under the pointer. Since functional code can't do that, it has
+              returned to us a new table, so now we need to put that new table
+              under the old pointer in the new state that we return. *)
+           let s := s.(reassign_pointer) table_ptr table in
+           (s, ppool))
+        (s, ppool)
+        (seq 0 root_table_count) in
+
+  (s, ppool).
 
 (*
 /**
