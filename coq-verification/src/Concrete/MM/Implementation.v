@@ -26,7 +26,10 @@ Definition mm_stage2_invalidate := false.
  * Get the page table from the physical address.
  */
 static struct mm_page_table *mm_page_table_from_pa(paddr_t pa) *)
-Definition mm_page_table_from_pa (pa : paddr_t) : ptable_pointer :=
+(* N.B. this pointer is sometimes the head of a list of page tables and sometimes
+   just the address of a single table; the caller has the responsibility of
+   knowing which. *)
+Definition mm_page_table_from_pa (pa : paddr_t) : list ptable_pointer :=
   (* return ptr_from_va(va_from_pa(pa)); *)
   ptr_from_va (va_from_pa pa).
 
@@ -187,7 +190,8 @@ Fixpoint mm_free_page_pte
       (* /* Recursively free any subtables. */
          table = mm_page_table_from_pa(arch_mm_table_from_pte(pte, level)); *)
       let table :=
-          (mm_page_table_from_pa (arch_mm_table_from_pte pte level)) in
+          hd null_pointer
+             (mm_page_table_from_pa (arch_mm_table_from_pte pte level)) in
 
       (* for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
                   mm_free_page_pte(table->entries[i], level - 1, ppool);
@@ -307,7 +311,8 @@ Definition mm_populate_table_pte
   then
     let t :=
         s.(ptable_deref)
-            (mm_page_table_from_pa (arch_mm_table_from_pte v level)) in
+            (hd null_pointer
+                (mm_page_table_from_pa (arch_mm_table_from_pte v level))) in
     (t, Some t, s, ppool)
   else
 
@@ -596,44 +601,48 @@ Definition mm_map_root
 
   (* struct mm_page_table *table =
              &mm_page_table_from_pa(t->root)[mm_index(begin, root_level)]; *)
-  let table :=
-      (s.(ptable_deref)
-           (mm_page_table_from_pa
-              t.(root))) {{ (mm_index begin root_level) }} in
+  (* N.B. instead of a pointer, we save the list of tables and the current
+     index, so we can increment it effectively *)
+  let tables := mm_page_table_from_pa t.(root) in
+  let table_index := mm_index begin root_level in
 
   (* while (begin < end) { *)
-  let '(s, begin, table, failed, ppool) :=
+  let '(s, begin, table_index, failed, ppool) :=
       while_loop
         (max_iterations := N.to_nat (end_ - begin))
         (fun _ => (begin <? end_)%N)
-        (s, begin, table, false, ppool)
-        (fun '(s, begin, table, failed, ppool) =>
+        (s, begin, table_index, false, ppool)
+        (fun '(s, begin, table_index, failed, ppool) =>
+
+           let table_ptr := nth_default null_pointer tables table_index in
+           let table := s.(ptable_deref) table_ptr in
 
            (* if (!mm_map_level(begin, end, pa_init(begin), attrs, table,
                                   root_level - 1, flags, ppool)) {
                       return false;
               } *)
-           match mm_map_level s begin end_ (pa_init begin) attrs table
-                              (root_level - 1) flags ppool with
-           | (false, table, s, ppool) =>
-             let failed := true in
-             (s, begin, table, failed, ppool, break)
-           | (true, table, s, ppool) =>
+           let '(map_level_success, table, s, ppool) :=
+               mm_map_level s begin end_ (pa_init begin) attrs table
+                            (root_level - 1) flags ppool in
 
+            (* Functional-program bookkeeping: the C code has edited the table under the
+                pointer. Since functional code can't do that, it has returned to us a new
+                table, so now we need to put that new table under the old pointer in the new
+                state that we return. *)
+           let s := s.(reassign_pointer) table_ptr table in
+
+           if (!map_level_success)%bool
+           then
+             let failed := true in
+             (s, begin, table_index, failed, ppool, break)
+           else
              (* begin = mm_start_of_next_block(begin, root_table_size); *)
              let begin := mm_start_of_next_block begin root_table_size in
 
              (* table++; *)
-             let table := table {{ 1 }} in
+             let table_index := S table_index in
 
-             (s, begin, table, failed, ppool, continue)
-           end) in
-
-  (* Functional-program bookkeeping: the C code has edited the table under the
-     pointer. Since functional code can't do that, it has returned to us a new
-     table, so now we need to put that new table under the old pointer in the new
-     state that we return. *)
-  let s := s.(reassign_pointer) (mm_page_table_from_pa t.(root)) table in
+             (s, begin, table_index, failed, ppool, continue)) in
 
   (* return true; *)
   (* N.B. we have to check here if the while loop failed partway through *)
@@ -774,8 +783,9 @@ Fixpoint mm_ptable_get_attrs_level
                match (mm_ptable_get_attrs_level
                         ptable_deref
                         (ptable_deref
-                           (mm_page_table_from_pa
-                              (arch_mm_table_from_pte pte level)))
+                           (hd null_pointer
+                               (mm_page_table_from_pa
+                                  (arch_mm_table_from_pte pte level))))
                         begin end_ level_minus1 got_attrs attrs) with
                | (false, attrs) =>
                  let got_attrs := false in
@@ -872,12 +882,11 @@ Definition mm_vm_get_attrs
   then (false, 0%N)
   else
 
-    (* N.B. see note in MM/Datatypes.v about index into mm_page_table struct *)
     (* table = &mm_page_table_from_pa(t->root)[mm_index(begin, root_level)]; *)
-    let table :=
-        (s.(ptable_deref)
-             (mm_page_table_from_pa
-                t.(root))) {{ (mm_index begin root_level) }} in
+    (* N.B. we store the list of tables and the index, so we can increment *)
+    let tables := mm_page_table_from_pa t.(root) in
+    let table_index := mm_index begin root_level in
+
     (* while (begin < end) {
                if (!mm_ptable_get_attrs_level(table, begin, end, max_level,
                                               got_attrs, attrs)) {
@@ -887,27 +896,31 @@ Definition mm_vm_get_attrs
                begin = mm_start_of_next_block(begin, root_table_size);
                table++;
       } *)
+    (* TODO : change to while loop *)
     let '(_, _, got_attrs, attrs, _) :=
         fold_right
-          (fun _ (state : (ptable_addr_t * mm_page_table * bool * attributes * bool)) =>
-             let '(begin, table, got_attrs, attrs, loop_done) := state in
+          (fun _ (state : (ptable_addr_t * nat * bool * attributes * bool)) =>
+             let '(begin, table_index, got_attrs, attrs, loop_done) := state in
              if loop_done
              then state (* no-op *)
              else
+               let table := nth_default null_pointer tables table_index in
+               let table := s.(ptable_deref) table in
+
                match mm_ptable_get_attrs_level
                        s.(ptable_deref) table begin end_ max_level got_attrs attrs with
                | (false, attrs) =>
                  (* set get_attrs to false and loop_done to true to exit and
                     return false *)
-                 (begin, table, false, attrs, true)
+                 (begin, table_index, false, attrs, true)
                | (true, attrs) =>
                  let got_attrs := true in
-                 let table := table{{ 1 }} in
+                 let table_index := S table_index in
                  let begin := mm_start_of_next_block begin root_table_size in
                  let loop_done := false in
-                 (begin, table, got_attrs, attrs, loop_done)
+                 (begin, table_index, got_attrs, attrs, loop_done)
                end)
-          (begin, table, got_attrs, 0%N, false)
+          (begin, table_index, got_attrs, 0%N, false)
           (* continue running the loop a maximum of (end_ - begin) times. Since
              mm_start_of_next block increases [begin] by at least one, the loop
              will reach its exit condition before running out of fuel. *)
