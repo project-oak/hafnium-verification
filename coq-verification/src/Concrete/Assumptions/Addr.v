@@ -26,7 +26,7 @@ Axiom va_from_pa : paddr_t -> vaddr_t.
 
 Axiom pa_from_ipa : ipaddr_t -> paddr_t.
 
-Axiom ptr_from_va : vaddr_t -> ptable_pointer.
+Axiom ptr_from_va : vaddr_t -> list ptable_pointer.
 
 Axiom is_aligned : uintpaddr_t -> nat (* PAGE_SIZE *) -> bool.
 
