@@ -965,17 +965,104 @@ Definition mm_vm_identity_map
 
 (*
 /**
+ * Given the table PTE entries all have identical attributes, returns the single
+ * entry with which it can be replaced. Note that the table PTE will no longer
+ * be valid after calling this function as the table may have been freed.
+ *
+ * If the table is freed, the memory is freed directly rather than calling
+ * `mm_free_page_pte()` as it is known to not have subtables.
+ */
+static pte_t mm_merge_table_pte(pte_t table_pte, uint8_t level,
+				struct mpool *ppool) *)
+
+Definition mm_merge_table_pte
+           (s : concrete_state)
+           (table_pte : pte_t)
+           (level : nat)
+           (ppool : mpool) : pte_t * concrete_state * mpool :=
+  (table_pte, s, ppool). (* TODO *)
+
+(*
+/**
  * Defragments the given PTE by recursively replacing any tables with blocks or
  * absent entries where possible.
  */
 static pte_t mm_ptable_defrag_entry(pte_t entry, uint8_t level,
 				    struct mpool *ppool) *)
-Definition mm_ptable_defrag_entry
+Fixpoint mm_ptable_defrag_entry
            (s : concrete_state)
            (entry : pte_t)
            (level : nat)
            (ppool : mpool) : pte_t * concrete_state * mpool :=
-  (entry, s, ppool). (* TODO *)
+  (* if (!arch_mm_pte_is_table(entry, level)) {
+             return entry;
+     } *)
+  if (!(arch_mm_pte_is_table entry level))%bool
+  then (entry, s, ppool)
+  else
+    match level with
+    | 0 => (entry, s, ppool) (* shouldn't get here, since the entry is a table *)
+    | S level_minus1 =>
+
+      (* table = mm_page_table_from_pa(arch_mm_table_from_pte(entry, level)); *)
+      let table_ptr := hd null_pointer
+                          (mm_page_table_from_pa
+                          (arch_mm_table_from_pte entry level)) in
+      let table := s.(ptable_deref) table_ptr in
+
+      (* /*
+          * Check if all entries are blocks with the same flags or are all
+          * absent. It assumes addresses are contiguous due to identity mapping.
+          */
+          attrs = arch_mm_pte_attrs(table->entries[0], level);
+          for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+                  /* First try to defrag the entry, in case it is a subtable. */
+                  table->entries[i] = mm_ptable_defrag_entry(table->entries[i],
+                                                              level - 1, ppool);
+                  /*
+                  * If the entry isn't a block or has different attributes then
+                  * it isn't possible to defragment it.
+                  */
+                  if (!arch_mm_pte_is_block(table->entries[i], level - 1) ||
+                      arch_mm_pte_attrs(table->entries[i], level) != attrs) {
+                          return entry;
+                  }
+          } *)
+      (* TODO : edit [[ ]] notation so entries are explicitly pulled out *)
+      let attrs := arch_mm_pte_attrs (table[[ 0 ]]) level in
+      let '(table, s, ppool, loop_broken) :=
+          fold_right
+            (fun i (state : _ * bool) =>
+               let '(table, s, ppool, loop_broken) := state in
+               if loop_broken
+               then (table, s, ppool, loop_broken) (* no-op *)
+               else
+
+                 let '(new_pte, s, ppool) :=
+                     mm_ptable_defrag_entry s (table[[ i ]]) level_minus1 ppool in
+                 let table := mm_page_table_replace_entry table new_pte i in
+
+                 (* Functional-program bookkeeping: the C code has edited the table
+                    under the pointer. Since functional code can't do that, it has
+                    returned to us a new table, so now we need to put that new table
+                    under the old pointer in the new state that we return. *)
+                 let s := s.(reassign_pointer) table_ptr table in
+
+                 let loop_broken :=
+                     ((!(arch_mm_pte_is_block (table[[i]]) level_minus1))
+                      || (arch_mm_pte_attrs (table[[i]]) level != attrs))%bool in
+                 (table, s, ppool, loop_broken))
+        (table, s, ppool, false)
+        (seq 0 MM_PTE_PER_PAGE) in
+
+      if loop_broken
+      then
+        (* this is the [return entry] case from inside the for loop *)
+        (entry, s, ppool)
+      else
+        (* return mm_merge_table_pte(entry, level, ppool); *)
+        mm_merge_table_pte s entry level ppool
+    end.
 
 (*
 /**
