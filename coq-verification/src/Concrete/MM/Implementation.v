@@ -980,7 +980,52 @@ Definition mm_merge_table_pte
            (table_pte : pte_t)
            (level : nat)
            (ppool : mpool) : pte_t * concrete_state * mpool :=
-  (table_pte, s, ppool). (* TODO *)
+
+
+  (* table = mm_page_table_from_pa(arch_mm_table_from_pte(table_pte, level)); *)
+  let table_ptr := hd null_pointer
+                      (mm_page_table_from_pa
+                         (arch_mm_table_from_pte table_pte level)) in
+  let table := s.(ptable_deref) table_ptr in
+
+  (* if (!arch_mm_pte_is_present(table->entries[0], level - 1)) {
+             /* Free the table and return an absent entry. */
+             mpool_free(ppool, table);
+             return arch_mm_absent_pte(level);
+     } *)
+  if (!(arch_mm_pte_is_present (table[[ 0 ]]) (level - 1)))%bool
+  then
+    let ppool := mpool_free ppool table_ptr in
+    (arch_mm_absent_pte level, s, ppool)
+  else
+    (* /* Might not be possible to merge the table into a single block. */
+        if (!arch_mm_is_block_allowed(level)) {
+                return table_pte;
+        } *)
+    if (!(arch_mm_is_block_allowed level))%bool
+    then (table_pte, s, ppool)
+    else
+      (* /* Replace table with a single block, with equivalent attributes. */
+          block_attrs = arch_mm_pte_attrs(table->entries[0], level - 1); *)
+      let block_attrs := arch_mm_pte_attrs (table[[0]]) (level - 1) in
+
+      (* table_attrs = arch_mm_pte_attrs(table_pte, level); *)
+      let table_attrs := arch_mm_pte_attrs table_pte level in
+
+      (* combined_attrs =
+                  arch_mm_combine_table_entry_attrs(table_attrs, block_attrs); *)
+      let combined_attrs :=
+          arch_mm_combine_table_entry_attrs table_attrs block_attrs in
+
+      (* block_address = arch_mm_block_from_pte(table->entries[0], level - 1); *)
+      let block_address := arch_mm_block_from_pte (table[[0]]) (level - 1) in
+
+      (* /* Free the table and return a block. */
+          mpool_free(ppool, table); *)
+      let ppool := mpool_free ppool table_ptr in
+
+      (* return arch_mm_block_pte(level, block_address, combined_attrs); *)
+      (arch_mm_block_pte level block_address combined_attrs, s, ppool).
 
 (*
 /**
