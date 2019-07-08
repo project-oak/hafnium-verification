@@ -48,7 +48,6 @@ static void cpu_init(struct cpu *c)
 {
 	/* TODO: Assumes that c is zeroed out already. */
 	sl_init(&c->lock);
-	c->irq_disable_count = 1;
 }
 
 void cpu_module_init(const uint64_t *cpu_ids, size_t count)
@@ -93,22 +92,6 @@ void cpu_module_init(const uint64_t *cpu_ids, size_t count)
 size_t cpu_index(struct cpu *c)
 {
 	return c - cpus;
-}
-
-void cpu_irq_enable(struct cpu *c)
-{
-	c->irq_disable_count--;
-	if (!c->irq_disable_count) {
-		arch_irq_enable();
-	}
-}
-
-void cpu_irq_disable(struct cpu *c)
-{
-	if (!c->irq_disable_count) {
-		arch_irq_disable();
-	}
-	c->irq_disable_count++;
 }
 
 /**

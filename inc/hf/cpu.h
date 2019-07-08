@@ -106,12 +106,6 @@ struct cpu {
 	/** Pointer to bottom of the stack. */
 	void *stack_bottom;
 
-	/**
-	 * Enabling/disabling irqs are counted per-cpu. They are enabled when
-	 * the count is zero, and disabled when it's non-zero.
-	 */
-	uint32_t irq_disable_count;
-
 	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
 
@@ -122,8 +116,6 @@ struct cpu {
 void cpu_module_init(const uint64_t *cpu_ids, size_t count);
 
 size_t cpu_index(struct cpu *c);
-void cpu_irq_enable(struct cpu *c);
-void cpu_irq_disable(struct cpu *c);
 bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg);
 void cpu_off(struct cpu *c);
 struct cpu *cpu_find(uint64_t id);
