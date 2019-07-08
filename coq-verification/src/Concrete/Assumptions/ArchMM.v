@@ -51,3 +51,5 @@ Axiom arch_mm_clear_pa : paddr_t -> paddr_t.
 Axiom arch_mm_is_block_allowed : level -> bool.
 
 Axiom arch_mm_block_from_pte : pte_t -> level -> paddr_t.
+
+Axiom arch_mm_combine_table_entry_attrs : attributes -> attributes -> attributes.
