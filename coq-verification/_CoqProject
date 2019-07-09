@@ -15,5 +15,6 @@ src/Concrete/Assumptions/Mpool.v
 src/Concrete/Assumptions/PageTables.v
 src/Concrete/MM/Datatypes.v
 src/Concrete/MM/Implementation.v
+src/Concrete/MM/Proofs.v
 src/Concrete/Api/Implementation.v
 src/Concrete/Api/Proofs.v
