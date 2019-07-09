@@ -28,8 +28,11 @@ Definition vm_root_ptable (v : vm) : ptable_pointer :=
 Class concrete_params :=
   {
     vms : list vm;
-    hafnium_root_ptable : ptable_pointer;
+    hafnium_ptable : mm_ptable;
   }.
+
+Definition hafnium_root_ptable {cp : concrete_params} : ptable_pointer :=
+  ptable_pointer_from_address hafnium_ptable.(root).
 
 Record concrete_state :=
   {
