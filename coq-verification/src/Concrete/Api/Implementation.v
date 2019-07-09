@@ -25,6 +25,7 @@ static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool) *)
 (* N.B. current mm_identity_map transcription returns false for a null pointer
    and true otherwise *)
 Definition api_clear_memory
+           {cp : concrete_params}
            (state : concrete_state)
            (begin : paddr_t)
            (end_ : paddr_t)

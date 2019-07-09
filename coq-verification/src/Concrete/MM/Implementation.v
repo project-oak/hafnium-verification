@@ -1224,13 +1224,27 @@ Definition mm_vm_get_mode
 void *mm_identity_map(paddr_t begin, paddr_t end, int mode, struct mpool *ppool) *)
 (* N.B. the original code returns a [void *] that is NULL if the operation
    failed; we will return a boolean instead, since we don't currently ever do
-   anything with the pointer except check if it's NULL. *)
+   anything with the pointer except check if it's NULL. Naturally, [false]
+   represents NULL. *)
 Definition mm_identity_map
+           {cp : concrete_params}
            (s : concrete_state)
            (begin end_ : paddr_t)
            (mode : mode_t)
            (ppool : mpool) : (bool * concrete_state * mpool) :=
-  (false, s, ppool). (* TODO *)
+
+  (* if (mm_ptable_identity_update(stage1_locked.ptable, begin, end,
+                                   arch_mm_mode_to_stage1_attrs(mode),
+                                   MM_FLAG_STAGE1, ppool)) {
+             return ptr_from_va(va_from_pa(begin));
+     }
+     return NULL; *)
+  match mm_ptable_identity_update s hafnium_ptable begin end_
+                                  (arch_mm_mode_to_stage1_attrs mode)
+                                  MM_FLAG_STAGE1 ppool with
+  | (true, s, ppool) => (true, s, ppool)
+  | (false, s, ppool) => (false, s, ppool)
+  end.
 
 (*
 /**
