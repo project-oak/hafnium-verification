@@ -10,8 +10,11 @@ Require Import Hafnium.Concrete.MM.Implementation.
 (*** This file contains correctness proofs for the functions in mm.c, as
      transcribed in MM/Implementation.v ***)
 
+Section Proofs.
+  Context {ap : @abstract_state_parameters paddr_t nat}
+          {cp : concrete_params}.
+
 Lemma mm_identity_map_represents
-      {ap : abstract_state_parameters} {cp : concrete_params}
       (conc : concrete_state)
       begin end_ mode ppool :
   (exists abst, represents abst conc) ->
@@ -20,7 +23,6 @@ Lemma mm_identity_map_represents
 Admitted.
 
 Lemma mm_defrag_represents
-      {ap : abstract_state_parameters} {cp : concrete_params}
       (conc : concrete_state)
       ppool :
   (exists abst, represents abst conc) ->
@@ -29,10 +31,10 @@ Lemma mm_defrag_represents
 Admitted.
 
 Lemma mm_unmap_represents
-      {ap : abstract_state_parameters} {cp : concrete_params}
       (conc : concrete_state)
       begin end_ ppool :
   (exists abst, represents abst conc) ->
   let conc' := snd (fst (mm_unmap conc begin end_ ppool)) in
   exists abst', represents abst' conc'.
 Admitted.
+End Proofs.
