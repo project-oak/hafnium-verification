@@ -2,9 +2,11 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
 Require Import Hafnium.Concrete.Api.Implementation.
+Require Import Hafnium.Concrete.MM.Proofs.
 
 Lemma api_clear_memory_valid
       {cp : concrete_params} (conc : concrete_state) begin end_ ppool :
@@ -23,7 +25,17 @@ Lemma api_clear_memory_represents
   let conc' := snd (fst (api_clear_memory conc begin end_ ppool)) in
   exists abst', represents abst' conc'.
 Proof.
-Admitted. (* TODO *)
+  cbv [api_clear_memory].
+  repeat match goal with
+         | _ => progress basics
+         | _ => progress cbn [fst snd]
+         | |- context [let '(_,_) := ?x in _] =>
+           rewrite (surjective_pairing x)
+         | _ => progress break_match
+         | _ => eauto using mm_defrag_represents, mm_unmap_represents,
+                mm_identity_map_represents
+         end.
+Qed.
 
 Lemma api_share_memory_valid
       {cp : concrete_params} (conc : concrete_state)
