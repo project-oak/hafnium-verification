@@ -205,7 +205,7 @@ Fixpoint mm_free_page_pte
           fold_right
             (fun i '(s, ppool) =>
                mm_free_page_pte
-                 s ((s.(ptable_deref) table)[[i]]) level_minus1 ppool)
+                 s ((s.(ptable_deref) table).(entries)[[i]]) level_minus1 ppool)
             (s, ppool)
             (seq 0 MM_PTE_PER_PAGE) in
 
@@ -241,7 +241,7 @@ Definition mm_replace_entry
            (ppool : mpool) : mm_page_table * concrete_state * mpool :=
 
   (* pte_t v = *pte; *)
-  let pte := t [[ pte_index ]] in
+  let pte := t.(entries) [[ pte_index ]] in
   let v := pte in
 
   (* /*
@@ -302,7 +302,7 @@ Definition mm_populate_table_pte
     * concrete_state * mpool :=
 
   (* pte_t v = *pte; *)
-  let pte := t [[ pte_index ]] in
+  let pte := t.(entries) [[ pte_index ]] in
   let v := pte in
 
   (* uint8_t level_below = level - 1; *)
@@ -406,7 +406,7 @@ Definition mm_page_table_is_empty(table : mm_page_table) (level : nat) : bool :=
   let success := true in
   fold_right
     (fun i success =>
-       if arch_mm_pte_is_present (table[[ i ]]) level
+       if arch_mm_pte_is_present (table.(entries)[[ i ]]) level
        then false
        else success)
     success
@@ -465,7 +465,7 @@ Definition mm_map_level
         (fun _ => (begin <? end_)%N)
         (s, begin, pa, table, pte_index, false, ppool)
         (fun '(s, begin, pa, table, pte_index, failed, ppool) =>
-           let pte := table [[ pte_index ]] in
+           let pte := table.(entries) [[ pte_index ]] in
 
            (* if (unmap ? !arch_mm_pte_is_present( *pte, level)
                         : arch_mm_pte_is_block( *pte, level) &&
@@ -620,7 +620,7 @@ Definition mm_map_root
         (s, begin, table_index, false, ppool)
         (fun '(s, begin, table_index, failed, ppool) =>
 
-           let table_ptr := nth_default null_pointer tables table_index in
+           let table_ptr := tables[[ table_index ]] in
            let table := s.(ptable_deref) table_ptr in
 
            (* if (!mm_map_level(begin, end, pa_init(begin), attrs, table,
@@ -771,7 +771,7 @@ Fixpoint mm_ptable_get_attrs_level
         (fun _ => (begin <? end_)%N)
         (begin, pte_index, got_attrs, attrs)
         (fun '(begin, pte_index, got_attrs, attrs) =>
-           let pte := table[[ pte_index ]] in
+           let pte := table.(entries)[[ pte_index ]] in
            if arch_mm_pte_is_table pte level
            then
              match level with
@@ -908,7 +908,7 @@ Definition mm_vm_get_attrs
           (fun _ => (begin <? end_)%N)
           (begin, table_index, got_attrs, 0%N)
           (fun '(begin, table_index, got_attrs, attrs) =>
-               let table := nth_default null_pointer tables table_index in
+               let table := tables[[ table_index ]] in
                let table := s.(ptable_deref) table in
 
                match mm_ptable_get_attrs_level
@@ -990,7 +990,7 @@ Definition mm_merge_table_pte
              mpool_free(ppool, table);
              return arch_mm_absent_pte(level);
      } *)
-  if (!(arch_mm_pte_is_present (table[[ 0 ]]) (level - 1)))%bool
+  if (!(arch_mm_pte_is_present (table.(entries)[[ 0 ]]) (level - 1)))%bool
   then
     let ppool := mpool_free ppool table_ptr in
     (arch_mm_absent_pte level, s, ppool)
@@ -1004,7 +1004,7 @@ Definition mm_merge_table_pte
     else
       (* /* Replace table with a single block, with equivalent attributes. */
           block_attrs = arch_mm_pte_attrs(table->entries[0], level - 1); *)
-      let block_attrs := arch_mm_pte_attrs (table[[0]]) (level - 1) in
+      let block_attrs := arch_mm_pte_attrs (table.(entries)[[0]]) (level - 1) in
 
       (* table_attrs = arch_mm_pte_attrs(table_pte, level); *)
       let table_attrs := arch_mm_pte_attrs table_pte level in
@@ -1015,7 +1015,8 @@ Definition mm_merge_table_pte
           arch_mm_combine_table_entry_attrs table_attrs block_attrs in
 
       (* block_address = arch_mm_block_from_pte(table->entries[0], level - 1); *)
-      let block_address := arch_mm_block_from_pte (table[[0]]) (level - 1) in
+      let block_address :=
+          arch_mm_block_from_pte (table.(entries)[[0]]) (level - 1) in
 
       (* /* Free the table and return a block. */
           mpool_free(ppool, table); *)
@@ -1070,8 +1071,7 @@ Fixpoint mm_ptable_defrag_entry
                           return entry;
                   }
           } *)
-      (* TODO : edit [[ ]] notation so entries are explicitly pulled out *)
-      let attrs := arch_mm_pte_attrs (table[[ 0 ]]) level in
+      let attrs := arch_mm_pte_attrs (table.(entries)[[ 0 ]]) level in
       let '(table, s, ppool, loop_broken) :=
           fold_right
             (fun i (state : _ * bool) =>
@@ -1081,7 +1081,8 @@ Fixpoint mm_ptable_defrag_entry
                else
 
                  let '(new_pte, s, ppool) :=
-                     mm_ptable_defrag_entry s (table[[ i ]]) level_minus1 ppool in
+                     mm_ptable_defrag_entry
+                       s (table.(entries)[[ i ]]) level_minus1 ppool in
                  let table := mm_page_table_replace_entry table new_pte i in
 
                  (* Functional-program bookkeeping: the C code has edited the table
@@ -1091,8 +1092,10 @@ Fixpoint mm_ptable_defrag_entry
                  let s := s.(reassign_pointer) table_ptr table in
 
                  let loop_broken :=
-                     ((!(arch_mm_pte_is_block (table[[i]]) level_minus1))
-                      || (arch_mm_pte_attrs (table[[i]]) level != attrs))%bool in
+                     ((!(arch_mm_pte_is_block
+                           (table.(entries)[[i]]) level_minus1))
+                      || ((arch_mm_pte_attrs (table.(entries)[[i]]) level)
+                            != attrs))%bool in
                  (table, s, ppool, loop_broken))
         (table, s, ppool, false)
         (seq 0 MM_PTE_PER_PAGE) in
@@ -1140,13 +1143,13 @@ Definition mm_ptable_defrag
   let '(s, ppool) :=
       fold_right
         (fun i '(s, ppool) =>
-           let table_ptr := nth_default null_pointer tables i in
+           let table_ptr := tables[[ i ]] in
            let table := s.(ptable_deref) table_ptr in
            let '(table, s, ppool) :=
                fold_right
                  (fun j '(table, s, ppool) =>
                     let '(new_pte, s, ppool) :=
-                        mm_ptable_defrag_entry s (table[[j]]) level ppool in
+                        mm_ptable_defrag_entry s (table.(entries)[[j]]) level ppool in
                     let table := mm_page_table_replace_entry table new_pte j in
                     (table, s, ppool))
                  (table, s, ppool)

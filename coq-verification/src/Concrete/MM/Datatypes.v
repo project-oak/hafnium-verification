@@ -29,6 +29,6 @@ Definition mm_page_table_replace_entry
 (* opaque type of PTEs returned by an out-of-bounds access *)
 Axiom out_of_bounds_access_pte : pte_t.
 
-(* special notation for getting the PTE at a particular index *)
-Notation "x [[ y ]]" :=
-  (nth_default out_of_bounds_access_pte x.(entries) y) (at level 199, only parsing).
+(* out-of-bounds accesses to lists of PTEs return out_of_bounds_access_pte *)
+Global Instance ptable_pointer_oobe : OutOfBoundsElement pte_t :=
+  {| oob_value := out_of_bounds_access_pte |}.
