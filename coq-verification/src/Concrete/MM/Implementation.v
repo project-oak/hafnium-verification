@@ -908,7 +908,7 @@ Definition mm_vm_get_attrs
                match mm_ptable_get_attrs_level
                        s.(ptable_deref) table begin end_ max_level got_attrs attrs with
                | (false, attrs) =>
-                 (* set get_attrs to false and break to return false *)
+                 (* set got_attrs to false and break to return false *)
                  (begin, table_index, false, attrs, break)
                | (true, attrs) =>
                  let got_attrs := true in
