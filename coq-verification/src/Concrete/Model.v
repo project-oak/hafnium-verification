@@ -65,7 +65,7 @@ Lemma execution_represents
 Proof.
   cbv [execute_trace]; intros; induction trace; [ basics; solver | ].
   destruct IHtrace as [abst IHtrace]. basics.
-  cbn [fold_right]. break_match.
+  cbn [fold_right]. break_match; intros.
   { (* case : api_clear_memory *)
     apply api_clear_memory_represents with (abst0:=abst).
     eapply IHtrace. }
