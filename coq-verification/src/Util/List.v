@@ -274,6 +274,15 @@ Section ListQualifiers.
 
 End ListQualifiers.
 
+(* Define a notation for indexing into lists. Coq requires a default element to
+   be passed in case the index is out of bounds; in order not to have to repeat
+   this element everywhere, we create a class and will later globally instantiate
+   it for certain types. *)
+Class OutOfBoundsElement T := { oob_value : T }.
+Definition nth_default_oobe
+           {T} {oobe : OutOfBoundsElement T} (ls : list T) (i : nat) : T :=
+  nth_default oob_value ls i.
+
 (* populate the list_quals hint database *)
 Hint Resolve FOP_nil FOP_cons Forall_nil Forall_forall
   : list_quals.
