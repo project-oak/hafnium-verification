@@ -15,7 +15,7 @@ git push origin HEAD:refs/for/master
 Browse source at https://hafnium.googlesource.com/hafnium.
 Review CLs at https://hafnium-review.googlesource.com/.
 
-See details of [how to contribute](CONTRIBUTING.md).
+See details of [how to contribute](../CONTRIBUTING.md).
 
 ## Compiling the hypervisor
 
