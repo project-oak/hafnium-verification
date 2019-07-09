@@ -1252,9 +1252,20 @@ Definition mm_identity_map
  * not mapped in the address space.
  */
 bool mm_unmap(paddr_t begin, paddr_t end, struct mpool *ppool) *)
-Definition mm_unmap (s : concrete_state) (begin end_ : paddr_t) (ppool : mpool)
+Definition mm_unmap {cp : concrete_params} (s : concrete_state)
+           (begin end_ : paddr_t) (ppool : mpool)
   : (bool * concrete_state * mpool) :=
-  (false, s, ppool). (* TODO *)
+  (* return mm_ptable_identity_update(
+             stage1_locked.ptable, begin, end,
+             arch_mm_mode_to_stage1_attrs(MM_MODE_UNOWNED | MM_MODE_INVALID |
+                                          MM_MODE_SHARED),
+             MM_FLAG_STAGE1 | MM_FLAG_UNMAP, ppool); *)
+  mm_ptable_identity_update
+    s hafnium_ptable begin end_
+    (arch_mm_mode_to_stage1_attrs
+       (MM_MODE_UNOWNED ||| MM_MODE_INVALID ||| MM_MODE_SHARED))
+    (MM_FLAG_STAGE1 ||| MM_FLAG_UNMAP)%N
+    ppool.
 
 (*
 /**
