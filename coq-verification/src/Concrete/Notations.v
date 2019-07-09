@@ -1,5 +1,6 @@
 Require Import Coq.NArith.BinNat.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Util.List.
 
 (*** This file is mostly boilerplate to coerce Coq's notation system into making
      the model more readable ***)
@@ -21,3 +22,6 @@ Notation "x != y" := (negb (N.eqb x y)) (at level 199) : bool_scope.
 
 Coercion N.of_nat : nat >-> N. (* change nat to N automatically *)
 Set Printing Coercions. (* when printing, show N.of_nat explicitly *)
+
+Notation "x [[ y ]]" :=
+  (nth_default_oobe x y) (at level 199, only parsing).
