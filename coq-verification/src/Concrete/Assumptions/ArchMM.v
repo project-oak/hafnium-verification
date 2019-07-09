@@ -27,7 +27,6 @@ Axiom arch_mm_pte_is_block : pte_t -> level -> bool.
 
 Axiom arch_mm_pte_is_table : pte_t -> level -> bool.
 
-(* TODO: should this return ptable_pointer? *)
 Axiom arch_mm_table_from_pte : pte_t -> level -> paddr_t.
 
 Axiom arch_mm_pte_attrs : pte_t -> level -> attributes.
