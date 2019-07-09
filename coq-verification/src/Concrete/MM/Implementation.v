@@ -1175,6 +1175,9 @@ Definition mm_vm_defrag
            (s : concrete_state) (t : mm_ptable) (ppool : mpool)
   : (concrete_state * mpool) :=
   (* mm_ptable_defrag(t, 0, ppool); *)
+  (* N.B. "0" indicates all-false flags -- the only one read by mm_ptable_defrag
+     and its helpers is MM_FLAG_STAGE1, so this indicates that t is a stage-2
+     page table *)
   mm_ptable_defrag s t 0 ppool.
 
 (*
