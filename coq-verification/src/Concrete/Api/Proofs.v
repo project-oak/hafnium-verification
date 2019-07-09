@@ -32,8 +32,10 @@ Proof.
          | |- context [let '(_,_) := ?x in _] =>
            rewrite (surjective_pairing x)
          | _ => progress break_match
-         | _ => eauto using mm_defrag_represents, mm_unmap_represents,
-                mm_identity_map_represents
+         | _ => apply mm_defrag_represents
+         | _ => apply mm_unmap_represents
+         | _ => apply mm_identity_map_represents
+         | _ => solver
          end.
 Qed.
 
