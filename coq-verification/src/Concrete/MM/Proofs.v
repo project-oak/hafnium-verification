@@ -14,27 +14,31 @@ Section Proofs.
   Context {ap : @abstract_state_parameters paddr_t nat}
           {cp : concrete_params}.
 
+  Local Definition preserves_represents
+        (f : concrete_state -> concrete_state) : Prop :=
+    forall (ap : abstract_state_parameters) (cp : concrete_params)
+           (conc : concrete_state),
+      (exists abst, represents abst conc) ->
+      exists abst', represents abst' (f conc).
+
   Lemma mm_identity_map_represents
         (conc : concrete_state)
         begin end_ mode ppool :
-    (exists abst, represents abst conc) ->
-    let conc' := snd (fst (mm_identity_map conc begin end_ mode ppool)) in
-    exists abst', represents abst' conc'.
+    preserves_represents
+      (fun conc => snd (fst (mm_identity_map conc begin end_ mode ppool))).
   Admitted.
 
   Lemma mm_defrag_represents
         (conc : concrete_state)
         ppool :
-    (exists abst, represents abst conc) ->
-    let conc' := fst (mm_defrag conc ppool) in
-    exists abst', represents abst' conc'.
+    preserves_represents
+      (fun conc => fst (mm_defrag conc ppool)).
   Admitted.
 
   Lemma mm_unmap_represents
         (conc : concrete_state)
         begin end_ ppool :
-    (exists abst, represents abst conc) ->
-    let conc' := snd (fst (mm_unmap conc begin end_ ppool)) in
-    exists abst', represents abst' conc'.
+    preserves_represents
+      (fun conc => snd (fst (mm_unmap conc begin end_ ppool))).
   Admitted.
 End Proofs.
