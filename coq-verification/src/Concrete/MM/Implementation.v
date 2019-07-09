@@ -1202,7 +1202,18 @@ Definition mm_vm_get_mode
            (s : concrete_state)
            (t : mm_ptable)
            (begin end_ : ipaddr_t) : bool * mode_t :=
-  (false, 0%N). (* TODO *)
+  (* ret = mm_vm_get_attrs(t, ipa_addr(begin), ipa_addr(end), &attrs); *)
+  match mm_vm_get_attrs s t (ipa_addr begin) (ipa_addr end_) with
+  | (false, _) => (false, 0%N)
+  | (true, attrs) =>
+
+    (* if (ret) {
+                *mode = arch_mm_stage2_attrs_to_mode(attrs);
+       }
+       return ret; *)
+    let mode := arch_mm_stage2_attrs_to_mode attrs in
+    (true, mode)
+  end.
 
 (*
 /**
