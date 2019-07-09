@@ -896,35 +896,26 @@ Definition mm_vm_get_attrs
                begin = mm_start_of_next_block(begin, root_table_size);
                table++;
       } *)
-    (* TODO : change to while loop *)
-    let '(_, _, got_attrs, attrs, _) :=
-        fold_right
-          (fun _ (state : (ptable_addr_t * nat * bool * attributes * bool)) =>
-             let '(begin, table_index, got_attrs, attrs, loop_done) := state in
-             if loop_done
-             then state (* no-op *)
-             else
+    let '(_, _, got_attrs, attrs) :=
+        while_loop
+          (max_iterations := N.to_nat (end_ - begin))
+          (fun _ => (begin <? end_)%N)
+          (begin, table_index, got_attrs, 0%N)
+          (fun '(begin, table_index, got_attrs, attrs) =>
                let table := nth_default null_pointer tables table_index in
                let table := s.(ptable_deref) table in
 
                match mm_ptable_get_attrs_level
                        s.(ptable_deref) table begin end_ max_level got_attrs attrs with
                | (false, attrs) =>
-                 (* set get_attrs to false and loop_done to true to exit and
-                    return false *)
-                 (begin, table_index, false, attrs, true)
+                 (* set get_attrs to false and break to return false *)
+                 (begin, table_index, false, attrs, break)
                | (true, attrs) =>
                  let got_attrs := true in
                  let table_index := S table_index in
                  let begin := mm_start_of_next_block begin root_table_size in
-                 let loop_done := false in
-                 (begin, table_index, got_attrs, attrs, loop_done)
-               end)
-          (begin, table_index, got_attrs, 0%N, false)
-          (* continue running the loop a maximum of (end_ - begin) times. Since
-             mm_start_of_next block increases [begin] by at least one, the loop
-             will reach its exit condition before running out of fuel. *)
-          (seq (N.to_nat begin) (N.to_nat end_)) in
+                 (begin, table_index, got_attrs, attrs, continue)
+               end) in
     (got_attrs, attrs).
 
 (*
