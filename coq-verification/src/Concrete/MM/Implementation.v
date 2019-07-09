@@ -112,12 +112,17 @@ static struct mm_page_table *mm_alloc_page_tables(size_t count,
 (* N.B. the C returns a null pointer on failure; we represent this with an
    [option] such that [None] represents NULL *)
 Definition mm_alloc_page_tables (count : size_t) (ppool : mpool)
-  : option (mpool * ptable_pointer) :=
+  : option (mpool * list ptable_pointer) :=
   (* if (count == 1) {
              return mpool_alloc(ppool);
      } *)
   if (Nat.eqb count 1)
-  then mpool_alloc ppool
+  then
+    (* need to convert to a single-element list *)
+    match mpool_alloc ppool with
+    | None => None
+    | Some (ppool, ptr) => Some (ppool, cons ptr nil)
+    end
   else
     (* return mpool_alloc_contiguous(ppool, count, count); *)
     mpool_alloc_contiguous ppool count count
@@ -324,7 +329,8 @@ Definition mm_populate_table_pte
        } *)
     match mm_alloc_page_tables 1 ppool with
     | None => (t, None, s, ppool)
-    | Some (ppool, ntable_ptr) =>
+    | Some (ppool, ntable_ptr_list) =>
+      let ntable_ptr := hd null_pointer ntable_ptr_list in
       let ntable := s.(ptable_deref) ntable_ptr in
 
       (* /* Determine template for new pte and its increment. */

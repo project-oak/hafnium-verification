@@ -15,11 +15,17 @@ Axiom mpool_fini : mpool -> option mpool.
 
 (* If there's a location available, return the new state and the pointer,
    otherwise return [None] *)
+(* N.B. although the comment above [mpool_alloc] says it allocates an *entry*,
+   the pointer it returns is immediately cast to an [mm_page_table], so it seems
+   like it actually allocates full pages at a time (assuming a table takes one
+   page of memory). Similarly, [mpool_free] frees one table-sized (= page-sized)
+   block of memory at a time. *)
 Axiom mpool_alloc : mpool -> option (mpool * ptable_pointer).
 
 (* Return the new state of the mpool *)
 Axiom mpool_free : mpool -> ptable_pointer -> mpool.
 
-(* allocate contiguous locations *)
+(* allocate contiguous locations -- the second argument is the number of tables
+   to allocate *)
 Axiom mpool_alloc_contiguous :
-  mpool -> size_t -> size_t -> option (mpool * ptable_pointer).
+  mpool -> size_t -> size_t -> option (mpool * list ptable_pointer).
