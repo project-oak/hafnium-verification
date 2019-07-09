@@ -41,6 +41,6 @@ Lemma api_share_memory_represents
       vid addr size share current :
   represents abst conc ->
   let conc' := snd (api_share_memory conc vid addr size share current) in
-  exists abst', represents abst' conc.
+  exists abst', represents abst' conc'.
 Proof.
 Admitted. (* TODO *)
