@@ -1272,6 +1272,7 @@ Definition mm_unmap {cp : concrete_params} (s : concrete_state)
  * Defragments the hypervisor page table.
  */
 void mm_defrag(struct mpool *ppool) *)
-Definition mm_defrag (s : concrete_state) (ppool : mpool)
+Definition mm_defrag {cp : concrete_params} (s : concrete_state) (ppool : mpool)
   : (concrete_state * mpool) :=
-  (s, ppool). (* TODO *)
+  (* mm_ptable_defrag(stage1_locked.ptable, MM_FLAG_STAGE1, ppool); *)
+  mm_ptable_defrag s hafnium_ptable MM_FLAG_STAGE1 ppool.
