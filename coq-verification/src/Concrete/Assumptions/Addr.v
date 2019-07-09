@@ -30,4 +30,5 @@ Axiom ptr_from_va : vaddr_t -> list ptable_pointer.
 
 Axiom is_aligned : uintpaddr_t -> nat (* PAGE_SIZE *) -> bool.
 
-(* TODO: add axioms for correctness properties, as needed *)
+(* equality of the paddr_t type is decidable *)
+Axiom paddr_t_eq_dec : forall (a1 a2 : paddr_t), {a1 = a2} + {a1 <> a2}.
