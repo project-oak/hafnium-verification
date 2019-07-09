@@ -182,7 +182,7 @@ bool mpool_add_chunk(struct mpool *p, void *begin, size_t size)
 }
 
 /**
- * Allocates and entry from the given memory pool, if one is available. The
+ * Allocates an entry from the given memory pool, if one is available. The
  * fallback will not be used even if there is one.
  */
 static void *mpool_alloc_no_fallback(struct mpool *p)
@@ -201,6 +201,7 @@ static void *mpool_alloc_no_fallback(struct mpool *p)
 		goto exit;
 	}
 
+	/* There was no free list available. Try a chunk instead. */
 	chunk = p->chunk_list;
 	if (chunk == NULL) {
 		/* The chunk list is also empty, we're out of entries. */
