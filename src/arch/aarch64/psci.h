@@ -16,30 +16,9 @@
 
 #pragma once
 
+#include "smc.h"
+
 /* clang-format off */
-
-#define SMCCC_CALL_TYPE_MASK  0x80000000
-#define SMCCC_YIELDING_CALL   0x00000000
-#define SMCCC_FAST_CALL       0x80000000
-
-#define SMCCC_CONVENTION_MASK 0x40000000
-#define SMCCC_32_BIT          0x00000000
-#define SMCCC_64_BIT          0x40000000
-
-#define SMCCC_SERVICE_CALL_MASK                0x3f000000
-#define SMCCC_ARM_ARCHITECTURE_CALL            0x00000000
-#define SMCCC_CPU_SERVICE_CALL                 0x01000000
-#define SMCCC_SIP_SERVICE_CALL                 0x02000000
-#define SMCCC_OEM_SERVICE_CALL                 0x03000000
-#define SMCCC_STANDARD_SECURE_SERVICE_CALL     0x04000000
-#define SMCCC_STANDARD_HYPERVISOR_SERVICE_CALL 0x05000000
-#define SMCCC_VENDOR_HYPERVISOR_SERVICE_CALL   0x06000000
-/*
- * TODO: Trusted application call: 0x30000000 - 0x31000000
- * TODO: Trusted OS call: 0x32000000 - 0x3f000000
- */
-
-#define SMCCC_ERROR_UNKNOWN  (-1)
 
 /* The following are PSCI version codes. */
 #define PSCI_VERSION_0_2 0x00000002

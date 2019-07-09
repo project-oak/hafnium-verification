@@ -43,6 +43,7 @@ source_set("entry") {
 # Make a call to the secure monitor.
 source_set("smc") {
   sources = [
-    "smc.S",
+    "smc.c",
+    "smc_internal.S",
   ]
 }
