@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-.globl vm_cpu_entry_raw
+.global vm_cpu_entry_raw
 vm_cpu_entry_raw:
 	/* Initialise stack from the cpu_start_state struct. */
 	ldr x1, [x0]

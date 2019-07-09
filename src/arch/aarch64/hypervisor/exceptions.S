@@ -360,7 +360,7 @@ vcpu_switch:
 	mov x0, x19
 
 	/* Intentional fallthrough. */
-.globl vcpu_restore_all_and_run
+.global vcpu_restore_all_and_run
 vcpu_restore_all_and_run:
 	/* Update pointer to current vcpu. */
 	msr tpidr_el2, x0
