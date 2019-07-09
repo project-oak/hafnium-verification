@@ -92,10 +92,13 @@ Definition haf_page_owned
 Arguments owned_by {_} {_} _.
 Arguments accessible_by {_} {_} _.
 Definition represents
+           {ap : abstract_state_parameters}
            {cp : concrete_params}
            (abst : @abstract_state paddr_t nat)
            (conc : concrete_state) : Prop :=
   is_valid conc
+  /\ AbstractModel.is_valid
+       (addr_eq_dec:=paddr_t_eq_dec) (vm_id_eq_dec:=Nat.eq_dec) abst
   /\ (forall (vid : nat) (a : paddr_t),
       In (inl vid) (abst.(accessible_by) a) <->
          (exists v : vm,
@@ -115,8 +118,3 @@ Definition abstract_state_equiv
   (forall a, s1.(owned_by) a = s2.(owned_by) a)
   /\ (forall e a,
          In e (s1.(accessible_by) a) <-> In e (s2.(accessible_by) a)).
-
-(* for every API function, we need to prove that if the concrete state (is
-   itself valid and) represents a valid abstract state before the call, then
-   the concrete state after the call (is also valid and) represents a valid
-   abstract state *)
