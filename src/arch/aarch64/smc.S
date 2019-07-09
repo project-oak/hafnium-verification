@@ -15,7 +15,7 @@
  */
 
 .section .text.smc, "ax"
-.globl smc
+.global smc
 smc:
 	smc #0
 	ret
