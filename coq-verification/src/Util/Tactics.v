@@ -21,8 +21,17 @@ Ltac basics :=
 (* break up goal into multiple cases *)
 Ltac break_match :=
   match goal with
-  | |- context [match ?x with _ => _ end] => destruct x
-  | H : context [match ?x with _ => _ end] |- _ => destruct x
+  | |- context [match ?x with _ => _ end] =>
+    match type of x with
+    | sumbool _ _ => destruct x
+    end
+  | H : context [match ?x with _ => _ end] |- _ =>
+    match type of x with
+    | sumbool _ _ => destruct x
+    end
+  | |- context [match ?x with _ => _ end] => case_eq x; intro
+  | H : context [match ?x with _ => _ end] |- _ =>
+    let Heq := fresh in case_eq x; intro Heq; rewrite Heq in H
   end.
 
 (* solves relatively easy goals with some common methods *)
