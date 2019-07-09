@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,14 @@
  * limitations under the License.
  */
 
-.section .text.smc, "ax"
-.global smc
-smc:
-	smc #0
-	ret
+#include "smc.h"
+
+#include <stdint.h>
+
+uint64_t smc64_internal(uint64_t func, uint64_t arg0, uint64_t arg1,
+			uint64_t arg2);
+
+uint64_t smc64(uint32_t func, uint64_t arg0, uint64_t arg1, uint64_t arg2)
+{
+	return smc64_internal(func | SMCCC_64_BIT, arg0, arg1, arg2);
+}
