@@ -4,6 +4,7 @@ Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Util.List.
+Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
@@ -86,7 +87,16 @@ Section Proofs.
       (fun conc =>
          snd (fst (mm_map_level
                      conc t begin end_ attrs table level flags ppool))).
-  Admitted.
+  Proof.
+    autounfold; cbv [mm_map_level].
+    repeat match goal with
+           | _ => simplify_step
+           | _ => apply while_loop_invariant; [ | solver ]
+           | _ => apply mm_free_page_pte_represents
+           | _ => apply mm_replace_entry_represents
+           | _ => apply mm_populate_table_pte_represents
+           end.
+  Qed.
 
   Lemma mm_map_root_represents
         (conc : concrete_state)
