@@ -43,7 +43,7 @@ Definition get_index (level : nat) (a : uintpaddr_t) : nat :=
 Fixpoint page_lookup'
          (ptable_deref : ptable_pointer -> mm_page_table)
          (a : uintpaddr_t)
-         (ptr : ptable_pointer)
+         (table : mm_page_table)
          (* encode the level as (4 - level), so Coq knows this terminates *)
          (lvls_to_go : nat)
   : option pte_t :=
@@ -51,15 +51,15 @@ Fixpoint page_lookup'
   | 0 => None
   | S lvls_to_go' =>
     let lvl := 4 - lvls_to_go in
-    let ptable := ptable_deref ptr in
-    match (get_entry ptable (get_index lvl a)) with
+    match (get_entry table (get_index lvl a)) with
     | Some pte =>
       if (arch_mm_pte_is_table pte lvl)
       then
         (* follow the pointer to the next table *)
         let next_ptr := ptable_pointer_from_address
                           (arch_mm_table_from_pte pte lvl) in
-           page_lookup' ptable_deref a next_ptr lvls_to_go'
+        let next_table := ptable_deref next_ptr in
+        page_lookup' ptable_deref a next_table lvls_to_go'
       else Some pte
     | None => None
     end
@@ -69,4 +69,4 @@ Definition page_lookup
            (ptable_deref : ptable_pointer -> mm_page_table)
            (root_ptable : ptable_pointer)
            (a : uintpaddr_t) : option pte_t :=
-  page_lookup' ptable_deref a root_ptable 4.
+  page_lookup' ptable_deref a (ptable_deref root_ptable) 4.
