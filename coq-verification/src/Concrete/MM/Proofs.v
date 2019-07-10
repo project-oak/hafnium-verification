@@ -3,6 +3,7 @@ Require Import Coq.Lists.List.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Util.List.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
@@ -23,12 +24,24 @@ Section Proofs.
       exists abst', represents abst' (f conc).
   Hint Unfold preserves_represents.
 
-  Lemma mm_free_page_pte_represents
-        (conc : concrete_state)
-        pte level ppool :
+  Lemma mm_free_page_pte_represents (conc : concrete_state) pte level ppool :
     preserves_represents
       (fun conc => fst (mm_free_page_pte conc pte level ppool)).
-  Admitted.
+  Proof.
+    autounfold.
+    generalize dependent conc. generalize dependent pte.
+    generalize dependent ppool.
+    induction level; intros; cbn [mm_free_page_pte];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress cbn [fst snd]
+             | |- context [let '(_,_) := ?x in _] =>
+               rewrite (surjective_pairing x)
+             | _ => break_match
+             | _ => apply fold_right_invariant; [ | solver ]
+             | _ => solver
+             end.
+  Qed.
 
   Lemma mm_replace_entry_represents
         (conc : concrete_state)
