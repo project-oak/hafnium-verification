@@ -42,3 +42,13 @@ Ltac solver :=
   | _ => congruence
   | _ => omega
   end.
+
+Ltac inversion_bool :=
+  match goal with
+  | H : (_ && _)%bool = true |- _ => apply Bool.andb_true_iff in H
+  | H : (_ || _)%bool = true |- _ => apply Bool.orb_true_iff in H
+  | H : negb _ = true |- _ => apply Bool.negb_true_iff in H
+  | H : (_ && _)%bool = false |- _ => apply Bool.andb_false_iff in H
+  | H : (_ || _)%bool = false |- _ => apply Bool.orb_false_iff in H
+  | H : negb _ = false |- _ => apply Bool.negb_false_iff in H
+  end.
