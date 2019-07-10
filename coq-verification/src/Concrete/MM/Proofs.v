@@ -24,6 +24,17 @@ Section Proofs.
       exists abst', represents abst' (f conc).
   Hint Unfold preserves_represents.
 
+  Ltac simplify_step :=
+    match goal with
+    | _ => progress basics
+    | _ => progress cbn [fst snd]
+    | |- context [let '(_,_) := ?x in _] =>
+      rewrite (surjective_pairing x)
+    | _ => break_match
+    | _ => solver
+    end.
+  Ltac simplify := repeat simplify_step.
+
   Lemma mm_free_page_pte_represents (conc : concrete_state) pte level ppool :
     preserves_represents
       (fun conc => fst (mm_free_page_pte conc pte level ppool)).
@@ -33,13 +44,8 @@ Section Proofs.
     generalize dependent ppool.
     induction level; intros; cbn [mm_free_page_pte];
       repeat match goal with
-             | _ => progress basics
-             | _ => progress cbn [fst snd]
-             | |- context [let '(_,_) := ?x in _] =>
-               rewrite (surjective_pairing x)
-             | _ => break_match
+             | _ => simplify_step
              | _ => apply fold_right_invariant; [ | solver ]
-             | _ => solver
              end.
   Qed.
 
@@ -50,7 +56,13 @@ Section Proofs.
       (fun conc =>
          snd (fst (mm_replace_entry
                      conc begin t pte_index new_pte level flags ppool))).
-  Admitted.
+  Proof.
+    autounfold; cbv [mm_replace_entry].
+    repeat match goal with
+           | _ => simplify_step
+           | _ => apply mm_free_page_pte_represents
+           end.
+  Qed.
 
   Lemma mm_populate_table_pte_represents
         (conc : concrete_state)
@@ -59,7 +71,13 @@ Section Proofs.
       (fun conc =>
          snd (fst (mm_populate_table_pte
                      conc begin t pte_index level flags ppool))).
-  Admitted.
+  Proof.
+    autounfold; cbv [mm_populate_table_pte].
+    repeat match goal with
+           | _ => simplify_step
+           | _ => apply mm_replace_entry_represents
+           end.
+  Qed.
 
   Lemma mm_map_level_represents
         (conc : concrete_state)
