@@ -115,6 +115,19 @@ Section NthDefault.
 End NthDefault.
 Hint Rewrite @nth_default_nil @nth_default_cons : push_nth_default.
 
+Section FoldRight.
+  Context {A B : Type}.
+
+  Lemma fold_right_invariant (P : B -> Prop) (f : A -> B -> B) b ls :
+    (forall a b, P b -> P (f a b)) ->
+    P b ->
+    P (fold_right f b ls).
+  Proof.
+    generalize dependent b; induction ls; intros;
+      cbn [fold_right]; eauto.
+  Qed.
+End FoldRight.
+
 (* Proofs about [firstn] and [skipn] *)
 Section FirstnSkipn.
   Context {A : Type}.
