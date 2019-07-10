@@ -49,7 +49,7 @@ Definition reassign_pointer
       (fun ptr' =>
          if ptable_pointer_eq_dec ptr ptr'
          then t
-         else s.(ptable_deref) ptr);
+         else s.(ptable_deref) ptr');
     api_page_pool := s.(api_page_pool);
   |}.
 
