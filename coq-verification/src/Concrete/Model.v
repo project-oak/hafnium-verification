@@ -39,29 +39,27 @@ Definition obeys_invariants
            {ap : abstract_state_parameters} {cp : concrete_params}
            (conc : concrete_state) : Prop :=
   exists abst : abstract_state,
-    represents abst conc /\ AbstractModel.obeys_invariants abst.
+    represents_valid abst conc /\ AbstractModel.obeys_invariants abst.
 
-(* because [represents] includes [AbstractModel.is_valid], and we've proved all
-   valid abstract states obey the invariants, it's sufficient to just prove
-   [represents] *)
+(* because [represents_valid] includes [AbstractModel.is_valid], and we've proved
+   all valid abstract states obey the invariants, it's sufficient to just prove
+   [represents_valid] *)
 Lemma represents_obeys_invariants
       {ap : abstract_state_parameters} {cp : concrete_params}
       (conc : concrete_state) :
-  (exists abst, represents abst conc) ->
+  (exists abst, represents_valid abst conc) ->
   obeys_invariants conc.
 Proof.
-  cbv [represents obeys_invariants]; basics.
+  cbv [represents_valid obeys_invariants]; basics.
   eexists; basics; try solver; [ ].
-  apply (valid_obeys_invariants
-           (addr_eq_dec:=paddr_t_eq_dec) (vm_id_eq_dec:=Nat.eq_dec)).
-  eauto.
+  eauto using valid_obeys_invariants.
 Qed.
 
 Lemma execution_represents
-      {ap : abstract_state_parameters} {cp : concrete_params}
+      {ap : @abstract_state_parameters paddr_t nat} {cp : concrete_params}
       (start_state : concrete_state) (trace : list api_call) :
-  (exists abst, represents abst start_state) ->
-  exists abst, represents abst (execute_trace start_state trace).
+  (exists abst, represents_valid abst start_state) ->
+  exists abst, represents_valid abst (execute_trace start_state trace).
 Proof.
   cbv [execute_trace]; intros; induction trace; [ basics; solver | ].
   destruct IHtrace as [abst IHtrace]. basics.
