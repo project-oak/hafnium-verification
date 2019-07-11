@@ -1,13 +1,15 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Lists.List.
 Require Import Hafnium.AbstractModel.
-Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Concrete.State.
+Require Import Hafnium.Concrete.StateProofs.
 Require Import Hafnium.Util.List.
 Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
+Require Import Hafnium.Concrete.Assumptions.PageTables.
 Require Import Hafnium.Concrete.MM.Datatypes.
 Require Import Hafnium.Concrete.MM.Implementation.
 
@@ -108,11 +110,19 @@ Section Proofs.
   Lemma mm_map_root_represents
         (conc : concrete_state)
         t begin end_ attrs root_level flags ppool :
+    let ret :=
+        mm_map_root
+          conc t begin end_ attrs root_level flags ppool in
+    let ppool' := snd ret in
+    let conc' := snd (fst ret) in
+    let success := fst (fst ret) in
+    let t_ptr := ptable_pointer_from_address t.(root) in
     forall abst,
       represents abst conc ->
-      represents TODO
-                 (snd (fst (mm_map_root
-                              conc t begin end_ attrs root_level flags ppool))).
+      represents (if success
+                  then abst
+                  else abstract_reassign_pointer abst conc t_ptr attrs)
+                 conc'.
   Admitted.
 
   Lemma mm_ptable_identity_update_represents
