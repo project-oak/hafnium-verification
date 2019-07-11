@@ -18,12 +18,12 @@ Proof.
 Qed.
 
 Lemma api_clear_memory_represents
-      {ap : abstract_state_parameters} {cp : concrete_params}
+      {ap : @abstract_state_parameters paddr_t nat} {cp : concrete_params}
       (abst : abstract_state) (conc : concrete_state)
       begin end_ ppool :
-  represents abst conc ->
+  represents_valid abst conc ->
   let conc' := snd (fst (api_clear_memory conc begin end_ ppool)) in
-  exists abst', represents abst' conc'.
+  exists abst', represents_valid abst' conc'.
 Proof.
   cbv [api_clear_memory].
   repeat match goal with
@@ -50,11 +50,11 @@ Proof.
 Qed.
 
 Lemma api_share_memory_represents
-      {ap : abstract_state_parameters} {cp : concrete_params}
+      {ap : @abstract_state_parameters paddr_t nat} {cp : concrete_params}
       (abst : abstract_state) (conc : concrete_state)
       vid addr size share current :
-  represents abst conc ->
+  represents_valid abst conc ->
   let conc' := snd (api_share_memory conc vid addr size share current) in
-  exists abst', represents abst' conc'.
+  exists abst', represents_valid abst' conc'.
 Proof.
 Admitted. (* TODO *)

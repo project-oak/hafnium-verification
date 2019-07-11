@@ -95,13 +95,10 @@ Definition haf_page_owned
 Arguments owned_by {_} {_} _.
 Arguments accessible_by {_} {_} _.
 Definition represents
-           {ap : abstract_state_parameters}
            {cp : concrete_params}
            (abst : @abstract_state paddr_t nat)
            (conc : concrete_state) : Prop :=
   is_valid conc
-  /\ AbstractModel.is_valid
-       (addr_eq_dec:=paddr_t_eq_dec) (vm_id_eq_dec:=Nat.eq_dec) abst
   /\ (forall (vid : nat) (a : paddr_t),
       In (inl vid) (abst.(accessible_by) a) <->
          (exists v : vm,
@@ -115,6 +112,14 @@ Definition represents
   /\ (forall (a : paddr_t),
          abst.(owned_by) a = inr hid <-> conc.(haf_page_owned) a)
 .
+Definition represents_valid
+           {ap : abstract_state_parameters}
+           {cp : concrete_params}
+           (abst : @abstract_state paddr_t nat)
+           (conc : concrete_state) : Prop :=
+  represents abst conc
+  /\ AbstractModel.is_valid
+       (addr_eq_dec:=paddr_t_eq_dec) (vm_id_eq_dec:=Nat.eq_dec) abst.
 
 Definition abstract_state_equiv
            (s1 s2 : @abstract_state paddr_t nat) : Prop :=
