@@ -4,6 +4,7 @@ src/Concrete/Datatypes.v
 src/Concrete/Model.v
 src/Concrete/Notations.v
 src/Concrete/State.v
+src/Concrete/StateProofs.v
 src/Util/List.v
 src/Util/Loops.v
 src/Util/Tactics.v
