@@ -28,5 +28,5 @@ declare_args() {
   plat_max_cpus = 1
 
   # The maximum number of VMs required for the platform.
-  plat_max_vms = 1
+  plat_max_vms = 0
 }

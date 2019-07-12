@@ -21,7 +21,6 @@
 
 #include "hf/spinlock.h"
 #include "hf/std.h"
-#include "hf/vm.h"
 
 /* Keep macro alignment */
 /* clang-format off */
@@ -185,6 +184,30 @@ static const char *parse_flags(const char *p, int *flags)
 }
 
 /**
+<<<<<<< HEAD
+=======
+ * Send the contents of the given VM's log buffer to the log, preceded by the VM
+ * ID and followed by a newline.
+ */
+void dlog_flush_vm_buffer(spci_vm_id_t id, char buffer[], size_t length)
+{
+	lock();
+
+	print_raw_string("VM ");
+	print_num(id, 10, 0, 0);
+	print_raw_string(": ");
+
+	for (size_t i = 0; i < length; ++i) {
+		plat_console_putchar(buffer[i]);
+		buffer[i] = '\0';
+	}
+	plat_console_putchar('\n');
+
+	unlock();
+}
+
+/**
+>>>>>>> 7f904bf... Avoid including vm.h header in tests.
  * Same as "dlog", except that arguments are passed as a va_list
  */
 void vdlog(const char *fmt, va_list args)

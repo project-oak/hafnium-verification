@@ -368,6 +368,6 @@ template("aarch64_toolchains") {
 
     # Nonsense values because they are required but shouldn't be used.
     heap_pages = 0
-    max_vms = 1
+    max_vms = 0
   }
 }
