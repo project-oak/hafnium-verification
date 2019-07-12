@@ -33,16 +33,18 @@ Section Proofs.
 
   (* if the new table is the same as the old, abstract state doesn't change *)
   Lemma reassign_pointer_noop_represents conc ptr t abst :
-    represents abst conc ->
     conc.(ptable_deref) ptr = t ->
+    represents abst conc <->
     represents abst (conc.(reassign_pointer) ptr t).
   Proof.
     repeat match goal with
            | _ => progress basics
            | _ => progress cbn [reassign_pointer ptable_deref]
+           | |- _ <-> _ => split
            | _ => break_match
            | _ => solver
-           | _ => apply represents_proper with (conc:=conc); eauto; [ ]
+           | _ => eapply represents_proper;
+                    [ | | solve[eauto] ]; eauto; [ ]
            end.
   Qed.
 
@@ -85,17 +87,26 @@ Section Proofs.
              end)
           (seq 0 MM_PTE_PER_PAGE)
     end.
-  Definition index_sequences_to_pointer (ptable_deref : ptable_pointer -> mm_page_table)
+  Definition index_sequences_to_pointer
+             (ptable_deref : ptable_pointer -> mm_page_table)
              (ptr : ptable_pointer) (root : ptable_pointer) : list (list nat) :=
     index_sequences_to_pointer' ptable_deref ptr root 4.
+
+  Definition start_in_range
+             (begin_index end_index : nat) (idxs : list nat) : bool :=
+    match idxs with
+    | nil => false
+    | i :: _ => ((begin_index <=? i) && (i <? end_index))%bool
+    end.
 
   Definition abstract_reassign_pointer_for_entity
              (abst : abstract_state) (conc : concrete_state)
              (ptr : ptable_pointer) (owned valid : bool)
              (e : entity_id) (root_ptable : ptable_pointer)
-    : abstract_state :=
+             (begin_index end_index : nat) : abstract_state :=
     let paths := index_sequences_to_pointer
                    conc.(ptable_deref) ptr root_ptable in
+    let paths := filter (start_in_range begin_index end_index) paths in
     let under_pointer : uintpaddr_t -> bool :=
         fun addr =>
           existsb (fun p => is_under_path p addr) paths in
@@ -121,7 +132,8 @@ Section Proofs.
      the provided new owned/valid bits. *)
   Definition abstract_reassign_pointer
              (abst : abstract_state) (conc : concrete_state)
-             (ptr : ptable_pointer) (attrs : attributes) : abstract_state :=
+             (ptr : ptable_pointer) (attrs : attributes)
+             (begin_index end_index : nat) : abstract_state :=
     (* first, get the owned/valid bits *)
     let stage1_mode := arch_mm_stage1_attrs_to_mode attrs in
     let stage2_mode := arch_mm_stage2_attrs_to_mode attrs in
@@ -133,29 +145,36 @@ Section Proofs.
     (* update the state with regard to Hafnium *)
     let abst :=
         abstract_reassign_pointer_for_entity
-          abst conc ptr s1_owned s1_valid (inr hid) hafnium_root_ptable in
+          abst conc ptr s1_owned s1_valid (inr hid) hafnium_root_ptable
+          begin_index end_index in
 
     (* update the state with regard to each VM *)
     fold_right
       (fun (v : vm) (abst : abstract_state) =>
          abstract_reassign_pointer_for_entity
-           abst conc ptr s2_owned s2_valid (inl v.(vm_id)) v.(vm_root_ptable))
+           abst conc ptr s2_owned s2_valid (inl v.(vm_id)) (vm_root_ptable v)
+           begin_index end_index)
       abst
       vms.
 
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
-             (t : mm_page_table) (level : nat) (attrs : attributes) : Prop :=
+             (t : mm_page_table) (level : nat) (attrs : attributes)
+             (begin_index end_index : nat) : Prop :=
     forall (a : uintpaddr_t) (pte : pte_t),
+      begin_index <= get_index level a < end_index ->
       page_lookup' ptable_deref a t (4 - level) = Some pte ->
       forall lvl, arch_mm_pte_attrs pte lvl = attrs.
 
-  Lemma reassign_pointer_represents conc ptr t abst :
+  Lemma reassign_pointer_represents conc ptr t abst:
     represents abst conc ->
-    forall attrs level,
-      has_uniform_attrs conc.(ptable_deref) t level attrs ->
-      represents (abstract_reassign_pointer abst conc ptr attrs)
-                 (conc.(reassign_pointer) ptr t).
+    let conc' := conc.(reassign_pointer) ptr t in
+    forall attrs level begin_index end_index,
+      has_uniform_attrs
+        conc'.(ptable_deref) t level attrs begin_index end_index ->
+      represents (abstract_reassign_pointer
+                    abst conc ptr attrs begin_index end_index)
+                 conc'.
   Proof.
     cbv [reassign_pointer represents].
     cbv [is_valid].

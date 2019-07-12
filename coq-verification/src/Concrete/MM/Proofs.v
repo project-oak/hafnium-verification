@@ -1,13 +1,16 @@
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.Lists.List.
+Require Import Coq.NArith.BinNat.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.StateProofs.
 Require Import Hafnium.Util.List.
 Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
+Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
 Require Import Hafnium.Concrete.Assumptions.PageTables.
 Require Import Hafnium.Concrete.MM.Datatypes.
@@ -30,9 +33,12 @@ Section Proofs.
   Ltac simplify_step :=
     match goal with
     | _ => progress basics
-    | _ => progress cbn [fst snd]
+    | _ => progress cbn [fst snd] in *
+    | p : _ * _ |- _ => destruct p
     | |- context [let '(_,_) := ?x in _] =>
       rewrite (surjective_pairing x)
+    | H : context [let '(_,_) := ?x in _] |- _ =>
+      rewrite (surjective_pairing x) in H
     | _ => break_match
     | _ => solver
     end.
@@ -117,12 +123,14 @@ Section Proofs.
     let conc' := snd (fst ret) in
     let success := fst (fst ret) in
     let t_ptr := ptable_pointer_from_address t.(root) in
+    let begin_index := mm_index begin root_level in
+    let end_index := mm_index end_ root_level + 1 in
+    success = true ->
+    ((flags & MM_FLAG_COMMIT) != 0)%N = true ->
     forall abst,
       represents abst conc ->
-      represents (if success
-                  then abst
-                  else abstract_reassign_pointer abst conc t_ptr attrs)
-                 conc'.
+      represents (abstract_reassign_pointer
+                    abst conc t_ptr attrs begin_index end_index) conc'.
   Admitted.
 
   Lemma mm_ptable_identity_update_represents
