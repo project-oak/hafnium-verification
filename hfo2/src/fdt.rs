@@ -405,7 +405,7 @@ impl FdtHeader {
         unsafe {
             while (*entry).address != 0 || (*entry).size != 0 {
                 dlog!(
-                    "Entry: {:p} (0x{:x} bytes)\n",
+                    "Entry: {:p} ({:#x} bytes)\n",
                     u64::from_be((*entry).address) as *const u8,
                     u64::from_be((*entry).size)
                 );

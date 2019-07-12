@@ -118,14 +118,14 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
 
     for i in 0..params.mem_ranges_count {
         dlog!(
-            "Memory range: 0x{:x} - 0x{:x}\n",
+            "Memory range: {:#x} - {:#x}\n",
             pa_addr(params.mem_ranges[i].begin),
             pa_addr(params.mem_ranges[i].end) - 1
         );
     }
 
     dlog!(
-        "Ramdisk range: 0x{:x} - 0x{:x}\n",
+        "Ramdisk range: {:#x} - {:#x}\n",
         pa_addr(params.initrd_begin),
         pa_addr(params.initrd_end) - 1
     );

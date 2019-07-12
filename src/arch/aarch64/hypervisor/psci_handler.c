@@ -45,12 +45,12 @@ void arch_one_time_init(void)
 	case PSCI_VERSION_1_0:
 	case PSCI_VERSION_1_1:
 		/* Supported EL3 PSCI version. */
-		dlog("Found PSCI version: 0x%x\n", el3_psci_version);
+		dlog("Found PSCI version: %#x\n", el3_psci_version);
 		break;
 
 	default:
 		/* Unsupported EL3 PSCI version. Log a warning but continue. */
-		dlog("Warning: unknown PSCI version: 0x%x\n", el3_psci_version);
+		dlog("Warning: unknown PSCI version: %#x\n", el3_psci_version);
 		el3_psci_version = 0;
 		break;
 	}

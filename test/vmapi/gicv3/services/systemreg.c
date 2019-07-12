@@ -34,7 +34,7 @@
 TEST_SERVICE(read_systemreg_ctlr)
 {
 	/* Reading ICC_CTLR_EL1 should trap and abort the VM. */
-	dlog("ICC_CTLR_EL1=0x%x\n", read_msr(ICC_CTLR_EL1));
+	dlog("ICC_CTLR_EL1=%#x\n", read_msr(ICC_CTLR_EL1));
 	FAIL("Reading ICC_CTLR_EL1 didn't trap.");
 }
 
