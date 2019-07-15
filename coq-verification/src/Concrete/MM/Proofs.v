@@ -6,6 +6,7 @@ Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.StateProofs.
+Require Import Hafnium.Util.BinNat.
 Require Import Hafnium.Util.List.
 Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Util.Tactics.
@@ -123,15 +124,6 @@ Section Proofs.
       (abstract_reassign_pointer start_abst start_conc t_ptr attrs start_begin index)
       s.
 
-  (* TODO: move *)
-  Lemma N_to_nat_ltb (x y : N) :
-    (x <? y)%N = (N.to_nat x <? N.to_nat y).
-  Proof.
-    rewrite N.ltb_compare, Nat.ltb_compare.
-    rewrite Nnat.N2Nat.inj_compare.
-    reflexivity.
-  Qed.
-
   (* TODO:
      This proof says only that if success = true and commit = true
      then the abstract state changed. We need two more proofs for full
@@ -200,7 +192,7 @@ Section Proofs.
                repeat match goal with
                       | _ => progress basics
                       | p : _ * _ |- _ => destruct p
-                      | _ => apply N_to_nat_ltb
+                      | _ => apply N.to_nat_ltb
                       | _ => solver
                       end)). }
     6 : {
@@ -209,7 +201,7 @@ Section Proofs.
         repeat match goal with
                | _ => progress basics
                | p : _ * _ |- _ => destruct p
-               | _ => apply N_to_nat_ltb
+               | _ => apply N.to_nat_ltb
                | _ => solver
                end.
     solver. }
