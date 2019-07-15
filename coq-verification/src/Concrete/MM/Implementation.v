@@ -462,7 +462,7 @@ Definition mm_map_level
   let '(s, begin, pa, table, pte_index, failed, ppool) :=
       while_loop
         (max_iterations := N.to_nat (end_ - begin))
-        (fun _ => (begin <? end_)%N)
+        (fun '(_,begin,_,_,_,_,_) => (begin <? end_)%N)
         (s, begin, pa, table, pte_index, false, ppool)
         (fun '(s, begin, pa, table, pte_index, failed, ppool) =>
            let pte := table.(entries) [[ pte_index ]] in
@@ -616,7 +616,7 @@ Definition mm_map_root
   let '(s, begin, table_index, failed, ppool) :=
       while_loop
         (max_iterations := N.to_nat (end_ - begin))
-        (fun _ => (begin <? end_)%N)
+        (fun '(_,begin,_,_,_) => (begin <? end_)%N)
         (s, begin, table_index, false, ppool)
         (fun '(s, begin, table_index, failed, ppool) =>
 
@@ -768,7 +768,7 @@ Fixpoint mm_ptable_get_attrs_level
   let '(begin, pte_index, got_attrs, attrs) :=
       while_loop
         (max_iterations := N.to_nat (end_ - begin))
-        (fun _ => (begin <? end_)%N)
+        (fun '(begin,_,_,_) => (begin <? end_)%N)
         (begin, pte_index, got_attrs, attrs)
         (fun '(begin, pte_index, got_attrs, attrs) =>
            let pte := table.(entries)[[ pte_index ]] in
@@ -905,7 +905,7 @@ Definition mm_vm_get_attrs
     let '(_, _, got_attrs, attrs) :=
         while_loop
           (max_iterations := N.to_nat (end_ - begin))
-          (fun _ => (begin <? end_)%N)
+          (fun '(begin,_,_,_) => (begin <? end_)%N)
           (begin, table_index, got_attrs, 0%N)
           (fun '(begin, table_index, got_attrs, attrs) =>
                let table := tables[[ table_index ]] in
