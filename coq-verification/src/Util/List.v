@@ -31,6 +31,25 @@ Hint Rewrite @seq_length @repeat_length @rev_length @map_length @firstn_length
      @app_length @split_length_l @prod_length @split_length_r  @combine_length
   : push_length.
 
+
+(* Proofs about [seq] *)
+Section Seq.
+
+  Lemma seq_cons len start :
+    seq start (S len) = start :: seq (S start) len.
+  Proof. reflexivity. Qed.
+
+  Lemma seq_snoc len start :
+    seq start (S len) = seq start len ++ [start + len].
+  Proof.
+    generalize dependent start; induction len; intros.
+    { cbn [seq app]; f_equal; solver. }
+    { rewrite seq_cons with (len:=(S len)).
+      rewrite IHlen, !seq_cons, app_comm_cons.
+      repeat (f_equal; try solver). }
+  Qed.
+End Seq.
+
 (* Proofs about [repeat] *)
 Section Repeat.
   Context {A : Type} (a : A) (n : nat).
