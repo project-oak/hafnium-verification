@@ -31,6 +31,14 @@ Section Proofs.
     represents abst conc'.
   Admitted.
 
+  (* if two abstract states are equivalent and one represents a concrete state,
+     then the other also represents that concrete state. *)
+  Lemma represents_proper_abstr abst abst' conc :
+    abstract_state_equiv abst abst' ->
+    represents abst conc ->
+    represents abst' conc.
+  Admitted.
+
   (* if the new table is the same as the old, abstract state doesn't change *)
   Lemma reassign_pointer_noop_represents conc ptr t abst :
     conc.(ptable_deref) ptr = t ->
@@ -183,4 +191,10 @@ Section Proofs.
     basics; try solver.
     (* 4 subgoals *)
   Admitted.
+
+  Lemma abstract_reassign_pointer_trivial abst conc ptr attrs i :
+    abstract_state_equiv (abstract_reassign_pointer abst conc ptr attrs i i)
+                         abst.
+  Admitted.
+
 End Proofs.
