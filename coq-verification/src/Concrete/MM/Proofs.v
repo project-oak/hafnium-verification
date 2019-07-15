@@ -113,7 +113,33 @@ Section Proofs.
      states *)
   Axiom TODO : @abstract_state paddr_t nat.
 
-  Lemma mm_map_root_represents
+  Definition mm_map_root_loop_invariant
+             start_abst start_conc t_ptr start_begin attrs root_level
+             (state : concrete_state * ptable_addr_t * size_t * bool * mpool)
+    : Prop :=
+    let '(s, begin, table_index, failed, ppool) := state in
+    let index := mm_index begin root_level in
+    represents
+      (abstract_reassign_pointer start_abst start_conc t_ptr attrs start_begin index)
+      s.
+
+  (* TODO: move *)
+  Lemma N_to_nat_ltb (x y : N) :
+    (x <? y)%N = (N.to_nat x <? N.to_nat y).
+  Proof.
+    rewrite N.ltb_compare, Nat.ltb_compare.
+    rewrite Nnat.N2Nat.inj_compare.
+    reflexivity.
+  Qed.
+
+  (* TODO:
+     This proof says only that if success = true and commit = true
+     then the abstract state changed. We need two more proofs for full
+     correctness; one saying that if commit = false, the state is
+     unchanged, and another saying that if success = true and commit =
+     false, then success = true when the function is run again on the
+     (unchanged) output state. *)
+  Lemma mm_map_root_represents_commit
         (conc : concrete_state)
         t begin end_ attrs root_level flags ppool :
     let ret :=
@@ -124,13 +150,76 @@ Section Proofs.
     let success := fst (fst ret) in
     let t_ptr := ptable_pointer_from_address t.(root) in
     let begin_index := mm_index begin root_level in
-    let end_index := mm_index end_ root_level + 1 in
+    let end_index := mm_index end_ root_level in
     success = true ->
     ((flags & MM_FLAG_COMMIT) != 0)%N = true ->
+    (begin <= end_)%N ->
     forall abst,
       represents abst conc ->
       represents (abstract_reassign_pointer
                     abst conc t_ptr attrs begin_index end_index) conc'.
+  Proof.
+    cbv zeta. cbv [mm_map_root].
+    simplify.
+
+    let t_ptr := constr:(ptable_pointer_from_address t.(root)) in
+    let start_begin := constr:(mm_index begin root_level) in
+    match goal with
+    | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
+      assert (mm_map_root_loop_invariant
+                abst conc t_ptr start_begin attrs root_level
+                (@while_loop _ iter cond start body));
+        [ apply while_loop_invariant | ];
+        cbv [mm_map_root_loop_invariant] in *; simplify
+    end.
+    3:admit. (* TODO: proof that if begin and end are the same then has_uniform_attrs is trivially true *)
+    all:rewrite ?mm_map_level_represents.
+    1-2: admit. (* mm_map_level layer *)
+
+    match goal with
+    | H : represents (?f ?i) ?x |- represents (?f ?j) ?x =>
+      assert (i = j); [clear H | solver]
+    end.
+
+
+    apply f_equal2; [|reflexivity].
+    apply Nnat.N2Nat.inj_iff.
+    match goal with
+    | |- context [@while_loop _ ?iter ?cond ?st ?body] =>
+      rewrite <- (while_loop_end_exact iter body
+                                       (fun '(_,_,_,failed,_) => negb failed)
+                                       (fun '(_,begin,_,_,_) => N.to_nat begin)
+                                       (N.to_nat end_)) with (start:=st);
+        simplify
+    end.
+
+    {
+    repeat (f_equal;
+            try
+              (apply while_loop_proper_cond;
+               repeat match goal with
+                      | _ => progress basics
+                      | p : _ * _ |- _ => destruct p
+                      | _ => apply N_to_nat_ltb
+                      | _ => solver
+                      end)). }
+    6 : {
+    rewrite while_loop_proper_cond with
+        (cond':=fun '(_,begin,_,_,_) => N.to_nat begin <? N.to_nat end_) in * by
+        repeat match goal with
+               | _ => progress basics
+               | p : _ * _ |- _ => destruct p
+               | _ => apply N_to_nat_ltb
+               | _ => solver
+               end.
+    solver. }
+
+    { cbv [break continue] in *; solver. }
+    { admit. (* TODO: assume this about mm_start_of_next_block, that its results are > input *) }
+    { admit. (* TODO: assume this about mm_start_of_next_block, that it won't skip pages if end_ is aligned *) }
+    { apply Nat.leb_le. rewrite Nat.leb_compare.
+      rewrite <-Nnat.N2Nat.inj_compare. break_match; solver. }
+    { rewrite Nnat.N2Nat.inj_sub; solver. }
   Admitted.
 
   Lemma mm_ptable_identity_update_represents
