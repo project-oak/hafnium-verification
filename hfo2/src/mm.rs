@@ -36,7 +36,7 @@ use reduce::Reduce;
 
 use crate::mpool::MPool;
 use crate::page::*;
-use crate::spinlock::SpinLock;
+use crate::spinlock::{RawSpinLock, SpinLock};
 use crate::types::*;
 use crate::utils::*;
 
@@ -151,6 +151,10 @@ bitflags! {
 /// The hypervisor page table.
 pub static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
     SpinLock::new(unsafe { PageTable::null() });
+
+/// A lock for mm_lock_stage1 and mm_unlock_stage1
+/// It should be removed later.
+static STAGE1_LOCK: RawSpinLock = RawSpinLock::new();
 
 /// Is stage2 invalidation enabled?
 pub static STAGE2_INVALIDATE: AtomicBool = AtomicBool::new(false);
@@ -1049,11 +1053,15 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
+    stage1_locked: *const mm_stage1_locked,
     begin: usize,
     end: usize,
     mode: c_int,
     mpool: *const MPool,
 ) -> *mut usize {
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    assert_eq!((*stage1_locked).ptable, ptable as *mut _);
+
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE
@@ -1064,7 +1072,15 @@ pub unsafe extern "C" fn mm_identity_map(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_unmap(begin: usize, end: usize, mpool: *const MPool) -> bool {
+pub unsafe extern "C" fn mm_unmap(
+    stage1_locked: *const mm_stage1_locked,
+    begin: usize,
+    end: usize,
+    mpool: *const MPool
+) -> bool {
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    assert_eq!((*stage1_locked).ptable, ptable as *mut _);
+
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE
         .lock()
@@ -1120,7 +1136,34 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_defrag(mpool: *const MPool) {
+pub unsafe extern "C" fn mm_defrag(
+    stage1_locked: *const mm_stage1_locked,
+    mpool: *const MPool,
+) {
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    assert_eq!((*stage1_locked).ptable, ptable as *mut _);
+
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE.lock().defrag(mpool);
+}
+
+/// Locked hypervisor page table
+#[repr(C)]
+pub struct mm_stage1_locked {
+    ptable: *mut RawPage
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
+    STAGE1_LOCK.lock();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    mm_stage1_locked { ptable: ptable as *mut _ }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_unlock_stage1(lock: *mut mm_stage1_locked) {
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    assert_eq!((*lock).ptable, ptable as *mut _);
+    STAGE1_LOCK.unlock();
+    (*lock).ptable = ptr::null_mut();
 }
