@@ -1059,14 +1059,14 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
-    stage1_locked: *const mm_stage1_locked,
+    stage1_locked: mm_stage1_locked,
     begin: usize,
     end: usize,
     mode: c_int,
     mpool: *const MPool,
 ) -> *mut usize {
     let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!((*stage1_locked).ptable, ptable as *mut _);
+    assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
@@ -1079,13 +1079,13 @@ pub unsafe extern "C" fn mm_identity_map(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_unmap(
-    stage1_locked: *const mm_stage1_locked,
+    stage1_locked: mm_stage1_locked,
     begin: usize,
     end: usize,
     mpool: *const MPool
 ) -> bool {
     let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!((*stage1_locked).ptable, ptable as *mut _);
+    assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE
@@ -1096,10 +1096,6 @@ pub unsafe extern "C" fn mm_unmap(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
-    // A fake lock.
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    let stage1_locked = mm_stage1_locked { ptable: ptable as *mut _ };
-
     dlog!(
         "text: {:#x} - {:#x}\n",
         layout_text_begin(),
@@ -1124,6 +1120,8 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     let hypervisor_page_table = HYPERVISOR_PAGE_TABLE.get_mut_unchecked();
     ptr::write(hypervisor_page_table, page_table);
 
+    // A fake lock.
+    let stage1_locked = mm_stage1_locked { ptable: hypervisor_page_table.get_raw() as *mut _ };
     // Let console driver map pages for itself.
     plat_console_mm_init(stage1_locked, mpool);
 
@@ -1147,11 +1145,11 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_defrag(
-    stage1_locked: *const mm_stage1_locked,
+    stage1_locked: mm_stage1_locked,
     mpool: *const MPool,
 ) {
     let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!((*stage1_locked).ptable, ptable as *mut _);
+    assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE.lock().defrag(mpool);
