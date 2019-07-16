@@ -31,7 +31,7 @@ struct mem_range {
 };
 
 struct boot_params {
-	uint64_t cpu_ids[MAX_CPUS];
+	cpu_id_t cpu_ids[MAX_CPUS];
 	size_t cpu_count;
 	struct mem_range mem_ranges[MAX_MEM_RANGES];
 	size_t mem_ranges_count;
@@ -47,5 +47,7 @@ struct boot_params_update {
 	paddr_t initrd_end;
 };
 
-bool plat_get_boot_params(struct boot_params *p, struct mpool *ppool);
-bool plat_update_boot_params(struct boot_params_update *p, struct mpool *ppool);
+bool plat_get_boot_params(struct mm_stage1_locked stage1_locked,
+			  struct boot_params *p, struct mpool *ppool);
+bool plat_update_boot_params(struct mm_stage1_locked stage1_locked,
+			     struct boot_params_update *p, struct mpool *ppool);

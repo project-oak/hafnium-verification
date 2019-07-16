@@ -38,8 +38,10 @@ paddr_t plat_get_fdt_addr(void)
  * by the loader.
  */
 #pragma weak plat_get_initrd_range
-void plat_get_initrd_range(paddr_t *begin, paddr_t *end, struct mpool *ppool)
+void plat_get_initrd_range(struct mm_stage1_locked stage1_locked,
+			   paddr_t *begin, paddr_t *end, struct mpool *ppool)
 {
+	(void)stage1_locked;
 	(void)ppool;
 
 	*begin = layout_initrd_begin();
@@ -63,17 +65,19 @@ uintreg_t plat_get_kernel_arg(void)
  * initrd is provided separately.
  */
 #pragma weak plat_get_boot_params
-bool plat_get_boot_params(struct boot_params *p, struct mpool *ppool)
+bool plat_get_boot_params(struct mm_stage1_locked stage1_locked,
+			  struct boot_params *p, struct mpool *ppool)
 {
 	struct fdt_header *fdt;
 	struct fdt_node n;
 	bool ret = false;
 
-	plat_get_initrd_range(&p->initrd_begin, &p->initrd_end, ppool);
+	plat_get_initrd_range(stage1_locked, &p->initrd_begin, &p->initrd_end,
+			      ppool);
 	p->kernel_arg = plat_get_kernel_arg();
 
 	/* Get the memory map from the FDT. */
-	fdt = fdt_map(plat_get_fdt_addr(), &n, ppool);
+	fdt = fdt_map(stage1_locked, plat_get_fdt_addr(), &n, ppool);
 	if (!fdt) {
 		return false;
 	}
@@ -91,7 +95,7 @@ bool plat_get_boot_params(struct boot_params *p, struct mpool *ppool)
 	ret = true;
 
 out_unmap_fdt:
-	if (!fdt_unmap(fdt, ppool)) {
+	if (!fdt_unmap(stage1_locked, fdt, ppool)) {
 		dlog("Unable to unmap fdt.");
 		return false;
 	}
@@ -110,7 +114,8 @@ out_unmap_fdt:
  * another loader can load the data for it.
  */
 #pragma weak plat_update_boot_params
-bool plat_update_boot_params(struct boot_params_update *p, struct mpool *ppool)
+bool plat_update_boot_params(struct mm_stage1_locked stage1_locked,
+			     struct boot_params_update *p, struct mpool *ppool)
 {
-	return fdt_patch(plat_get_fdt_addr(), p, ppool);
+	return fdt_patch(stage1_locked, plat_get_fdt_addr(), p, ppool);
 }

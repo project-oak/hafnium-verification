@@ -22,6 +22,8 @@
 #include "hf/spci.h"
 #include "hf/std.h"
 
+#include "vmapi/hf/spci.h"
+
 #define HFTEST_MAX_TESTS 50
 
 /*

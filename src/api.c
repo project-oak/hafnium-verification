@@ -19,10 +19,13 @@
 #include "hf/arch/cpu.h"
 #include "hf/arch/timer.h"
 
-#include "hf/assert.h"
+#include "hf/check.h"
 #include "hf/dlog.h"
 #include "hf/mm.h"
+#include "hf/plat/console.h"
+#include "hf/spci_internal.h"
 #include "hf/spinlock.h"
+#include "hf/static_assert.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -34,7 +37,7 @@
  * acquisition of locks held concurrently by the same physical CPU. Our current
  * ordering requirements are as follows:
  *
- * vm::lock -> vcpu::lock
+ * vm::lock -> vcpu::lock -> mm_stage1_lock -> dlog sl
  *
  * Locks of the same kind require the lock of lowest address to be locked first,
  * see `sl_lock_both()`.
@@ -216,26 +219,28 @@ spci_vm_id_t api_vm_get_id(const struct vcpu *current)
 /**
  * Returns the number of VMs configured to run.
  */
-int64_t api_vm_get_count(void)
+spci_vm_count_t api_vm_get_count(void)
 {
 	return vm_get_count();
 }
 
 /**
- * Returns the number of vcpus configured in the given VM.
+ * Returns the number of vCPUs configured in the given VM, or 0 if there is no
+ * such VM or the caller is not the primary VM.
  */
-int64_t api_vcpu_get_count(spci_vm_id_t vm_id, const struct vcpu *current)
+spci_vcpu_count_t api_vcpu_get_count(spci_vm_id_t vm_id,
+				     const struct vcpu *current)
 {
 	struct vm *vm;
 
 	/* Only the primary VM needs to know about vcpus for scheduling. */
 	if (current->vm->id != HF_PRIMARY_VM_ID) {
-		return -1;
+		return 0;
 	}
 
 	vm = vm_find(vm_id);
 	if (vm == NULL) {
-		return -1;
+		return 0;
 	}
 
 	return vm->vcpu_count;
@@ -351,10 +356,10 @@ static bool api_vcpu_prepare_run(const struct vcpu *current, struct vcpu *vcpu,
 	bool ret;
 
 	/*
-	 * Wait until the registers become available. All locks must be
-	 * released between iterations of this loop to avoid potential deadlocks
-	 * if, on any path, a lock needs to be taken after taking the decision
-	 * to switch context but before the registers have been saved.
+	 * Wait until the registers become available. All locks must be released
+	 * between iterations of this loop to avoid potential deadlocks if, on
+	 * any path, a lock needs to be taken after taking the decision to
+	 * switch context but before the registers have been saved.
 	 *
 	 * The VM lock is not needed in the common case so it must only be taken
 	 * when it is going to be needed. This ensures there are no inter-vCPU
@@ -481,7 +486,8 @@ out:
 /**
  * Runs the given vcpu of the given vm.
  */
-struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id, uint32_t vcpu_idx,
+struct hf_vcpu_run_return api_vcpu_run(spci_vm_id_t vm_id,
+				       spci_vcpu_index_t vcpu_idx,
 				       const struct vcpu *current,
 				       struct vcpu **next)
 {
@@ -595,6 +601,137 @@ static int64_t api_waiter_result(struct vm_locked locked_vm,
 }
 
 /**
+ * Configures the hypervisor's stage-1 view of the send and receive pages. The
+ * stage-1 page tables must be locked so memory cannot be taken by another core
+ * which could result in this transaction being unable to roll back in the case
+ * of an error.
+ */
+static bool api_vm_configure_stage1(struct vm_locked vm_locked,
+				    paddr_t pa_send_begin, paddr_t pa_send_end,
+				    paddr_t pa_recv_begin, paddr_t pa_recv_end,
+				    struct mpool *local_page_pool)
+{
+	bool ret;
+	struct mm_stage1_locked mm_stage1_locked = mm_lock_stage1();
+
+	/* Map the send page as read-only in the hypervisor address space. */
+	vm_locked.vm->mailbox.send =
+		mm_identity_map(mm_stage1_locked, pa_send_begin, pa_send_end,
+				MM_MODE_R, local_page_pool);
+	if (!vm_locked.vm->mailbox.send) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(mm_stage1_locked, local_page_pool);
+		goto fail;
+	}
+
+	/*
+	 * Map the receive page as writable in the hypervisor address space. On
+	 * failure, unmap the send page before returning.
+	 */
+	vm_locked.vm->mailbox.recv =
+		mm_identity_map(mm_stage1_locked, pa_recv_begin, pa_recv_end,
+				MM_MODE_W, local_page_pool);
+	if (!vm_locked.vm->mailbox.recv) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_defrag(mm_stage1_locked, local_page_pool);
+		goto fail_undo_send;
+	}
+
+	ret = true;
+	goto out;
+
+	/*
+	 * The following mappings will not require more memory than is available
+	 * in the local pool.
+	 */
+fail_undo_send:
+	vm_locked.vm->mailbox.send = NULL;
+	CHECK(mm_unmap(mm_stage1_locked, pa_send_begin, pa_send_end,
+		       local_page_pool));
+
+fail:
+	ret = false;
+
+out:
+	mm_unlock_stage1(&mm_stage1_locked);
+
+	return ret;
+}
+
+/**
+ * Configures the send and receive pages in the VM stage-2 and hypervisor
+ * stage-1 page tables. Locking of the page tables combined with a local memory
+ * pool ensures there will always be enough memory to recover from any errors
+ * that arise.
+ */
+static bool api_vm_configure_pages(struct vm_locked vm_locked,
+				   paddr_t pa_send_begin, paddr_t pa_send_end,
+				   int orig_send_mode, paddr_t pa_recv_begin,
+				   paddr_t pa_recv_end, int orig_recv_mode)
+{
+	bool ret;
+	struct mpool local_page_pool;
+
+	/*
+	 * Create a local pool so any freed memory can't be used by another
+	 * thread. This is to ensure the original mapping can be restored if any
+	 * stage of the process fails.
+	 */
+	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
+
+	/* Take memory ownership away from the VM and mark as shared. */
+	if (!mm_vm_identity_map(
+		    &vm_locked.vm->ptable, pa_send_begin, pa_send_end,
+		    MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R | MM_MODE_W,
+		    NULL, &local_page_pool)) {
+		goto fail;
+	}
+
+	if (!mm_vm_identity_map(&vm_locked.vm->ptable, pa_recv_begin,
+				pa_recv_end,
+				MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R,
+				NULL, &local_page_pool)) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_vm_defrag(&vm_locked.vm->ptable, &local_page_pool);
+		goto fail_undo_send;
+	}
+
+	if (!api_vm_configure_stage1(vm_locked, pa_send_begin, pa_send_end,
+				     pa_recv_begin, pa_recv_end,
+				     &local_page_pool)) {
+		goto fail_undo_send_and_recv;
+	}
+
+	ret = true;
+	goto out;
+
+	/*
+	 * The following mappings will not require more memory than is available
+	 * in the local pool.
+	 */
+fail_undo_send_and_recv:
+	CHECK(mm_vm_identity_map(&vm_locked.vm->ptable, pa_recv_begin,
+				 pa_recv_end, orig_recv_mode, NULL,
+				 &local_page_pool));
+
+fail_undo_send:
+	CHECK(mm_vm_identity_map(&vm_locked.vm->ptable, pa_send_begin,
+				 pa_send_end, orig_send_mode, NULL,
+				 &local_page_pool));
+
+fail:
+	ret = false;
+
+out:
+	mpool_fini(&local_page_pool);
+
+	return ret;
+}
+
+/**
  * Configures the VM to send/receive data through the specified pages. The pages
  * must not be shared.
  *
@@ -609,14 +746,13 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 			 struct vcpu **next)
 {
 	struct vm *vm = current->vm;
-	struct vm_locked locked;
+	struct vm_locked vm_locked;
 	paddr_t pa_send_begin;
 	paddr_t pa_send_end;
 	paddr_t pa_recv_begin;
 	paddr_t pa_recv_end;
 	int orig_send_mode;
 	int orig_recv_mode;
-	struct mpool local_page_pool;
 	int64_t ret;
 
 	/* Fail if addresses are not page-aligned. */
@@ -637,7 +773,15 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 		return -1;
 	}
 
-	locked = vm_lock(vm);
+	/*
+	 * The hypervisor's memory map must be locked for the duration of this
+	 * operation to ensure there will be sufficient memory to recover from
+	 * any failures.
+	 *
+	 * TODO: the scope of the can be reduced but will require restructuring
+	 *       to keep a single unlock point.
+	 */
+	vm_locked = vm_lock(vm);
 
 	/* We only allow these to be setup once. */
 	if (vm->mailbox.send || vm->mailbox.recv) {
@@ -663,81 +807,21 @@ int64_t api_vm_configure(ipaddr_t send, ipaddr_t recv, struct vcpu *current,
 		goto fail;
 	}
 
-	/*
-	 * Create a local pool so any freed memory can't be used by another
-	 * thread. This is to ensure the original mapping can be restored if any
-	 * stage of the process fails.
-	 */
-	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
-
-	/* Take memory ownership away from the VM and mark as shared. */
-	if (!mm_vm_identity_map(
-		    &vm->ptable, pa_send_begin, pa_send_end,
-		    MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R | MM_MODE_W,
-		    NULL, &local_page_pool)) {
-		goto fail_free_pool;
-	}
-
-	if (!mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
-				MM_MODE_UNOWNED | MM_MODE_SHARED | MM_MODE_R,
-				NULL, &local_page_pool)) {
-		/* TODO: partial defrag of failed range. */
-		/* Recover any memory consumed in failed mapping. */
-		mm_vm_defrag(&vm->ptable, &local_page_pool);
-		goto fail_undo_send;
-	}
-
-	/* Map the send page as read-only in the hypervisor address space. */
-	vm->mailbox.send = mm_identity_map(pa_send_begin, pa_send_end,
-					   MM_MODE_R, &local_page_pool);
-	if (!vm->mailbox.send) {
-		/* TODO: partial defrag of failed range. */
-		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(&local_page_pool);
-		goto fail_undo_send_and_recv;
-	}
-
-	/*
-	 * Map the receive page as writable in the hypervisor address space. On
-	 * failure, unmap the send page before returning.
-	 */
-	vm->mailbox.recv = mm_identity_map(pa_recv_begin, pa_recv_end,
-					   MM_MODE_W, &local_page_pool);
-	if (!vm->mailbox.recv) {
-		/* TODO: partial defrag of failed range. */
-		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(&local_page_pool);
-		goto fail_undo_all;
+	if (!api_vm_configure_pages(vm_locked, pa_send_begin, pa_send_end,
+				    orig_send_mode, pa_recv_begin, pa_recv_end,
+				    orig_recv_mode)) {
+		goto fail;
 	}
 
 	/* Tell caller about waiters, if any. */
-	ret = api_waiter_result(locked, current, next);
+	ret = api_waiter_result(vm_locked, current, next);
 	goto exit;
-
-	/*
-	 * The following mappings will not require more memory than is available
-	 * in the local pool.
-	 */
-fail_undo_all:
-	vm->mailbox.send = NULL;
-	mm_unmap(pa_send_begin, pa_send_end, &local_page_pool);
-
-fail_undo_send_and_recv:
-	mm_vm_identity_map(&vm->ptable, pa_recv_begin, pa_recv_end,
-			   orig_recv_mode, NULL, &local_page_pool);
-
-fail_undo_send:
-	mm_vm_identity_map(&vm->ptable, pa_send_begin, pa_send_end,
-			   orig_send_mode, NULL, &local_page_pool);
-
-fail_free_pool:
-	mpool_fini(&local_page_pool);
 
 fail:
 	ret = -1;
 
 exit:
-	vm_unlock(&locked);
+	vm_unlock(&vm_locked);
 
 	return ret;
 }
@@ -749,11 +833,14 @@ exit:
  * If the recipient's receive buffer is busy, it can optionally register the
  * caller to be notified when the recipient's receive buffer becomes available.
  */
-int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
-			  struct vcpu **next)
+spci_return_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
+				struct vcpu **next)
 {
 	struct vm *from = current->vm;
 	struct vm *to;
+
+	struct two_vm_locked vm_from_to_lock;
+
 	struct hf_vcpu_run_return primary_ret = {
 		.code = HF_VCPU_RUN_MESSAGE,
 	};
@@ -808,7 +895,15 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 		return SPCI_INVALID_PARAMETERS;
 	}
 
-	sl_lock(&to->lock);
+	/*
+	 * Hf needs to hold the lock on <to> before the mailbox state is
+	 * checked. The lock on <to> must be held until the information is
+	 * copied to <to> Rx buffer. Since in
+	 * spci_msg_handle_architected_message we may call api_spci_share_memory
+	 * which must hold the <from> lock, we must hold the <from> lock at this
+	 * point to prevent a deadlock scenario.
+	 */
+	vm_from_to_lock = vm_lock_both(to, from);
 
 	if (to->mailbox.state != MAILBOX_STATE_EMPTY ||
 	    to->mailbox.recv == NULL) {
@@ -832,11 +927,68 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 		goto out;
 	}
 
-	/* Copy data. */
 	to_msg = to->mailbox.recv;
-	*to_msg = from_msg_replica;
-	memcpy_s(to_msg->payload, SPCI_MSG_PAYLOAD_MAX,
-		 from->mailbox.send->payload, size);
+
+	/* Handle architected messages. */
+	if ((from_msg_replica.flags & SPCI_MESSAGE_IMPDEF_MASK) !=
+	    SPCI_MESSAGE_IMPDEF) {
+		/*
+		 * Buffer holding the internal copy of the shared memory
+		 * regions.
+		 */
+		/* TODO: Buffer is temporarily in the stack. */
+		uint8_t message_buffer
+			[sizeof(struct spci_architected_message_header) +
+			 sizeof(struct spci_memory_region_constituent) +
+			 sizeof(struct spci_memory_region)];
+
+		struct spci_architected_message_header *architected_header =
+			spci_get_architected_message_header(from->mailbox.send);
+
+		const struct spci_architected_message_header
+			*architected_message_replica;
+
+		if (from_msg_replica.length > sizeof(message_buffer)) {
+			ret = SPCI_INVALID_PARAMETERS;
+			goto out;
+		}
+
+		if (from_msg_replica.length <
+		    sizeof(struct spci_architected_message_header)) {
+			ret = SPCI_INVALID_PARAMETERS;
+			goto out;
+		}
+
+		/* Copy the architected message into an internal buffer. */
+		memcpy_s(message_buffer, sizeof(message_buffer),
+			 architected_header, from_msg_replica.length);
+
+		architected_message_replica =
+			(struct spci_architected_message_header *)
+				message_buffer;
+
+		/*
+		 * Note that message_buffer is passed as the third parameter to
+		 * spci_msg_handle_architected_message. The execution flow
+		 * commencing at spci_msg_handle_architected_message will make
+		 * several accesses to fields in message_buffer. The memory area
+		 * message_buffer must be exclusively owned by Hf so that TOCTOU
+		 * issues do not arise.
+		 */
+		ret = spci_msg_handle_architected_message(
+			vm_from_to_lock.vm1, vm_from_to_lock.vm2,
+			architected_message_replica, &from_msg_replica, to_msg);
+
+		if (ret != SPCI_SUCCESS) {
+			goto out;
+		}
+	} else {
+		/* Copy data. */
+		memcpy_s(to_msg->payload, SPCI_MSG_PAYLOAD_MAX,
+			 from->mailbox.send->payload, size);
+		*to_msg = from_msg_replica;
+	}
+
 	primary_ret.message.vm_id = to->id;
 	ret = SPCI_SUCCESS;
 
@@ -857,7 +1009,8 @@ int32_t api_spci_msg_send(uint32_t attributes, struct vcpu *current,
 	}
 
 out:
-	sl_unlock(&to->lock);
+	vm_unlock(&vm_from_to_lock.vm1);
+	vm_unlock(&vm_from_to_lock.vm2);
 
 	return ret;
 }
@@ -1159,7 +1312,7 @@ static inline bool is_injection_allowed(uint32_t target_vm_id,
  *    up or kick the target vCPU.
  */
 int64_t api_interrupt_inject(spci_vm_id_t target_vm_id,
-			     uint32_t target_vcpu_idx, uint32_t intid,
+			     spci_vcpu_index_t target_vcpu_idx, uint32_t intid,
 			     struct vcpu *current, struct vcpu **next)
 {
 	struct vcpu *target_vcpu;
@@ -1201,21 +1354,135 @@ static bool api_clear_memory(paddr_t begin, paddr_t end, struct mpool *ppool)
 	 *       the changes to stage-1 tables and will allow only local
 	 *       invalidation.
 	 */
-	void *ptr = mm_identity_map(begin, end, MM_MODE_W, ppool);
+	bool ret;
+	struct mm_stage1_locked stage1_locked = mm_lock_stage1();
+	void *ptr =
+		mm_identity_map(stage1_locked, begin, end, MM_MODE_W, ppool);
 	size_t size = pa_difference(begin, end);
 
 	if (!ptr) {
 		/* TODO: partial defrag of failed range. */
 		/* Recover any memory consumed in failed mapping. */
-		mm_defrag(ppool);
-		return false;
+		mm_defrag(stage1_locked, ppool);
+		goto fail;
 	}
 
 	memset_s(ptr, size, 0, size);
 	arch_mm_write_back_dcache(ptr, size);
-	mm_unmap(begin, end, ppool);
+	mm_unmap(stage1_locked, begin, end, ppool);
 
-	return true;
+	ret = true;
+	goto out;
+
+fail:
+	ret = false;
+
+out:
+	mm_unlock_stage1(&stage1_locked);
+
+	return ret;
+}
+
+/** TODO: Move function to spci_architectted_message.c. */
+/**
+ * Shares memory from the calling VM with another. The memory can be shared in
+ * different modes.
+ *
+ * This function requires the calling context to hold the <to> and <from> locks.
+ *
+ * Returns:
+ *  In case of error one of the following values is returned:
+ *   1) SPCI_INVALID_PARAMETERS - The endpoint provided parameters were
+ *     erroneous;
+ *   2) SPCI_NO_MEMORY - Hf did not have sufficient memory to complete
+ *     the request.
+ *  Success is indicated by SPCI_SUCCESS.
+ */
+spci_return_t api_spci_share_memory(struct vm_locked to_locked,
+				    struct vm_locked from_locked,
+				    struct spci_memory_region *memory_region,
+				    uint32_t memory_to_attributes,
+				    enum spci_memory_share share)
+{
+	struct vm *to = to_locked.vm;
+	struct vm *from = from_locked.vm;
+	int orig_from_mode;
+	int from_mode;
+	int to_mode;
+	struct mpool local_page_pool;
+	int64_t ret;
+	paddr_t pa_begin;
+	paddr_t pa_end;
+	ipaddr_t begin;
+	ipaddr_t end;
+
+	size_t size;
+
+	/* Disallow reflexive shares as this suggests an error in the VM. */
+	if (to == from) {
+		return SPCI_INVALID_PARAMETERS;
+	}
+
+	/*
+	 * Create a local pool so any freed memory can't be used by another
+	 * thread. This is to ensure the original mapping can be restored if any
+	 * stage of the process fails.
+	 */
+	mpool_init_with_fallback(&local_page_pool, &api_page_pool);
+
+	/* Obtain the single contiguous set of pages from the memory_region. */
+	/* TODO: Add support for multiple constituent regions. */
+	size = memory_region->constituents[0].page_count * PAGE_SIZE;
+	begin = ipa_init(memory_region->constituents[0].address);
+	end = ipa_add(begin, size);
+
+	/*
+	 * Check if the state transition is lawful for both VMs involved
+	 * in the memory exchange, ensure that all constituents of a memory
+	 * region being shared are at the same state.
+	 */
+	if (!spci_msg_check_transition(to, from, share, &orig_from_mode, begin,
+				       end, memory_to_attributes, &from_mode,
+				       &to_mode)) {
+		return SPCI_INVALID_PARAMETERS;
+	}
+
+	pa_begin = pa_from_ipa(begin);
+	pa_end = pa_from_ipa(end);
+
+	/*
+	 * First update the mapping for the sender so there is not overlap with
+	 * the recipient.
+	 */
+	if (!mm_vm_identity_map(&from->ptable, pa_begin, pa_end, from_mode,
+				NULL, &local_page_pool)) {
+		ret = SPCI_NO_MEMORY;
+		goto out;
+	}
+
+	/* Complete the transfer by mapping the memory into the recipient. */
+	if (!mm_vm_identity_map(&to->ptable, pa_begin, pa_end, to_mode, NULL,
+				&local_page_pool)) {
+		/* TODO: partial defrag of failed range. */
+		/* Recover any memory consumed in failed mapping. */
+		mm_vm_defrag(&from->ptable, &local_page_pool);
+
+		ret = SPCI_NO_MEMORY;
+
+		CHECK(mm_vm_identity_map(&from->ptable, pa_begin, pa_end,
+					 orig_from_mode, NULL,
+					 &local_page_pool));
+
+		goto out;
+	}
+
+	ret = SPCI_SUCCESS;
+
+out:
+
+	mpool_fini(&local_page_pool);
+
+	return ret;
 }
 
 /**
@@ -1359,8 +1626,8 @@ int64_t api_share_memory(spci_vm_id_t vm_id, ipaddr_t addr, size_t size,
 	goto out;
 
 fail_return_to_sender:
-	mm_vm_identity_map(&from->ptable, pa_begin, pa_end, orig_from_mode,
-			   NULL, &local_page_pool);
+	CHECK(mm_vm_identity_map(&from->ptable, pa_begin, pa_end,
+				 orig_from_mode, NULL, &local_page_pool));
 
 fail:
 	ret = -1;
@@ -1388,4 +1655,21 @@ int32_t api_spci_version(void)
 
 	return (SPCI_VERSION_MAJOR << SPCI_VERSION_MAJOR_OFFSET) |
 	       SPCI_VERSION_MINOR;
+}
+
+int64_t api_debug_log(char c, struct vcpu *current)
+{
+	struct vm *vm = current->vm;
+	struct vm_locked vm_locked = vm_lock(vm);
+
+	if (c == '\n' || c == '\0' ||
+	    vm->log_buffer_length == sizeof(vm->log_buffer)) {
+		dlog_flush_vm_buffer(vm_locked);
+	} else {
+		vm->log_buffer[vm->log_buffer_length++] = c;
+	}
+
+	vm_unlock(&vm_locked);
+
+	return 0;
 }

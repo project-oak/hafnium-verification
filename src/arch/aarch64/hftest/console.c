@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-.section .text.smc, "ax"
-.globl smc
-smc:
-	smc #0
-	ret
+#include "hf/plat/console.h"
+
+#include "vmapi/hf/call.h"
+
+void plat_console_putchar(char c)
+{
+	hf_debug_log(c);
+}

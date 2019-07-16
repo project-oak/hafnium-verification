@@ -14,20 +14,10 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <stdarg.h>
-
-#include "vm.h"
-
-#if DEBUG
-void dlog_enable_lock(void);
-void dlog(const char *fmt, ...);
-void vdlog(const char *fmt, va_list args);
-#else
-#define dlog_enable_lock()
-#define dlog(...)
-#define vdlog(fmt, args)
-#endif
-
-void dlog_flush_vm_buffer(struct vm_locked vm);
+.section .text.smc, "ax"
+.global smc32
+.global smc64_internal
+smc32:
+smc64_internal:
+	smc #0
+	ret

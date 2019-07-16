@@ -16,22 +16,19 @@
 
 #pragma once
 
-#if !defined(__cplusplus)
-
 #include "hf/panic.h"
 
 /**
- * Only use for exceptional cases and never if the condition could be false e.g.
- * when processing external inputs.
+ * Only use to check assumptions which, if false, mean the system is in a bad
+ * state and it is unsafe to continue.
+ *
+ * Do not use if the condition could ever be legitimately false e.g. when
+ * processing external inputs.
  */
-#define assert(x)                                                             \
+#define CHECK(x)                                                              \
 	do {                                                                  \
 		if (!(x)) {                                                   \
 			panic("assertion failed (%s) at %s:%d", #x, __FILE__, \
 			      __LINE__);                                      \
 		}                                                             \
 	} while (0)
-
-#define static_assert _Static_assert
-
-#endif

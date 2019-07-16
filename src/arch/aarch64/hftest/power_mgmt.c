@@ -16,8 +16,8 @@
 
 #include "hf/arch/vm/power_mgmt.h"
 
-#include "hf/assert.h"
 #include "hf/spinlock.h"
+#include "hf/static_assert.h"
 
 #include "vmapi/hf/call.h"
 
@@ -72,7 +72,7 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
 	s.arg = arg;
 
 	/* Try to start the CPU. */
-	if (smc(PSCI_CPU_ON, id, (size_t)&vm_cpu_entry_raw, (size_t)&s) !=
+	if (smc32(PSCI_CPU_ON, id, (size_t)&vm_cpu_entry_raw, (size_t)&s) !=
 	    PSCI_RETURN_SUCCESS) {
 		return false;
 	}
@@ -91,7 +91,7 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
  */
 noreturn void cpu_stop(void)
 {
-	smc(PSCI_CPU_OFF, 0, 0, 0);
+	smc32(PSCI_CPU_OFF, 0, 0, 0);
 	for (;;) {
 		/* This should never be reached. */
 	}
@@ -107,7 +107,7 @@ static_assert(POWER_STATUS_ON_PENDING == PSCI_RETURN_ON_PENDING,
 /**
  * Returns the power status of the given CPU.
  */
-enum power_status cpu_status(uint64_t cpu_id)
+enum power_status cpu_status(cpu_id_t cpu_id)
 {
 	uint32_t lowest_affinity_level = 0;
 
@@ -116,7 +116,7 @@ enum power_status cpu_status(uint64_t cpu_id)
 	 * as the PSCI_RETURN_* values. The static_asserts above validate that
 	 * this is the case.
 	 */
-	return smc(PSCI_AFFINITY_INFO, cpu_id, lowest_affinity_level, 0);
+	return smc32(PSCI_AFFINITY_INFO, cpu_id, lowest_affinity_level, 0);
 }
 
 /**
@@ -124,7 +124,7 @@ enum power_status cpu_status(uint64_t cpu_id)
  */
 noreturn void arch_power_off(void)
 {
-	smc(PSCI_SYSTEM_OFF, 0, 0, 0);
+	smc32(PSCI_SYSTEM_OFF, 0, 0, 0);
 	for (;;) {
 		/* This should never be reached. */
 	}

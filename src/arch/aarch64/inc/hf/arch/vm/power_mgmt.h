@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <stdnoreturn.h>
 
+#include "hf/arch/types.h"
+
 enum power_status {
 	POWER_STATUS_ON,
 	POWER_STATUS_OFF,
@@ -33,4 +35,4 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
 	       void (*entry)(uintptr_t arg), uintptr_t arg);
 
 noreturn void cpu_stop(void);
-enum power_status cpu_status(uint64_t cpu_id);
+enum power_status cpu_status(cpu_id_t cpu_id);

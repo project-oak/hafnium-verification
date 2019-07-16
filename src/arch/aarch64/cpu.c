@@ -48,7 +48,7 @@ static void gic_regs_reset(struct arch_regs *r, bool is_primary)
 }
 
 void arch_regs_reset(struct arch_regs *r, bool is_primary, spci_vm_id_t vm_id,
-		     uint64_t vcpu_id, paddr_t table)
+		     cpu_id_t vcpu_id, paddr_t table)
 {
 	uintreg_t pc = r->pc;
 	uintreg_t arg = r->r[0];

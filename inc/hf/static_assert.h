@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,8 @@
 
 #pragma once
 
-#include <stdarg.h>
+#if !defined(__cplusplus)
 
-#include "vm.h"
+#define static_assert _Static_assert
 
-#if DEBUG
-void dlog_enable_lock(void);
-void dlog(const char *fmt, ...);
-void vdlog(const char *fmt, va_list args);
-#else
-#define dlog_enable_lock()
-#define dlog(...)
-#define vdlog(fmt, args)
 #endif
-
-void dlog_flush_vm_buffer(struct vm_locked vm);

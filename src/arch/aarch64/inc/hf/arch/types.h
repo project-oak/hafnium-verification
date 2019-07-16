@@ -19,7 +19,8 @@
 #include <stdalign.h>
 #include <stdint.h>
 
-#include "hf/assert.h"
+#include "hf/spci.h"
+#include "hf/static_assert.h"
 
 #define PAGE_BITS 12
 #define PAGE_LEVEL_BITS 9
@@ -36,6 +37,9 @@ typedef uintptr_t uintvaddr_t;
 
 /** The integer type corresponding to the native register size. */
 typedef uint64_t uintreg_t;
+
+/** The ID of a physical or virtual CPU. */
+typedef uint64_t cpu_id_t;
 
 /**
  * The struct for storing a floating point register.
@@ -58,7 +62,7 @@ struct arch_vm {
 	 * on that CPU, which avoids contention and so no lock is needed to
 	 * access this field.
 	 */
-	uint32_t last_vcpu_on_cpu[MAX_CPUS];
+	spci_vcpu_index_t last_vcpu_on_cpu[MAX_CPUS];
 };
 
 /** Type to represent the register state of a vCPU.  */

@@ -34,6 +34,9 @@ typedef uintptr_t uintvaddr_t;
 /** The integer corresponding to the native register size. */
 typedef uint64_t uintreg_t;
 
+/** The ID of a physical or virtual CPU. */
+typedef uint32_t cpu_id_t;
+
 /** Arch-specifc information about a VM. */
 struct arch_vm {
 	/* This field is only here because empty structs aren't allowed. */
@@ -43,6 +46,6 @@ struct arch_vm {
 /** Type to represent the register state of a VM.  */
 struct arch_regs {
 	uintreg_t r[5];
-	uintreg_t vcpu_id;
+	cpu_id_t vcpu_id;
 	bool virtual_interrupt;
 };

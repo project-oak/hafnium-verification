@@ -12,28 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-action("linux") {
-  script = "//build/make.py"
-  args = [
-    "--directory",
-    rebase_path("linux"),
-    "--out_file",
-    "hafnium.ko",
-    "--copy_out_file",
-    rebase_path("${target_out_dir}/linux/hafnium.ko"),
-    "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
-    "ARCH=arm64",
-    "CROSS_COMPILE=aarch64-linux-gnu-",
-  ]
+import("//build/linux/linux.gni")
+
+linux_kernel_module("linux") {
+  module_name = "hafnium"
+  kernel_target = "//third_party:linux"
+  kernel_src_dir = "//third_party/linux"
   sources = [
     "linux/Makefile",
     "linux/hf_call.S",
     "linux/main.c",
-  ]
-  outputs = [
-    "${target_out_dir}/linux/hafnium.ko",
-  ]
-  deps = [
-    "//third_party:linux_defconfig",
   ]
 }

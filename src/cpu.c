@@ -21,7 +21,9 @@
 #include "hf/arch/cpu.h"
 
 #include "hf/api.h"
+#include "hf/check.h"
 #include "hf/dlog.h"
+#include "hf/spci.h"
 #include "hf/std.h"
 #include "hf/vm.h"
 
@@ -46,14 +48,13 @@ static void cpu_init(struct cpu *c)
 {
 	/* TODO: Assumes that c is zeroed out already. */
 	sl_init(&c->lock);
-	c->irq_disable_count = 1;
 }
 
-void cpu_module_init(const uint64_t *cpu_ids, size_t count)
+void cpu_module_init(const cpu_id_t *cpu_ids, size_t count)
 {
 	uint32_t i;
 	uint32_t j;
-	uint64_t boot_cpu_id = cpus[0].id;
+	cpu_id_t boot_cpu_id = cpus[0].id;
 	bool found_boot_cpu = false;
 
 	cpu_count = count;
@@ -67,7 +68,7 @@ void cpu_module_init(const uint64_t *cpu_ids, size_t count)
 	j = cpu_count;
 	for (i = 0; i < cpu_count; ++i) {
 		struct cpu *c;
-		uint64_t id = cpu_ids[i];
+		cpu_id_t id = cpu_ids[i];
 
 		if (found_boot_cpu || id != boot_cpu_id) {
 			c = &cpus[--j];
@@ -91,22 +92,6 @@ void cpu_module_init(const uint64_t *cpu_ids, size_t count)
 size_t cpu_index(struct cpu *c)
 {
 	return c - cpus;
-}
-
-void cpu_irq_enable(struct cpu *c)
-{
-	c->irq_disable_count--;
-	if (!c->irq_disable_count) {
-		arch_irq_enable();
-	}
-}
-
-void cpu_irq_disable(struct cpu *c)
-{
-	if (!c->irq_disable_count) {
-		arch_irq_disable();
-	}
-	c->irq_disable_count++;
 }
 
 /**
@@ -147,7 +132,7 @@ void cpu_off(struct cpu *c)
 /**
  * Searches for a CPU based on its id.
  */
-struct cpu *cpu_find(uint64_t id)
+struct cpu *cpu_find(cpu_id_t id)
 {
 	size_t i;
 
@@ -203,9 +188,12 @@ void vcpu_on(struct vcpu_locked vcpu, ipaddr_t entry, uintreg_t arg)
 	vcpu.vcpu->state = VCPU_STATE_READY;
 }
 
-size_t vcpu_index(const struct vcpu *vcpu)
+spci_vcpu_index_t vcpu_index(const struct vcpu *vcpu)
 {
-	return vcpu - vcpu->vm->vcpus;
+	size_t index = vcpu - vcpu->vm->vcpus;
+
+	CHECK(index < UINT16_MAX);
+	return index;
 }
 
 /**
@@ -247,7 +235,7 @@ bool vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 	struct vm *vm = vcpu->vm;
 	bool vcpu_was_off;
 
-	assert(vm->id != HF_PRIMARY_VM_ID);
+	CHECK(vm->id != HF_PRIMARY_VM_ID);
 
 	vcpu_locked = vcpu_lock(vcpu);
 	vcpu_was_off = vcpu_is_off(vcpu_locked);

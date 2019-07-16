@@ -101,16 +101,10 @@ struct vcpu_locked {
 /* TODO: Update alignment such that cpus are in different cache lines. */
 struct cpu {
 	/** CPU identifier. Doesn't have to be contiguous. */
-	uint64_t id;
+	cpu_id_t id;
 
 	/** Pointer to bottom of the stack. */
 	void *stack_bottom;
-
-	/**
-	 * Enabling/disabling irqs are counted per-cpu. They are enabled when
-	 * the count is zero, and disabled when it's non-zero.
-	 */
-	uint32_t irq_disable_count;
 
 	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
@@ -119,20 +113,18 @@ struct cpu {
 	bool is_on;
 };
 
-void cpu_module_init(const uint64_t *cpu_ids, size_t count);
+void cpu_module_init(const cpu_id_t *cpu_ids, size_t count);
 
 size_t cpu_index(struct cpu *c);
-void cpu_irq_enable(struct cpu *c);
-void cpu_irq_disable(struct cpu *c);
 bool cpu_on(struct cpu *c, ipaddr_t entry, uintreg_t arg);
 void cpu_off(struct cpu *c);
-struct cpu *cpu_find(uint64_t id);
+struct cpu *cpu_find(cpu_id_t id);
 
 struct vcpu_locked vcpu_lock(struct vcpu *vcpu);
 void vcpu_unlock(struct vcpu_locked *locked);
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu_locked vcpu, ipaddr_t entry, uintreg_t arg);
-size_t vcpu_index(const struct vcpu *vcpu);
+spci_vcpu_index_t vcpu_index(const struct vcpu *vcpu);
 bool vcpu_is_off(struct vcpu_locked vcpu);
 bool vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 				    uintreg_t arg);
