@@ -74,7 +74,7 @@ extern "C" {
 
     fn arch_mm_combine_table_entry_attrs(table_attrs: usize, block_attrs: usize) -> usize;
 
-    fn plat_console_mm_init(mpool: *const MPool);
+    fn plat_console_mm_init(stage1_locked: mm_stage1_locked, mpool: *const MPool);
 
     fn layout_text_begin() -> usize;
     fn layout_text_end() -> usize;
@@ -936,6 +936,12 @@ impl<S: Stage> Drop for PageTable<S> {
     }
 }
 
+/// Locked hypervisor page table
+#[repr(C)]
+pub struct mm_stage1_locked {
+    ptable: *mut RawPage
+}
+
 /// After calling this function, modifications to stage-2 page tables will use break-before-make and
 /// invalidate the TLB for the affected range.
 ///
@@ -1090,6 +1096,10 @@ pub unsafe extern "C" fn mm_unmap(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
+    // A fake lock.
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let stage1_locked = mm_stage1_locked { ptable: ptable as *mut _ };
+
     dlog!(
         "text: {:#x} - {:#x}\n",
         layout_text_begin(),
@@ -1115,7 +1125,7 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     ptr::write(hypervisor_page_table, page_table);
 
     // Let console driver map pages for itself.
-    plat_console_mm_init(mpool);
+    plat_console_mm_init(stage1_locked, mpool);
 
     hypervisor_page_table.identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool);
     hypervisor_page_table.identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool);
@@ -1145,12 +1155,6 @@ pub unsafe extern "C" fn mm_defrag(
 
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE.lock().defrag(mpool);
-}
-
-/// Locked hypervisor page table
-#[repr(C)]
-pub struct mm_stage1_locked {
-    ptable: *mut RawPage
 }
 
 #[no_mangle]
