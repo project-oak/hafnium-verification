@@ -119,6 +119,19 @@ impl<'s, T> DerefMut for SpinLockGuard<'s, T> {
     }
 }
 
+impl<'s, T> SpinLockGuard<'s, T> {
+    pub fn into_raw(self) -> usize {
+        self.lock as *const _ as usize
+    }
+
+    pub unsafe fn from_raw(data: usize) -> Self {
+        Self {
+            lock: &*(data as *const _),
+            _marker: PhantomData,
+        }
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn sl_init(l: *mut RawSpinLock) {
     ptr::write(l, RawSpinLock::new());

@@ -36,7 +36,7 @@ use reduce::Reduce;
 
 use crate::mpool::MPool;
 use crate::page::*;
-use crate::spinlock::SpinLock;
+use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
 
@@ -935,7 +935,35 @@ impl<S: Stage> Drop for PageTable<S> {
 /// Locked hypervisor page table
 #[repr(C)]
 pub struct mm_stage1_locked {
-    ptable: *mut RawPage,
+    ptable: usize,
+}
+
+impl Deref for mm_stage1_locked {
+    type Target = PageTable<Stage1>;
+
+    fn deref(&self) -> &Self::Target {
+        unimplemented!("TODO")
+    }
+}
+
+impl DerefMut for mm_stage1_locked {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unimplemented!("TODO")
+    }
+}
+
+impl<'s> From<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
+    fn from(guard: SpinLockGuard<'s, PageTable<Stage1>>) -> Self {
+        Self {
+            ptable: guard.into_raw(),
+        }
+    }
+}
+
+impl<'s> Into<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
+    fn into(self) -> SpinLockGuard<'s, PageTable<Stage1>> {
+        unsafe { SpinLockGuard::from_raw(self.ptable) }
+    }
 }
 
 /// After calling this function, modifications to stage-2 page tables will use break-before-make and
@@ -1055,19 +1083,15 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
-    stage1_locked: mm_stage1_locked,
+    mut stage1_locked: mm_stage1_locked,
     begin: usize,
     end: usize,
     mode: c_int,
     mpool: *const MPool,
 ) -> *mut usize {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!(stage1_locked.ptable, ptable as *mut _);
-
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE
-        .get_mut_unchecked()
+    stage1_locked
         .identity_map(begin, end, mode, mpool)
         .map(|_| begin as *mut _)
         .unwrap_or_else(|| ptr::null_mut())
@@ -1075,19 +1099,13 @@ pub unsafe extern "C" fn mm_identity_map(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_unmap(
-    stage1_locked: mm_stage1_locked,
+    mut stage1_locked: mm_stage1_locked,
     begin: usize,
     end: usize,
     mpool: *const MPool,
 ) -> bool {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!(stage1_locked.ptable, ptable as *mut _);
-
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE
-        .get_mut_unchecked()
-        .unmap(begin, end, mpool)
-        .is_some()
+    stage1_locked.unmap(begin, end, mpool).is_some()
 }
 
 #[no_mangle]
@@ -1118,8 +1136,9 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
 
     // A fake lock.
     let stage1_locked = mm_stage1_locked {
-        ptable: hypervisor_page_table.get_raw() as *mut _,
+        ptable: &HYPERVISOR_PAGE_TABLE as *const _ as usize,
     };
+
     // Let console driver map pages for itself.
     plat_console_mm_init(stage1_locked, mpool);
 
@@ -1142,27 +1161,19 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_defrag(stage1_locked: mm_stage1_locked, mpool: *const MPool) {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!(stage1_locked.ptable, ptable as *mut _);
-
+pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *const MPool) {
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE.get_mut_unchecked().defrag(mpool);
+    stage1_locked.defrag(mpool);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
-    HYPERVISOR_PAGE_TABLE.lock.lock();
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    mm_stage1_locked {
-        ptable: ptable as *mut _,
-    }
+    HYPERVISOR_PAGE_TABLE.lock().into()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_unlock_stage1(lock: *mut mm_stage1_locked) {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    assert_eq!((*lock).ptable, ptable as *mut _);
-    HYPERVISOR_PAGE_TABLE.lock.unlock();
-    (*lock).ptable = ptr::null_mut();
+    let locked = ptr::read(lock);
+    let guard: SpinLockGuard<'static, _> = locked.into();
+    drop(guard);
 }
