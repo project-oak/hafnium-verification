@@ -36,7 +36,7 @@ use reduce::Reduce;
 
 use crate::mpool::MPool;
 use crate::page::*;
-use crate::spinlock::{RawSpinLock, SpinLock};
+use crate::spinlock::RawSpinLock;
 use crate::types::*;
 use crate::utils::*;
 
@@ -149,8 +149,8 @@ bitflags! {
 }
 
 /// The hypervisor page table.
-pub static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
-    SpinLock::new(unsafe { PageTable::null() });
+static mut HYPERVISOR_PAGE_TABLE: PageTable<Stage1> = 
+    unsafe { PageTable::null() };
 
 /// A lock for mm_lock_stage1 and mm_unlock_stage1
 /// It should be removed later.
@@ -1065,13 +1065,12 @@ pub unsafe extern "C" fn mm_identity_map(
     mode: c_int,
     mpool: *const MPool,
 ) -> *mut usize {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_raw();
     assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE
-        .lock()
         .identity_map(begin, end, mode, mpool)
         .map(|_| begin as *mut _)
         .unwrap_or_else(|| ptr::null_mut())
@@ -1084,12 +1083,11 @@ pub unsafe extern "C" fn mm_unmap(
     end: usize,
     mpool: *const MPool
 ) -> bool {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_raw();
     assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
     let mpool = &*mpool;
     HYPERVISOR_PAGE_TABLE
-        .lock()
         .unmap(begin, end, mpool)
         .is_some()
 }
@@ -1117,29 +1115,28 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
         .ok_or_else(|| dlog!("Unable to allocate memory for page table.\n"))
         .ok();
     let page_table = some_or_return!(page_table, false);
-    let hypervisor_page_table = HYPERVISOR_PAGE_TABLE.get_mut_unchecked();
-    ptr::write(hypervisor_page_table, page_table);
+    ptr::write(&mut HYPERVISOR_PAGE_TABLE, page_table);
 
     // A fake lock.
-    let stage1_locked = mm_stage1_locked { ptable: hypervisor_page_table.get_raw() as *mut _ };
+    let stage1_locked = mm_stage1_locked { ptable: HYPERVISOR_PAGE_TABLE.get_raw() as *mut _ };
     // Let console driver map pages for itself.
     plat_console_mm_init(stage1_locked, mpool);
 
-    hypervisor_page_table.identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool);
-    hypervisor_page_table.identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool);
-    hypervisor_page_table.identity_map(
+    HYPERVISOR_PAGE_TABLE.identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool);
+    HYPERVISOR_PAGE_TABLE.identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool);
+    HYPERVISOR_PAGE_TABLE.identity_map(
         layout_data_begin(),
         layout_data_end(),
         Mode::R | Mode::W,
         mpool,
     );
 
-    arch_mm_init(hypervisor_page_table.root, true)
+    arch_mm_init(HYPERVISOR_PAGE_TABLE.root, true)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_raw();
     arch_mm_init(ptable as usize, false)
 }
 
@@ -1148,23 +1145,23 @@ pub unsafe extern "C" fn mm_defrag(
     stage1_locked: mm_stage1_locked,
     mpool: *const MPool,
 ) {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_raw();
     assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE.lock().defrag(mpool);
+    HYPERVISOR_PAGE_TABLE.defrag(mpool);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
     STAGE1_LOCK.lock();
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_raw();
     mm_stage1_locked { ptable: ptable as *mut _ }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_unlock_stage1(lock: *mut mm_stage1_locked) {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
+    let ptable = HYPERVISOR_PAGE_TABLE.get_raw();
     assert_eq!((*lock).ptable, ptable as *mut _);
     STAGE1_LOCK.unlock();
     (*lock).ptable = ptr::null_mut();
