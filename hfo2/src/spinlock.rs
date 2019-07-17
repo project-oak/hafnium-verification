@@ -55,8 +55,8 @@ impl RawSpinLock {
 
 #[repr(C)]
 pub struct SpinLock<T> {
-    lock: RawSpinLock,
-    data: UnsafeCell<T>,
+    pub lock: RawSpinLock,
+    pub data: UnsafeCell<T>,
 }
 
 unsafe impl<'s, T: Send> Send for SpinLock<T> {}
