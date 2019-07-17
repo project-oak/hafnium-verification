@@ -149,7 +149,7 @@ bitflags! {
 }
 
 /// The hypervisor page table.
-static mut HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> = 
+static mut HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
     SpinLock::new(unsafe { PageTable::null() });
 
 /// Is stage2 invalidation enabled?
@@ -935,7 +935,7 @@ impl<S: Stage> Drop for PageTable<S> {
 /// Locked hypervisor page table
 #[repr(C)]
 pub struct mm_stage1_locked {
-    ptable: *mut RawPage
+    ptable: *mut RawPage,
 }
 
 /// After calling this function, modifications to stage-2 page tables will use break-before-make and
@@ -1078,7 +1078,7 @@ pub unsafe extern "C" fn mm_unmap(
     stage1_locked: mm_stage1_locked,
     begin: usize,
     end: usize,
-    mpool: *const MPool
+    mpool: *const MPool,
 ) -> bool {
     let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
     assert_eq!(stage1_locked.ptable, ptable as *mut _);
@@ -1117,7 +1117,9 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     ptr::write(hypervisor_page_table, page_table);
 
     // A fake lock.
-    let stage1_locked = mm_stage1_locked { ptable: hypervisor_page_table.get_raw() as *mut _ };
+    let stage1_locked = mm_stage1_locked {
+        ptable: hypervisor_page_table.get_raw() as *mut _,
+    };
     // Let console driver map pages for itself.
     plat_console_mm_init(stage1_locked, mpool);
 
@@ -1140,10 +1142,7 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_defrag(
-    stage1_locked: mm_stage1_locked,
-    mpool: *const MPool,
-) {
+pub unsafe extern "C" fn mm_defrag(stage1_locked: mm_stage1_locked, mpool: *const MPool) {
     let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
     assert_eq!(stage1_locked.ptable, ptable as *mut _);
 
@@ -1155,7 +1154,9 @@ pub unsafe extern "C" fn mm_defrag(
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
     HYPERVISOR_PAGE_TABLE.lock.lock();
     let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    mm_stage1_locked { ptable: ptable as *mut _ }
+    mm_stage1_locked {
+        ptable: ptable as *mut _,
+    }
 }
 
 #[no_mangle]
