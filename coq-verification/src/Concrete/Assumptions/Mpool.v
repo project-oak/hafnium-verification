@@ -29,3 +29,8 @@ Axiom mpool_free : mpool -> ptable_pointer -> mpool.
    to allocate *)
 Axiom mpool_alloc_contiguous :
   mpool -> size_t -> size_t -> option (mpool * list ptable_pointer).
+
+
+(* N.B. this is for proofs, not code; it's not part of the header file and exists
+   purely conceptually *)
+Axiom mpool_contains : mpool -> ptable_pointer -> Prop.
