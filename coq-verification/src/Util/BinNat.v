@@ -25,7 +25,7 @@ Module N.
 
   Lemma div2_lnot a n : N.div2 (N.lnot a n) = N.lnot (N.div2 a) (N.pred n).
   Admitted. (* TODO *)
-    
+
   Lemma lnot_shiftr a n m :
     N.shiftr (N.lnot a n) m = N.lnot (N.shiftr a m) (n - m).
   Proof.

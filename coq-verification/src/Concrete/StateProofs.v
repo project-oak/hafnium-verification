@@ -74,7 +74,7 @@ Section Proofs.
            match get_entry t i with
            | Some pte =>
              if arch_mm_pte_is_table pte lvl
-             then 
+             then
                let next_t_ptr :=
                    ptable_pointer_from_address (arch_mm_table_from_pte pte lvl) in
                if ptable_pointer_eq_dec ptr next_t_ptr
