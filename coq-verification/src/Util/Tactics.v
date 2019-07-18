@@ -1,4 +1,5 @@
 Require Import Coq.omega.Omega.
+Require Import Coq.micromega.Lia.
 
 (* [inversion] with some cleanup afterwards *)
 Ltac invert H := inversion H; subst; clear H.
@@ -41,6 +42,7 @@ Ltac solver :=
   | _ => solve [eauto]
   | _ => congruence
   | _ => omega
+  | _ => lia
   end.
 
 Ltac inversion_bool :=
