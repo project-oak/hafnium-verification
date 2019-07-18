@@ -157,6 +157,19 @@ Section FoldRight.
   Admitted. (* TODO *)
 End FoldRight.
 
+Section FoldLeft.
+  Context {A B : Type}.
+
+  Lemma fold_left_invariant (P : B -> Prop) (f : B -> A -> B) b ls :
+    (forall a b, P b -> P (f b a)) ->
+    P b ->
+    P (fold_left f ls b).
+  Proof.
+    generalize dependent b; induction ls; intros;
+      cbn [fold_left]; eauto.
+  Qed.
+End FoldLeft.
+
 (* Proofs about [firstn] and [skipn] *)
 Section FirstnSkipn.
   Context {A : Type}.

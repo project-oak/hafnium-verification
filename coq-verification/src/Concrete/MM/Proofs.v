@@ -314,15 +314,27 @@ Section Proofs.
              (skipn i (mm_page_table_from_pa root_ptable.(root))).
   Admitted. (* TODO *)
 
-  (* makes proof state more readable *)
-  Local Ltac remember_while_loop :=
-    let RET := fresh "RET" in
-    match goal with
-    | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
-      remember (@while_loop _ iter cond start body) as RET
-    | H : context [@while_loop _ ?iter ?cond ?start ?body] |- _ =>
-      remember (@while_loop _ iter cond start body) as RET
-    end.
+  (* if the begin address is >= the end address, the abstract state doesn't
+     change. *)
+  Lemma mm_map_root_range_invalid
+        (conc : concrete_state)
+        t begin end_ attrs root_level flags ppool :
+    let ret :=
+        mm_map_root
+          conc t begin end_ attrs root_level flags ppool in
+    let conc' := snd (fst ret) in
+    (end_ <= begin)%N ->
+    forall abst,
+      represents abst conc ->
+      represents abst conc'.
+  Proof.
+    cbv [mm_map_root];
+      repeat match goal with
+             | _ => progress simplify_step
+             | _ => rewrite while_loop_noop; [solver|]
+             | _ => apply N.ltb_ge; solver
+             end.
+  Qed.
 
   (* TODO:
      This proof says only that if success = true and commit = true
@@ -344,8 +356,6 @@ Section Proofs.
     let end_index := mm_index end_ root_level in
     success = true ->
     ((flags & MM_FLAG_COMMIT) != 0)%N = true ->
-    (* TODO : maybe can remove the begin <= end precondition; if it's not true the loop just doesn't happen *)
-    (begin < end_)%N ->
     (* before calling mm_map_root, we have rounded end_ up to the nearest page,
        and we have capped it to not go beyond the end of the table *)
     end_index < length (mm_page_table_from_pa t.(root)) ->
@@ -364,11 +374,26 @@ Section Proofs.
                     abst)
                  conc'.
   Proof.
-    cbv zeta. cbv [mm_map_root].
-    simplify.
+    (* get rid of the [let]s and [intros] the preconditions *)
+    cbv zeta; simplify.
 
-    pose proof (root_pos root_level ltac:(auto)). 
+    (* first, dispose of the easy case in which [end_ <= begin] *)
+    basics.
+    destruct (N.lt_ge_cases begin end_);
+      [|
+       apply mm_map_root_range_invalid; auto; [ ];
+       apply fold_left_invariant; [|solver];
+       solve [eauto using abstract_reassign_pointer_trivial,
+              represents_proper_abstr] ].
 
+    (* useful fact about root_level *)
+    pose proof (root_pos root_level ltac:(auto)).
+
+    (* unfold [mm_map_root] to begin the real work *)
+    cbv [mm_map_root] in *; simplify.
+
+    (* use [while_loop_invariant] with [mm_map_root_loop_invariant] as the
+       invariant *)
     let begin_index := constr:(mm_index begin root_level) in
     let end_index := constr:(mm_index end_ root_level) in
     let t_ptrs := constr:(mm_page_table_from_pa t.(root)) in
@@ -381,7 +406,17 @@ Section Proofs.
     end;
       cbv [mm_map_root_loop_invariant] in *;
       rewrite ?mm_map_level_represents; [ | | ].
-    { (* main case : prove invariant holds over step *)
+
+    (***
+      At this point we have three subgoals:
+       1. if the invariant holds at the start of the loop body, then it holds on
+          the new state at the end
+       2. the invariant holds for the start state
+       3. if the invariant holds by the end of the loop, it implies our original
+          goal
+     ***)
+
+    { (* Subgoal 1 (main case) : prove invariant holds over step *)
 
       (* conclude that mm_map_level succeeded *)
       simplify; repeat inversion_bool; [ ].
@@ -455,50 +490,67 @@ Section Proofs.
         { apply has_uniform_attrs_reassign_pointer;
             [ solve [auto using mm_map_level_noncircular] | ].
           auto using mm_map_level_table_attrs_strong. } } }
-    { (* invariant holds at start *)
+
+    { (* Subgoal 2 : invariant holds at start *)
       right. simplify.
-      {  erewrite mm_level_end_root_eq by eauto; apply mm_level_end_le. }
-      {  cbv [is_begin_or_block_start]; solver. }
+      { erewrite mm_level_end_root_eq by eauto; apply mm_level_end_le. }
+      { cbv [is_begin_or_block_start]; solver. }
       { apply Forall_forall; intros.
         apply Forall_forall; intros.
         reflexivity. }
       { eapply represents_proper_abstr; [|solver].
         apply abstract_reassign_pointer_low.
         eapply root_mm_index_out_of_range_low; solver. } }
-    { (* invariant implies correctness *)
+
+    { (* Subgoal 3 :invariant implies correctness *)
+
+      (* conclude that mm_map_root succeeded *)
       repeat inversion_bool; simplify; [ ].
+
       match goal with
       | |- context [@while_loop _ ?iter ?cond ?st ?body] =>
+
+        (* use  [while_loop_completed] to say that we must have reached our end
+           condition and therefore [begin >= end_] *)
           assert (cond (@while_loop _ iter cond st body) = false);
             [ apply (while_loop_completed iter cond body
                                           (fun '(_,_,_,failed,_) => negb failed)
                                           (fun '(_,begin,_,_,_) => N.to_nat begin)
-                                          (N.to_nat end_))
-            | remember (@while_loop _ iter cond st body) as RET]
+                                          (N.to_nat end_)) | ];
+
+            (* store the loop result as a varaible and then "forget" the
+               variable's value; we don't need that information (that our result
+               was from a while loop) any more, and disposing of it speeds up
+               proofs *)
+            let H := fresh in
+            let RET := fresh "RET" in
+            remember (@while_loop _ iter cond st body) as RET eqn:H;
+              clear H
+      end;
+        (* prove all [while_loop_completed]'s preconditions *)
+        repeat match goal with
+               | _ => progress simplify_step
+               | _ => apply N.to_nat_ltb
+               | |- N.to_nat _ < N.to_nat _ => apply N.to_nat_lt_iff
+               | _ => rewrite Nnat.N2Nat.inj_sub; solver
+               | _ => solve [auto using mm_start_of_next_block_lt]
+               end; [ ].
+
+      (* prove that the abstract state we have from the invariant is equivalent
+         to the one in the goal *)
+      match goal with
+      | H : represents ?x ?c |- represents ?y ?c =>
+        apply (represents_proper_abstr x y c); [|solver]
       end.
-
-      (* speeds up and simplifies proofs to forget that the thing we're talking about is a loop *)
-      all:remember_while_loop.
-      all:clear HeqRET.
-
-      (* get rid of all but 2 goals *)
-      all:simplify.
-      all:try apply N.to_nat_ltb.
-      all:try apply Bool.negb_true_iff.
-      all:simplify.
-      all:try solve [rewrite ?Nnat.N2Nat.inj_sub; solver].
-
-      { apply N.to_nat_lt_iff.
-        apply mm_start_of_next_block_lt. } 
-      { match goal with
-        | H : represents ?x ?c |- represents ?y ?c =>
-          apply (represents_proper_abstr x y c); [|solver]
-        end.
-        apply abstract_reassign_pointer_high.
-        eapply root_mm_index_out_of_range_high; try solver; [ ].
-        repeat inversion_bool.
-        cbv [is_begin_or_block_start] in *.
-        apply mm_index_lt_mono_start; simplify. } }
+      cbv [is_begin_or_block_start] in *.
+      apply abstract_reassign_pointer_high;
+        repeat match goal with
+               | _ => progress simplify
+               | _ => inversion_bool
+               | _ => eapply root_mm_index_out_of_range_high
+               | _ => apply mm_index_lt_mono_start; solver
+               | _ => solver
+               end. }
   Qed.
 
   Lemma mm_ptable_identity_update_represents

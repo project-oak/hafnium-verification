@@ -23,7 +23,6 @@ Module N.
   Lemma to_nat_lt_iff x y : (N.to_nat x < N.to_nat y)%nat <-> x < y.
   Admitted. (* TODO *)
 
-  (* TODO: move *)
   Lemma div2_lnot a n : N.div2 (N.lnot a n) = N.lnot (N.div2 a) (N.pred n).
   Admitted. (* TODO *)
     
