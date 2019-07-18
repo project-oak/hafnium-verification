@@ -21,14 +21,16 @@
 #include "hf/mm.h"
 #include "hf/mpool.h"
 
-struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n,
+struct fdt_header *fdt_map(struct mm_stage1_locked stage1_locked,
+			   paddr_t fdt_addr, struct fdt_node *n,
 			   struct mpool *ppool);
-bool fdt_unmap(struct fdt_header *fdt, struct mpool *ppool);
-void fdt_find_cpus(const struct fdt_node *root, uint64_t *cpu_ids,
+bool fdt_unmap(struct mm_stage1_locked stage1_locked, struct fdt_header *fdt,
+	       struct mpool *ppool);
+void fdt_find_cpus(const struct fdt_node *root, cpu_id_t *cpu_ids,
 		   size_t *cpu_count);
 void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p);
 bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end);
 
 /** Apply an update to the FDT. */
-bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
-	       struct mpool *ppool);
+bool fdt_patch(struct mm_stage1_locked stage1_locked, paddr_t fdt_addr,
+	       struct boot_params_update *p, struct mpool *ppool);

@@ -17,15 +17,18 @@
 #include "hf/vm.h"
 
 #include "hf/api.h"
+#include "hf/check.h"
 #include "hf/cpu.h"
+#include "hf/spci.h"
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"
 
 static struct vm vms[MAX_VMS];
-static uint32_t vm_count;
+static spci_vm_count_t vm_count;
 
-bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
+bool vm_init(spci_vcpu_count_t vcpu_count, struct mpool *ppool,
+	     struct vm **new_vm)
 {
 	uint32_t i;
 	struct vm *vm;
@@ -69,7 +72,7 @@ bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm)
 	return true;
 }
 
-uint32_t vm_get_count(void)
+spci_vm_count_t vm_get_count(void)
 {
 	return vm_count;
 }
@@ -99,6 +102,21 @@ struct vm_locked vm_lock(struct vm *vm)
 }
 
 /**
+ * Locks two VMs ensuring that the locking order is according to the locks'
+ * addresses.
+ */
+struct two_vm_locked vm_lock_both(struct vm *vm1, struct vm *vm2)
+{
+	struct two_vm_locked dual_lock;
+
+	sl_lock_both(&vm1->lock, &vm2->lock);
+	dual_lock.vm1.vm = vm1;
+	dual_lock.vm2.vm = vm2;
+
+	return dual_lock;
+}
+
+/**
  * Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
  * the fact that the VM is no longer locked.
  */
@@ -112,8 +130,8 @@ void vm_unlock(struct vm_locked *locked)
  * Get the vCPU with the given index from the given VM.
  * This assumes the index is valid, i.e. less than vm->vcpu_count.
  */
-struct vcpu *vm_get_vcpu(struct vm *vm, uint32_t vcpu_index)
+struct vcpu *vm_get_vcpu(struct vm *vm, spci_vcpu_index_t vcpu_index)
 {
-	assert(vcpu_index < vm->vcpu_count);
+	CHECK(vcpu_index < vm->vcpu_count);
 	return &vm->vcpus[vcpu_index];
 }

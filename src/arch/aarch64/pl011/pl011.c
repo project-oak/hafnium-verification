@@ -18,7 +18,6 @@
 #include "hf/mm.h"
 #include "hf/mpool.h"
 #include "hf/plat/console.h"
-#include "hf/vm.h"
 
 /* UART Data Register. */
 #define UARTDR IO32_C(PL011_BASE + 0x0)
@@ -37,21 +36,13 @@ void plat_console_init(void)
 	/* No hardware initialisation required. */
 }
 
-void plat_console_mm_init(struct mpool *ppool)
+void plat_console_mm_init(struct mm_stage1_locked stage1_locked,
+			  struct mpool *ppool)
 {
 	/* Map page for UART. */
-	mm_identity_map(pa_init(PL011_BASE),
+	mm_identity_map(stage1_locked, pa_init(PL011_BASE),
 			pa_add(pa_init(PL011_BASE), PAGE_SIZE),
 			MM_MODE_R | MM_MODE_W | MM_MODE_D, ppool);
-}
-
-/* TODO: Remove this. */
-void plat_console_vm_mm_init(struct vm *vm, struct mpool *ppool)
-{
-	/* Grant VM access to UART. */
-	mm_vm_identity_map(&vm->ptable, pa_init(PL011_BASE),
-			   pa_add(pa_init(PL011_BASE), PAGE_SIZE),
-			   MM_MODE_R | MM_MODE_W, NULL, ppool);
 }
 
 void plat_console_putchar(char c)

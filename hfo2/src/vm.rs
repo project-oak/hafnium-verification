@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
+use arrayvec::ArrayVec;
 use core::ptr;
 use core::sync::atomic::AtomicBool;
-use arrayvec::ArrayVec;
 
 use crate::cpu::*;
 use crate::list::*;
@@ -115,30 +115,27 @@ impl Vm {
 
         Some(Self {
             id,
-            state: SpinLock::new(VmState::new(
-                ptable, 
-                Mailbox::new(),
-            )),
+            state: SpinLock::new(VmState::new(ptable, Mailbox::new())),
             vcpus: ArrayVec::new(), // vm->vcpu_count = vcpu_count;
             wait_entries: unimplemented!(),
             aborting: AtomicBool::new(false),
         })
     }
 
-	  // /* Initialise waiter entries. */
-	  // for (i = 0; i < MAX_VMS; i++) {
-	  // 	vm->wait_entries[i].waiting_vm = vm;
-	  // 	list_init(&vm->wait_entries[i].wait_links);
-	  // 	list_init(&vm->wait_entries[i].ready_links);
-	  // }
+    // /* Initialise waiter entries. */
+    // for (i = 0; i < MAX_VMS; i++) {
+    // 	vm->wait_entries[i].waiting_vm = vm;
+    // 	list_init(&vm->wait_entries[i].wait_links);
+    // 	list_init(&vm->wait_entries[i].ready_links);
+    // }
 
-	  // /* Do basic initialization of vcpus. */
-	  // for (i = 0; i < vcpu_count; i++) {
-	  // 	vcpu_init(vm_get_vcpu(vm, i), vm);
-	  // }
+    // /* Do basic initialization of vcpus. */
+    // for (i = 0; i < vcpu_count; i++) {
+    // 	vcpu_init(vm_get_vcpu(vm, i), vm);
+    // }
 
-	  // ++vm_count;
-	  // *new_vm = vm;
+    // ++vm_count;
+    // *new_vm = vm;
 
     pub unsafe fn get_index(&self, vcpu: &VCpu) -> usize {
         (vcpu as *const VCpu).wrapping_offset_from(&self.vcpus[0] as *const _) as usize
@@ -151,15 +148,13 @@ pub struct VmManager {
 
 impl VmManager {
     pub fn insert(&mut self, vm: Vm) -> Result<(), Vm> {
-        self.vms.try_push(vm)
-            .map_err(|e| e.element())
+        self.vms.try_push(vm).map_err(|e| e.element())
     }
 
     pub unsafe fn get_index(&self, vm: &Vm) -> usize {
         (vm as *const Vm).wrapping_offset_from(&self.vms[0] as *const _) as usize
     }
 }
-
 
 // TODO(@jeehoonkang)
 pub struct ArchRegs {}

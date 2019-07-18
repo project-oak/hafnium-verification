@@ -116,9 +116,25 @@ static void dsb_nsh(void)
  */
 static void invalidate_vm_tlb(void)
 {
+	/*
+	 * Ensure that the last VTTBR write has taken effect so we invalidate
+	 * the right set of TLB entries.
+	 */
 	isb();
+
 	__asm__ volatile("tlbi vmalle1");
+
+	/*
+	 * Ensure that no instructions are fetched for the VM until after the
+	 * TLB invalidation has taken effect.
+	 */
 	isb();
+
+	/*
+	 * Ensure that no data reads or writes for the VM happen until after the
+	 * TLB invalidation has taken effect. Non-sharable is enough because the
+	 * TLB is local to the CPU.
+	 */
 	dsb_nsh();
 }
 
@@ -134,7 +150,7 @@ static void invalidate_vm_tlb(void)
 void maybe_invalidate_tlb(struct vcpu *vcpu)
 {
 	size_t current_cpu_index = cpu_index(vcpu->cpu);
-	size_t new_vcpu_index = vcpu_index(vcpu);
+	spci_vcpu_index_t new_vcpu_index = vcpu_index(vcpu);
 
 	if (vcpu->vm->arch.last_vcpu_on_cpu[current_cpu_index] !=
 	    new_vcpu_index) {
@@ -231,6 +247,23 @@ static void set_virtual_interrupt_current(bool enable)
 	write_msr(hcr_el2, hcr_el2);
 }
 
+static bool smc_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
+			uintreg_t arg1, uintreg_t arg2, uintreg_t *ret,
+			struct vcpu **next)
+{
+	if (psci_handler(vcpu, func, arg0, arg1, arg2, ret, next)) {
+		return true;
+	}
+
+	switch (func & ~SMCCC_CONVENTION_MASK) {
+	case HF_DEBUG_LOG:
+		*ret = api_debug_log(arg0, vcpu);
+		return true;
+	}
+
+	return false;
+}
+
 struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 				      uintreg_t arg2, uintreg_t arg3)
 {
@@ -311,6 +344,10 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		ret.user_ret =
 			api_share_memory(arg1 >> 32, ipa_init(arg2), arg3,
 					 arg1 & 0xffffffff, current());
+		break;
+
+	case HF_DEBUG_LOG:
+		ret.user_ret = api_debug_log(arg1, current());
 		break;
 
 	default:
@@ -437,9 +474,9 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		uintreg_t ret;
 		struct vcpu *next = NULL;
 
-		if (!psci_handler(vcpu, vcpu->regs.r[0], vcpu->regs.r[1],
-				  vcpu->regs.r[2], vcpu->regs.r[3], &ret,
-				  &next)) {
+		if (!smc_handler(vcpu, vcpu->regs.r[0], vcpu->regs.r[1],
+				 vcpu->regs.r[2], vcpu->regs.r[3], &ret,
+				 &next)) {
 			dlog("Unsupported SMC call: 0x%x\n", vcpu->regs.r[0]);
 			ret = PSCI_ERROR_NOT_SUPPORTED;
 		}

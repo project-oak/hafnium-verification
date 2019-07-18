@@ -90,7 +90,7 @@ struct hf_vcpu_run_return {
 	union {
 		struct {
 			spci_vm_id_t vm_id;
-			uint16_t vcpu;
+			spci_vcpu_index_t vcpu;
 		} wake_up;
 		struct {
 			spci_vm_id_t vm_id;

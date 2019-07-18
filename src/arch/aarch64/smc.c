@@ -14,11 +14,14 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "smc.h"
 
-#include "vmapi/hf/spci.h"
+#include <stdint.h>
 
-#define SPCI_VERSION_MAJOR 0x0
-#define SPCI_VERSION_MINOR 0x9
+uint64_t smc64_internal(uint64_t func, uint64_t arg0, uint64_t arg1,
+			uint64_t arg2);
 
-#define SPCI_VERSION_MAJOR_OFFSET 16
+uint64_t smc64(uint32_t func, uint64_t arg0, uint64_t arg1, uint64_t arg2)
+{
+	return smc64_internal(func | SMCCC_64_BIT, arg0, arg1, arg2);
+}

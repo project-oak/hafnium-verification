@@ -69,7 +69,10 @@ source_set("floating_point") {
 # Services related to memory sharing.
 source_set("memory") {
   testonly = true
-  public_configs = [ "//test/hftest:hftest_config" ]
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
 
   sources = [
     "memory.c",
@@ -203,6 +206,7 @@ vm_kernel("service_vm1") {
   testonly = true
 
   deps = [
+    ":memory",
     ":relay",
     "//test/hftest:hftest_secondary_vm",
   ]

@@ -17,8 +17,8 @@
 #include <stdalign.h>
 #include <stdint.h>
 
-#include "hf/assert.h"
 #include "hf/mm.h"
+#include "hf/static_assert.h"
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"
@@ -64,7 +64,7 @@ TEST(hf_vcpu_get_count, secondary_has_one_vcpu)
  */
 TEST(hf_vcpu_get_count, large_invalid_vm_index)
 {
-	EXPECT_EQ(hf_vcpu_get_count(0xffff), -1);
+	EXPECT_EQ(hf_vcpu_get_count(0xffff), 0);
 }
 
 /**

@@ -36,7 +36,7 @@ use reduce::Reduce;
 
 use crate::mpool::MPool;
 use crate::page::*;
-use crate::spinlock::SpinLock;
+use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
 
@@ -74,7 +74,7 @@ extern "C" {
 
     fn arch_mm_combine_table_entry_attrs(table_attrs: usize, block_attrs: usize) -> usize;
 
-    fn plat_console_mm_init(mpool: *const MPool);
+    fn plat_console_mm_init(stage1_locked: mm_stage1_locked, mpool: *const MPool);
 
     fn layout_text_begin() -> usize;
     fn layout_text_end() -> usize;
@@ -149,7 +149,7 @@ bitflags! {
 }
 
 /// The hypervisor page table.
-pub static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
+static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
     SpinLock::new(unsafe { PageTable::null() });
 
 /// Is stage2 invalidation enabled?
@@ -932,6 +932,53 @@ impl<S: Stage> Drop for PageTable<S> {
     }
 }
 
+/// Locked hypervisor page table.
+/// This structure exists temporarily for C-compatibility. Someday this
+/// will be replaced by `SpinLockGuard`.
+#[repr(C)]
+pub struct mm_stage1_locked {
+    /// A raw pointer to the locked spinlock `HYPERVISOR_PAGE_TABLE`.
+    /// The name of this field is `ptable` in the C version code (You can find
+    /// at `mm.h`.)
+    /// We can safely change the content of the field in Rust, because this
+    /// field is only accessed by `mm_*` functions.
+    plock: usize,
+}
+
+impl Deref for mm_stage1_locked {
+    type Target = PageTable<Stage1>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            let lock = &*(self.plock as *const SpinLock<_>);
+            lock.get_unchecked()
+        }
+    }
+}
+
+impl DerefMut for mm_stage1_locked {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            let lock = &*(self.plock as *const SpinLock<_>);
+            lock.get_mut_unchecked()
+        }
+    }
+}
+
+impl<'s> From<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
+    fn from(guard: SpinLockGuard<'s, PageTable<Stage1>>) -> Self {
+        Self {
+            plock: guard.into_raw(),
+        }
+    }
+}
+
+impl<'s> Into<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
+    fn into(self) -> SpinLockGuard<'s, PageTable<Stage1>> {
+        unsafe { SpinLockGuard::from_raw(self.plock) }
+    }
+}
+
 /// After calling this function, modifications to stage-2 page tables will use break-before-make and
 /// invalidate the TLB for the affected range.
 ///
@@ -1049,6 +1096,7 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
+    mut stage1_locked: mm_stage1_locked,
     begin: usize,
     end: usize,
     mode: c_int,
@@ -1056,20 +1104,21 @@ pub unsafe extern "C" fn mm_identity_map(
 ) -> *mut usize {
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE
-        .lock()
+    stage1_locked
         .identity_map(begin, end, mode, mpool)
         .map(|_| begin as *mut _)
         .unwrap_or_else(|| ptr::null_mut())
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_unmap(begin: usize, end: usize, mpool: *const MPool) -> bool {
+pub unsafe extern "C" fn mm_unmap(
+    mut stage1_locked: mm_stage1_locked,
+    begin: usize,
+    end: usize,
+    mpool: *const MPool,
+) -> bool {
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE
-        .lock()
-        .unmap(begin, end, mpool)
-        .is_some()
+    stage1_locked.unmap(begin, end, mpool).is_some()
 }
 
 #[no_mangle]
@@ -1098,8 +1147,13 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     let hypervisor_page_table = HYPERVISOR_PAGE_TABLE.get_mut_unchecked();
     ptr::write(hypervisor_page_table, page_table);
 
+    // A fake lock.
+    let stage1_locked = mm_stage1_locked {
+        plock: &HYPERVISOR_PAGE_TABLE as *const _ as usize,
+    };
+
     // Let console driver map pages for itself.
-    plat_console_mm_init(mpool);
+    plat_console_mm_init(stage1_locked, mpool);
 
     hypervisor_page_table.identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool);
     hypervisor_page_table.identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool);
@@ -1120,7 +1174,19 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_defrag(mpool: *const MPool) {
+pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *const MPool) {
     let mpool = &*mpool;
-    HYPERVISOR_PAGE_TABLE.lock().defrag(mpool);
+    stage1_locked.defrag(mpool);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
+    HYPERVISOR_PAGE_TABLE.lock().into()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_unlock_stage1(lock: *mut mm_stage1_locked) {
+    let locked = ptr::read(lock);
+    let guard: SpinLockGuard<'static, _> = locked.into();
+    drop(guard);
 }

@@ -50,6 +50,7 @@ static void one_time_init(void)
 	void *initrd;
 	size_t i;
 	struct mpool ppool;
+	struct mm_stage1_locked mm_stage1_locked;
 
 	/* Make sure the console is initialised before calling dlog. */
 	plat_console_init();
@@ -69,7 +70,9 @@ static void one_time_init(void)
 	dlog_enable_lock();
 	mpool_enable_locks();
 
-	if (!plat_get_boot_params(&params, &ppool)) {
+	mm_stage1_locked = mm_lock_stage1();
+
+	if (!plat_get_boot_params(mm_stage1_locked, &params, &ppool)) {
 		panic("unable to retrieve boot params");
 	}
 
@@ -85,8 +88,8 @@ static void one_time_init(void)
 	     pa_addr(params.initrd_end) - 1);
 
 	/* Map initrd in, and initialise cpio parser. */
-	initrd = mm_identity_map(params.initrd_begin, params.initrd_end,
-				 MM_MODE_R, &ppool);
+	initrd = mm_identity_map(mm_stage1_locked, params.initrd_begin,
+				 params.initrd_end, MM_MODE_R, &ppool);
 	if (!initrd) {
 		panic("unable to map initrd in");
 	}
@@ -95,7 +98,8 @@ static void one_time_init(void)
 		     pa_difference(params.initrd_begin, params.initrd_end));
 
 	/* Load all VMs. */
-	if (!load_primary(&cpio, params.kernel_arg, &primary_initrd, &ppool)) {
+	if (!load_primary(mm_stage1_locked, &cpio, params.kernel_arg,
+			  &primary_initrd, &ppool)) {
 		panic("unable to load primary VM");
 	}
 
@@ -106,16 +110,18 @@ static void one_time_init(void)
 	update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next));
 	update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit));
 	update.reserved_ranges_count = 0;
-	if (!load_secondary(&cpio, &params, &update, &ppool)) {
+	if (!load_secondary(mm_stage1_locked, &cpio, &params, &update,
+			    &ppool)) {
 		panic("unable to load secondary VMs");
 	}
 
 	/* Prepare to run by updating bootparams as seen by primary VM. */
-	if (!plat_update_boot_params(&update, &ppool)) {
+	if (!plat_update_boot_params(mm_stage1_locked, &update, &ppool)) {
 		panic("plat_update_boot_params failed");
 	}
 
-	mm_defrag(&ppool);
+	mm_defrag(mm_stage1_locked, &ppool);
+	mm_unlock_stage1(&mm_stage1_locked);
 
 	/* Initialise the API page pool. ppool will be empty from now on. */
 	api_init(&ppool);

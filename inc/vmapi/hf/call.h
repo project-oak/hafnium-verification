@@ -37,6 +37,9 @@
 #define HF_INTERRUPT_INJECT     0xff0d
 #define HF_SHARE_MEMORY         0xff0e
 
+/* This matches what Trusty and its ATF module currently use. */
+#define HF_DEBUG_LOG            0xbd000000
+
 /* clang-format on */
 
 /**
@@ -56,7 +59,7 @@ static inline spci_vm_id_t hf_vm_get_id(void)
 /**
  * Returns the number of secondary VMs.
  */
-static inline int64_t hf_vm_get_count(void)
+static inline spci_vm_count_t hf_vm_get_count(void)
 {
 	return hf_call(HF_VM_GET_COUNT, 0, 0, 0);
 }
@@ -64,7 +67,7 @@ static inline int64_t hf_vm_get_count(void)
 /**
  * Returns the number of VCPUs configured in the given secondary VM.
  */
-static inline int64_t hf_vcpu_get_count(spci_vm_id_t vm_id)
+static inline spci_vcpu_count_t hf_vcpu_get_count(spci_vm_id_t vm_id)
 {
 	return hf_call(HF_VCPU_GET_COUNT, vm_id, 0, 0);
 }
@@ -75,7 +78,7 @@ static inline int64_t hf_vcpu_get_count(spci_vm_id_t vm_id)
  * Returns an hf_vcpu_run_return struct telling the scheduler what to do next.
  */
 static inline struct hf_vcpu_run_return hf_vcpu_run(spci_vm_id_t vm_id,
-						    uint32_t vcpu_idx)
+						    spci_vcpu_index_t vcpu_idx)
 {
 	return hf_vcpu_run_return_decode(
 		hf_call(HF_VCPU_RUN, vm_id, vcpu_idx, 0));
@@ -125,8 +128,6 @@ static inline int64_t spci_msg_send(uint32_t attributes)
  * Called by secondary VMs to receive a message. The call can optionally block
  * until a message is received.
  *
- * If no message was received, the VM ID will be HF_INVALID_VM_ID.
- *
  * The mailbox must be cleared before a new message can be received.
  *
  * If no message is immediately available, `block` is true, and there are no
@@ -135,6 +136,12 @@ static inline int64_t spci_msg_send(uint32_t attributes)
  * enabled interrupt becomes pending. This matches the behaviour of the WFI
  * instruction on aarch64, except that a message becoming available is also
  * treated like a wake-up event.
+ *
+ * Returns:
+ *  - SPCI_SUCCESS if a message is successfully received.
+ *  - SPCI_INTERRUPTED if the caller is the primary VM or an interrupt happened
+ *    during the call.
+ *  - SPCI_RETRY if there was no pending message, and `block` was false.
  */
 static inline int32_t spci_msg_recv(int32_t attributes)
 {
@@ -218,7 +225,7 @@ static inline uint32_t hf_interrupt_get(void)
  *    up or kick the target vCPU.
  */
 static inline int64_t hf_interrupt_inject(spci_vm_id_t target_vm_id,
-					  uint32_t target_vcpu_idx,
+					  spci_vcpu_index_t target_vcpu_idx,
 					  uint32_t intid)
 {
 	return hf_call(HF_INTERRUPT_INJECT, target_vm_id, target_vcpu_idx,
@@ -238,6 +245,16 @@ static inline int64_t hf_share_memory(spci_vm_id_t vm_id, hf_ipaddr_t addr,
 {
 	return hf_call(HF_SHARE_MEMORY, (((uint64_t)vm_id) << 32) | share, addr,
 		       size);
+}
+
+/**
+ * Sends a character to the debug log for the VM.
+ *
+ * Returns 0 on success, or -1 if it failed for some reason.
+ */
+static inline int64_t hf_debug_log(char c)
+{
+	return hf_call(HF_DEBUG_LOG, c, 0, 0);
 }
 
 /** Obtains the Hafnium's version of the implemented SPCI specification. */

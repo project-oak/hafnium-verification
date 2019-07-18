@@ -17,7 +17,7 @@
 #include "offsets.h"
 
 .section .text.cpu_entry, "ax"
-.globl cpu_entry
+.global cpu_entry
 cpu_entry:
 	/* Disable interrupts. */
 	msr DAIFSet, #0xf

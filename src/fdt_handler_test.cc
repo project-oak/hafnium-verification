@@ -105,11 +105,14 @@ TEST(fdt, find_memory_ranges)
 	struct fdt_node n;
 	struct boot_params params = {};
 
-	fdt = fdt_map(pa_init((uintpaddr_t)&test_dtb), &n, &ppool);
+	struct mm_stage1_locked mm_stage1_locked = mm_lock_stage1();
+	fdt = fdt_map(mm_stage1_locked, pa_init((uintpaddr_t)&test_dtb), &n,
+		      &ppool);
 	ASSERT_THAT(fdt, NotNull());
 	ASSERT_TRUE(fdt_find_child(&n, ""));
 	fdt_find_memory_ranges(&n, &params);
-	ASSERT_TRUE(fdt_unmap(fdt, &ppool));
+	ASSERT_TRUE(fdt_unmap(mm_stage1_locked, fdt, &ppool));
+	mm_unlock_stage1(&mm_stage1_locked);
 
 	EXPECT_THAT(params.mem_ranges_count, Eq(3));
 	EXPECT_THAT(pa_addr(params.mem_ranges[0].begin), Eq(0x00000000));

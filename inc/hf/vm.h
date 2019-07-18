@@ -24,7 +24,10 @@
 #include "hf/list.h"
 #include "hf/mm.h"
 #include "hf/mpool.h"
-#include "hf/spci.h"
+
+#include "vmapi/hf/spci.h"
+
+#define LOG_BUFFER_SIZE 256
 
 enum mailbox_state {
 	/** There is no message in the mailbox. */
@@ -78,10 +81,12 @@ struct vm {
 	spci_vm_id_t id;
 	/** See api.c for the partial ordering on locks. */
 	struct spinlock lock;
-	uint32_t vcpu_count;
+	spci_vcpu_count_t vcpu_count;
 	struct vcpu vcpus[MAX_CPUS];
 	struct mm_ptable ptable;
 	struct mailbox mailbox;
+	char log_buffer[LOG_BUFFER_SIZE];
+	size_t log_buffer_length;
 
 	/** Wait entries to be used when waiting on other VM mailboxes. */
 	struct wait_entry wait_entries[MAX_VMS];
@@ -97,9 +102,17 @@ struct vm_locked {
 	struct vm *vm;
 };
 
-bool vm_init(uint32_t vcpu_count, struct mpool *ppool, struct vm **new_vm);
-uint32_t vm_get_count(void);
+/** Container for two vm_locked structures */
+struct two_vm_locked {
+	struct vm_locked vm1;
+	struct vm_locked vm2;
+};
+
+bool vm_init(spci_vcpu_count_t vcpu_count, struct mpool *ppool,
+	     struct vm **new_vm);
+spci_vm_count_t vm_get_count(void);
 struct vm *vm_find(spci_vm_id_t id);
 struct vm_locked vm_lock(struct vm *vm);
+struct two_vm_locked vm_lock_both(struct vm *vm1, struct vm *vm2);
 void vm_unlock(struct vm_locked *locked);
-struct vcpu *vm_get_vcpu(struct vm *vm, uint32_t vcpu_index);
+struct vcpu *vm_get_vcpu(struct vm *vm, spci_vcpu_index_t vcpu_index);

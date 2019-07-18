@@ -126,7 +126,7 @@ bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end)
 	return true;
 }
 
-void fdt_find_cpus(const struct fdt_node *root, uint64_t *cpu_ids,
+void fdt_find_cpus(const struct fdt_node *root, cpu_id_t *cpu_ids,
 		   size_t *cpu_count)
 {
 	struct fdt_node n = *root;
@@ -245,14 +245,16 @@ void fdt_find_memory_ranges(const struct fdt_node *root, struct boot_params *p)
 	/* TODO: Check for "reserved-memory" nodes. */
 }
 
-struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n,
+struct fdt_header *fdt_map(struct mm_stage1_locked stage1_locked,
+			   paddr_t fdt_addr, struct fdt_node *n,
 			   struct mpool *ppool)
 {
 	struct fdt_header *fdt;
 
 	/* Map the fdt header in. */
-	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_header_size()),
-			      MM_MODE_R, ppool);
+	fdt = mm_identity_map(stage1_locked, fdt_addr,
+			      pa_add(fdt_addr, fdt_header_size()), MM_MODE_R,
+			      ppool);
 	if (!fdt) {
 		dlog("Unable to map FDT header.\n");
 		return NULL;
@@ -264,8 +266,9 @@ struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n,
 	}
 
 	/* Map the rest of the fdt in. */
-	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)),
-			      MM_MODE_R, ppool);
+	fdt = mm_identity_map(stage1_locked, fdt_addr,
+			      pa_add(fdt_addr, fdt_total_size(fdt)), MM_MODE_R,
+			      ppool);
 	if (!fdt) {
 		dlog("Unable to map full FDT.\n");
 		goto fail;
@@ -274,19 +277,22 @@ struct fdt_header *fdt_map(paddr_t fdt_addr, struct fdt_node *n,
 	return fdt;
 
 fail:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), ppool);
+	mm_unmap(stage1_locked, fdt_addr, pa_add(fdt_addr, fdt_header_size()),
+		 ppool);
 	return NULL;
 }
 
-bool fdt_unmap(struct fdt_header *fdt, struct mpool *ppool)
+bool fdt_unmap(struct mm_stage1_locked stage1_locked, struct fdt_header *fdt,
+	       struct mpool *ppool)
 {
 	paddr_t fdt_addr = pa_from_va(va_from_ptr(fdt));
 
-	return mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_total_size(fdt)), ppool);
+	return mm_unmap(stage1_locked, fdt_addr,
+			pa_add(fdt_addr, fdt_total_size(fdt)), ppool);
 }
 
-bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
-	       struct mpool *ppool)
+bool fdt_patch(struct mm_stage1_locked stage1_locked, paddr_t fdt_addr,
+	       struct boot_params_update *p, struct mpool *ppool)
 {
 	struct fdt_header *fdt;
 	struct fdt_node n;
@@ -294,8 +300,9 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 	size_t i;
 
 	/* Map the fdt header in. */
-	fdt = mm_identity_map(fdt_addr, pa_add(fdt_addr, fdt_header_size()),
-			      MM_MODE_R, ppool);
+	fdt = mm_identity_map(stage1_locked, fdt_addr,
+			      pa_add(fdt_addr, fdt_header_size()), MM_MODE_R,
+			      ppool);
 	if (!fdt) {
 		dlog("Unable to map FDT header.\n");
 		return false;
@@ -307,7 +314,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 	}
 
 	/* Map the fdt (+ a page) in r/w mode in preparation for updating it. */
-	fdt = mm_identity_map(fdt_addr,
+	fdt = mm_identity_map(stage1_locked, fdt_addr,
 			      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE),
 			      MM_MODE_R | MM_MODE_W, ppool);
 	if (!fdt) {
@@ -363,7 +370,7 @@ bool fdt_patch(paddr_t fdt_addr, struct boot_params_update *p,
 
 out_unmap_fdt:
 	/* Unmap FDT. */
-	if (!mm_unmap(fdt_addr,
+	if (!mm_unmap(stage1_locked, fdt_addr,
 		      pa_add(fdt_addr, fdt_total_size(fdt) + PAGE_SIZE),
 		      ppool)) {
 		dlog("Unable to unmap writable FDT.\n");
@@ -372,6 +379,7 @@ out_unmap_fdt:
 	return ret;
 
 err_unmap_fdt_header:
-	mm_unmap(fdt_addr, pa_add(fdt_addr, fdt_header_size()), ppool);
+	mm_unmap(stage1_locked, fdt_addr, pa_add(fdt_addr, fdt_header_size()),
+		 ppool);
 	return false;
 }

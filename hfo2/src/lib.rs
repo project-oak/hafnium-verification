@@ -23,8 +23,8 @@
 extern crate bitflags;
 #[macro_use]
 extern crate static_assertions;
-extern crate reduce;
 extern crate arrayvec;
+extern crate reduce;
 
 mod cpio;
 #[macro_use]

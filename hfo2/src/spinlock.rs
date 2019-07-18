@@ -82,6 +82,10 @@ impl<T> SpinLock<T> {
         }
     }
 
+    pub unsafe fn get_unchecked(&self) -> &T {
+        &*self.data.get()
+    }
+
     pub fn get_mut(&mut self) -> &mut T {
         unsafe { &mut *self.data.get() }
     }
@@ -116,6 +120,19 @@ impl<'s, T> Deref for SpinLockGuard<'s, T> {
 impl<'s, T> DerefMut for SpinLockGuard<'s, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.lock.data.get() }
+    }
+}
+
+impl<'s, T> SpinLockGuard<'s, T> {
+    pub fn into_raw(self) -> usize {
+        self.lock as *const _ as usize
+    }
+
+    pub unsafe fn from_raw(data: usize) -> Self {
+        Self {
+            lock: &*(data as *const _),
+            _marker: PhantomData,
+        }
     }
 }
 

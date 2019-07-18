@@ -165,11 +165,13 @@ def ensure_dir(path):
 
 
 def hftest_lines(raw):
-    return [
-        line[len(HFTEST_LOG_PREFIX):]
-        for line in raw.splitlines()
-        if line.startswith(HFTEST_LOG_PREFIX)
-    ]
+    lines = []
+    for line in raw.splitlines():
+        if line.startswith("VM "):
+            line = line[len("VM 0: "):]
+        if line.startswith(HFTEST_LOG_PREFIX):
+            lines.append(line[len(HFTEST_LOG_PREFIX):])
+    return lines
 
 
 def Main():

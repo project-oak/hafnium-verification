@@ -21,7 +21,7 @@
 
 #include "hf/arch/barriers.h"
 
-#include "hf/assert.h"
+#include "hf/check.h"
 
 /* Opaque types for different sized fields of memory mapped IO. */
 
@@ -101,25 +101,25 @@ static inline uint64_t io_read64(io64_t io)
 
 static inline uint8_t io_read8_array(io8_array_t io, size_t n)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	return io.base[n];
 }
 
 static inline uint16_t io_read16_array(io16_array_t io, size_t n)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	return io.base[n];
 }
 
 static inline uint32_t io_read32_array(io32_array_t io, size_t n)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	return io.base[n];
 }
 
 static inline uint64_t io_read64_array(io64_array_t io, size_t n)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	return io.base[n];
 }
 
@@ -217,25 +217,25 @@ static inline void io_write64(io64_t io, uint64_t v)
 
 static inline void io_write8_array(io8_array_t io, size_t n, uint8_t v)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	io.base[n] = v;
 }
 
 static inline void io_write16_array(io16_array_t io, size_t n, uint16_t v)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	io.base[n] = v;
 }
 
 static inline void io_write32_array(io32_array_t io, size_t n, uint32_t v)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	io.base[n] = v;
 }
 
 static inline void io_write64_array(io64_array_t io, size_t n, uint64_t v)
 {
-	assert(n < io.count);
+	CHECK(n < io.count);
 	io.base[n] = v;
 }
 

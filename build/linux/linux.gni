@@ -1,0 +1,105 @@
+# Copyright 2019 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+template("linux_kernel") {
+  # TODO: target has no "sources"
+
+  # Args to build/make.py to start the Linux build.
+  shared_args = [
+    "--directory",
+    rebase_path(invoker.kernel_dir),
+
+    # TODO: Build with toolchain cc instead of a hardcoded one.
+    "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+    "ARCH=arm64",
+    "CROSS_COMPILE=aarch64-linux-gnu-",
+
+    # Build out-of-tree in `target_out_dir`.
+    "O=" + rebase_path(target_out_dir),
+
+    # TODO: Remove/replace.
+    "-j24",
+  ]
+
+  # Subtarget which runs `defconfig` and `modules_prepare`. Used by targets
+  # which do not require the whole kernel to have been built.
+  action("${target_name}__defconfig") {
+    script = "//build/make.py"
+    args = shared_args + [
+             "defconfig",
+             "modules_prepare",
+           ]
+
+    # We never use the output but GN requires each target to have one, and for
+    # its timestamp to change after a recompile. Use the .config file.
+    outputs = [
+      "${target_out_dir}/.config",
+    ]
+  }
+
+  action(target_name) {
+    script = "//build/make.py"
+    output_file = "${target_out_dir}/${target_name}.bin"
+    args = shared_args + [
+             "--copy_out_file",
+             rebase_path("${target_out_dir}/arch/arm64/boot/Image"),
+             rebase_path(output_file),
+           ]
+    outputs = [
+      output_file,
+    ]
+    deps = [
+      ":${target_name}__defconfig",
+    ]
+  }
+}
+
+template("linux_kernel_module") {
+  # Out-of-tree modules cannot be built outside of their directory.
+  # So as to avoid parallel builds under different toolchains clashing,
+  # work around by copying source files to `target_out_dir`.
+  copy("${target_name}__copy_source") {
+    forward_variables_from(invoker,
+                           [
+                             "sources",
+                             "testonly",
+                           ])
+    outputs = [
+      "${target_out_dir}/{{source_file_part}}",
+    ]
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+    script = "//build/make.py"
+    args = [
+      "--directory",
+      rebase_path(target_out_dir),
+      "HAFNIUM_PATH=" + rebase_path("//"),
+      "KERNEL_PATH=" + rebase_path(invoker.kernel_src_dir),
+      "O=" +
+          rebase_path(get_label_info(invoker.kernel_target, "target_out_dir")),
+      "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+      "ARCH=arm64",
+      "CROSS_COMPILE=aarch64-linux-gnu-",
+    ]
+    outputs = [
+      "${target_out_dir}/${invoker.module_name}.ko",
+    ]
+    deps = [
+      ":${target_name}__copy_source",
+      "${invoker.kernel_target}__defconfig",
+    ]
+  }
+}

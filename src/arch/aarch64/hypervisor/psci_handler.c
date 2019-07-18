@@ -24,6 +24,7 @@
 #include "hf/cpu.h"
 #include "hf/dlog.h"
 #include "hf/panic.h"
+#include "hf/spci.h"
 #include "hf/vm.h"
 
 #include "psci.h"
@@ -36,7 +37,7 @@ void cpu_entry(struct cpu *c);
 /* Performs arch specific boot time initialisation. */
 void arch_one_time_init(void)
 {
-	el3_psci_version = smc(PSCI_VERSION, 0, 0, 0);
+	el3_psci_version = smc32(PSCI_VERSION, 0, 0, 0);
 
 	/* Check there's nothing unexpected about PSCI. */
 	switch (el3_psci_version) {
@@ -99,7 +100,7 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 				*ret = 0;
 			} else {
 				/* PSCI 1.x only defines two feature bits. */
-				*ret = smc(func, arg0, 0, 0) & 0x3;
+				*ret = smc32(func, arg0, 0, 0) & 0x3;
 			}
 			break;
 
@@ -122,12 +123,12 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		break;
 
 	case PSCI_SYSTEM_OFF:
-		smc(PSCI_SYSTEM_OFF, 0, 0, 0);
+		smc32(PSCI_SYSTEM_OFF, 0, 0, 0);
 		panic("System off failed");
 		break;
 
 	case PSCI_SYSTEM_RESET:
-		smc(PSCI_SYSTEM_RESET, 0, 0, 0);
+		smc32(PSCI_SYSTEM_RESET, 0, 0, 0);
 		panic("System reset failed");
 		break;
 
@@ -160,14 +161,14 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		 * vcpu registers will be ignored.
 		 */
 		arch_regs_set_pc_arg(&vcpu->regs, ipa_init(arg1), arg2);
-		*ret = smc(PSCI_CPU_SUSPEND | SMCCC_64_BIT, arg0,
-			   (uintreg_t)&cpu_entry, (uintreg_t)vcpu->cpu);
+		*ret = smc64(PSCI_CPU_SUSPEND, arg0, (uintreg_t)&cpu_entry,
+			     (uintreg_t)vcpu->cpu);
 		break;
 	}
 
 	case PSCI_CPU_OFF:
 		cpu_off(vcpu->cpu);
-		smc(PSCI_CPU_OFF, 0, 0, 0);
+		smc32(PSCI_CPU_OFF, 0, 0, 0);
 		panic("CPU off failed");
 		break;
 
@@ -190,8 +191,8 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		 * itself off).
 		 */
 		do {
-			*ret = smc(PSCI_CPU_ON | SMCCC_64_BIT, arg0,
-				   (uintreg_t)&cpu_entry, (uintreg_t)c);
+			*ret = smc64(PSCI_CPU_ON, arg0, (uintreg_t)&cpu_entry,
+				     (uintreg_t)c);
 		} while (*ret == PSCI_ERROR_ALREADY_ON);
 
 		if (*ret != PSCI_RETURN_SUCCESS) {
@@ -227,7 +228,7 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
  * Convert a PSCI CPU / affinity ID for a secondary VM to the corresponding vCPU
  * index.
  */
-uint32_t vcpu_id_to_index(uint64_t vcpu_id)
+spci_vcpu_index_t vcpu_id_to_index(cpu_id_t vcpu_id)
 {
 	/* For now we use indices as IDs for the purposes of PSCI. */
 	return vcpu_id;
@@ -278,11 +279,12 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		break;
 
 	case PSCI_AFFINITY_INFO: {
-		uint64_t target_affinity = arg0;
+		cpu_id_t target_affinity = arg0;
 		uint32_t lowest_affinity_level = arg1;
 		struct vm *vm = vcpu->vm;
 		struct vcpu_locked target_vcpu;
-		uint32_t target_vcpu_index = vcpu_id_to_index(target_affinity);
+		spci_vcpu_index_t target_vcpu_index =
+			vcpu_id_to_index(target_affinity);
 
 		if (lowest_affinity_level != 0) {
 			/* Affinity levels greater than 0 not supported. */
@@ -324,10 +326,11 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 
 	case PSCI_CPU_ON: {
 		/* Parameter names as per PSCI specification. */
-		uint64_t target_cpu = arg0;
+		cpu_id_t target_cpu = arg0;
 		ipaddr_t entry_point_address = ipa_init(arg1);
 		uint64_t context_id = arg2;
-		uint32_t target_vcpu_index = vcpu_id_to_index(target_cpu);
+		spci_vcpu_index_t target_vcpu_index =
+			vcpu_id_to_index(target_cpu);
 		struct vm *vm = vcpu->vm;
 		struct vcpu *target_vcpu;
 
