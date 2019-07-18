@@ -131,6 +131,11 @@ Section NthDefault.
              | _ => solve [auto using Lt.lt_n_S]
              end.
   Qed.
+
+  Lemma In_nth_default ls i :
+    i < length ls ->
+    In (nth_default d ls i) ls.
+  Admitted. (* TODO *)
 End NthDefault.
 Hint Rewrite @nth_default_nil @nth_default_cons : push_nth_default.
 
@@ -145,11 +150,21 @@ Section FoldRight.
     generalize dependent b; induction ls; intros;
       cbn [fold_right]; eauto.
   Qed.
+
+  Lemma fold_right_ext (f g : A -> B -> B) b ls :
+    (forall a b, In a ls -> f a b = g a b) ->
+    fold_right f b ls = fold_right g b ls.
+  Admitted. (* TODO *)
 End FoldRight.
 
 (* Proofs about [firstn] and [skipn] *)
 Section FirstnSkipn.
   Context {A : Type}.
+
+  Lemma firstn_snoc i ls d :
+    i < length ls ->
+    @firstn A (S i) ls = firstn i ls ++ (nth_default d ls i :: nil).
+  Admitted. (* TODO *)
 
   Lemma in_firstn (a : A) ls : forall i, In a (firstn i ls) -> In a ls.
   Proof.
@@ -273,6 +288,10 @@ Section ListQualifiers.
            | |- Forall _ (_ ++ _) => apply Forall_app_iff
            | _ => crush_forall'
            end.
+
+  Lemma Forall_map {A B} (P : B -> Prop) (f : A -> B) ls :
+    Forall P (map f ls) -> Forall (fun a => P (f a)) ls.
+  Admitted. (* TODO *)
 
   (*** Some proofs about [ForallOrdPairs] ***)
 

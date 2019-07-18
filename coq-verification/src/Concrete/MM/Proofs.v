@@ -14,6 +14,7 @@ Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.Constants.
+Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
 Require Import Hafnium.Concrete.Assumptions.PageTables.
 Require Import Hafnium.Concrete.MM.Datatypes.
@@ -125,27 +126,22 @@ Section Proofs.
     has_uniform_attrs conc.(ptable_deref) table (level - 1) attrs begin end_.
   Admitted.
 
+  Lemma mm_map_level_table_attrs_strong conc begin end_ pa attrs table level
+        flags ppool :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table (level-1) flags ppool in
+    let success := fst (fst (fst ret)) in
+    let table := snd (fst (fst ret)) in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    forall begin',
+      mm_index begin' level <= mm_index begin level ->
+      has_uniform_attrs conc.(ptable_deref) table (level - 1) attrs begin' end_.
+  Admitted.
+
   (* placeholder; later there will be actual expressions for the new abstract
      states *)
   Axiom TODO : @abstract_state paddr_t nat.
-
-  Axiom pointer_in_table :
-    (Datatypes.ptable_pointer -> mm_page_table) ->
-    Datatypes.ptable_pointer -> mm_page_table -> Prop.
-
-  Definition deref_noncircular (c : concrete_state) : Prop :=
-    forall ptr,
-      ~ pointer_in_table c.(ptable_deref) ptr (c.(ptable_deref) ptr).
-
-  (* TODO : move *)
-  Axiom mpool_contains : mpool -> Datatypes.ptable_pointer -> Prop.
-
-  (* TODO : is this the right approach? *)
-  Definition pointers_ok (c : concrete_state) (ppool : mpool) : Prop :=
-    deref_noncircular c
-    /\ (forall ptr,
-           mpool_contains ppool ptr <->
-           (forall ptr2, ~ pointer_in_table c.(ptable_deref) ptr (c.(ptable_deref) ptr2))).
 
   Lemma mm_map_level_noncircular c begin end_ pa attrs ptr level flags ppool :
     pointers_ok c ppool ->
@@ -177,23 +173,23 @@ Section Proofs.
     In ptr (mm_page_table_from_pa root_ptr) ->
     forall ptr' root_ptable,
       In ptr' (mm_page_table_from_pa root_ptr) ->
-      In root_ptable (hafnium_root_ptable :: map vm_root_ptable vms) ->
+      In root_ptable all_root_ptables ->
       index_sequences_to_pointer c.(ptable_deref) ptr' root_ptable =
       index_sequences_to_pointer
         (reassign_pointer c ptr table).(ptable_deref) ptr' root_ptable.
   Admitted. (* TODO *)
 
-  Definition is_start_of_block (a : ptable_addr_t) (level : nat) : Prop :=
-    (a & (mm_entry_size level - 1))%N = 0.
+  Definition is_start_of_block (a : uintvaddr_t) (block_size : size_t) : Prop :=
+    (a & (block_size - 1))%N = 0.
 
-  Lemma mm_start_of_next_block_is_start a level :
-    is_start_of_block (mm_start_of_next_block a (mm_entry_size level)) level.
+  Lemma mm_start_of_next_block_is_start a block_size :
+    is_start_of_block (mm_start_of_next_block a block_size) block_size.
   Admitted. (* TODO *)
 
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition is_begin_or_block_start
              (start_begin begin : ptable_addr_t) root_level : Prop :=
-      (begin = start_begin \/ is_start_of_block begin root_level).
+      (begin = start_begin \/ is_start_of_block begin (mm_entry_size root_level)).
 
   Definition mm_map_root_loop_invariant
              start_abst start_conc t_ptrs start_begin end_ attrs root_level
@@ -209,12 +205,12 @@ Section Proofs.
       /\ is_begin_or_block_start start_begin begin root_level
       /\ (Forall (fun t_ptr =>
                     Forall
-                      (fun root_ptr =>
+                      (fun root_ptable =>
                          index_sequences_to_pointer
-                           start_conc.(ptable_deref) t_ptr root_ptr
+                           start_conc.(ptable_deref) t_ptr root_ptable
                          = index_sequences_to_pointer
-                             s.(ptable_deref) t_ptr root_ptr)
-                      (hafnium_root_ptable :: map vm_root_ptable vms))
+                             s.(ptable_deref) t_ptr root_ptable)
+                      all_root_ptables)
                  t_ptrs)
       /\ (represents
             (fold_left
@@ -225,32 +221,6 @@ Section Proofs.
                start_abst)
             s))).
 
-  (* TODO: move *)
-  Lemma N_lnot_0_r a : N.lnot a 0 = a.
-  Proof. destruct a; reflexivity. Qed.
-
-  (* TODO: move *)
-  Lemma N_div2_lnot a n : N.div2 (N.lnot a n) = N.lnot (N.div2 a) (N.pred n).
-  Admitted. (* TODO *)
-    
-  (* TODO: move *)
-  Lemma N_lnot_shiftr a n m : ((N.lnot a n >> m) = N.lnot (a >> m) (n - m))%N.
-  Proof.
-    rewrite <-(Nnat.N2Nat.id m).
-    induction (N.to_nat m).
-    { rewrite !N.shiftr_0_r.
-      rewrite N.sub_0_r. reflexivity. }
-    { rewrite Nnat.Nat2N.inj_succ.
-      rewrite !N.shiftr_succ_r.
-      rewrite N.sub_succ_r.
-      rewrite <-N_div2_lnot.
-      solver. }
-  Qed.
-
-  (* TODO: move *)
-  Lemma N_log2_add_shiftl_1 a b : (b <= N.log2 (a + (1 << b)))%N.
-  Admitted. (* TODO *)
-
   (* TODO: include 0 < PAGE_BITS axiom *)
   Lemma mm_start_of_next_block_shift a level :
     (0 < PAGE_BITS)%N ->
@@ -260,13 +230,13 @@ Section Proofs.
   Proof.
     intros.
     cbv [mm_start_of_next_block mm_entry_size].
-    rewrite !Nnat.N2Nat.id, N.shiftr_land, N_lnot_shiftr.
+    rewrite !Nnat.N2Nat.id, N.shiftr_land, N.lnot_shiftr.
     rewrite N.shiftr_eq_0 with (a:=((_ << _) - 1)%N) by
         (rewrite N.sub_1_r, N.shiftl_1_l, N.log2_pred_pow2 by lia; lia).
     rewrite N.lnot_0_l.
     match goal with
     | |- context [((_ + (_ << ?x)) >> ?x)%N] =>
-      pose proof (N_log2_add_shiftl_1 a x);
+      pose proof (N.log2_add_shiftl_1 a x);
         assert ((1 << x) <> 0)%N by (rewrite N.shiftl_eq_0_iff; lia)
     end.
     rewrite N.land_ones_low by (rewrite N.log2_shiftr, N.size_log2 by lia; lia).
@@ -301,63 +271,13 @@ Section Proofs.
     mm_index a level <= mm_index b level.
   Admitted. (* TODO *)
 
-  (* TODO: move *)
-  Lemma firstn_snoc {A} i ls d :
-    i < length ls ->
-    @firstn A (S i) ls = firstn i ls ++ (nth_default d ls i :: nil).
-  Admitted. (* TODO *)
-
-  (* TODO: move *)
-  Lemma abstract_reassign_pointer_for_entity_change_concrete
-        abst conc conc' ptr owned valid e root_ptr begin end_ :
-    index_sequences_to_pointer conc.(ptable_deref) ptr root_ptr
-    = index_sequences_to_pointer conc'.(ptable_deref) ptr root_ptr ->
-    abstract_reassign_pointer_for_entity
-      abst conc ptr owned valid e root_ptr begin end_
-    = abstract_reassign_pointer_for_entity
-        abst conc' ptr owned valid e root_ptr begin end_.
-  Proof.
-    cbv beta iota delta [abstract_reassign_pointer_for_entity].
-    intro Heq. rewrite Heq. reflexivity.
-  Qed.
-
-  (* TODO : move *)
-  Lemma fold_right_ext {A B} (f g : A -> B -> B) b ls :
-    (forall a b, In a ls -> f a b = g a b) ->
-    fold_right f b ls = fold_right g b ls.
-  Admitted. (* TODO *)
-
-  (* TODO : move *)
-  Lemma Forall_map {A B} (P : B -> Prop) (f : A -> B) ls :
-    Forall P (map f ls) -> Forall (fun a => P (f a)) ls.
-  Admitted. (* TODO *)
-
-  (* TODO: move *)
-  Lemma abstract_reassign_pointer_change_concrete
-        abst conc conc' ptr attrs begin_index end_index :
-    Forall (fun root_ptr =>
-              index_sequences_to_pointer conc.(ptable_deref) ptr root_ptr
-              = index_sequences_to_pointer conc'.(ptable_deref) ptr root_ptr)
-            (hafnium_root_ptable :: map vm_root_ptable vms) ->
-    abstract_reassign_pointer abst conc ptr attrs begin_index end_index
-    = abstract_reassign_pointer abst conc' ptr attrs begin_index end_index.
-  Proof.
-    cbv [abstract_reassign_pointer].
-    repeat match goal with
-           | _ => progress basics
-           | _ => progress invert_list_properties
-           | H : _ |- _ => apply Forall_map in H; rewrite Forall_forall in H
-           | _ =>
-             rewrite abstract_reassign_pointer_for_entity_change_concrete
-               with (conc':=conc') by eauto
-           | _ => apply fold_right_ext
-           | _ => solve
-                    [auto using
-                          abstract_reassign_pointer_for_entity_change_concrete]
-           end.
-  Qed.
-
   Lemma mm_level_end_le a level : (a <= mm_level_end a level)%N.
+  Admitted. (* TODO *)
+
+  Lemma mm_index_lt_mono_start (a b : ptable_addr_t) (level : nat) :
+    is_start_of_block a (mm_entry_size level) ->
+    (b < a)%N ->
+    mm_index b level < mm_index a level.
   Admitted. (* TODO *)
 
   Definition is_root (level : nat) : Prop :=
@@ -372,90 +292,26 @@ Section Proofs.
     forall a b, mm_level_end a root_level = mm_level_end b root_level.
   Admitted. (* TODO *)
 
-  (* TODO : move *)
-  Lemma In_nth_default {A} (d : A) ls i :
-    i < length ls ->
-    In (nth_default d ls i) ls.
+  (* table pointers that come before the index of [begin] don't contain any
+     addresses in the range [begin...end_) *)
+  Lemma root_mm_index_out_of_range_low conc begin end_ root_level root_ptable:
+    In root_ptable all_root_ptables ->
+    is_root root_level ->
+    forall i,
+      i <= mm_index begin root_level ->
+      Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
+             (firstn i (mm_page_table_from_pa root_ptable.(root))).
   Admitted. (* TODO *)
 
-  (* TODO : move *)
-  (* has_uniform_attrs doesn't care if we reassign the pointer we started from *)
-  (* TODO : will need some kind of precondition saying the pointer doesn't repeat *)
-  Lemma has_uniform_attrs_reassign_pointer c ptr new_table t level attrs begin end_:
-    ~ pointer_in_table (ptable_deref c) ptr t ->
-    has_uniform_attrs (ptable_deref c) t level attrs begin end_ ->
-    has_uniform_attrs
-      (ptable_deref (reassign_pointer c ptr new_table))
-      t level attrs begin end_.
-  Admitted. (* TODO *)
-
-  (* TODO: move *)
-  (* has_uniform_attrs is trivially true for things before the start of the given
-     table; therefore, we can arbitrarily expand the range in that direction. *)
-  Lemma has_uniform_attrs_expand_range
-        deref table level attrs begin start end_ :
-    is_start_of_block start (S level) ->
-    (begin <= start)%N ->
-    has_uniform_attrs deref table level attrs start end_ ->
-    has_uniform_attrs deref table level attrs begin end_.
-  Admitted. (* TODO *)
-
-  (* TODO : move *)
-  (* TODO : probably will need preconditions about pointers being noncircular *)
-  Lemma abstract_reassign_pointer_root abst conc root_ptr attrs begin end_ :
-    abstract_state_equiv
-      (fold_left
-         (fun abst t_ptr =>
-            abstract_reassign_pointer abst conc t_ptr attrs begin end_)
-         (mm_page_table_from_pa root_ptr)
-         abst)
-      (abstract_reassign_pointer abst conc
-                                 (ptable_pointer_from_address root_ptr)
-                                 attrs begin end_).
-  Admitted. (* TODO *)
-
-  (* if all the pointers provided are out of range of the given addresses, the
-     abstract state doesn't change *)
-  (* TODO: needs some kind of precondition to say that the table is indeed at the right level *)
-  Lemma abstract_reassign_pointer_low
-        abst conc root_ptr level attrs begin end_ :
-    let pointers := mm_page_table_from_pa root_ptr in
-    abstract_state_equiv
-      abst
-      (fold_left
-         (fun abst t_ptr =>
-            abstract_reassign_pointer abst conc t_ptr attrs begin end_)
-         (firstn (mm_index begin level) pointers)
-         abst).
-  Admitted.
-
-  (* we can expand the range to include pointers that are out of range *)
-  (* TODO: needs some kind of precondition to say that the table is indeed at the right level *)
-  Lemma abstract_reassign_pointer_high
-        abst conc root_ptr level attrs begin end_ i :
-    mm_index (end_ - 1) level < i ->
-    let pointers := mm_page_table_from_pa root_ptr in
-    abstract_state_equiv
-      (fold_left
-         (fun abst t_ptr =>
-            abstract_reassign_pointer abst conc t_ptr attrs begin end_)
-         (firstn i pointers)
-         abst)
-      (fold_left
-         (fun abst t_ptr =>
-            abstract_reassign_pointer abst conc t_ptr attrs begin end_)
-         pointers
-         abst).
-  Admitted.
-
-  Lemma mm_index_lt_mono_start (a b : ptable_addr_t) (level : nat) :
-    is_start_of_block a level ->
-    (b < a)%N ->
-    mm_index b level < mm_index a level.
-  Admitted. (* TODO *)
-
-  (* TODO : move *)
-  Lemma N_to_nat_lt_iff x y : N.to_nat x < N.to_nat y <-> (x < y)%N.
+  (* table pointers that come after the index of [end_ - 1] don't contain any
+     addresses in the range [begin...end_) *)
+  Lemma root_mm_index_out_of_range_high conc begin end_ root_level root_ptable:
+    In root_ptable all_root_ptables ->
+    is_root root_level ->
+    forall i,
+      mm_index (end_ - 1) root_level < i ->
+      Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
+             (skipn i (mm_page_table_from_pa root_ptable.(root))).
   Admitted. (* TODO *)
 
   (* makes proof state more readable *)
@@ -495,20 +351,23 @@ Section Proofs.
     end_index < length (mm_page_table_from_pa t.(root)) ->
     (* we need to know we're actually at the root level *)
     is_root root_level ->
+    In t all_root_ptables ->
     (* nothing weird and circular going on with pointers *)
     pointers_ok conc ppool ->
     forall abst,
       represents abst conc ->
-      represents (abstract_reassign_pointer
-                         abst conc (ptable_pointer_from_address t.(root)) attrs begin end_)
+      represents (fold_left
+                    (fun abst t_ptr =>
+                       abstract_reassign_pointer
+                         abst conc t_ptr attrs begin end_)
+                    (mm_page_table_from_pa t.(root))
+                    abst)
                  conc'.
   Proof.
     cbv zeta. cbv [mm_map_root].
     simplify.
 
     pose proof (root_pos root_level ltac:(auto)). 
-
-    apply (represents_proper_abstr _ _ _ ltac:(apply abstract_reassign_pointer_root)).
 
     let begin_index := constr:(mm_index begin root_level) in
     let end_index := constr:(mm_index end_ root_level) in
@@ -573,11 +432,11 @@ Section Proofs.
         apply In_nth_default; solver. }
       { (* represents step *)
 
-        rewrite firstn_snoc with (d:=Datatypes.null_pointer)
+        rewrite firstn_snoc with (d:=null_pointer)
           by (autorewrite with push_length; lia).
         rewrite fold_left_app.
         cbn [fold_left].
-        cbv [nth_default_oobe Assumptions.Datatypes.ptable_pointer_oobe oob_value].
+        cbv [nth_default_oobe ptable_pointer_oobe oob_value].
 
         (* swap out starting concrete state for current one *)
         match goal with
@@ -595,16 +454,7 @@ Section Proofs.
         { assumption. }
         { apply has_uniform_attrs_reassign_pointer;
             [ solve [auto using mm_map_level_noncircular] | ].
-          match goal with
-          | H : is_begin_or_block_start _ _ _ |- _ =>
-            destruct H as [H | H];
-              [ | replace root_level with (S (root_level - 1)) in H by solver ]
-          end.
-          { (* begin = n *)
-            simplify.
-            auto using mm_map_level_table_attrs. }
-          { eapply has_uniform_attrs_expand_range; try eassumption; [ ].
-            apply mm_map_level_table_attrs. } } } }
+          auto using mm_map_level_table_attrs_strong. } } }
     { (* invariant holds at start *)
       right. simplify.
       {  erewrite mm_level_end_root_eq by eauto; apply mm_level_end_le. }
@@ -613,7 +463,8 @@ Section Proofs.
         apply Forall_forall; intros.
         reflexivity. }
       { eapply represents_proper_abstr; [|solver].
-        apply abstract_reassign_pointer_low. } }
+        apply abstract_reassign_pointer_low.
+        eapply root_mm_index_out_of_range_low; solver. } }
     { (* invariant implies correctness *)
       repeat inversion_bool; simplify; [ ].
       match goal with
@@ -637,15 +488,14 @@ Section Proofs.
       all:simplify.
       all:try solve [rewrite ?Nnat.N2Nat.inj_sub; solver].
 
-      { apply N_to_nat_lt_iff.
+      { apply N.to_nat_lt_iff.
         apply mm_start_of_next_block_lt. } 
       { match goal with
         | H : represents ?x ?c |- represents ?y ?c =>
           apply (represents_proper_abstr x y c); [|solver]
         end.
-        pose proof abstract_reassign_pointer_high.
-        apply abstract_reassign_pointer_high with (level:=root_level).
-
+        apply abstract_reassign_pointer_high.
+        eapply root_mm_index_out_of_range_high; try solver; [ ].
         repeat inversion_bool.
         cbv [is_begin_or_block_start] in *.
         apply mm_index_lt_mono_start; simplify. } }
