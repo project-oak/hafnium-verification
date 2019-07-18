@@ -933,7 +933,7 @@ impl<S: Stage> Drop for PageTable<S> {
 }
 
 /// Locked hypervisor page table.
-/// This structure exists temporaliy for C-compatibility. Someday this
+/// This structure exists temporarily for C-compatibility. Someday this
 /// will be replaced by `SpinLockGuard`.
 #[repr(C)]
 pub struct mm_stage1_locked {
