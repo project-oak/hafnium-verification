@@ -309,12 +309,18 @@ Section Proofs.
     : Prop :=
     let '(s, begin, table_index, failed, ppool) := state in
     let end_index := mm_index end_ root_level in
+    (* Either we failed, or... *)
     (failed = true \/
+     (* table_index stays in sync with [begin] *)
      (table_index = mm_index begin root_level
+      (* ...and [begin] increases monotonically *)
       /\ (start_begin <= begin)%N
-      /\ (begin <= mm_level_end end_ root_level)%N
+      (* ...and we never create circular references *)
       /\ pointers_ok s ppool
+      (* ..and [begin] is either equal to its starting value or is the start
+         of a block *)
       /\ is_begin_or_block_start start_begin begin root_level
+      (* ...and we don't add/remove/change references to the root page tables  *)
       /\ (Forall (fun t_ptr =>
                     Forall
                       (fun root_ptable =>
@@ -324,6 +330,8 @@ Section Proofs.
                              s.(ptable_deref) t_ptr root_ptable)
                       all_root_ptables)
                  t_ptrs)
+      (* ...and our concrete state is represented by the abstract state that
+         corresponds to processing the first [table_index] entries of the original list *)
       /\ (represents
             (fold_left
                (fun abst t_ptr =>
@@ -448,10 +456,8 @@ Section Proofs.
       pose proof (mm_level_end_root_eq root_level ltac:(assumption) begin end_).
       match goal with
       | H : is_begin_or_block_start _ ?x _ |- _ =>
-        assert (mm_index begin root_level <= mm_index x root_level)
-          by (apply mm_index_le_mono; solver);
-          assert (mm_index x root_level <= mm_index end_ root_level)
-          by (apply mm_index_le_mono; [ solver | ];
+        assert (mm_index begin root_level <= mm_index x root_level <= mm_index end_ root_level)
+          by (split; (apply mm_index_le_mono; [ solver | ]);
               erewrite mm_level_end_root_eq by auto;
               apply mm_level_end_le)
       end.
@@ -467,9 +473,6 @@ Section Proofs.
         end.
         apply N.lt_le_incl.
         apply mm_start_of_next_block_lt. }
-      { (* begin <= mm_level_end end_ root_level *)
-        erewrite mm_level_end_root_eq by eauto.
-        apply mm_start_of_next_block_level_end. }
       { (* pointers_ok s ppool *)
         apply mm_map_level_pointers_ok.
         auto. }
@@ -514,7 +517,6 @@ Section Proofs.
 
     { (* Subgoal 2 : invariant holds at start *)
       right. simplify.
-      { erewrite mm_level_end_root_eq by eauto; apply mm_level_end_le. }
       { cbv [is_begin_or_block_start]; solver. }
       { apply Forall_forall; intros.
         apply Forall_forall; intros.
