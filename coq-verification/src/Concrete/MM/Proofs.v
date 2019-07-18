@@ -221,14 +221,12 @@ Section Proofs.
                start_abst)
             s))).
 
-  (* TODO: include 0 < PAGE_BITS axiom *)
   Lemma mm_start_of_next_block_shift a level :
-    (0 < PAGE_BITS)%N ->
     (mm_start_of_next_block a (mm_entry_size level)
                             >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N =
     ((a >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) + 1)%N.
   Proof.
-    intros.
+    intros. pose proof PAGE_BITS_pos.
     cbv [mm_start_of_next_block mm_entry_size].
     rewrite !Nnat.N2Nat.id, N.shiftr_land, N.lnot_shiftr.
     rewrite N.shiftr_eq_0 with (a:=((_ << _) - 1)%N) by

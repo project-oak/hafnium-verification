@@ -43,3 +43,6 @@ Axiom mm_modes_distinct :
            MM_MODE_UNOWNED_index; MM_MODE_SHARED_index].
 Axiom mm_flags_distinct :
   NoDup [MM_FLAG_STAGE1_index; MM_FLAG_COMMIT_index].
+
+(* assume that PAGE_BITS is positive *)
+Axiom PAGE_BITS_pos : 0 < PAGE_BITS.
