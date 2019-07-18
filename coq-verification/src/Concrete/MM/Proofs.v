@@ -233,10 +233,6 @@ Section Proofs.
       has_uniform_attrs conc.(ptable_deref) table (level - 1) attrs begin' end_.
   Admitted.
 
-  (* placeholder; later there will be actual expressions for the new abstract
-     states *)
-  Axiom TODO : @abstract_state paddr_t nat.
-
   Lemma mm_map_level_noncircular c begin end_ pa attrs ptr level flags ppool :
     pointers_ok c ppool ->
     let ret := mm_map_level
@@ -575,6 +571,10 @@ Section Proofs.
                | _ => solver
                end. }
   Qed.
+
+  (* placeholder; later there will be actual expressions for the new abstract
+     states *)
+  Axiom TODO : @abstract_state paddr_t nat.
 
   (*** Proofs about [mm_ptable_identity_update] ***)
 
