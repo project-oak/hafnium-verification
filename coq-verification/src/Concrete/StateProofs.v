@@ -100,48 +100,56 @@ Section Proofs.
              (ptr : ptable_pointer) (root : ptable_pointer) : list (list nat) :=
     index_sequences_to_pointer' ptable_deref ptr root 4.
 
-  Definition start_in_range
-             (begin_index end_index : nat) (idxs : list nat) : bool :=
-    match idxs with
-    | nil => false
-    | i :: _ => ((begin_index <=? i) && (i <? end_index))%bool
-    end.
+  (* TODO : move *)
+  Axiom va_init : uintvaddr_t -> vaddr_t.
+  Axiom pa_from_va : vaddr_t -> paddr_t.
+
+  Definition abstract_change_attrs (abst : abstract_state)
+             (a : paddr_t) (e : entity_id) (owned valid : bool) :=
+    let eq_dec := @entity_id_eq_dec _ Nat.eq_dec in
+    {|
+      accessible_by :=
+        (fun a' =>
+           let prev := abst.(accessible_by) a' in
+           if paddr_t_eq_dec a a'
+           then if valid
+                then nodup eq_dec (e :: prev)
+                else remove eq_dec e prev
+          else prev);
+      owned_by :=
+        (fun a' =>
+           let prev := abst.(owned_by) a' in
+           if paddr_t_eq_dec a a'
+           then if owned
+                then e (* TODO: make the state with multiple owners representable (although still not valid) *)
+                else inr hid (* TODO: make unowned memory representable (although still not valid) *)
+           else prev)
+    |}.
 
   Definition abstract_reassign_pointer_for_entity
              (abst : abstract_state) (conc : concrete_state)
              (ptr : ptable_pointer) (owned valid : bool)
              (e : entity_id) (root_ptable : ptable_pointer)
-             (begin_index end_index : nat) : abstract_state :=
+             (begin end_ : uintvaddr_t) : abstract_state :=
+    let vrange := map N.of_nat (seq (N.to_nat begin) (N.to_nat end_)) in
+    let prange := map (fun va => pa_from_va (va_init va)) vrange in
     let paths := index_sequences_to_pointer
                    conc.(ptable_deref) ptr root_ptable in
-    let paths := filter (start_in_range begin_index end_index) paths in
     let under_pointer : uintpaddr_t -> bool :=
         fun addr =>
           existsb (fun p => is_under_path p addr) paths in
-    let eq_dec := @entity_id_eq_dec _ Nat.eq_dec in
-    {|
-      accessible_by :=
-        (fun a =>
-           if (valid && under_pointer (pa_addr a))%bool
-           then nodup eq_dec (e :: abst.(accessible_by) a)
-           else remove eq_dec e (abst.(accessible_by) a));
-      owned_by :=
-        (fun a =>
-           if (owned && under_pointer (pa_addr a))%bool
-           then e
-           else
-             if eq_dec e (abst.(owned_by) a)
-             then inr hid (* TODO: make owned_by an [option] so that unowned
-                             memory is representable *)
-             else abst.(owned_by) a)
-    |}.
+    fold_right
+      (fun pa abst =>
+         abstract_change_attrs abst pa e owned valid)
+      abst
+      (filter (fun pa => under_pointer (pa_addr pa)) prange).
 
   (* Update the abstract state to make everything under the given pointer have
      the provided new owned/valid bits. *)
   Definition abstract_reassign_pointer
              (abst : abstract_state) (conc : concrete_state)
              (ptr : ptable_pointer) (attrs : attributes)
-             (begin_index end_index : nat) : abstract_state :=
+             (begin end_ : uintvaddr_t) : abstract_state :=
     (* first, get the owned/valid bits *)
     let stage1_mode := arch_mm_stage1_attrs_to_mode attrs in
     let stage2_mode := arch_mm_stage2_attrs_to_mode attrs in
@@ -154,34 +162,34 @@ Section Proofs.
     let abst :=
         abstract_reassign_pointer_for_entity
           abst conc ptr s1_owned s1_valid (inr hid) hafnium_root_ptable
-          begin_index end_index in
+          begin end_ in
 
     (* update the state with regard to each VM *)
     fold_right
       (fun (v : vm) (abst : abstract_state) =>
          abstract_reassign_pointer_for_entity
            abst conc ptr s2_owned s2_valid (inl v.(vm_id)) (vm_root_ptable v)
-           begin_index end_index)
+           begin end_)
       abst
       vms.
 
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
              (t : mm_page_table) (level : nat) (attrs : attributes)
-             (begin_index end_index : nat) : Prop :=
-    forall (a : uintpaddr_t) (pte : pte_t),
-      begin_index <= get_index level a < end_index ->
+             (begin end_ : uintvaddr_t) : Prop :=
+    forall (a : uintvaddr_t) (pte : pte_t),
+      (begin <= a < end_)%N ->
       page_lookup' ptable_deref a t (4 - level) = Some pte ->
       forall lvl, arch_mm_pte_attrs pte lvl = attrs.
 
   Lemma reassign_pointer_represents conc ptr t abst:
     represents abst conc ->
     let conc' := conc.(reassign_pointer) ptr t in
-    forall attrs level begin_index end_index,
+    forall attrs level begin end_,
       has_uniform_attrs
-        conc'.(ptable_deref) t level attrs begin_index end_index ->
+        conc'.(ptable_deref) t level attrs begin end_ ->
       represents (abstract_reassign_pointer
-                    abst conc ptr attrs begin_index end_index)
+                    abst conc ptr attrs begin end_)
                  conc'.
   Proof.
     cbv [reassign_pointer represents].

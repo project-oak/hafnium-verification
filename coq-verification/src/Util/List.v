@@ -190,11 +190,25 @@ Section FirstnSkipn.
              | _ => solver
              end.
   Qed.
+
+  Lemma skipn_length i : forall ls, length (@skipn A i ls) = length ls - i. 
+  Proof.
+    induction i; destruct ls; try reflexivity; [ ].
+    cbn [length skipn]. rewrite IHi. lia.
+  Qed.
+
+  Lemma skipn_all i : forall ls, length ls <= i -> @skipn A i ls = nil.
+  Proof.
+    induction i; destruct ls; cbn [length skipn]; try reflexivity; try lia; [ ].
+    intros; apply IHi; lia.
+  Qed.
 End FirstnSkipn.
 
 (* autorewrite databases for [firstn] and [skipn] *)
 Hint Rewrite @firstn_O @firstn_nil @firstn_cons : push_firstn.
 Hint Rewrite @skipn_nil @skipn_cons : push_skipn.
+Hint Rewrite @skipn_all using lia : push_skipn.
+Hint Rewrite @skipn_length : push_length.
 
 (* Proofs about setting the nth element of a list. *)
 Section SetNth.

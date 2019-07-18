@@ -146,7 +146,7 @@ Proof.
            end.
 Qed.
 
-Lemma while_loop_completed {state} max_iterations cond body
+Lemma while_loop_completed_measure {state} max_iterations cond body
       (successful : state -> bool) measure start:
   is_measure measure cond body ->
   (forall s, successful (fst (body s)) = true -> snd (body s) = continue) ->
@@ -253,7 +253,9 @@ Qed.
 (* puts [while_loop_increments] and [while_loop_completed] together to prove that
    the final "value" of the loop state will be exactly equal to the end value. *)
 Lemma while_loop_end_exact {state} max_iterations body
-      (successful : state -> bool) (value : state -> nat) (end_value : nat) :
+      (successful : state -> bool) (value : state -> nat) (end_value : nat)
+      (cond : state -> bool) :
+  (forall s, cond s = (value s <? end_value)) ->
   (forall s, successful (fst (body s)) = true -> snd (body s) = continue) ->
   (forall s, successful s = false -> successful (fst (body s)) = false) ->
   (forall s, snd (body s) = continue -> value s < value (fst (body s))) ->
@@ -262,10 +264,13 @@ Lemma while_loop_end_exact {state} max_iterations body
   forall start,
     value start <= end_value ->
     end_value - value start <= max_iterations ->
-    successful (@while_loop _ max_iterations (fun s => value s <? end_value) start body) = true ->
-    value (@while_loop _ max_iterations (fun s => value s <? end_value) start body) = end_value.
+    successful (@while_loop _ max_iterations cond start body) = true ->
+    value (@while_loop _ max_iterations cond start body) = end_value.
 Proof.
-  intros. rewrite while_loop_increments in * by auto.
+  intros.
+  erewrite while_loop_proper_cond
+    with (cond':=fun s => value s <? end_value) in * by auto.
+  rewrite while_loop_increments in * by auto.
   match goal with
   | H : successful _ = true |- _ =>
     eapply while_loop'_completed in H; eauto
@@ -273,4 +278,27 @@ Proof.
   rewrite <-while_loop'_increments; eauto;
     eapply while_loop'_sufficient_fuel;
     eauto using while_loop_lt_is_measure; solver.
+Qed.
+
+Lemma while_loop_completed {state} max_iterations cond body
+      (successful : state -> bool) value end_value start:
+  (forall s, cond s = (value s <? end_value)) ->
+  (forall s, successful (fst (body s)) = true -> snd (body s) = continue) ->
+  (forall s, successful s = false -> successful (fst (body s)) = false) ->
+  (forall s, snd (body s) = continue -> value s < value (fst (body s))) ->
+  end_value - value start <= max_iterations ->
+  successful (@while_loop _ max_iterations cond start body) = true ->
+  cond (@while_loop _ max_iterations cond start body) = false.
+Proof.
+  intros.
+  eapply while_loop_completed_measure with
+      (measure:=fun s => end_value - value s); try eassumption.
+  cbv [is_measure]; intros.
+  repeat match goal with
+         | H : (forall s, snd (body s) = continue -> _),
+               H' : _ |- _ => apply H in H'
+         | H : forall s, cond s = _ |- _ => progress rewrite H in *
+         | H : (_ <? _) = true |- _ => apply Nat.ltb_lt in H
+         | _ => solver
+         end.
 Qed.
