@@ -149,7 +149,7 @@ bitflags! {
 }
 
 /// The hypervisor page table.
-static mut HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
+static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
     SpinLock::new(unsafe { PageTable::null() });
 
 /// Is stage2 invalidation enabled?
@@ -932,10 +932,17 @@ impl<S: Stage> Drop for PageTable<S> {
     }
 }
 
-/// Locked hypervisor page table
+/// Locked hypervisor page table.
+/// This structure exists temporaliy for C-compatibility. Someday this
+/// will be replaced by `SpinLockGuard`.
 #[repr(C)]
 pub struct mm_stage1_locked {
-    ptable: usize,
+    /// A raw pointer to the locked spinlock `HYPERVISOR_PAGE_TABLE`.
+    /// The name of this field is `ptable` in the C version code (You can find
+    /// at `mm.h`.)
+    /// We can safely change the content of the field in Rust, because this
+    /// field is only accessed by `mm_*` functions.
+    plock: usize,
 }
 
 impl Deref for mm_stage1_locked {
@@ -943,8 +950,8 @@ impl Deref for mm_stage1_locked {
 
     fn deref(&self) -> &Self::Target {
         unsafe {
-            let lock = &*(self.ptable as *const SpinLock<_>);
-            lock.get_mut_unchecked()
+            let lock = &*(self.plock as *const SpinLock<_>);
+            lock.get_unchecked()
         }
     }
 }
@@ -952,7 +959,7 @@ impl Deref for mm_stage1_locked {
 impl DerefMut for mm_stage1_locked {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe {
-            let lock = &*(self.ptable as *const SpinLock<_>);
+            let lock = &*(self.plock as *const SpinLock<_>);
             lock.get_mut_unchecked()
         }
     }
@@ -961,14 +968,14 @@ impl DerefMut for mm_stage1_locked {
 impl<'s> From<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
     fn from(guard: SpinLockGuard<'s, PageTable<Stage1>>) -> Self {
         Self {
-            ptable: guard.into_raw(),
+            plock: guard.into_raw(),
         }
     }
 }
 
 impl<'s> Into<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
     fn into(self) -> SpinLockGuard<'s, PageTable<Stage1>> {
-        unsafe { SpinLockGuard::from_raw(self.ptable) }
+        unsafe { SpinLockGuard::from_raw(self.plock) }
     }
 }
 
@@ -1142,7 +1149,7 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
 
     // A fake lock.
     let stage1_locked = mm_stage1_locked {
-        ptable: &HYPERVISOR_PAGE_TABLE as *const _ as usize,
+        plock: &HYPERVISOR_PAGE_TABLE as *const _ as usize,
     };
 
     // Let console driver map pages for itself.

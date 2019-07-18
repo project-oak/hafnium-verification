@@ -55,8 +55,8 @@ impl RawSpinLock {
 
 #[repr(C)]
 pub struct SpinLock<T> {
-    pub lock: RawSpinLock,
-    pub data: UnsafeCell<T>,
+    lock: RawSpinLock,
+    data: UnsafeCell<T>,
 }
 
 unsafe impl<'s, T: Send> Send for SpinLock<T> {}
@@ -80,6 +80,10 @@ impl<T> SpinLock<T> {
             lock: self,
             _marker: PhantomData,
         }
+    }
+
+    pub unsafe fn get_unchecked(&self) -> &T {
+        &*self.data.get()
     }
 
     pub fn get_mut(&mut self) -> &mut T {
