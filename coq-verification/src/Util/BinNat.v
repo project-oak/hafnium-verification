@@ -11,4 +11,11 @@ Module N.
     rewrite N2Nat.inj_compare.
     reflexivity.
   Qed.
+
+  Lemma to_nat_le_iff (x y : N) :
+    (N.to_nat x <= N.to_nat y)%nat <-> x <= y.
+  Proof.
+    rewrite <-N.compare_le_iff, <-Nat.compare_le_iff.
+    rewrite N2Nat.inj_compare. reflexivity.
+  Qed.
 End N.

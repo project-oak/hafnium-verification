@@ -57,4 +57,10 @@ Ltac inversion_bool :=
   | H : (_ <=? _) = false |- _ => apply Nat.leb_gt in H
   | H : (_ =? _) = true |- _ => apply Nat.eqb_eq in H
   | H : (_ =? _) = false |- _ => apply Nat.eqb_neq in H
+  | H : (_ <? _)%N = true |- _ => apply N.ltb_lt in H
+  | H : (_ <? _)%N = false |- _ => apply N.ltb_ge in H
+  | H : (_ <=? _)%N = true |- _ => apply N.leb_le in H
+  | H : (_ <=? _)%N = false |- _ => apply N.leb_gt in H
+  | H : (_ =? _)%N = true |- _ => apply N.eqb_eq in H
+  | H : (_ =? _)%N = false |- _ => apply N.eqb_neq in H
   end.
