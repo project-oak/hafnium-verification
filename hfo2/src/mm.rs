@@ -942,13 +942,19 @@ impl Deref for mm_stage1_locked {
     type Target = PageTable<Stage1>;
 
     fn deref(&self) -> &Self::Target {
-        unimplemented!("TODO")
+        unsafe {
+            let lock = &*(self.ptable as *const SpinLock<_>);
+            lock.get_mut_unchecked()
+        }
     }
 }
 
 impl DerefMut for mm_stage1_locked {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unimplemented!("TODO")
+        unsafe {
+            let lock = &*(self.ptable as *const SpinLock<_>);
+            lock.get_mut_unchecked()
+        }
     }
 }
 
