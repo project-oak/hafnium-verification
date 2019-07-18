@@ -302,3 +302,11 @@ Proof.
          | _ => solver
          end.
 Qed.
+
+Lemma while_loop_noop {state} max_iterations cond start body :
+  cond start = false ->
+  @while_loop state max_iterations cond start body = start.
+Proof.
+  cbv [while_loop]; intros. rewrite while_loop'_step.
+  repeat break_match; solver.
+Qed.

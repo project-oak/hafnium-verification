@@ -260,9 +260,11 @@ Section Proofs.
     (* TODO: 4 subgoals *)
   Admitted.
 
-  Lemma abstract_reassign_pointer_trivial abst conc ptr attrs i :
-    abstract_state_equiv (abstract_reassign_pointer abst conc ptr attrs i i)
-                         abst.
+  Lemma abstract_reassign_pointer_trivial abst conc ptr attrs begin end_:
+    (end_ <= begin)%N ->
+    abstract_state_equiv
+      abst
+      (abstract_reassign_pointer abst conc ptr attrs begin end_).
   Admitted. (* TODO *)
 
   Lemma abstract_reassign_pointer_for_entity_change_concrete
