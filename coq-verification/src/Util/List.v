@@ -219,7 +219,7 @@ Section FirstnSkipn.
              end.
   Qed.
 
-  Lemma skipn_length i : forall ls, length (@skipn A i ls) = length ls - i. 
+  Lemma skipn_length i : forall ls, length (@skipn A i ls) = length ls - i.
   Proof.
     induction i; destruct ls; try reflexivity; [ ].
     cbn [length skipn]. rewrite IHi. lia.
