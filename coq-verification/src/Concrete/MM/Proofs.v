@@ -50,6 +50,94 @@ Section Proofs.
     end.
   Ltac simplify := repeat simplify_step.
 
+  (*** shorthand definitions ***)
+
+  Definition is_start_of_block (a : uintvaddr_t) (block_size : size_t) : Prop :=
+    (a & (block_size - 1))%N = 0.
+
+  Definition is_root (level : nat) : Prop :=
+    exists flags, level = mm_max_level flags + 1.
+
+  (*** Generally useful lemmas ***)
+
+  Lemma root_pos level : is_root level -> 0 < level.
+  Proof. cbv [is_root]; simplify. Qed.
+
+  (*** Proofs about [mm_start_of_next_block] ***)
+
+  Lemma mm_start_of_next_block_is_start a block_size :
+    is_start_of_block (mm_start_of_next_block a block_size) block_size.
+  Admitted. (* TODO *)
+
+  Lemma mm_start_of_next_block_shift a level :
+    (mm_start_of_next_block a (mm_entry_size level)
+                            >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N =
+    ((a >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) + 1)%N.
+  Proof.
+    intros. pose proof PAGE_BITS_pos.
+    cbv [mm_start_of_next_block mm_entry_size].
+    rewrite !Nnat.N2Nat.id, N.shiftr_land, N.lnot_shiftr.
+    rewrite N.shiftr_eq_0 with (a:=((_ << _) - 1)%N) by
+        (rewrite N.sub_1_r, N.shiftl_1_l, N.log2_pred_pow2 by lia; lia).
+    rewrite N.lnot_0_l.
+    match goal with
+    | |- context [((_ + (_ << ?x)) >> ?x)%N] =>
+      pose proof (N.log2_add_shiftl_1 a x);
+        assert ((1 << x) <> 0)%N by (rewrite N.shiftl_eq_0_iff; lia)
+    end.
+    rewrite N.land_ones_low by (rewrite N.log2_shiftr, N.size_log2 by lia; lia).
+    rewrite !N.shiftr_div_pow2, !N.shiftl_mul_pow2.
+    rewrite N.div_add by (apply N.pow_nonzero; lia).
+    lia.
+  Qed.
+
+  Lemma mm_index_start_of_next_block a level :
+    mm_index (mm_start_of_next_block a (mm_entry_size level)) level
+    = S (mm_index a level).
+  Proof.
+    cbv [mm_index].
+    rewrite mm_start_of_next_block_shift.
+    remember ((1 << PAGE_LEVEL_BITS) - 1)%N as mask.
+    remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N as B.
+    (* TODO: won't be *hard*, but will be annoying. Will likely require a
+       precondition in terms of mm_level_end. *)
+  Admitted.
+
+  Lemma mm_start_of_next_block_lt a block_size :
+    (a < mm_start_of_next_block a block_size)%N.
+  Admitted. (* TODO *)
+
+  Lemma mm_start_of_next_block_level_end a level :
+    (mm_start_of_next_block a (mm_entry_size level) <= mm_level_end a level)%N.
+  Admitted. (* TODO *)
+
+  (*** Proofs about [mm_index] ***)
+
+  Lemma mm_index_le_mono a b level :
+    (a <= b)%N ->
+    (b <= mm_level_end a level)%N ->
+    mm_index a level <= mm_index b level.
+  Admitted. (* TODO *)
+
+  Lemma mm_index_lt_mono_start (a b : ptable_addr_t) (level : nat) :
+    is_start_of_block a (mm_entry_size level) ->
+    (b < a)%N ->
+    mm_index b level < mm_index a level.
+  Admitted. (* TODO *)
+
+  (*** Proofs about [mm_level_end] ***)
+
+  Lemma mm_level_end_le a level : (a <= mm_level_end a level)%N.
+  Admitted. (* TODO *)
+
+  (* At the root level, every address has the same level_end *)
+  Lemma mm_level_end_root_eq root_level :
+    is_root root_level ->
+    forall a b, mm_level_end a root_level = mm_level_end b root_level.
+  Admitted. (* TODO *)
+
+  (*** Proofs about [mm_free_page_pte] ***)
+
   (* mm_free_page_pte doesn't change the state *)
   Lemma mm_free_page_pte_represents (conc : concrete_state) pte level ppool :
     fst (mm_free_page_pte conc pte level ppool) = conc.
@@ -63,6 +151,8 @@ Section Proofs.
              | _ => apply fold_right_invariant; [ | solver ]
              end.
   Qed.
+
+  (*** Proofs about [mm_replace_entry] ***)
 
   (* mm_replace_entry doesn't change the state (it does in C, but in the Coq
      translation it returns a new table to the caller and the caller updates the
@@ -80,6 +170,8 @@ Section Proofs.
            end.
   Qed.
 
+  (*** Proofs about [mm_populate_table_pte] ***)
+
   (* mm_populate_table_pte doesn't change the state (it does in C, but in the Coq
      translation it returns a new table to the caller and the caller updates the
      state) *)
@@ -95,6 +187,8 @@ Section Proofs.
            | _ => rewrite mm_replace_entry_represents
            end.
   Qed.
+
+  (*** Proofs about [mm_map_level] ***)
 
   (* mm_map_level doesn't change the state (it does in C, but in the Coq
      translation it returns a new table to the caller and the caller updates the
@@ -179,12 +273,30 @@ Section Proofs.
         (reassign_pointer c ptr table).(ptable_deref) ptr' root_ptable.
   Admitted. (* TODO *)
 
-  Definition is_start_of_block (a : uintvaddr_t) (block_size : size_t) : Prop :=
-    (a & (block_size - 1))%N = 0.
+  (*** Helpers for [mm_map_root] proofs ***)
 
-  Lemma mm_start_of_next_block_is_start a block_size :
-    is_start_of_block (mm_start_of_next_block a block_size) block_size.
+  (* table pointers that come before the index of [begin] don't contain any
+     addresses in the range [begin...end_) *)
+  Lemma root_mm_index_out_of_range_low conc begin end_ root_level root_ptable:
+    In root_ptable all_root_ptables ->
+    is_root root_level ->
+    forall i,
+      i <= mm_index begin root_level ->
+      Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
+             (firstn i (mm_page_table_from_pa root_ptable.(root))).
   Admitted. (* TODO *)
+
+  (* table pointers that come after the index of [end_ - 1] don't contain any
+     addresses in the range [begin...end_) *)
+  Lemma root_mm_index_out_of_range_high conc begin end_ root_level root_ptable:
+    In root_ptable all_root_ptables ->
+    is_root root_level ->
+    forall i,
+      mm_index (end_ - 1) root_level < i ->
+      Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
+             (skipn i (mm_page_table_from_pa root_ptable.(root))).
+  Admitted. (* TODO *)
+
 
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition is_begin_or_block_start
@@ -221,96 +333,7 @@ Section Proofs.
                start_abst)
             s))).
 
-  Lemma mm_start_of_next_block_shift a level :
-    (mm_start_of_next_block a (mm_entry_size level)
-                            >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N =
-    ((a >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) + 1)%N.
-  Proof.
-    intros. pose proof PAGE_BITS_pos.
-    cbv [mm_start_of_next_block mm_entry_size].
-    rewrite !Nnat.N2Nat.id, N.shiftr_land, N.lnot_shiftr.
-    rewrite N.shiftr_eq_0 with (a:=((_ << _) - 1)%N) by
-        (rewrite N.sub_1_r, N.shiftl_1_l, N.log2_pred_pow2 by lia; lia).
-    rewrite N.lnot_0_l.
-    match goal with
-    | |- context [((_ + (_ << ?x)) >> ?x)%N] =>
-      pose proof (N.log2_add_shiftl_1 a x);
-        assert ((1 << x) <> 0)%N by (rewrite N.shiftl_eq_0_iff; lia)
-    end.
-    rewrite N.land_ones_low by (rewrite N.log2_shiftr, N.size_log2 by lia; lia).
-    rewrite !N.shiftr_div_pow2, !N.shiftl_mul_pow2.
-    rewrite N.div_add by (apply N.pow_nonzero; lia).
-    lia.
-  Qed.
-
-  Lemma mm_index_start_of_next_block a level :
-    mm_index (mm_start_of_next_block a (mm_entry_size level)) level
-    = S (mm_index a level).
-  Proof.
-    cbv [mm_index].
-    rewrite mm_start_of_next_block_shift.
-    remember ((1 << PAGE_LEVEL_BITS) - 1)%N as mask.
-    remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N as B.
-    (* TODO: won't be *hard*, but will be annoying. Will likely require a
-       precondition in terms of mm_level_end. *)
-  Admitted.
-
-  Lemma mm_start_of_next_block_lt a block_size :
-    (a < mm_start_of_next_block a block_size)%N.
-  Admitted. (* TODO *)
-
-  Lemma mm_start_of_next_block_level_end a level :
-    (mm_start_of_next_block a (mm_entry_size level) <= mm_level_end a level)%N.
-  Admitted. (* TODO *)
-
-  Lemma mm_index_le_mono a b level :
-    (a <= b)%N ->
-    (b <= mm_level_end a level)%N ->
-    mm_index a level <= mm_index b level.
-  Admitted. (* TODO *)
-
-  Lemma mm_level_end_le a level : (a <= mm_level_end a level)%N.
-  Admitted. (* TODO *)
-
-  Lemma mm_index_lt_mono_start (a b : ptable_addr_t) (level : nat) :
-    is_start_of_block a (mm_entry_size level) ->
-    (b < a)%N ->
-    mm_index b level < mm_index a level.
-  Admitted. (* TODO *)
-
-  Definition is_root (level : nat) : Prop :=
-    exists flags, level = mm_max_level flags + 1.
-
-  Lemma root_pos level : is_root level -> 0 < level.
-  Proof. cbv [is_root]; simplify. Qed.
-
-  (* At the root level, every address has the same level_end *)
-  Lemma mm_level_end_root_eq root_level :
-    is_root root_level ->
-    forall a b, mm_level_end a root_level = mm_level_end b root_level.
-  Admitted. (* TODO *)
-
-  (* table pointers that come before the index of [begin] don't contain any
-     addresses in the range [begin...end_) *)
-  Lemma root_mm_index_out_of_range_low conc begin end_ root_level root_ptable:
-    In root_ptable all_root_ptables ->
-    is_root root_level ->
-    forall i,
-      i <= mm_index begin root_level ->
-      Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
-             (firstn i (mm_page_table_from_pa root_ptable.(root))).
-  Admitted. (* TODO *)
-
-  (* table pointers that come after the index of [end_ - 1] don't contain any
-     addresses in the range [begin...end_) *)
-  Lemma root_mm_index_out_of_range_high conc begin end_ root_level root_ptable:
-    In root_ptable all_root_ptables ->
-    is_root root_level ->
-    forall i,
-      mm_index (end_ - 1) root_level < i ->
-      Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
-             (skipn i (mm_page_table_from_pa root_ptable.(root))).
-  Admitted. (* TODO *)
+  (*** Proofs about [mm_map_root] ***)
 
   (* if the begin address is >= the end address, the abstract state doesn't
      change. *)
@@ -551,6 +574,8 @@ Section Proofs.
                end. }
   Qed.
 
+  (*** Proofs about [mm_ptable_identity_update] ***)
+
   Lemma mm_ptable_identity_update_represents
         (conc : concrete_state)
         t pa_begin pa_end attrs flags ppool :
@@ -561,6 +586,8 @@ Section Proofs.
                               conc t pa_begin pa_end attrs flags ppool))).
   Admitted.
 
+  (*** Proofs about [mm_identity_map] ***)
+
   Lemma mm_identity_map_represents
         (conc : concrete_state)
         begin end_ mode ppool :
@@ -568,12 +595,16 @@ Section Proofs.
       (fun conc => snd (fst (mm_identity_map conc begin end_ mode ppool))).
   Admitted.
 
+  (*** Proofs about [mm_defrag] ***)
+
   Lemma mm_defrag_represents
         (conc : concrete_state)
         ppool :
     preserves_represents_valid
       (fun conc => fst (mm_defrag conc ppool)).
   Admitted.
+
+  (*** Proofs about [mm_unmap] ***)
 
   Lemma mm_unmap_represents
         (conc : concrete_state)
