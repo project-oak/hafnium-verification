@@ -12,6 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# If HAFNIUM_HERMETIC_BUILD is "true" (not default), invoke `make` inside
+# a container. The 'run_in_container.sh' script will set the variable value to
+# 'inside' to avoid recursion.
+ifeq ($(HAFNIUM_HERMETIC_BUILD),true)
+
+# TODO: This is not ideal as (a) we invoke the container once per command-line
+# target, and (b) we cannot pass `make` arguments to the script. We could
+# consider creating a bash alias for `make` to invoke the script directly.
+
+# Need to define at least one non-default target.
+all:
+	@$(PWD)/build/run_in_container.sh make $@
+
+# Catch-all target.
+.DEFAULT:
+	@$(PWD)/build/run_in_container.sh make $@
+
+else  # HAFNIUM_HERMETIC_BUILD
+
 # Set path to prebuilts used in the build.
 UNNAME_S := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 PREBUILTS := $(PWD)/prebuilts/$(UNNAME_S)-x64
@@ -108,3 +127,5 @@ update-prebuilts: prebuilts/linux-aarch64/linux/vmlinuz
 prebuilts/linux-aarch64/linux/vmlinuz: $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR) "third_party:linux"
 	cp out/reference/obj/third_party/linux.bin $@
+
+endif  # HAFNIUM_HERMETIC_BUILD

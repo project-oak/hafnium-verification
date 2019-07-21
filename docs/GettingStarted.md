@@ -35,8 +35,8 @@ support to new platforms. The target project that is built is selected by the
 make PROJECT=<project_name>
 ```
 
-The compiled image can be found under `out/<project>`, for example the QEMU image is at
-at `out/reference/qemu_aarch64_clang/hafnium.bin`.
+The compiled image can be found under `out/<project>`, for example the QEMU
+image is at `out/reference/qemu_aarch64_clang/hafnium.bin`.
 
 ## Running on QEMU
 
