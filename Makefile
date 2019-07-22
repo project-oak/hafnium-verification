@@ -29,7 +29,7 @@ OUT ?= out/$(PROJECT)
 OUT_DIR = out/$(PROJECT)
 
 .PHONY: all
-all: libhfo2-aarch64 libhfo2-aarch64-test libhfo2-host $(OUT_DIR)/build.ninja
+all: libhfo2-aarch64 libhfo2-aarch64-test $(OUT_DIR)/build.ninja
 	@$(NINJA) -C $(OUT_DIR)
 
 .PHONY: libhfo2-aarch64
