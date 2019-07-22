@@ -22,7 +22,6 @@ pub struct SpciMessage {
     // TODO: version is part of SPCI alpha2 but will be
     // removed in the next spec revision hence we are not
     // including it in the header.
-
     /// flags[0]:
     ///     0: Architected message payload;
     ///     1: Implementation defined message payload.

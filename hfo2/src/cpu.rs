@@ -16,12 +16,12 @@
 
 use core::ptr;
 
+use crate::arch::*;
 use crate::mm::*;
 use crate::page::*;
 use crate::spinlock::*;
 use crate::types::*;
 use crate::vm::*;
-use crate::arch::*;
 
 extern "C" {
     fn arch_irq_enable();
@@ -85,7 +85,7 @@ pub struct VCpu {
     /// the run call.
     state: VCpuStatus,
 
-    cpu: *mut Cpu, 
+    cpu: *mut Cpu,
     vm: *mut Vm,
     regs: ArchRegs,
     interrupts: Interrupts,

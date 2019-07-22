@@ -28,10 +28,8 @@ pub type cpu_id_t = u64;
 /// The integer type corresponding to the native register size.
 pub type uintreg_t = u64;
 
-
-
 /// The struct for storing a floating point register.
-/// 
+///
 /// 2 64-bit integers used to avoid need for FP support at this level.
 #[repr(C, align(16))]
 struct float_reg {
@@ -69,7 +67,7 @@ pub struct ArchRegs {
     fpcr: uintreg_t,
 
     // TODO: gic
-    #[cfg(any(feature="GIC_VERSION=3", feature="GIC_VERSION=4"))]
+    #[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
     gic_ich_hcr_el2: uintreg_t,
 
     /// Peripheral registers, handled separately from other system registers.
@@ -82,31 +80,31 @@ pub struct ArchSysRegs {
     csselr_el1: uintreg_t,
     sctlr_el1: uintreg_t,
     actlr_el1: uintreg_t,
-		cpacr_el1: uintreg_t,
-		ttbr0_el1: uintreg_t,
-		ttbr1_el1: uintreg_t,
-		tcr_el1: uintreg_t,
-		esr_el1: uintreg_t,
-		afsr0_el1: uintreg_t,
-		afsr1_el1: uintreg_t,
-		far_el1: uintreg_t,
-		mair_el1: uintreg_t,
-		vbar_el1: uintreg_t,
-		contextidr_el1: uintreg_t,
-		tpidr_el0: uintreg_t,
-		tpidrro_el0: uintreg_t,
-		tpidr_el1: uintreg_t,
-		amair_el1: uintreg_t,
-		cntkctl_el1: uintreg_t,
-		sp_el0: uintreg_t,
-		sp_el1: uintreg_t,
-		elr_el1: uintreg_t,
-		spsr_el1: uintreg_t,
-		par_el1: uintreg_t,
-		hcr_el2: uintreg_t,
-		cptr_el2: uintreg_t,
-		cnthctl_el2: uintreg_t,
-		vttbr_el2: uintreg_t,
+    cpacr_el1: uintreg_t,
+    ttbr0_el1: uintreg_t,
+    ttbr1_el1: uintreg_t,
+    tcr_el1: uintreg_t,
+    esr_el1: uintreg_t,
+    afsr0_el1: uintreg_t,
+    afsr1_el1: uintreg_t,
+    far_el1: uintreg_t,
+    mair_el1: uintreg_t,
+    vbar_el1: uintreg_t,
+    contextidr_el1: uintreg_t,
+    tpidr_el0: uintreg_t,
+    tpidrro_el0: uintreg_t,
+    tpidr_el1: uintreg_t,
+    amair_el1: uintreg_t,
+    cntkctl_el1: uintreg_t,
+    sp_el0: uintreg_t,
+    sp_el1: uintreg_t,
+    elr_el1: uintreg_t,
+    spsr_el1: uintreg_t,
+    par_el1: uintreg_t,
+    hcr_el2: uintreg_t,
+    cptr_el2: uintreg_t,
+    cnthctl_el2: uintreg_t,
+    vttbr_el2: uintreg_t,
 }
 
 #[repr(C)]
