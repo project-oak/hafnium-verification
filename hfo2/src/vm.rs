@@ -14,21 +14,21 @@
  * limitations under the License.
  */
 
+use core::mem;
+use core::mem::MaybeUninit;
 use core::ptr;
 use core::sync::atomic::AtomicBool;
-use core::mem::MaybeUninit;
-use core::mem;
 
+use crate::arch::*;
+use crate::cpu::*;
 use crate::cpu::*;
 use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
-use crate::spinlock::*;
-use crate::types::*;
-use crate::std::*;
 use crate::spci::*;
-use crate::arch::*;
-use crate::cpu::*;
+use crate::spinlock::*;
+use crate::std::*;
+use crate::types::*;
 
 const LOG_BUFFER_SIZE: usize = 256;
 
@@ -119,7 +119,12 @@ pub unsafe extern "C" fn vm_init(
 
     vm = &mut vms.get_mut()[vm_count as usize];
 
-    memset_s(vm as usize as _, mem::size_of::<Vm>(), 0, mem::size_of::<Vm>());
+    memset_s(
+        vm as usize as _,
+        mem::size_of::<Vm>(),
+        0,
+        mem::size_of::<Vm>(),
+    );
 
     list_init(&mut (*vm).mailbox.waiter_list);
     list_init(&mut (*vm).mailbox.ready_list);
@@ -167,9 +172,7 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
-    let locked = VmLocked {
-        vm
-    };
+    let locked = VmLocked { vm };
 
     sl_lock(&(*vm).lock);
 
@@ -197,7 +200,7 @@ pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
 }
 
 /// Get the vCPU with the given index from the given VM.
-/// This assumes the index is valid, i.e. less than vm->vcpu_count. 
+/// This assumes the index is valid, i.e. less than vm->vcpu_count.
 pub unsafe extern "C" fn vm_get_vcpu(vm: *mut Vm, vcpu_index: spci_vcpu_index_t) -> *mut VCpu {
     assert!(vcpu_index < (*vm).vcpu_count);
     &mut (*vm).vcpus[vcpu_index as usize]

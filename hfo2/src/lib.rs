@@ -33,6 +33,7 @@ mod utils;
 #[macro_use]
 mod dlog;
 mod api;
+mod arch;
 mod cpu;
 mod list;
 mod memiter;
@@ -40,9 +41,8 @@ mod mm;
 mod mpool;
 mod page;
 mod panic;
+mod spci;
 mod spinlock;
 mod std;
 mod types;
 mod vm;
-mod spci;
-mod arch;
