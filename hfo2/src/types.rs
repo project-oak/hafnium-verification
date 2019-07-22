@@ -27,6 +27,25 @@ pub type size_t = usize;
 pub type rsize_t = usize;
 pub type uintreg_t = usize;
 
+/// The ID of a VM. These are assigned sequentially.
+pub type spci_vm_id_t = u16;
+pub type spci_memory_handle_t = u32;
+
+/// A count of VMs. This has the same range as the VM IDs but we give it a
+/// different name to make the different semantics clear.
+pub type spci_vm_count_t = spci_vm_id_t;
+
+/// The index of a vCPU within a particular VM.
+pub type spci_vcpu_index_t = u16;
+
+/// A count of vCPUs. This has the same range as the vCPU indices but we give
+/// it a different name to make the different semantics clear.
+pub type spci_vcpu_count_t = spci_vcpu_index_t;
+
+/// Return type of SPCI functions.
+/// TODO: Reuse spci_return_t type on all SPCI functions declarations.
+pub type spci_return_t = i32;
+
 pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 
 pub const HF_NUM_INTIDS: usize = 64;

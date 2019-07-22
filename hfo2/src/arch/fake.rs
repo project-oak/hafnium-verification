@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Jeehoon Kang
+ * Copyright 2019 Sanguk Park.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,35 +14,26 @@
  * limitations under the License.
  */
 
-#![no_std]
-#![feature(const_fn)]
-#![feature(const_panic)]
-#![feature(maybe_uninit_ref)]
-#![feature(ptr_wrapping_offset_from)]
+#![allow(non_camel_case_types)]
 
-#[macro_use]
-extern crate bitflags;
-#[macro_use]
-extern crate static_assertions;
-extern crate arrayvec;
-extern crate reduce;
+use crate::types::*;
 
-mod cpio;
-#[macro_use]
-mod utils;
-#[macro_use]
-mod dlog;
-mod api;
-mod cpu;
-mod list;
-mod memiter;
-mod mm;
-mod mpool;
-mod page;
-mod panic;
-mod spinlock;
-mod std;
-mod types;
-mod vm;
-mod spci;
-mod arch;
+/// The integer type corresponding to the native register size.
+pub type uintreg_t = u64;
+
+/// The ID of a physical or virtual CPU.
+pub type cpu_id_t = u32;
+
+/// Arch-specific information about a VM.
+#[repr(C)]
+pub struct ArchVm {
+    dummy: *mut c_void,
+}
+
+/// Types to represent the register state of a VM.
+#[repr(C)]
+pub struct ArchRegs {
+    r: [uintreg_t; 5],
+    vcpu_id: cpu_id_t,
+    virtual_interrupt: bool,
+}

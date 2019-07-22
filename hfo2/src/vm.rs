@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-use arrayvec::ArrayVec;
 use core::ptr;
 use core::sync::atomic::AtomicBool;
+use core::mem::MaybeUninit;
+use core::mem;
 
 use crate::cpu::*;
 use crate::list::*;
@@ -24,7 +25,14 @@ use crate::mm::*;
 use crate::mpool::*;
 use crate::spinlock::*;
 use crate::types::*;
+use crate::std::*;
+use crate::spci::*;
+use crate::arch::*;
+use crate::cpu::*;
 
+const LOG_BUFFER_SIZE: usize = 256;
+
+#[repr(C)]
 pub enum MailboxState {
     /// There is no message in the mailbox.
     Empty,
@@ -36,139 +44,161 @@ pub enum MailboxState {
     Read,
 }
 
-// TODO(@jeehoonkang)
-struct SpciMessage {}
-
+#[repr(C)]
 pub struct WaitEntry {
     /// The VM that is waiting for a mailbox to become writable.
-    waiting_vm: *const Vm,
+    pub waiting_vm: *const Vm,
 
     /// Links used to add entry to a VM's waiter_list. This is protected by the notifying VM's lock.
-    wait_links: ListEntry,
+    pub wait_links: list_entry,
 
     /// Links used to add entry to a VM's ready_list. This is protected by the waiting VM's lock.
-    ready_links: ListEntry,
+    pub ready_links: list_entry,
 }
 
-impl Default for WaitEntry {
-    fn default() -> Self {
-        Self {
-            waiting_vm: ptr::null(),
-            wait_links: ListEntry::default(),
-            ready_links: ListEntry::default(),
-        }
-    }
-}
-
+#[repr(C)]
 pub struct Mailbox {
-    state: MailboxState,
-    recv: *mut SpciMessage,
-    send: *const SpciMessage,
+    pub state: MailboxState,
+    pub recv: *mut SpciMessage,
+    pub send: *const SpciMessage,
 
     /// List of wait_entry structs representing VMs that want to be notified when the mailbox
     /// becomes writable. Once the mailbox does become writable, the entry is removed from this list
     /// and added to the waiting VM's ready_list.
-    waiter_list: ListEntry,
+    pub waiter_list: list_entry,
 
     /// List of wait_entry structs representing VMs whose mailboxes became writable since the owner
     /// of the mailbox registers for notification.
-    ready_list: ListEntry,
+    pub ready_list: list_entry,
 }
 
-impl Mailbox {
-    pub fn new() -> Self {
-        Self {
-            state: MailboxState::Empty,
-            recv: ptr::null_mut(),
-            send: ptr::null(),
-            waiter_list: ListEntry::new(),
-            ready_list: ListEntry::new(),
-        }
-    }
-}
-
-// TODO(@jeehoonkang)
-pub struct VmState {
+#[repr(C)]
+pub struct Vm {
+    pub id: spci_vm_id_t,
+    /// See api.c for the partial ordering on locks.
+    pub lock: RawSpinLock,
+    pub vcpu_count: spci_vcpu_count_t,
+    pub vcpus: [VCpu; MAX_CPUS],
     pub ptable: PageTable<Stage2>,
     pub mailbox: Mailbox,
+    pub log_buffer: [c_char; LOG_BUFFER_SIZE],
+    pub log_buffer_length: usize,
+
+    /// Wait entries to be used when waiting on other VM mailboxes.
+    pub wait_entries: [WaitEntry; MAX_VMS],
+    pub aborting: AtomicBool,
+    pub arch: ArchVm,
 }
 
-impl VmState {
-    pub fn new(ptable: PageTable<Stage2>, mailbox: Mailbox) -> Self {
-        Self { ptable, mailbox }
-    }
+/// Encapsulates a VM whose lock is held.
+#[repr(C)]
+pub struct VmLocked {
+    pub vm: *mut Vm,
 }
 
-// TODO(@jeehoonkang)
-pub struct Vm {
-    id: u32,
-    pub state: SpinLock<VmState>,
-    vcpus: ArrayVec<[VCpu; MAX_CPUS]>,
-
-    wait_entries: [WaitEntry; MAX_VMS],
-    aborting: AtomicBool,
+/// Container for two vm_locked structures.
+pub struct TwoVmLocked {
+    pub vm1: VmLocked,
+    pub vm2: VmLocked,
 }
 
-impl Vm {
-    pub fn new(id: u32, vcpu_count: u32, mpool: &MPool) -> Option<Self> {
-        let ptable = PageTable::new(mpool)?;
+static mut vms: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
+static mut vm_count: spci_vm_count_t = 0;
 
-        Some(Self {
-            id,
-            state: SpinLock::new(VmState::new(ptable, Mailbox::new())),
-            vcpus: ArrayVec::new(), // vm->vcpu_count = vcpu_count;
-            wait_entries: unimplemented!(),
-            aborting: AtomicBool::new(false),
-        })
+pub unsafe extern "C" fn vm_init(
+    vcpu_count: spci_vcpu_count_t,
+    ppool: *mut MPool,
+    new_vm: *mut *mut Vm,
+) -> bool {
+    let i: i32;
+    let vm: *mut Vm;
+
+    if vm_count as usize >= MAX_VMS {
+        return false;
     }
 
-    // /* Initialise waiter entries. */
-    // for (i = 0; i < MAX_VMS; i++) {
-    // 	vm->wait_entries[i].waiting_vm = vm;
-    // 	list_init(&vm->wait_entries[i].wait_links);
-    // 	list_init(&vm->wait_entries[i].ready_links);
-    // }
+    vm = &mut vms.get_mut()[vm_count as usize];
 
-    // /* Do basic initialization of vcpus. */
-    // for (i = 0; i < vcpu_count; i++) {
-    // 	vcpu_init(vm_get_vcpu(vm, i), vm);
-    // }
+    memset_s(vm as usize as _, mem::size_of::<Vm>(), 0, mem::size_of::<Vm>());
 
-    // ++vm_count;
-    // *new_vm = vm;
+    list_init(&mut (*vm).mailbox.waiter_list);
+    list_init(&mut (*vm).mailbox.ready_list);
+    sl_init(&mut (*vm).lock);
 
-    pub unsafe fn get_index(&self, vcpu: &VCpu) -> usize {
-        (vcpu as *const VCpu).wrapping_offset_from(&self.vcpus[0] as *const _) as usize
+    (*vm).id = vm_count;
+    (*vm).vcpu_count = vcpu_count;
+    (*vm).mailbox.state = MailboxState::Empty;
+    (*vm).aborting = AtomicBool::new(false);
+
+    if !mm_vm_init(&mut (*vm).ptable, ppool) {
+        return false;
     }
+
+    // Initialise waiter entries.
+    for i in 0..MAX_VMS {
+        (*vm).wait_entries[i].waiting_vm = vm;
+        list_init(&mut (*vm).wait_entries[i].wait_links);
+        list_init(&mut (*vm).wait_entries[i].ready_links);
+    }
+
+    // Do basic initialization of vcpus.
+    for i in 0..vcpu_count {
+        vcpu_init(vm_get_vcpu(vm, i), vm);
+    }
+
+    vm_count += 1;
+    *new_vm = vm;
+
+    true
 }
 
-pub struct VmManager {
-    vms: ArrayVec<[Vm; MAX_VMS]>,
+pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
+    vm_count
 }
 
-impl VmManager {
-    pub fn insert(&mut self, vm: Vm) -> Result<(), Vm> {
-        self.vms.try_push(vm).map_err(|e| e.element())
+pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
+    // Ensure the VM is initialized.
+    if id >= vm_count {
+        return ptr::null_mut();
     }
 
-    pub unsafe fn get_index(&self, vm: &Vm) -> usize {
-        (vm as *const Vm).wrapping_offset_from(&self.vms[0] as *const _) as usize
-    }
+    &mut vms.get_mut()[id as usize]
 }
 
-// TODO(@jeehoonkang)
-pub struct ArchRegs {}
+/// Locks the given VM and updates `locked` to hold the newly locked vm.
+pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
+    let locked = VmLocked {
+        vm
+    };
 
-impl ArchRegs {
-    pub const fn new() -> Self {
-        unimplemented!()
-    }
+    sl_lock(&(*vm).lock);
 
-    pub fn set_pc_arg(&mut self, entry: usize, arg: uintreg_t) {
-        unimplemented!()
-    }
+    locked
+}
 
-    pub fn reset(&mut self, is_primary: bool, vm_id: u64, vcpu_id: u64, table: usize) {
-        unimplemented!()
-    }
+/// Locks two VMs ensuring that the locking order is according to the locks'
+/// addresses.
+pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked {
+    let dual_lock = TwoVmLocked {
+        vm1: VmLocked { vm: vm1 },
+        vm2: VmLocked { vm: vm2 },
+    };
+
+    sl_lock_both(&(*vm1).lock, &(*vm2).lock);
+
+    dual_lock
+}
+
+/// Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
+/// the fact that the VM is no longer locked.
+pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
+    sl_unlock(&(*(*locked).vm).lock);
+    (*locked).vm = ptr::null_mut();
+}
+
+/// Get the vCPU with the given index from the given VM.
+/// This assumes the index is valid, i.e. less than vm->vcpu_count. 
+pub unsafe extern "C" fn vm_get_vcpu(vm: *mut Vm, vcpu_index: spci_vcpu_index_t) -> *mut VCpu {
+    assert!(vcpu_index < (*vm).vcpu_count);
+    &mut (*vm).vcpus[vcpu_index as usize]
 }

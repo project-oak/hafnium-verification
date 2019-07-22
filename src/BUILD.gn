@@ -140,7 +140,7 @@ executable("unit_tests") {
     "-Wno-c99-extensions",
     "-Wno-nested-anon-types",
   ]
-  libs = ["//hfo2/target/release/libhfo2.a"]
+  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
   deps = [
     ":src_testable",
     "//third_party:gtest_main",
