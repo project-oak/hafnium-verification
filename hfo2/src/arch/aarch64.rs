@@ -67,7 +67,7 @@ pub struct ArchRegs {
     fpcr: uintreg_t,
 
     // TODO: gic
-    #[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
+    //#[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
     gic_ich_hcr_el2: uintreg_t,
 
     /// Peripheral registers, handled separately from other system registers.
