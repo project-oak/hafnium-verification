@@ -105,6 +105,7 @@ pub struct TwoVmLocked {
 static mut vms: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
 static mut vm_count: spci_vm_count_t = 0;
 
+#[no_mangle]
 pub unsafe extern "C" fn vm_init(
     vcpu_count: spci_vcpu_count_t,
     ppool: *mut MPool,
@@ -157,10 +158,12 @@ pub unsafe extern "C" fn vm_init(
     true
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
     vm_count
 }
 
+#[no_mangle]
 pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
     // Ensure the VM is initialized.
     if id >= vm_count {
@@ -171,6 +174,7 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
 }
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
+#[no_mangle]
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
     let locked = VmLocked { vm };
 
@@ -181,6 +185,7 @@ pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
 
 /// Locks two VMs ensuring that the locking order is according to the locks'
 /// addresses.
+#[no_mangle]
 pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked {
     let dual_lock = TwoVmLocked {
         vm1: VmLocked { vm: vm1 },
@@ -194,6 +199,7 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
 
 /// Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
 /// the fact that the VM is no longer locked.
+#[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
     sl_unlock(&(*(*locked).vm).lock);
     (*locked).vm = ptr::null_mut();
@@ -201,6 +207,7 @@ pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
 
 /// Get the vCPU with the given index from the given VM.
 /// This assumes the index is valid, i.e. less than vm->vcpu_count.
+#[no_mangle]
 pub unsafe extern "C" fn vm_get_vcpu(vm: *mut Vm, vcpu_index: spci_vcpu_index_t) -> *mut VCpu {
     assert!(vcpu_index < (*vm).vcpu_count);
     &mut (*vm).vcpus[vcpu_index as usize]
