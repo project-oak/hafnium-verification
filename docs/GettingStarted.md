@@ -22,7 +22,7 @@ See details of [how to contribute](../CONTRIBUTING.md).
 Install prerequisites:
 
 ``` shell
-sudo apt install make binutils-aarch64-linux-gnu device-tree-compiler libssl-dev flex bison
+sudo apt install make binutils-aarch64-linux-gnu aarch64-linux-gnu-gcc device-tree-compiler libssl-dev flex bison
 ```
 
 By default, the hypervisor is built with clang for a few target platforms along
