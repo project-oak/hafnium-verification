@@ -51,7 +51,7 @@ pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 pub const HF_NUM_INTIDS: usize = 64;
 
 // TODO(@jeehoonkang)
-pub const MAX_CPUS: usize = 32;
-pub const MAX_VMS: usize = 128;
+pub const MAX_CPUS: usize = 8;
+pub const MAX_VMS: usize = 16;
 
 pub const HF_MAILBOX_SIZE: usize = PAGE_SIZE;

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use core::marker::PhantomData;
+
 use crate::types::*;
 
 /// SPCI common message header.
@@ -42,5 +44,12 @@ pub struct SpciMessage {
     /// to reflect this.
     reserved_2: u32,
 
-    payload: [u8],
+    /// This field is originally a flexible array member in the C version code,
+    /// but Rust has no corresponding representation of it. Declaring this as
+    /// `payload: [u8]` makes any reference (even raw pointer) of SpciMessage
+    /// being fat.
+    /// Thus, don't make a variables with type `SpciMessage`. Usually that'll be
+    /// not compatitable with `struct spci_message`.
+    /// TODO: is here right place to use `Phantomdata`?
+    payload: PhantomData<u8>,
 }
