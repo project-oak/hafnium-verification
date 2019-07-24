@@ -26,7 +26,7 @@ pub type c_int = i32;
 pub type c_char = u8;
 pub type size_t = usize;
 pub type rsize_t = usize;
-pub type uintreg_t = usize;
+pub type uintptr_t = usize;
 
 /// The ID of a VM. These are assigned sequentially.
 pub type spci_vm_id_t = u16;
@@ -58,4 +58,8 @@ pub const HF_NUM_INTIDS: usize = 64;
 pub const MAX_CPUS: usize = 8;
 pub const MAX_VMS: usize = 16;
 
+/// The ID of the primary VM which is responsible for scheduling.
+pub const HF_PRIMARY_VM_ID: spci_vm_id_t = 0;
+
+/// The amount of data that can be sent to a mailbox.
 pub const HF_MAILBOX_SIZE: usize = PAGE_SIZE;

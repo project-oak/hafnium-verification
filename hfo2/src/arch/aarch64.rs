@@ -29,6 +29,12 @@ pub type cpu_id_t = u64;
 /// The integer type corresponding to the native register size.
 pub type uintreg_t = u64;
 
+/// Integer type large enough to hold a physical address.
+pub type uintpaddr_t = uintptr_t;
+
+/// Integer type large enough to hold a virtual address.
+pub type uintvaddr_t = uintptr_t;
+
 /// The struct for storing a floating point register.
 ///
 /// 2 64-bit integers used to avoid need for FP support at this level.

@@ -14,19 +14,48 @@
  * limitations under the License.
  */
 
+use core::mem::{self, MaybeUninit};
 use core::ptr;
 
+use crate::addr::*;
 use crate::arch::*;
 use crate::mm::*;
 use crate::page::*;
 use crate::spinlock::*;
+use crate::std::*;
 use crate::types::*;
 use crate::vm::*;
 
+/// From inc/hf/arch/cpu.h.
 extern "C" {
+    /// Disables interrupts.
     fn arch_irq_enable();
+
+    /// Enables interrupts.
     fn arch_irq_disable();
-    pub fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm);
+
+    /// Reset the register values other than the PC and argument which are set with
+    /// `arch_regs_set_pc_arg()`.
+    fn arch_regs_reset(
+        r: *mut ArchRegs,
+        is_primary: bool,
+        vm_id: spci_vm_id_t,
+        vcpu_id: cpu_id_t,
+        table: paddr_t,
+    );
+
+    /// Updates the given registers so that when a vcpu runs, it starts off at the
+    /// given address (pc) with the given argument.
+    ///
+    /// This function must only be called on an arch_regs that is known not be in use
+    /// by any other physical CPU.
+    fn arch_regs_set_pc_arg(r: *mut ArchRegs, pc: ipaddr_t, arg: uintreg_t);
+
+    /// Updates the register holding the return value of a function.
+    ///
+    /// This function must only be called on an arch_regs that is known not be in use
+    /// by any other physical CPU.
+    fn arch_regs_set_retval(r: *mut ArchRegs, v: uintreg_t);
 }
 
 const STACK_SIZE: usize = PAGE_SIZE;
@@ -96,6 +125,13 @@ pub struct VCpu {
     regs_available: bool,
 }
 
+/// Encapsulates a vCPU whose lock is held.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct VCpuLocked {
+    vcpu: *mut VCpu,
+}
+
 // TODO: Update alignment such that cpus are in different cache lines.
 #[repr(C)]
 pub struct Cpu {
@@ -103,7 +139,7 @@ pub struct Cpu {
     id: cpu_id_t,
 
     /// Pointer to bottom of the stack.
-    stack_bottom: *const c_void,
+    stack_bottom: *mut c_void,
 
     /// Enabling/disabling irqs are counted per-cpu. They are enabled when the count is zero, and
     /// disabled when it's non-zero.
@@ -114,4 +150,174 @@ pub struct Cpu {
 
     /// Determines whether or not the cpu is currently on.
     is_on: bool,
+}
+
+// TODO: alignas(2 * sizeof(uintreg_t))
+// #[repr(align(16))]
+static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::uninit();
+
+/// State of all supported CPUs. The stack of the first one is initialized.
+/// struct cpu cpus[MAX_CPUS] = {
+///     {
+// 	        .is_on = 1,
+///         .stack_bottom = &callstacks[0][STACK_SIZE],
+///     },
+/// };
+static mut cpus: MaybeUninit<[Cpu; MAX_CPUS]> = MaybeUninit::uninit();
+static mut cpu_count: u32 = 1;
+
+#[no_mangle]
+pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
+    // TODO: Assumes that c is zeroed out already.
+    sl_init(&mut (*c).lock);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
+    let mut j: u32;
+    let boot_cpu_id: cpu_id_t = cpus.get_ref()[0].id;
+    let mut found_boot_cpu: bool = false;
+
+    cpu_count = count as u32;
+
+    // Initialize CPUs with the IDs from the configuration passed in. The
+    // CPUs after the boot CPU are initialized in reverse order. The boot
+    // CPU is initialized when it is found or in place of the last CPU if it
+    // is not found.
+    j = cpu_count;
+    for i in 0..cpu_count {
+        let c: *mut Cpu;
+        let id: cpu_id_t = *cpu_ids.offset(i as isize);
+
+        if found_boot_cpu || id != boot_cpu_id {
+            j -= 1;
+            c = &mut cpus.get_mut()[j as usize];
+        } else {
+            found_boot_cpu = true;
+            c = &mut cpus.get_mut()[0];
+        }
+
+        cpu_init(c);
+        (*c).id = id;
+        {
+            let callstacks_i = callstacks.get_mut()[i as usize].as_mut_ptr();
+            (*c).stack_bottom = &mut *callstacks_i.offset(STACK_SIZE as isize) as *mut _ as _;
+
+            // Note: referencing callstacks.get_mut()[i as usize][STACK_SIZE] directly
+            // causes 'index out of bounds' error on compile time.
+        }
+    }
+
+    if !found_boot_cpu {
+        // Boot CPU was initialized but with wrong ID.
+        dlog!("Boot CPU's ID not found in config.");
+        cpus.get_mut()[0].id = boot_cpu_id;
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn cpu_index(c: *mut Cpu) -> usize {
+    c.offset_from(cpus.get_ref().as_ptr()) as usize
+}
+
+/// Turns CPU on and returns the previous state.
+#[no_mangle]
+pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
+    let prev: bool;
+
+    sl_lock(&(*c).lock);
+    prev = (*c).is_on;
+    (*c).is_on = true;
+    sl_unlock(&(*c).lock);
+
+    if !prev {
+        let vm = vm_find(HF_PRIMARY_VM_ID);
+        let vcpu = vm_get_vcpu(vm, cpu_index(c) as u16);
+        let mut vcpu_locked = vcpu_lock(vcpu);
+
+        vcpu_on(vcpu_locked, entry, arg);
+        vcpu_unlock(&mut vcpu_locked);
+    }
+
+    prev
+}
+
+/// Prepares the CPU for turning itself off.
+#[no_mangle]
+pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
+    sl_lock(&(*c).lock);
+    (*c).is_on = true;
+    sl_unlock(&(*c).lock);
+}
+
+/// Searches for a CPU based on its id.
+#[no_mangle]
+pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
+    for i in 0usize..cpu_count as usize {
+        if cpus.get_ref()[i].id == id {
+            return &mut cpus.get_mut()[i];
+        }
+    }
+
+    ptr::null_mut()
+}
+
+/// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuLocked {
+    sl_lock(&(*vcpu).lock);
+
+    VCpuLocked { vcpu }
+}
+
+/// Unlocks a vCPU previously locked with vcpu_lock, and updates `locked` to
+/// reflect the fact that the vCPU is no longer locked.
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuLocked) {
+    sl_unlock(&(*(*locked).vcpu).lock);
+    (*locked).vcpu = ptr::null_mut();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
+    memset_s(vcpu as _, mem::size_of::<VCpu>(), 0, mem::size_of::<VCpu>());
+    sl_lock(&(*vcpu).lock);
+    (*vcpu).regs_available = true;
+    (*vcpu).vm = vm;
+    (*vcpu).state = VCpuStatus::Off;
+}
+
+/// Initialise the registers for the given vCPU and set the state to
+/// VCPU_STATE_READY. The caller must hold the vCPU lock while calling this.
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_on(vcpu: VCpuLocked, entry: ipaddr_t, arg: uintreg_t) {
+    arch_regs_set_pc_arg(&mut (*vcpu.vcpu).regs, entry, arg);
+    (*vcpu.vcpu).state = VCpuStatus::Ready;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
+    let vcpus = (*(*vcpu).vm).vcpus.as_ptr();
+    let index = vcpu.offset_from(vcpus);
+    assert!(index < core::u16::MAX as isize);
+    index as u16
+}
+
+/// Check whether the given vcpu_state is an off state, for the purpose of
+/// turning vCPUs on and off. Note that aborted still counts as on in this
+/// context.
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuLocked) -> bool {
+    match (*vcpu.vcpu).state {
+        VCpuStatus::Off => true,
+        _ =>
+        // Aborted still counts as ON for the purposes of PSCI,
+        // because according to the PSCI specification (section
+        // 5.7.1) a core is only considered to be off if it has
+        // been turned off with a CPU_OFF call or hasn't yet
+        // been turned on with a CPU_ON call.
+        {
+            false
+        }
+    }
 }
