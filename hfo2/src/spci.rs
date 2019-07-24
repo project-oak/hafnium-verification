@@ -48,7 +48,7 @@ pub struct SpciMessage {
     /// but Rust has no corresponding representation of it. Declaring this as
     /// `payload: [u8]` makes any reference (even raw pointer) of SpciMessage
     /// being fat.
-    /// Thus, don't make a variables with type `SpciMessage`. Usually that'll be
+    /// Thus, don't make a variable with type `SpciMessage`. Usually that'll be
     /// not compatitable with `struct spci_message`.
     /// TODO: is here right place to use `Phantomdata`?
     payload: PhantomData<[u8]>,
