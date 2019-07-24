@@ -18,7 +18,7 @@
 #![feature(const_fn)]
 #![feature(const_panic)]
 #![feature(maybe_uninit_ref)]
-#![feature(ptr_wrapping_offset_from)]
+#![feature(ptr_offset_from)]
 
 #[macro_use]
 extern crate bitflags;
@@ -32,6 +32,7 @@ mod cpio;
 mod utils;
 #[macro_use]
 mod dlog;
+mod addr;
 mod api;
 mod arch;
 mod cpu;

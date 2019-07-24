@@ -25,6 +25,12 @@ pub type uintreg_t = u64;
 /// The ID of a physical or virtual CPU.
 pub type cpu_id_t = u32;
 
+/// Integer type large enough to hold a physical address.
+pub type uintpaddr_t = uintptr_t;
+
+/// Integer type large enough to hold a virtual address.
+pub type uintvaddr_t = uintptr_t;
+
 /// Arch-specific information about a VM.
 #[repr(C)]
 pub struct ArchVm {
