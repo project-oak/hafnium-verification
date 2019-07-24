@@ -51,5 +51,5 @@ pub struct SpciMessage {
     /// Thus, don't make a variables with type `SpciMessage`. Usually that'll be
     /// not compatitable with `struct spci_message`.
     /// TODO: is here right place to use `Phantomdata`?
-    payload: PhantomData<u8>,
+    payload: PhantomData<[u8]>,
 }

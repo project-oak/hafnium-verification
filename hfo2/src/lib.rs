@@ -35,6 +35,7 @@ mod dlog;
 mod api;
 mod arch;
 mod cpu;
+mod dclist;
 mod list;
 mod memiter;
 mod mm;
