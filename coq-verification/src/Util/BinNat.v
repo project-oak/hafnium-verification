@@ -58,4 +58,30 @@ Module N.
 
   Lemma log2_add_shiftl_1 a b : b <= N.log2 (a + (N.shiftl 1 b)).
   Admitted. (* TODO *)
+
+  Definition is_power_of_two (n : N) : Prop := n = N.pow 2 (N.log2 n).
+
+  Lemma power_two_pos (n : N) :
+    is_power_of_two n ->
+    (0 < n)%N.
+  Proof.
+    cbv [is_power_of_two]; intro H; rewrite H.
+    apply N.lt_le_trans with (m:=2 ^ 0);
+      [ rewrite N.pow_0_r; solver | ].
+    apply N.pow_le_mono_r;
+      auto using N.log2_nonneg; solver.
+  Qed.
+
+  Lemma shiftl_power_two n :
+    is_power_of_two (N.shiftl 1 n).
+  Proof.
+    cbv [is_power_of_two].
+    rewrite N.shiftl_1_l, N.log2_pow2 by solver.
+    reflexivity.
+  Qed.
+
+  Lemma and_not a b :
+    is_power_of_two b ->
+    (N.land a (N.lnot (b - 1) (N.size a)) = a - a mod b)%N.
+  Admitted.
 End N.
