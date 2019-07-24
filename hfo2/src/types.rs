@@ -50,7 +50,10 @@ pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 
 pub const HF_NUM_INTIDS: usize = 64;
 
-// TODO(@jeehoonkang)
+// These constants are originally from build scripts. Fortunately most
+// testing environments have same conditions (MAX_CPUS=8, MAX_VMS=16.) And
+// only one environment (host_fake) doesn't but it's for the unit test, so
+// works fine under this settting (See //project/reference/BUILD.gn.)
 pub const MAX_CPUS: usize = 8;
 pub const MAX_VMS: usize = 16;
 

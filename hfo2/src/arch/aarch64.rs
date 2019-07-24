@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// TODO: Refactor type names and remove this.
 #![allow(non_camel_case_types)]
 
 use core::mem;
@@ -66,7 +67,7 @@ pub struct ArchRegs {
     fpsr: uintreg_t,
     fpcr: uintreg_t,
 
-    // TODO: gic
+    // TODO: 'hikey' environment has GIC version 2.
     //#[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
     gic_ich_hcr_el2: uintreg_t,
 

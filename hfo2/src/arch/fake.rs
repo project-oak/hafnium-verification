@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+// TODO: Refactor type names and remove this.
 #![allow(non_camel_case_types)]
 
 use crate::types::*;
