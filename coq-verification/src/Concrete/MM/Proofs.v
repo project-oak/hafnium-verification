@@ -79,6 +79,16 @@ Section Proofs.
   Lemma root_pos level : is_root level -> 0 < level.
   Proof. cbv [is_root]; simplify. Qed.
 
+  (*** Proofs about [mm_entry_size] ***)
+
+  Lemma mm_entry_size_power_two level :
+    N.is_power_of_two (N.of_nat (mm_entry_size level)).
+  Proof.
+    cbv [mm_entry_size].
+    rewrite Nnat.N2Nat.id.
+    apply N.shiftl_power_two.
+  Qed.
+
   (*** Proofs about [mm_start_of_next_block] ***)
 
   Lemma mm_start_of_next_block_is_start a block_size :
@@ -120,8 +130,18 @@ Section Proofs.
   Admitted.
 
   Lemma mm_start_of_next_block_lt a block_size :
+    N.is_power_of_two (N.of_nat block_size) ->
     (a < mm_start_of_next_block a block_size)%N.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [mm_start_of_next_block]; intros.
+    rewrite N.and_not by auto.
+    match goal with
+    | |- context [(?x mod ?y)%N] =>
+      pose proof
+           (N.mod_bound_pos x y ltac:(lia) ltac:(auto using N.power_two_pos))
+    end.
+    lia.
+  Qed.
 
   Lemma mm_start_of_next_block_level_end a level :
     (mm_start_of_next_block a (mm_entry_size level) <= mm_level_end a level)%N.
@@ -484,7 +504,8 @@ Section Proofs.
           |- (_ <= mm_start_of_next_block ?x _)%N => transitivity x; [solver|]
         end.
         apply N.lt_le_incl.
-        apply mm_start_of_next_block_lt. }
+        apply mm_start_of_next_block_lt;
+          auto using mm_entry_size_power_two. }
       { (* pointers_ok s ppool *)
         apply mm_map_level_pointers_ok.
         auto. }
@@ -568,7 +589,8 @@ Section Proofs.
                | _ => apply N.to_nat_ltb
                | |- N.to_nat _ < N.to_nat _ => apply N.to_nat_lt_iff
                | _ => rewrite Nnat.N2Nat.inj_sub; solver
-               | _ => solve [auto using mm_start_of_next_block_lt]
+               | _ => solve [auto using mm_start_of_next_block_lt,
+                             mm_entry_size_power_two]
                end; [ ].
 
       (* prove that the abstract state we have from the invariant is equivalent
