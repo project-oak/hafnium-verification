@@ -22,7 +22,7 @@ use core::sync::atomic::AtomicBool;
 use crate::arch::*;
 use crate::cpu::*;
 use crate::cpu::*;
-use crate::list::*;
+use crate::dclist::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::spci::*;

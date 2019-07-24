@@ -18,48 +18,6 @@ use core::cell::Cell;
 use core::marker::PhantomData;
 use core::ptr;
 
-#[repr(C)]
-pub struct list_entry {
-    next: *mut list_entry,
-    prev: *mut list_entry,
-}
-
-#[inline]
-pub unsafe extern "C" fn list_init(e: *mut list_entry) {
-    (*e).next = e;
-    (*e).prev = e;
-}
-
-#[inline]
-pub unsafe extern "C" fn list_append(l: *mut list_entry, e: *mut list_entry) {
-    (*e).next = l;
-    (*e).prev = (*l).prev;
-
-    (*(*e).next).prev = e;
-    (*(*e).prev).next = e;
-}
-
-#[inline]
-pub unsafe extern "C" fn list_prepend(l: *mut list_entry, e: *mut list_entry) {
-    (*e).next = (*l).next;
-    (*e).prev = l;
-
-    (*(*e).next).prev = e;
-    (*(*e).prev).next = e;
-}
-
-#[inline]
-pub unsafe extern "C" fn list_empty(l: *mut list_entry) -> bool {
-    (*l).next == l
-}
-
-#[inline]
-pub unsafe extern "C" fn list_remove(e: *mut list_entry) {
-    (*(*e).prev).next = (*e).next;
-    (*(*e).next).prev = (*e).prev;
-    list_init(e);
-}
-
 /// An entry in an intrusive linked list.
 #[derive(Debug)]
 pub struct ListEntry {
