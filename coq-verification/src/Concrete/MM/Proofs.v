@@ -29,6 +29,7 @@ Require Import Hafnium.Util.List.
 Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
+Require Import Hafnium.Concrete.Assumptions.ArchMM.
 Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
@@ -41,7 +42,7 @@ Require Import Hafnium.Concrete.MM.Implementation.
 
 Section Proofs.
   Context {ap : @abstract_state_parameters paddr_t nat}
-          {cp : concrete_params}.
+          {cp : concrete_params} {cp_ok : params_valid}.
 
   Local Definition preserves_represents_valid
         (f : concrete_state -> concrete_state) : Prop :=
@@ -71,15 +72,63 @@ Section Proofs.
   Definition is_start_of_block (a : uintvaddr_t) (block_size : size_t) : Prop :=
     (a & (block_size - 1))%N = 0.
 
-  Definition is_root (level : nat) : Prop :=
-    exists flags, level = mm_max_level flags + 1.
+  Definition is_root (level : nat) (flags : int) : Prop :=
+    level = mm_max_level flags + 1.
+
+  Definition ptable_is_root (t : mm_ptable) (flags : int) : Prop :=
+    if ((flags & MM_FLAG_STAGE1) != 0)%N
+    then t = hafnium_ptable
+    else In t (map vm_ptable vms).
 
   (*** Generally useful lemmas ***)
 
-  Lemma root_pos level : is_root level -> 0 < level.
+  Lemma root_pos level flags : is_root level flags -> 0 < level.
   Proof. cbv [is_root]; simplify. Qed.
 
+  Lemma ptable_is_root_In (t : mm_ptable) (flags : int) :
+    ptable_is_root t flags ->
+    In t all_root_ptables.
+  Proof.
+    cbv [all_root_ptables ptable_is_root]; intros.
+    break_match; subst; auto using in_eq, in_cons.
+  Qed.
+
+  (*** Proofs about [mm_page_table_from_pa] ***)
+
+  Lemma mm_page_table_from_pa_length t flags :
+    ptable_is_root t flags ->
+    length (mm_page_table_from_pa t.(root)) = mm_root_table_count flags.
+  Proof.
+    cbv [mm_root_table_count ptable_is_root mm_page_table_from_pa]; intros.
+    break_match; simplify;
+      eauto using correct_number_of_root_tables_stage1,
+      correct_number_of_root_tables_stage2.
+  Qed.
+
+  (*** Proofs about [mm_root_table_count] ***)
+
+  Lemma mm_root_table_count_upper_bound flags :
+    mm_root_table_count flags < 2 ^ PAGE_LEVEL_BITS.
+  Proof.
+    cbv [mm_root_table_count]; break_match;
+      auto using stage1_root_table_count_ok, stage2_root_table_count_ok.
+  Qed.
+
   (*** Proofs about [mm_entry_size] ***)
+
+  Lemma mm_entry_size_eq level :
+    mm_entry_size level = 2 ^ (PAGE_BITS + level * PAGE_LEVEL_BITS).
+  Proof.
+    cbv [mm_entry_size].
+    rewrite N.shiftl_1_l.
+    (* TODO : clean this up with a push_Nat2N tactic *)
+    apply Nnat.Nat2N.inj_iff.
+    rewrite Nnat.N2Nat.id.
+    rewrite Nat2N.inj_pow.
+    rewrite Nnat.Nat2N.inj_add.
+    rewrite Nnat.Nat2N.inj_mul.
+    reflexivity.
+  Qed.
 
   Lemma mm_entry_size_power_two level :
     N.is_power_of_two (N.of_nat (mm_entry_size level)).
@@ -123,8 +172,11 @@ Section Proofs.
   Proof.
     cbv [mm_index].
     rewrite mm_start_of_next_block_shift.
+    rewrite <-Nnat.N2Nat.inj_succ; apply Nnat.N2Nat.inj_iff.
     remember ((1 << PAGE_LEVEL_BITS) - 1)%N as mask.
     remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N as B.
+    (* hard part is proving a >> B is not = mask *)
+
     (* TODO: won't be *hard*, but will be annoying. Will likely require a
        precondition in terms of mm_level_end. *)
   Admitted.
@@ -161,14 +213,35 @@ Section Proofs.
     mm_index b level < mm_index a level.
   Admitted. (* TODO *)
 
+  Lemma mm_index_capped level (a : ptable_addr_t) i :
+    i < 2 ^ PAGE_LEVEL_BITS ->
+    N.to_nat a < i * mm_entry_size level ->
+    mm_index a level < i.
+  Proof.
+    cbv [mm_index mm_entry_size]; intros.
+    rewrite !N.shiftl_1_l in *.
+    assert (N.to_nat (a >> PAGE_BITS + level * PAGE_LEVEL_BITS)%N < i).
+    { rewrite <-(Nnat.Nat2N.id i).
+      apply N.to_nat_lt_iff.
+      rewrite N.shiftr_div_pow2.
+      apply N.div_lt_upper_bound;
+        try apply N.pow_nonzero; lia. }
+    { rewrite N.land_ones' by auto using N.power_two_trivial.
+      rewrite N.log2_pow2 by lia.
+      replace (2 ^ PAGE_LEVEL_BITS)%N with (N.of_nat (2 ^ PAGE_LEVEL_BITS))
+        by (rewrite Nat2N.inj_pow; reflexivity).
+      rewrite N.mod_small by solver.
+      solver. }
+  Qed.
+
   (*** Proofs about [mm_level_end] ***)
 
   Lemma mm_level_end_le a level : (a <= mm_level_end a level)%N.
   Admitted. (* TODO *)
 
   (* At the root level, every address has the same level_end *)
-  Lemma mm_level_end_root_eq root_level :
-    is_root root_level ->
+  Lemma mm_level_end_root_eq root_level flags :
+    is_root root_level flags ->
     forall a b, mm_level_end a root_level = mm_level_end b root_level.
   Admitted. (* TODO *)
 
@@ -309,9 +382,10 @@ Section Proofs.
 
   (* table pointers that come before the index of [begin] don't contain any
      addresses in the range [begin...end_) *)
-  Lemma root_mm_index_out_of_range_low conc begin end_ root_level root_ptable:
-    In root_ptable all_root_ptables ->
-    is_root root_level ->
+  Lemma root_mm_index_out_of_range_low
+        conc begin end_ root_level root_ptable flags :
+    ptable_is_root root_ptable flags ->
+    is_root root_level flags ->
     forall i,
       i <= mm_index begin root_level ->
       Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
@@ -320,9 +394,10 @@ Section Proofs.
 
   (* table pointers that come after the index of [end_ - 1] don't contain any
      addresses in the range [begin...end_) *)
-  Lemma root_mm_index_out_of_range_high conc begin end_ root_level root_ptable:
-    In root_ptable all_root_ptables ->
-    is_root root_level ->
+  Lemma root_mm_index_out_of_range_high
+        conc begin end_ root_level root_ptable flags:
+    ptable_is_root root_ptable flags ->
+    is_root root_level flags ->
     forall i,
       mm_index (end_ - 1) root_level < i ->
       Forall (fun ptr => no_addresses_in_range (ptable_deref conc) ptr begin end_)
@@ -419,10 +494,10 @@ Section Proofs.
     ((flags & MM_FLAG_COMMIT) != 0)%N = true ->
     (* before calling mm_map_root, we have rounded end_ up to the nearest page,
        and we have capped it to not go beyond the end of the table *)
-    end_index < length (mm_page_table_from_pa t.(root)) ->
+    (N.to_nat end_ <= mm_root_table_count flags * mm_entry_size root_level) ->
     (* we need to know we're actually at the root level *)
-    is_root root_level ->
-    In t all_root_ptables ->
+    is_root root_level flags ->
+    ptable_is_root t flags ->
     (* nothing weird and circular going on with pointers *)
     pointers_ok conc ppool ->
     forall abst,
@@ -485,13 +560,18 @@ Section Proofs.
 
       (* find the current [begin] and assert that its index is in between the
            start and end addresses' indices *)
-      pose proof (mm_level_end_root_eq root_level ltac:(assumption) begin end_).
+      pose proof (mm_level_end_root_eq root_level flags ltac:(assumption) begin end_).
       match goal with
       | H : is_begin_or_block_start _ ?x _ |- _ =>
         assert (mm_index begin root_level <= mm_index x root_level <= mm_index end_ root_level)
           by (split; (apply mm_index_le_mono; [ solver | ]);
-              erewrite mm_level_end_root_eq by auto;
-              apply mm_level_end_le)
+              erewrite mm_level_end_root_eq by eauto;
+              apply mm_level_end_le);
+
+          (* also prove that the index doesn't go past the end of the table *)
+          assert (mm_index x root_level < length (mm_page_table_from_pa t.(root)))
+          by (erewrite mm_page_table_from_pa_length by eauto;
+              apply mm_index_capped; [|solver]; apply mm_root_table_count_upper_bound)
       end.
 
       (* split into the invariant clauses *)

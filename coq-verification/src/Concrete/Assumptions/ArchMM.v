@@ -15,6 +15,7 @@
  *)
 
 Require Import Hafnium.Concrete.Datatypes.
+Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 
@@ -70,3 +71,8 @@ Axiom arch_mm_is_block_allowed : level -> bool.
 Axiom arch_mm_block_from_pte : pte_t -> level -> paddr_t.
 
 Axiom arch_mm_combine_table_entry_attrs : attributes -> attributes -> attributes.
+
+
+(* Assumptions about the properties of arch/mm.c *)
+Axiom stage1_root_table_count_ok : arch_mm_stage1_root_table_count < Nat.pow 2 PAGE_LEVEL_BITS.
+Axiom stage2_root_table_count_ok : arch_mm_stage2_root_table_count < Nat.pow 2 PAGE_LEVEL_BITS.
