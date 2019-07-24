@@ -71,6 +71,18 @@ Definition reassign_pointer
     api_page_pool := s.(api_page_pool);
   |}.
 
+Class params_valid {cp : concrete_params} :=
+  {
+    correct_number_of_root_tables_stage1 :
+      length (ptr_from_va (va_from_pa (hafnium_ptable.(root))))
+      = arch_mm_stage1_root_table_count;
+    correct_number_of_root_tables_stage2 :
+      forall t,
+        In t (map vm_ptable vms) ->
+        length (ptr_from_va (va_from_pa t.(root)))
+        = arch_mm_stage2_root_table_count
+  }.
+
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   (* Possible constraints:
         - Block PTEs have the valid bit set

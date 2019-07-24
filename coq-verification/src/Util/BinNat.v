@@ -83,5 +83,44 @@ Module N.
   Lemma and_not a b :
     is_power_of_two b ->
     (N.land a (N.lnot (b - 1) (N.size a)) = a - a mod b)%N.
-  Admitted.
+  Admitted. (* TODO *)
+
+  Lemma power_two_minus_1 n :
+    is_power_of_two n ->
+    (n - 1 = N.ones (N.log2 n))%N.
+  Proof.
+    cbv [is_power_of_two]; intros.
+    rewrite N.ones_equiv. solver.
+  Qed.
+
+  Lemma land_ones' a b :
+    is_power_of_two b ->
+    (N.land a (b - 1) = a mod (2 ^ N.log2 b))%N.
+  Proof.
+    intros. rewrite power_two_minus_1 by auto.
+    apply N.land_ones.
+  Qed.
+
+  Lemma power_two_trivial n :
+    is_power_of_two (2 ^ n).
+  Proof.
+    cbv [is_power_of_two].
+    rewrite N.log2_pow2; solver.
+  Qed.
+
 End N.
+Hint Resolve N.to_nat_lt_iff N.to_nat_le_iff.
+
+Module Nat2N.
+  Lemma inj_pow a b :
+    N.of_nat (a ^ b) = (N.of_nat a ^ N.of_nat b)%N.
+  Proof.
+    induction b.
+    { rewrite Nat.pow_0_r, N.pow_0_r. reflexivity. }
+    { rewrite Nat.pow_succ_r by solver.
+      rewrite Nnat.Nat2N.inj_succ.
+      rewrite N.pow_succ_r by solver.
+      rewrite Nnat.Nat2N.inj_mul.
+      solver. }
+  Qed.
+End Nat2N.

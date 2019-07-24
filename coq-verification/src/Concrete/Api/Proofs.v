@@ -35,6 +35,7 @@ Qed.
 
 Lemma api_clear_memory_represents
       {ap : @abstract_state_parameters paddr_t nat} {cp : concrete_params}
+      {cp_ok : params_valid}
       (abst : abstract_state) (conc : concrete_state)
       begin end_ ppool :
   represents_valid abst conc ->

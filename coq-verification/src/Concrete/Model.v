@@ -78,6 +78,7 @@ Qed.
    a valid abstract state. *)
 Lemma execution_represents
       {ap : @abstract_state_parameters paddr_t nat} {cp : concrete_params}
+      {cp_ok : params_valid}
       (start_state : concrete_state) (trace : list api_call) :
   (exists abst, represents_valid abst start_state) ->
   exists abst, represents_valid abst (execute_trace start_state trace).
@@ -97,7 +98,8 @@ Qed.
      the invariants; that is, if you obey the invariants at the start, no
      sequence of api calls can make you stop obeying them. ***)
 Theorem execution_preserves_invariants
-        {ap : abstract_state_parameters} {cp : concrete_params} :
+        {ap : abstract_state_parameters} {cp : concrete_params}
+        {cp_ok : params_valid} :
   forall (trace : list api_call) (start_state : concrete_state),
     obeys_invariants start_state ->
     obeys_invariants (execute_trace start_state trace).
