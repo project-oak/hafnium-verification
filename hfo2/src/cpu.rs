@@ -99,10 +99,10 @@ pub struct Interrupts {
 
 #[repr(C)]
 pub struct VCpuFaultInfo {
-    ipaddr: usize,
-    vaddr: usize,
-    pc: usize,
-    mode: Mode,
+    ipaddr: ipaddr_t,
+    vaddr: vaddr_t,
+    pc: vaddr_t,
+    mode: c_int,
 }
 
 #[repr(C)]
@@ -320,4 +320,90 @@ pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuLocked) -> bool {
             false
         }
     }
+}
+
+/// Starts a vCPU of a secondary VM.
+///
+/// Returns true if the secondary was reset and started, or false if it was
+/// already on and so nothing was done.
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
+    vcpu: *mut VCpu,
+    entry: ipaddr_t,
+    arg: uintreg_t,
+) -> bool {
+    let mut vcpu_locked;
+    let vm = (*vcpu).vm;
+    let vcpu_was_off;
+
+    assert!((*vm).id != HF_PRIMARY_VM_ID);
+
+    vcpu_locked = vcpu_lock(vcpu);
+    vcpu_was_off = vcpu_is_off(vcpu_locked);
+    if vcpu_was_off {
+        // Set vCPU registers to a clean state ready for boot. As this
+        // is a secondary which can migrate between pCPUs, the ID of the
+        // vCPU is defined as the index and does not match the ID of the
+        // pCPU it is running on.
+        arch_regs_reset(
+            &mut (*vcpu).regs,
+            false,
+            (*vm).id,
+            vcpu_index(vcpu) as u32,
+            pa_init((*vm).ptable.root),
+        );
+        vcpu_on(vcpu_locked, entry, arg);
+    }
+
+    vcpu_unlock(&mut vcpu_locked);
+    vcpu_was_off
+}
+
+/// Handles a page fault. It does so by determining if it's a legitimate or
+/// spurious fault, and recovering from the latter.
+///
+/// Returns true if the caller should resume the current vcpu, or false if its
+/// VM should be aborted.
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_handle_page_fault(
+    current: *const VCpu,
+    f: *mut VCpuFaultInfo,
+) -> bool {
+    let vm = (*current).vm;
+    let mut mode = mem::uninitialized(); // to avoid use-of-uninitialized error
+    let mask = (*f).mode | Mode::INVALID.bits() as i32;
+    let resume;
+
+    sl_lock(&(*vm).lock);
+
+    // Check if this is a legitimate fault, i.e., if the page table doesn't
+    // allow the access attemped by the VM.
+    //
+    // Otherwise, this is a spurious fault, likely because another CPU is
+    // updating the page table. It is responsible for issuing global TLB
+    // invalidations while holding the VM lock, so we don't need to do
+    // anything else to recover from it. (Acquiring/releasing the lock
+    // ensured that the invalidations have completed.)
+    resume = mm_vm_get_mode(
+        &mut (*vm).ptable,
+        (*f).ipaddr,
+        ipa_add((*f).ipaddr, 1),
+        &mut mode,
+    ) && (mode & mask) == (*f).mode;
+
+    sl_unlock(&(*vm).lock);
+
+    if !resume {
+        dlog!(
+            "Stage-2 page fault: pc=0x{}, vmid={}, vcpu={}, vaddr=0x{}, ipaddr=0x{}, mode=0x{}\n",
+            (*f).pc,
+            (*vm).id,
+            vcpu_index(current),
+            (*f).vaddr,
+            (*f).ipaddr,
+            (*f).mode
+        );
+    }
+
+    resume
 }
