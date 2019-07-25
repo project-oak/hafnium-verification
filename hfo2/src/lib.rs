@@ -19,6 +19,7 @@
 #![feature(const_panic)]
 #![feature(maybe_uninit_ref)]
 #![feature(ptr_offset_from)]
+#![feature(const_raw_ptr_to_usize_cast)]
 
 #[macro_use]
 extern crate bitflags;
