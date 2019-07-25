@@ -63,3 +63,6 @@ pub const HF_PRIMARY_VM_ID: spci_vm_id_t = 0;
 
 /// The amount of data that can be sent to a mailbox.
 pub const HF_MAILBOX_SIZE: usize = PAGE_SIZE;
+
+/// Sleep value for an indefinite period of time.
+pub const HF_SLEEP_INDEFINITE: u64 = 0xffffffffffffff;

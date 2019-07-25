@@ -22,3 +22,20 @@ pub use aarch64::*;
 
 #[cfg(target_arch = "x86_64")]
 pub use fake::*;
+
+// from inc/hf/arch/timer.h
+extern "C" {
+    /// Checks whether the virtual timer is enabled and its interrupt not
+    /// maksed, for the currently active vCPU.
+    pub fn arch_timer_enabled_current() -> bool;
+
+    /// Disable the virtual timer for the currently active vCPU.
+    pub fn arch_timer_disable_current();
+
+    pub fn arch_timer_remaining_ticks_current() -> u64;
+
+    /// Returns the number of nanoseconds remaining on the virtual timer of the
+    /// currently active vCPU, or 0 if it has already expired. This is undefined
+    /// if the timer is not enabled.
+    pub fn arch_timer_remaining_ns_current() -> u64;
+}

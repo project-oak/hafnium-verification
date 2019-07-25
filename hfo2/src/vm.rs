@@ -32,6 +32,7 @@ use crate::types::*;
 const LOG_BUFFER_SIZE: usize = 256;
 
 #[repr(C)]
+#[derive(PartialEq)]
 pub enum MailboxState {
     /// There is no message in the mailbox.
     Empty,

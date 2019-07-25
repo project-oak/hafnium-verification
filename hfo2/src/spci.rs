@@ -18,6 +18,9 @@ use core::marker::PhantomData;
 
 use crate::types::*;
 
+// SPCI return codes.
+pub const SPCI_SUCCESS: i32 = 0;
+
 /// SPCI common message header.
 #[repr(C)]
 pub struct SpciMessage {
