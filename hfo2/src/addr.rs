@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use core::fmt;
+
 use crate::arch::*;
 use crate::types::*;
 
@@ -22,20 +24,41 @@ use crate::types::*;
 
 /// An opaque type for a physical address.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct paddr_t {
     pa: uintpaddr_t,
 }
 
 /// An opaque type for an intermediate physical address.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct ipaddr_t {
     ipa: uintpaddr_t,
 }
 
 /// An opaque type for a virtual address.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct vaddr_t {
     va: uintvaddr_t,
+}
+
+impl fmt::Display for paddr_t {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.pa)
+    }
+}
+
+impl fmt::Display for ipaddr_t {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.ipa)
+    }
+}
+
+impl fmt::Display for vaddr_t {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:x}", self.va)
+    }
 }
 
 /// Initializes a physical address.

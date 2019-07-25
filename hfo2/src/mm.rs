@@ -34,6 +34,7 @@ use core::slice;
 use core::sync::atomic::{fence, AtomicBool, Ordering};
 use reduce::Reduce;
 
+use crate::addr::*;
 use crate::mpool::MPool;
 use crate::page::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
@@ -716,7 +717,7 @@ impl RawPageTable {
 
 /// Page table.
 pub struct PageTable<S: Stage> {
-    root: usize,
+    pub root: usize,
     _marker: PhantomData<S>,
 }
 
@@ -1084,12 +1085,12 @@ pub unsafe extern "C" fn mm_vm_defrag(t: *mut PageTable<Stage2>, mpool: *const M
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_get_mode(
     t: *mut PageTable<Stage2>,
-    begin: usize,
-    end: usize,
+    begin: ipaddr_t,
+    end: ipaddr_t,
     mode: *mut c_int,
 ) -> bool {
     let t = &mut *t;
-    t.get_mode(begin, end)
+    t.get_mode(ipa_addr(begin), ipa_addr(end))
         .map(|m| *mode = m.bits as c_int)
         .is_some()
 }
