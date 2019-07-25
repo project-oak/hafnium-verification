@@ -26,8 +26,15 @@
 #[allow(non_camel_case_types)]
 #[repr(C)]
 pub struct list_entry {
-    next: *mut list_entry,
-    prev: *mut list_entry,
+    pub next: *mut list_entry,
+    pub prev: *mut list_entry,
+}
+
+#[macro_export]
+macro_rules! container_of {
+    ($ptr:expr, $type:path, $field:ident) => {
+        ($ptr as *const _ as usize - offset_of!($type, $field)) as *mut _
+    };
 }
 
 #[inline]
@@ -55,8 +62,8 @@ pub unsafe fn list_prepend(l: *mut list_entry, e: *mut list_entry) {
 }
 
 #[inline]
-pub unsafe fn list_empty(l: *mut list_entry) -> bool {
-    (*l).next == l
+pub unsafe fn list_empty(l: *const list_entry) -> bool {
+    (*l).next as *const _ == l
 }
 
 #[inline]

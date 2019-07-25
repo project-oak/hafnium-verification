@@ -55,13 +55,13 @@ extern "C" {
     ///
     /// This function must only be called on an arch_regs that is known not be in use
     /// by any other physical CPU.
-    fn arch_regs_set_retval(r: *mut ArchRegs, v: uintreg_t);
+    pub fn arch_regs_set_retval(r: *mut ArchRegs, v: uintreg_t);
 }
 
 const STACK_SIZE: usize = PAGE_SIZE;
 
 /// The number of bits in each element of the interrupt bitfields.
-const INTERRUPT_REGISTER_BITS: usize = 32;
+pub const INTERRUPT_REGISTER_BITS: usize = 32;
 
 #[repr(C)]
 pub enum VCpuStatus {
@@ -87,14 +87,14 @@ pub enum VCpuStatus {
 #[repr(C)]
 pub struct Interrupts {
     /// Bitfield keeping track of which interrupts are enabled.
-    enabled: [u32; HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS],
+    pub enabled: [u32; HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS],
 
     /// Bitfield keeping track of which interrupts are pending.
-    pending: [u32; HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS],
+    pub pending: [u32; HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS],
 
     /// The number of interrupts which are currently both enabled and pending. i.e. the number of
     /// bits set in enabled & pending.
-    enabled_and_pending_count: u32,
+    pub enabled_and_pending_count: u32,
 }
 
 #[repr(C)]
@@ -107,22 +107,22 @@ pub struct VCpuFaultInfo {
 
 #[repr(C)]
 pub struct VCpu {
-    lock: RawSpinLock,
+    pub lock: RawSpinLock,
 
     /// The state is only changed in the context of the vCPU being run. This ensures the scheduler
     /// can easily keep track of the vCPU state as transitions are indicated by the return code from
     /// the run call.
-    state: VCpuStatus,
+    pub state: VCpuStatus,
 
-    cpu: *mut Cpu,
-    vm: *mut Vm,
-    regs: ArchRegs,
-    interrupts: Interrupts,
+    pub cpu: *mut Cpu,
+    pub vm: *mut Vm,
+    pub regs: ArchRegs,
+    pub interrupts: Interrupts,
 
     /// Determine whether the 'regs' field is available for use. This is set
     /// to false when a vCPU is about to run on a physical CPU, and is set
     /// back to true when it is descheduled.
-    regs_available: bool,
+    pub regs_available: bool,
 }
 
 /// Encapsulates a vCPU whose lock is held.

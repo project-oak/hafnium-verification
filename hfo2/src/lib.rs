@@ -27,17 +27,21 @@ extern crate bitflags;
 extern crate static_assertions;
 extern crate arrayvec;
 extern crate reduce;
+#[macro_use]
+extern crate memoffset;
 
 mod cpio;
 #[macro_use]
 mod utils;
 #[macro_use]
 mod dlog;
+#[macro_use]
+mod list;
+mod abi;
 mod addr;
 mod api;
 mod arch;
 mod cpu;
-mod list;
 mod memiter;
 mod mm;
 mod mpool;
