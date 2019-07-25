@@ -18,8 +18,8 @@ use core::mem;
 use core::ops::DerefMut;
 use core::ptr;
 
-use crate::list::{IsElement, List, ListEntry};
 use crate::page::*;
+use crate::slist::{IsElement, List, ListEntry};
 use crate::spinlock::SpinLock;
 use crate::types::*;
 use crate::utils::*;

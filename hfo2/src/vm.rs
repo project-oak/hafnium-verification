@@ -21,8 +21,7 @@ use core::sync::atomic::AtomicBool;
 
 use crate::arch::*;
 use crate::cpu::*;
-use crate::cpu::*;
-use crate::dclist::*;
+use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::spci::*;
