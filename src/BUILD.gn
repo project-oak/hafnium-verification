@@ -48,7 +48,6 @@ source_set("src_not_testable_yet") {
 source_set("src_testable") {
   sources = [
     "api.c",
-    "cpu.c",
     "panic.c",
     "spci_architected_message.c",
   ]
