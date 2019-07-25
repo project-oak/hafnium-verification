@@ -23,6 +23,8 @@
 #define VCPU_LAZY (VCPU_REGS + 264)
 #define VCPU_FREGS (VCPU_LAZY + 232)
 
+#define STACK_SIZE (1 << 12)
+
 #if GIC_VERSION == 3 || GIC_VERSION == 4
 #define VCPU_GIC (VCPU_FREGS + 528)
 #endif

@@ -175,7 +175,7 @@ static mut cpu_count: u32 = 1;
 #[no_mangle]
 pub static cpus: Cpu = Cpu {
     id: 0,
-    stack_bottom: unsafe { ((&callstacks as *const _ as usize) + STACK_SIZE) as _ },
+    stack_bottom: unsafe { (&callstacks as *const _ as usize) as _ },
     irq_disable_count: 0,
     lock: RawSpinLock::new(),
     is_on: true,
