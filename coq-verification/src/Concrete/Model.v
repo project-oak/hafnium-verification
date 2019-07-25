@@ -34,6 +34,8 @@ Inductive api_call : Type :=
 | share_memory : nat -> ipaddr_t -> size_t -> hf_share -> vm -> api_call
 .
 
+(* Given concrete parameters and a start state, execute api calls and
+   return the final concrete state. *)
 Definition execute_trace
            {cp : concrete_params}
            (start_state : concrete_state)
@@ -71,6 +73,9 @@ Proof.
   eauto using valid_obeys_invariants.
 Qed.
 
+(* Given a start concrete state that represents a vaild abstract state,
+   execution of api calls always returns a concrete state that also represents
+   a valid abstract state. *)
 Lemma execution_represents
       {ap : @abstract_state_parameters paddr_t nat} {cp : concrete_params}
       (start_state : concrete_state) (trace : list api_call) :
