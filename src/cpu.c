@@ -38,6 +38,6 @@ extern char callstacks[MAX_CPUS][STACK_SIZE];
 struct cpu cpus[MAX_CPUS] = {
 	{
 		.is_on = 1,
-		.stack_bottom = &callstacks[0][0],
+		.stack_bottom = &callstacks[0][STACK_SIZE],
 	},
 };
