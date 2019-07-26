@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,26 +14,22 @@
  * limitations under the License.
  */
 
-#pragma once
+#include "hf/dlog.h"
 
-#include <stdarg.h>
-#include <stddef.h>
+#include "hftest.h"
 
-#include "hf/spci.h"
+/**
+ * Test that logs are written to the buffer, and the rest is empty.
+ */
+TEST(dlog, log_buffer)
+{
+	const char test_string[] = "Test string\n";
 
-#define DLOG_BUFFER_SIZE 8192
-
-extern size_t dlog_buffer_offset;
-extern char dlog_buffer[];
-
-#if DEBUG
-void dlog_enable_lock(void);
-void dlog(const char *fmt, ...);
-void vdlog(const char *fmt, va_list args);
-#else
-#define dlog_enable_lock()
-#define dlog(...)
-#define vdlog(fmt, args)
-#endif
-
-void dlog_flush_vm_buffer(spci_vm_id_t id, char buffer[], size_t length);
+	dlog(test_string);
+	ASSERT_EQ(strcmp(test_string, dlog_buffer), 0);
+	/* The \0 at the end shouldn't be counted. */
+	ASSERT_EQ(dlog_buffer_offset, sizeof(test_string) - 1);
+	for (int i = sizeof(test_string) - 1; i < DLOG_BUFFER_SIZE; ++i) {
+		EXPECT_EQ(dlog_buffer[i], '\0');
+	}
+}

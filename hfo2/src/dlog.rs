@@ -35,7 +35,7 @@ impl fmt::Write for Writer {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         for byte in s.bytes() {
             unsafe {
-                plat_console_putchar(byte);
+                dlog_putchar(byte);
             }
         }
         Ok(())
@@ -76,7 +76,19 @@ pub unsafe extern "C" fn dlog_unlock() {
     }
 }
 
+const DLOG_BUFFER_SIZE: usize = 8192;
+
+// These global variables for the log buffer are public because a test needs to access them
+// directly.
+#[no_mangle]
+pub static mut dlog_buffer_offset: usize = 0;
+
+#[no_mangle]
+pub static mut dlog_buffer: [u8; DLOG_BUFFER_SIZE] = [0; DLOG_BUFFER_SIZE];
+
 #[no_mangle]
 pub unsafe extern "C" fn dlog_putchar(c: u8) {
+    dlog_buffer[dlog_buffer_offset] = c;
+	dlog_buffer_offset = (dlog_buffer_offset + 1) % DLOG_BUFFER_SIZE;
     plat_console_putchar(c);
 }
