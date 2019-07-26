@@ -167,8 +167,10 @@ static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::
 ///     },
 /// };
 /// static mut CPUS: MaybeUninit<[Cpu; MAX_CPUS]> = MaybeUninit::uninit();
-static mut cpu_count: u32 = 1;
-
+extern "C" {
+    #[no_mangle]
+    static mut cpu_count: u32;
+}
 /// Kernel loader writes booted CPU ID on `cpus.id` and initializes the CPU
 /// stack by the address in `cpus.stack_bottom`
 /// (See src/arch/aarch64/hypervisor/plat_entry.S and cpu_entry.S.)
