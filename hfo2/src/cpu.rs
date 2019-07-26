@@ -156,6 +156,7 @@ unsafe impl Sync for Cpu {}
 
 // TODO: alignas(2 * sizeof(uintreg_t))
 // #[repr(align(16))]
+#[no_mangle]
 static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::uninit();
 
 /// State of all supported CPUs. The stack of the first one is initialized.
@@ -165,21 +166,26 @@ static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::
 ///         .stack_bottom = &callstacks[0][STACK_SIZE],
 ///     },
 /// };
-static mut CPUS: MaybeUninit<[Cpu; MAX_CPUS]> = MaybeUninit::uninit();
+/// static mut CPUS: MaybeUninit<[Cpu; MAX_CPUS]> = MaybeUninit::uninit();
 static mut cpu_count: u32 = 1;
 
 /// Kernel loader writes booted CPU ID on `cpus.id` and initializes the CPU
 /// stack by the address in `cpus.stack_bottom`
 /// (See src/arch/aarch64/hypervisor/plat_entry.S and cpu_entry.S.)
 /// TODO: Any better design?
+/*
 #[no_mangle]
-pub static cpus: Cpu = Cpu {
+pub static mut cpus: Cpu = Cpu {
     id: 0,
     stack_bottom: unsafe { (&callstacks as *const _ as usize) as _ },
     irq_disable_count: 0,
     lock: RawSpinLock::new(),
     is_on: true,
-};
+};*/
+extern "C" {
+    #[no_mangle]
+    static mut cpus: MaybeUninit<[Cpu; MAX_CPUS]>;
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
@@ -188,9 +194,9 @@ pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
+pub unsafe extern "C" fn cpu_module_init_(cpu_ids: *mut cpu_id_t, count: usize) {
     let mut j: u32;
-    let boot_cpu_id: cpu_id_t = CPUS.get_ref()[0].id;
+    let boot_cpu_id: cpu_id_t = cpus.get_ref()[0].id;
     let mut found_boot_cpu: bool = false;
 
     cpu_count = count as u32;
@@ -206,10 +212,10 @@ pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
 
         if found_boot_cpu || id != boot_cpu_id {
             j -= 1;
-            c = &mut CPUS.get_mut()[j as usize];
+            c = &mut cpus.get_mut()[j as usize];
         } else {
             found_boot_cpu = true;
-            c = &mut CPUS.get_mut()[0];
+            c = &mut cpus.get_mut()[0];
         }
 
         cpu_init(c);
@@ -226,13 +232,13 @@ pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
     if !found_boot_cpu {
         // Boot CPU was initialized but with wrong ID.
         dlog!("Boot CPU's ID not found in config.");
-        CPUS.get_mut()[0].id = boot_cpu_id;
+        cpus.get_mut()[0].id = boot_cpu_id;
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_index(c: *mut Cpu) -> usize {
-    c.offset_from(CPUS.get_ref().as_ptr()) as usize
+    c.offset_from(cpus.get_ref().as_ptr()) as usize
 }
 
 /// Turns CPU on and returns the previous state.
@@ -269,8 +275,8 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
     for i in 0usize..cpu_count as usize {
-        if CPUS.get_ref()[i].id == id {
-            return &mut CPUS.get_mut()[i];
+        if cpus.get_ref()[i].id == id {
+            return &mut cpus.get_mut()[i];
         }
     }
 
