@@ -22,6 +22,9 @@ use crate::types::*;
 // TODO: Refactor type names and remove this.
 #[allow(non_camel_case_types)]
 
+// TODO: Some codes (mm.rs, mpool.rs, page.rs and etc.) treats memory address
+// with primitive types (usually usize.) Refactor them to use `*addr_t` types.
+
 /// An opaque type for a physical address.
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -60,6 +63,8 @@ impl fmt::Display for vaddr_t {
         write!(f, "{:x}", self.va)
     }
 }
+
+// TODO: Move following functions into resepective types, in Rust-idiomatic way.
 
 /// Initializes a physical address.
 #[inline]
