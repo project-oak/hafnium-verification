@@ -152,40 +152,26 @@ pub struct Cpu {
     is_on: bool,
 }
 
-unsafe impl Sync for Cpu {}
+// unsafe impl Sync for Cpu {}
 
-// TODO: alignas(2 * sizeof(uintreg_t))
-// #[repr(align(16))]
+/// The stack to be used by the CPUs.
+/// TODO: alignas(2 * sizeof(uintreg_t))
 #[no_mangle]
 static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::uninit();
 
 /// State of all supported CPUs. The stack of the first one is initialized.
-/// struct cpu cpus[MAX_CPUS] = {
-///     {
-// 	        .is_on = 1,
-///         .stack_bottom = &callstacks[0][STACK_SIZE],
-///     },
-/// };
-/// static mut CPUS: MaybeUninit<[Cpu; MAX_CPUS]> = MaybeUninit::uninit();
-static mut cpu_count: u32 = 1;
-
 /// Kernel loader writes booted CPU ID on `cpus.id` and initializes the CPU
-/// stack by the address in `cpus.stack_bottom`
+/// stack by the address in `cpus.stack_bottom`.
 /// (See src/arch/aarch64/hypervisor/plat_entry.S and cpu_entry.S.)
-/// TODO: Any better design?
-/*
-#[no_mangle]
-pub static mut cpus: Cpu = Cpu {
-    id: 0,
-    stack_bottom: unsafe { (&callstacks as *const _ as usize) as _ },
-    irq_disable_count: 0,
-    lock: RawSpinLock::new(),
-    is_on: true,
-};*/
+///
+/// Initializing static variables with pointers in Rust failed here. We left
+/// the initialization code of `cpus` in `src/cpu.c`.
 extern "C" {
     #[no_mangle]
     static mut cpus: MaybeUninit<[Cpu; MAX_CPUS]>;
 }
+
+static mut cpu_count: u32 = 1;
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
