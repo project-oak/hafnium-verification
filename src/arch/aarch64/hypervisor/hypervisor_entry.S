@@ -33,9 +33,4 @@ image_entry:
 	orr x30, x29, x30
 	str x30, [x0, CPU_ID]
 
-	/* Increase STACK_SIZE */
-	ldr x30, [x0, #CPU_STACK_BOTTOM]
-	add x30, x30, #2048
-	str x30, [x0, #CPU_STACK_BOTTOM]
-
 	b cpu_entry
