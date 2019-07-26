@@ -296,7 +296,7 @@ pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuLocked) {
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
     memset_s(vcpu as _, mem::size_of::<VCpu>(), 0, mem::size_of::<VCpu>());
-    sl_lock(&(*vcpu).lock);
+    sl_init(&mut (*vcpu).lock);
     (*vcpu).regs_available = true;
     (*vcpu).vm = vm;
     (*vcpu).state = VCpuStatus::Off;
