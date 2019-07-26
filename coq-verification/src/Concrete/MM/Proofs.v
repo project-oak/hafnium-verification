@@ -348,7 +348,7 @@ Section Proofs.
 
   Lemma mm_index_le_mono a b level :
     (a <= b)%N ->
-    (b <= mm_level_end a level)%N ->
+    mm_level_end a level = mm_level_end b level ->
     mm_index a level <= mm_index b level.
   Admitted. (* TODO *)
 
@@ -396,12 +396,6 @@ Section Proofs.
   Proof.
     intros; apply N.lt_le_incl; apply mm_level_end_lt.
   Qed.
-
-  (* At the root level, every address has the same level_end *)
-  Lemma mm_level_end_root_eq root_level flags :
-    is_root root_level flags ->
-    forall a b, mm_level_end a root_level = mm_level_end b root_level.
-  Admitted. (* TODO *)
 
   (*** Proofs about [mm_free_page_pte] ***)
 
@@ -649,35 +643,85 @@ Section Proofs.
              end.
   Qed.
 
-  (* TODO *)
-  Lemma mm_index_start_of_next_block_previous a level :
-    mm_index (mm_start_of_next_block a (mm_entry_size level) - 1) level = mm_index a level.
+  (* TODO: move and use in mm_start_of_next_block_shift *)
+  Lemma mm_start_of_next_block_eq a level :
+    mm_start_of_next_block a (mm_entry_size level)
+    = (a + mm_entry_size level - a mod mm_entry_size level)%N.
+  Proof.
+    cbv [mm_start_of_next_block mm_entry_size].
+    repeat progress rewrite ?Nnat.N2Nat.inj_add, ?Nnat.N2Nat.inj_mul, ?Nnat.N2Nat.id.
+    rewrite N.and_not by auto using N.shiftl_power_two.
+    rewrite N_mod_add_cancel_r by (rewrite N.shiftl_eq_0_iff; lia).
+    rewrite N.shiftl_1_l.
+    reflexivity.
+  Qed.
+
+  (* TODO : move *)
+  Lemma mm_index_start_of_next_block_previous a b level :
+    (0 < b <= mm_entry_size level)%N ->
+    mm_index (mm_start_of_next_block a (mm_entry_size level) - b) level = mm_index a level.
+  Proof.
+    (* TODO: clean up this proof! *)
+    cbv [mm_index]; intros.
+    apply Nnat.N2Nat.inj_iff.
+    rewrite !N.land_ones' by auto using N.shiftl_power_two.
+    rewrite N.shiftl_1_l, N.log2_pow2 by lia.
+    rewrite mm_start_of_next_block_eq.
+    cbv [mm_entry_size] in *.
+    rewrite Nnat.N2Nat.id in *.
+    remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N.
+    match goal with
+    | |- context [(?x + ?m - ?x mod ?m - ?z)%N] =>
+      pose proof N.mul_div_le x m;
+        replace (x + m - x mod m - z)%N with (m * (x / m) + m - z)%N by (rewrite N.mod_eq; solver);
+        replace (m * (x / m) + m - z)%N with ((x / m) * m + (m - z))%N by solver (* format for N.div_add_l *)
+    end.
+    rewrite !N.shiftl_1_l in *.
+    rewrite !N.shiftr_div_pow2.
+    rewrite N.div_add_l by (apply N.pow_nonzero; solver).
+    rewrite (N.div_small (_ - _)%N) by solver.
+    f_equal; lia.
+  Qed.
+
+  (* TODO : move *)
+  Lemma mm_level_end_start_of_next_block_previous a b level :
+    (0 < b <= mm_entry_size level)%N ->
+    mm_level_end (mm_start_of_next_block a (mm_entry_size level) - b) level = mm_level_end a level.
   Admitted. (* TODO *)
+
+  (* TODO : move *)
+  Lemma mm_entry_size_pos level : (0 < mm_entry_size level)%N.
+  Proof.
+    rewrite mm_entry_size_eq.
+    apply N.neq_0_lt_0.
+    rewrite Nat2N.inj_pow.
+    apply N.pow_nonzero. solver.
+  Qed.
 
   (* TODO : move *)
   Lemma mm_index_eq a b level :
     (a <= b)%N ->
+    mm_level_end a level = mm_level_end b level ->
     (mm_index a level <= mm_index b level)%N ->
     (b < mm_start_of_next_block a (mm_entry_size level))%N ->
     mm_index b level = mm_index a level.
   Proof.
-    (* reasoning :
-       
-       mm_start_of_next_block a level <= a + mm_entry_size level
+    intros; apply Nat.le_antisymm;
+      [ | solve [auto using mm_index_le_mono] ].
+    pose proof mm_entry_size_pos level.
+    let H := fresh in
+    assert (b <= mm_start_of_next_block a (mm_entry_size level) - 1)%N as H by lia;
+      apply mm_index_le_mono with (level:=level) in H.
+    { rewrite mm_index_start_of_next_block_previous in *; solver. }
+    { rewrite mm_level_end_start_of_next_block_previous; solver. }
+  Qed.
 
-       a <= b -> mm_index a level <= mm_index b level
-
-       now prove:
-           mm_index b level <= mm_index a level
-
-       well:
-           b <= mm_start_of_next_block a level - 1
-           mm_index b level <= mm_index (mm_start_of_next_block a level - 1) level
-           rewrite with mm_idnex_start_of_next_block_previous -
-           mm_index b level <= mm_index a level
-       
-    *)
-  Admitted.
+  (* TODO : move *)
+  Lemma mm_level_end_eq a b c level :
+    mm_level_end a level = mm_level_end c level ->
+    (a <= b <= c)%N ->
+    mm_level_end b level = mm_level_end a level.
+  Admitted. (* TODO *)
 
   (* TODO:
      This proof says only that if success = true and commit = true
@@ -704,6 +748,8 @@ Section Proofs.
     (* we need to know we're actually at the root level *)
     is_root root_level flags ->
     ptable_is_root t flags ->
+    (* and that [begin] and [end_ - 1] are on the same level *)
+    mm_level_end begin root_level = mm_level_end (end_ - 1) root_level ->
     (* nothing weird and circular going on with pointers *)
     pointers_ok conc ppool ->
     forall abst,
@@ -716,9 +762,6 @@ Section Proofs.
                     abst)
                  conc'.
   Proof.
-    (* TODO: Not sure mm_level_end_root_eq is true. *)
-    (* Maybe replace with mm_root_table_count flags * mm_entry_size root_level <= mm_level_end begin root_level *)
-
     (* get rid of the [let]s and [intros] the preconditions *)
     cbv zeta; simplify.
 
@@ -766,20 +809,22 @@ Section Proofs.
       simplify; repeat inversion_bool; [ ].
       right; rewrite !mm_map_level_represents.
 
-      (* find the current [begin] and assert that its index is in between the
-           start and end addresses' indices *)
-      pose proof (mm_level_end_root_eq root_level flags ltac:(assumption) begin end_).
+      (* find the current [begin] and assert its properties *)
       match goal with
       | H : is_begin_or_block_start _ ?x _ |- _ =>
-        assert (mm_index begin root_level <= mm_index x root_level <= mm_index (end_ - 1) root_level)
-          by (split; (apply mm_index_le_mono; [ solver | ]);
-              erewrite mm_level_end_root_eq by eauto;
-              apply mm_level_end_le);
 
-          (* also prove that the index doesn't go past the end of the table *)
+        (* the level end hasn't changed *)
+        assert (mm_level_end x root_level = mm_level_end (end_ - 1) root_level)
+          by (rewrite (mm_level_end_eq begin n (end_ - 1)) by solver; solver);
+
+          (* its index is in between the start and end addresses' indices *)
+          assert (mm_index begin root_level <= mm_index x root_level <= mm_index (end_ - 1) root_level)
+          by (split; apply mm_index_le_mono; solver);
+
+          (* the index doesn't go past the end of the table *)
           assert (mm_index x root_level < length (mm_page_table_from_pa t.(root)))
-          by (erewrite mm_page_table_from_pa_length by eauto;
-              apply mm_index_capped; [|solver]; apply mm_root_table_count_upper_bound)
+            by (erewrite mm_page_table_from_pa_length by eauto;
+                apply mm_index_capped; [|solver]; apply mm_root_table_count_upper_bound)
       end.
 
       (* split into the invariant clauses *)
@@ -790,10 +835,11 @@ Section Proofs.
                          else mm_index end_ root_level *)
         (* TODO: clean up *)
         cbv [table_index_expression] in *; simplify; [ | ].
-        { assert (mm_start_of_next_block n (mm_entry_size root_level) < mm_level_end n root_level)%N
-            by (erewrite mm_level_end_root_eq with (b:=end_) by eauto;
-                pose proof mm_level_end_le end_ root_level; lia).
-          rewrite mm_index_start_of_next_block; solver. }
+        pose proof mm_level_end_lt (end_ - 1) root_level.
+        { rewrite mm_index_start_of_next_block; try solver; [ ].
+          match goal with H : mm_level_end _ ?l = mm_level_end _ ?l |- _ =>
+                          rewrite H end;
+            solver. }
         {
           apply eq_S, eq_sym.
           apply mm_index_eq; solver. } }
