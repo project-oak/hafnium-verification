@@ -32,5 +32,5 @@ image_entry:
 	ubfx x30, x30, 32, 8
 	orr x30, x29, x30
 	str x30, [x0, CPU_ID]
-	
+
 	b cpu_entry
