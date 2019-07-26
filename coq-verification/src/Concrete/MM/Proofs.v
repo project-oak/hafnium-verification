@@ -166,20 +166,165 @@ Section Proofs.
     lia.
   Qed.
 
+  (* TODO: move *)
+  (* some of this is unused but maybe good to have around anyway *)
+  Lemma N_mod_add_cancel_r a b : (b <> 0 -> (a + b) mod b = a mod b)%N.
+  Proof.
+    repeat match goal with
+           | _ => progress basics
+           | _ => rewrite N.mod_same by auto
+           | _ => rewrite N.mod_mod by auto
+           | _ => rewrite N.add_0_r
+           | _ => rewrite (N.add_mod a b) by auto
+           | _ => solver
+           end.
+  Qed.
+  Lemma N_lt_pred_le a b : (a < b -> a <= N.pred b)%N.
+  Proof. basics; solver. Qed.
+  Lemma N_shiftr_le_mono_r a b n :
+    ((a <= b) -> (a >> n) <= (b >> n))%N.
+  Proof.
+    repeat match goal with
+           | _ => progress basics
+           | _ => rewrite N.shiftr_div_pow2
+           | _ => apply N.div_le_mono
+           | _ => apply N.pow_nonzero
+           | _ => solver
+           end.
+  Qed.
+  Lemma N_shiftr_lt_shiftl_mono a b n :
+    ((a < (b << n)) -> (a >> n) < b)%N.
+  Proof.
+    repeat match goal with
+           | _ => progress basics
+           | _ => rewrite N.shiftl_mul_pow2 in *
+           | _ => rewrite N.shiftr_div_pow2
+           | _ => apply N.div_lt_upper_bound
+           | _ => apply N.pow_nonzero
+           | _ => solver
+           end.
+  Qed.
+
+  (* TODO : currently unused -- move to branch or something *)
+  Definition N_high_bits (n i : N) : N := n >> i.
+  Definition N_low_bits (n i : N) : N := n & (1 << i - 1).
+  Definition N_slice (n low high : N) : N := N_high_bits (N_low_bits n high) low.
+  Definition N_concat (n m i : N) : N := n << i + m.
+  Notation "n ++@ i m" :=
+    (N_concat n m i) (left associativity, at level 160, m at next level, only printing, format "n  ++@ i  m") : N_scope.
+  Notation "n [: i ]" := (N_low_bits n i) (at level 150, only printing, format "n [: i ]") : N_scope.
+  Notation "n [ i :]" := (N_high_bits n i) (at level 150, only printing, format "n [ i :]") : N_scope.
+  Notation "n [ i : j ]" := (N_slice n i j) (at level 150, only printing, format "n [ i : j ]") : N_scope.
+  Lemma N_splice (n low high : N) :
+    (low <= high)%N ->
+    n = N_concat
+          (N_concat (N_high_bits n high) (N_slice n low high) high)
+          (N_low_bits n low)
+          low.
+  Proof.
+    intros.
+  Admitted.
+  Lemma N_concat_assoc n m p i j : N_concat (N_concat n m i) p j = N_concat n (N_concat m p j) (i + j).
+  Admitted.
+  Lemma N_high_concat n m i : N_high_bits (N_concat n m i) i = n.
+  Admitted.
+  Lemma N_shiftr_high_bits n i : N.shiftr n i = N_high_bits n i.
+  Proof. reflexivity. Qed.
+
+  Lemma N_shiftr_add_shiftl a b n :
+    ((((a >> n) + b) << n) = a + (b << n) - a mod (2 ^ n))%N.
+  Admitted.
+
+  (* TODO: remove *)
+  Local Open Scope N_scope.
+
+  (* TODO: currently unused, remove if continues to be so *)
+  Lemma start_of_next_block_level_end_eq a level :
+    (mm_start_of_next_block a (mm_entry_size level) < mm_level_end a level)%N ->
+    mm_level_end a level = mm_level_end (mm_start_of_next_block a (mm_entry_size level)) level.
+  Proof.
+    cbv [mm_start_of_next_block mm_entry_size mm_level_end]; intros.
+    repeat progress rewrite ?Nnat.Nat2N.inj_add, ?Nnat.Nat2N.inj_mul, ?Nnat.N2Nat.id in *.
+    replace (N.of_nat 1) with 1%N in * by reflexivity.
+    replace (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)%N
+      with (PAGE_BITS + level * PAGE_LEVEL_BITS + PAGE_LEVEL_BITS)%N in * by lia.
+    remember (PAGE_BITS + level * PAGE_LEVEL_BITS) as S.
+    remember (N.of_nat PAGE_LEVEL_BITS) as L.
+    match goal with
+    | |- context [1 << ?n] =>
+      assert ((1 << n) <> 0) by (rewrite N.shiftl_1_l; apply N.pow_nonzero; lia)
+    end.
+    rewrite N.and_not in * by auto using N.shiftl_power_two.
+    rewrite N_mod_add_cancel_r in * by auto.
+    repeat match goal with
+           | |- (_ << ?y) = (_ << ?y) => f_equal
+           | |- _ + ?x = _ + ?x => f_equal
+           end.
+    apply N_shiftr_lt_shiftl_mono in H.
+    apply N.le_antisymm; try solver; [ ].
+    apply N_shiftr_le_mono_r.
+    match goal with
+    | |- context [(?x mod ?y)%N] =>
+      pose proof (N.mod_upper_bound x y ltac:(auto))
+    end.
+    lia.
+  Qed.
+
+  (* helper lemma for mm_index_start_of_next_block *)
+  Lemma level_bits_small a level :
+    (mm_start_of_next_block a (mm_entry_size level) < mm_level_end a level)%N ->
+    ((a >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) mod 2 ^ PAGE_LEVEL_BITS + 1 < 2 ^ PAGE_LEVEL_BITS)%N. 
+  Proof.
+    (* TODO : clean up this proof! *)
+    cbv [mm_level_end]; intros.
+    repeat progress rewrite ?Nnat.Nat2N.inj_add, ?Nnat.Nat2N.inj_mul in *.
+    change (N.of_nat 1) with 1%N in *.
+    replace (2 ^ PAGE_LEVEL_BITS) with
+        ((1 << (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)) >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) by
+        (rewrite N.shiftr_shiftl_l, N.shiftl_1_l by lia; f_equal; lia).
+    replace (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)%N with
+        (PAGE_BITS + level * PAGE_LEVEL_BITS + PAGE_LEVEL_BITS)%N in * by lia.
+    apply N_shiftr_lt_shiftl_mono in H.
+    rewrite <-!(N.shiftr_shiftr _ _ (N.of_nat PAGE_LEVEL_BITS)) in H.
+    rewrite mm_start_of_next_block_shift in H.
+    rewrite N.shiftr_shiftl_l by lia.
+    match goal with
+      |- context [ 1 << ?n ] => replace n with (N.of_nat PAGE_LEVEL_BITS) by lia
+    end.
+    remember (a >> N.of_nat PAGE_BITS + N.of_nat level * N.of_nat PAGE_LEVEL_BITS) as A.
+    remember (N.of_nat PAGE_LEVEL_BITS) as N.
+    assert ((1 << N) <> 0) by (rewrite N.shiftl_eq_0_iff; lia).
+    pose proof (N.mod_bound_pos (A + 1) (1 << N)).
+    assert (A mod (1 << N) + 1 = (A + 1) mod (1 << N)); [|lia].
+    rewrite !N.mod_eq by solver.
+    rewrite N.shiftl_1_l, <-!N.shiftr_div_pow2.
+    let H := fresh in
+    assert (((A + 1) >> N) = (A >> N)) as H
+        by (apply N.le_antisymm; try solver; apply N_shiftr_le_mono_r; solver);
+      rewrite H in *.
+    rewrite <-N.add_sub_swap by (rewrite N.shiftr_div_pow2;
+                                 apply N.mul_div_le; apply N.pow_nonzero; lia).
+    solver.
+  Qed.
+
   Lemma mm_index_start_of_next_block a level :
+    (mm_start_of_next_block a (mm_entry_size level) < mm_level_end a level)%N ->
     mm_index (mm_start_of_next_block a (mm_entry_size level)) level
     = S (mm_index a level).
   Proof.
+    intros.
     cbv [mm_index].
-    rewrite mm_start_of_next_block_shift.
     rewrite <-Nnat.N2Nat.inj_succ; apply Nnat.N2Nat.inj_iff.
-    remember ((1 << PAGE_LEVEL_BITS) - 1)%N as mask.
-    remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N as B.
-    (* hard part is proving a >> B is not = mask *)
-
-    (* TODO: won't be *hard*, but will be annoying. Will likely require a
-       precondition in terms of mm_level_end. *)
-  Admitted.
+    rewrite N.shiftl_1_l.
+    rewrite !N.land_ones' by auto using N.power_two_trivial.
+    rewrite !N.log2_pow2 by lia.
+    rewrite mm_start_of_next_block_shift.
+    rewrite <-N.add_mod_idemp_l by (apply N.pow_nonzero; lia).
+    rewrite N.mod_small by (apply level_bits_small; auto).
+    lia.
+  Qed.
+  (* TODO : remove *)
+  Close Scope N_scope.
 
   Lemma mm_start_of_next_block_lt a block_size :
     N.is_power_of_two (N.of_nat block_size) ->
@@ -207,12 +352,6 @@ Section Proofs.
     mm_index a level <= mm_index b level.
   Admitted. (* TODO *)
 
-  Lemma mm_index_lt_mono_start (a b : ptable_addr_t) (level : nat) :
-    is_start_of_block a (mm_entry_size level) ->
-    (b < a)%N ->
-    mm_index b level < mm_index a level.
-  Admitted. (* TODO *)
-
   Lemma mm_index_capped level (a : ptable_addr_t) i :
     i < 2 ^ PAGE_LEVEL_BITS ->
     N.to_nat a < i * mm_entry_size level ->
@@ -236,8 +375,27 @@ Section Proofs.
 
   (*** Proofs about [mm_level_end] ***)
 
+  Lemma mm_level_end_lt a level : (a < mm_level_end a level)%N.
+  Proof.
+    cbv [mm_level_end]; intros.
+    Search N.shiftl N.add.
+    rewrite N_shiftr_add_shiftl.
+    rewrite N.shiftl_1_l.
+    match goal with
+    | |- context [(2 ^ ?x)%N] =>
+      pose proof (N.pow_nonzero 2 x)
+    end.
+    match goal with
+    | |- context [(?x mod ?y)%N] =>
+      pose proof (N.mod_bound_pos x y)
+    end.
+    lia.
+  Qed.
+
   Lemma mm_level_end_le a level : (a <= mm_level_end a level)%N.
-  Admitted. (* TODO *)
+  Proof.
+    intros; apply N.lt_le_incl; apply mm_level_end_lt.
+  Qed.
 
   (* At the root level, every address has the same level_end *)
   Lemma mm_level_end_root_eq root_level flags :
@@ -404,22 +562,41 @@ Section Proofs.
              (skipn i (mm_page_table_from_pa root_ptable.(root))).
   Admitted. (* TODO *)
 
+  (* TODO : move *)
+  Definition N_lt_le_dec n m : {(n < m)%N} + {(m <= n)%N}.
+  Proof.
+    destruct (N.eq_dec n m); [ right; lia | ].
+    destruct (N.min_dec n m); [left | right ]; lia.
+  Defined.
 
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition is_begin_or_block_start
              (start_begin begin : ptable_addr_t) root_level : Prop :=
       (begin = start_begin \/ is_start_of_block begin (mm_entry_size root_level)).
 
+  (* dumb wrapper for one of the invariants so it doesn't get split too early *)
+  Definition table_index_expression (begin end_ : ptable_addr_t) root_level : size_t :=
+    if N_lt_le_dec begin end_
+    then
+      (* if we're still looping through, we know that we haven't passed the end of
+         the table, so we're still in sync with [begin]*)
+      mm_index begin root_level
+    else
+      (* if begin >= end, we're finishing the loop, and we can't guarantee that
+         the index of [begin] hasn't overflowed back to 0; instead, we phrase
+         things in terms of the index of the very last address we need to
+         process, [end_ - 1], and say we're one index beyond that. *)
+      S (mm_index (end_ - 1) root_level).
+
   Definition mm_map_root_loop_invariant
              start_abst start_conc t_ptrs start_begin end_ attrs root_level
              (state : concrete_state * ptable_addr_t * size_t * bool * mpool)
     : Prop :=
     let '(s, begin, table_index, failed, ppool) := state in
-    let end_index := mm_index end_ root_level in
     (* Either we failed, or... *)
     (failed = true \/
      (* table_index stays in sync with [begin] *)
-     (table_index = mm_index begin root_level
+     (table_index = table_index_expression begin end_ root_level
       (* ...and [begin] increases monotonically *)
       /\ (start_begin <= begin)%N
       (* ...and we never create circular references *)
@@ -472,6 +649,36 @@ Section Proofs.
              end.
   Qed.
 
+  (* TODO *)
+  Lemma mm_index_start_of_next_block_previous a level :
+    mm_index (mm_start_of_next_block a (mm_entry_size level) - 1) level = mm_index a level.
+  Admitted. (* TODO *)
+
+  (* TODO : move *)
+  Lemma mm_index_eq a b level :
+    (a <= b)%N ->
+    (mm_index a level <= mm_index b level)%N ->
+    (b < mm_start_of_next_block a (mm_entry_size level))%N ->
+    mm_index b level = mm_index a level.
+  Proof.
+    (* reasoning :
+       
+       mm_start_of_next_block a level <= a + mm_entry_size level
+
+       a <= b -> mm_index a level <= mm_index b level
+
+       now prove:
+           mm_index b level <= mm_index a level
+
+       well:
+           b <= mm_start_of_next_block a level - 1
+           mm_index b level <= mm_index (mm_start_of_next_block a level - 1) level
+           rewrite with mm_idnex_start_of_next_block_previous -
+           mm_index b level <= mm_index a level
+       
+    *)
+  Admitted.
+
   (* TODO:
      This proof says only that if success = true and commit = true
      then the abstract state changed. We need two more proofs for full
@@ -489,7 +696,6 @@ Section Proofs.
     let conc' := snd (fst ret) in
     let success := fst (fst ret) in
     let begin_index := mm_index begin root_level in
-    let end_index := mm_index end_ root_level in
     success = true ->
     ((flags & MM_FLAG_COMMIT) != 0)%N = true ->
     (* before calling mm_map_root, we have rounded end_ up to the nearest page,
@@ -510,6 +716,9 @@ Section Proofs.
                     abst)
                  conc'.
   Proof.
+    (* TODO: Not sure mm_level_end_root_eq is true. *)
+    (* Maybe replace with mm_root_table_count flags * mm_entry_size root_level <= mm_level_end begin root_level *)
+
     (* get rid of the [let]s and [intros] the preconditions *)
     cbv zeta; simplify.
 
@@ -531,7 +740,6 @@ Section Proofs.
     (* use [while_loop_invariant] with [mm_map_root_loop_invariant] as the
        invariant *)
     let begin_index := constr:(mm_index begin root_level) in
-    let end_index := constr:(mm_index end_ root_level) in
     let t_ptrs := constr:(mm_page_table_from_pa t.(root)) in
     match goal with
     | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
@@ -563,7 +771,7 @@ Section Proofs.
       pose proof (mm_level_end_root_eq root_level flags ltac:(assumption) begin end_).
       match goal with
       | H : is_begin_or_block_start _ ?x _ |- _ =>
-        assert (mm_index begin root_level <= mm_index x root_level <= mm_index end_ root_level)
+        assert (mm_index begin root_level <= mm_index x root_level <= mm_index (end_ - 1) root_level)
           by (split; (apply mm_index_le_mono; [ solver | ]);
               erewrite mm_level_end_root_eq by eauto;
               apply mm_level_end_le);
@@ -577,8 +785,18 @@ Section Proofs.
       (* split into the invariant clauses *)
       simplify.
 
-      { (* table_index = mm_index begin root_level *)
-        rewrite mm_index_start_of_next_block; reflexivity. }
+      { (* table_index = if (begin < end_)
+                         then mm_index begin root_level
+                         else mm_index end_ root_level *)
+        (* TODO: clean up *)
+        cbv [table_index_expression] in *; simplify; [ | ].
+        { assert (mm_start_of_next_block n (mm_entry_size root_level) < mm_level_end n root_level)%N
+            by (erewrite mm_level_end_root_eq with (b:=end_) by eauto;
+                pose proof mm_level_end_le end_ root_level; lia).
+          rewrite mm_index_start_of_next_block; solver. }
+        {
+          apply eq_S, eq_sym.
+          apply mm_index_eq; solver. } }
       { (* start_begin <= begin *)
         match goal with
           |- (_ <= mm_start_of_next_block ?x _)%N => transitivity x; [solver|]
@@ -593,6 +811,7 @@ Section Proofs.
         cbv [is_begin_or_block_start].
         right. apply mm_start_of_next_block_is_start. }
       { (* index sequences don't change *)
+        cbv [table_index_expression] in *; simplify; [ ].
         apply Forall_forall; intros.
         apply Forall_forall; intros.
         repeat match goal with
@@ -603,6 +822,7 @@ Section Proofs.
         eapply mm_map_level_index_sequences; eauto; [ ].
         apply In_nth_default; solver. }
       { (* represents step *)
+        cbv [table_index_expression] in *; simplify; [ ].
 
         rewrite firstn_snoc with (d:=null_pointer)
           by (autorewrite with push_length; lia).
@@ -629,8 +849,9 @@ Section Proofs.
           auto using mm_map_level_table_attrs_strong. } } }
 
     { (* Subgoal 2 : invariant holds at start *)
-      right. simplify.
-      { cbv [is_begin_or_block_start]; solver. }
+      right.
+      cbv [table_index_expression] in *; simplify; [ | | ].
+      { cbv [is_begin_or_block_start]; simplify. }
       { apply Forall_forall; intros.
         apply Forall_forall; intros.
         reflexivity. }
@@ -679,13 +900,12 @@ Section Proofs.
       | H : represents ?x ?c |- represents ?y ?c =>
         apply (represents_proper_abstr x y c); [|solver]
       end.
-      cbv [is_begin_or_block_start] in *.
+      cbv [table_index_expression is_begin_or_block_start] in *.
       apply abstract_reassign_pointer_high;
         repeat match goal with
                | _ => progress simplify
                | _ => inversion_bool
                | _ => eapply root_mm_index_out_of_range_high
-               | _ => apply mm_index_lt_mono_start; solver
                | _ => solver
                end. }
   Qed.
