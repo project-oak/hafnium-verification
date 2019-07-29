@@ -379,7 +379,29 @@ Section Proofs.
     (a <= b)%N ->
     mm_level_end a level = mm_level_end b level ->
     mm_index a level <= mm_index b level.
-  Admitted. (* TODO *)
+  Proof.
+    rewrite <-mm_level_end_high_eq; intros.
+    rewrite mm_entry_size_step in *.
+    rewrite mm_entry_size_eq in *.
+    repeat progress rewrite ?Nnat.Nat2N.inj_mul, ?Nat2N.inj_pow, ?Nnat.Nat2N.inj_add in *.
+    change (N.of_nat 2) with 2%N in *.
+    pose proof mm_entry_size_pos level.
+    rewrite <-!N.div_div in * by
+        (change 0%N with (N.of_nat 0); rewrite ?Nnat.Nat2N.inj_iff;
+         try apply N.pow_nonzero; solver).
+    cbv [mm_index].
+    apply N.to_nat_le_iff.
+    rewrite !N.shiftr_div_pow2.
+    rewrite N.shiftl_1_l.
+    rewrite !N.land_ones' by auto using N.power_two_trivial.
+    rewrite N.log2_pow2 by lia.
+    rewrite !N.mod_eq by (apply N.pow_nonzero; solver).
+    match goal with
+    | H : (_ / _ = _ / _)%N |- _ => rewrite H
+    end.
+    apply N.sub_le_mono_r.
+    apply N.div_le_mono; try apply N.pow_nonzero; solver.
+  Qed.
 
   Lemma mm_index_capped level (a : ptable_addr_t) i :
     i < 2 ^ PAGE_LEVEL_BITS ->
