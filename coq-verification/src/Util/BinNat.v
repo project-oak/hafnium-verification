@@ -88,6 +88,14 @@ Module N.
     reflexivity.
   Qed.
 
+  Lemma pow2_log2 (n : N) :
+    is_power_of_two n -> 2 ^ N.log2 n = n.
+  Proof.
+    cbv [is_power_of_two]; intro H; rewrite H.
+    rewrite N.log2_pow2 by solver.
+    reflexivity.
+  Qed.
+
   Lemma and_not a b :
     is_power_of_two b ->
     N.land a (N.lnot (b - 1) (N.size a)) = a - a mod b.
