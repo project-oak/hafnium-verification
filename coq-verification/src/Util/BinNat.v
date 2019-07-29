@@ -189,11 +189,11 @@ Module N.
   Lemma mod_sub_small a b c :
     c <> 0 ->
     0 < a ->
-    0 < b < c ->
+    0 < b <= c ->
     (a * c - b) mod c = c - b.
   Proof.
     intros.
-    assert (b < a * c) by nia.
+    assert (b <= a * c) by nia.
     transitivity ((a * c - b + c) mod c);
       [ rewrite N.add_mod, N.mod_same, N.add_0_r, N.mod_mod by solver;
         reflexivity | ].
@@ -206,7 +206,7 @@ Module N.
 
   Lemma div_sub_small a b c :
     c <> 0 ->
-    (0 < b < c) ->
+    (0 < b <= c) ->
     (a * c - b) / c = a - 1.
   Proof.
     intros.
