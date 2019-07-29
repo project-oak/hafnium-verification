@@ -104,15 +104,15 @@ pub struct HfVCpuRunReturn {
 #[derive(PartialEq)]
 pub enum HfShare {
     /// Relinquish ownership and access to the memory and pass them to the
-	/// recipient.
+    /// recipient.
     Give,
-    
+
     /// Retain ownership of the memory but relinquish access to the
-	/// recipient.
+    /// recipient.
     Lend,
 
     /// Retain ownership and access but additionally allow access to the
-	/// recipient.
+    /// recipient.
     Share,
 }
 
