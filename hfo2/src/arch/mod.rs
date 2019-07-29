@@ -25,6 +25,21 @@ pub use fake::*;
 
 // from inc/hf/arch/timer.h
 extern "C" {
+
+    pub fn arch_timer_mask(regs: *mut ArchRegs);
+    /// Checks whether the virtual timer is enabled and its interrupt not
+    /// masked.
+    pub fn arch_timer_enabled(regs: *const ArchRegs) -> bool;
+
+    /// Returns the number of nanoseconds remaining on the virtual timer as
+    /// stored in the given `ArchRegs`, or 0 if it has already expired. This is
+    /// undefined if the timer is not enabled.
+    pub fn arch_timer_remaining_ns(regs: *mut ArchRegs) -> u64;
+
+    /// Returns whether the timer is ready to fire: i.e. it is enabled, not
+    /// masked, and the condition is met.
+    pub fn arch_timer_pending(regs: *const ArchRegs) -> bool;
+
     /// Checks whether the virtual timer is enabled and its interrupt not
     /// maksed, for the currently active vCPU.
     pub fn arch_timer_enabled_current() -> bool;

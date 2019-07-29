@@ -938,6 +938,7 @@ impl<S: Stage> Drop for PageTable<S> {
 /// This structure exists temporarily for C-compatibility. Someday this
 /// will be replaced by `SpinLockGuard`.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct mm_stage1_locked {
     /// A raw pointer to the locked spinlock `HYPERVISOR_PAGE_TABLE`.
     /// The name of this field is `ptable` in the C version code (You can find
@@ -1010,8 +1011,8 @@ pub unsafe extern "C" fn mm_vm_fini(t: *mut PageTable<Stage2>, mpool: *const MPo
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_identity_map(
     t: *mut PageTable<Stage2>,
-    begin: usize,
-    end: usize,
+    begin: paddr_t,
+    end: paddr_t,
     mode: c_int,
     ipa: *mut usize,
     mpool: *const MPool,
@@ -1019,10 +1020,10 @@ pub unsafe extern "C" fn mm_vm_identity_map(
     let t = &mut *t;
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
-    t.identity_map(begin, end, mode, mpool)
+    t.identity_map(pa_addr(begin), pa_addr(end), mode, mpool)
         .map(|_| {
             if !ipa.is_null() {
-                ptr::write(ipa, begin);
+                ptr::write(ipa, pa_addr(begin));
             }
         })
         .is_some()
@@ -1031,15 +1032,15 @@ pub unsafe extern "C" fn mm_vm_identity_map(
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_unmap(
     t: *mut PageTable<Stage2>,
-    begin: usize,
-    end: usize,
+    begin: paddr_t,
+    end: paddr_t,
     mpool: *const MPool,
 ) -> bool {
     let t = &mut *t;
     let mpool = &*mpool;
     t.identity_update(
-        begin,
-        end,
+        pa_addr(begin),
+        pa_addr(end),
         Stage2::mode_to_attrs(Mode::UNOWNED | Mode::INVALID | Mode::SHARED),
         Flags::UNMAP,
         mpool,
@@ -1099,28 +1100,30 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 #[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
     mut stage1_locked: mm_stage1_locked,
-    begin: usize,
-    end: usize,
+    begin: paddr_t,
+    end: paddr_t,
     mode: c_int,
     mpool: *const MPool,
 ) -> *mut usize {
     let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
     stage1_locked
-        .identity_map(begin, end, mode, mpool)
-        .map(|_| begin as *mut _)
+        .identity_map(pa_addr(begin), pa_addr(end), mode, mpool)
+        .map(|_| pa_addr(begin) as *mut _)
         .unwrap_or_else(|| ptr::null_mut())
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_unmap(
     mut stage1_locked: mm_stage1_locked,
-    begin: usize,
-    end: usize,
+    begin: paddr_t,
+    end: paddr_t,
     mpool: *const MPool,
 ) -> bool {
     let mpool = &*mpool;
-    stage1_locked.unmap(begin, end, mpool).is_some()
+    stage1_locked
+        .unmap(pa_addr(begin), pa_addr(end), mpool)
+        .is_some()
 }
 
 #[no_mangle]

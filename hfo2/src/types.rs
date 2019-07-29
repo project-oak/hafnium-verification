@@ -49,7 +49,11 @@ pub type spci_return_t = i32;
 
 pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 
+/// The number of virtual interrupt IDs which are supported.
 pub const HF_NUM_INTIDS: usize = 64;
+
+/// The virtual interrupt ID used for the virtual timer.
+pub const HF_VIRTUAL_TIMER_INTID: u32 = 3;
 
 // These constants are originally from build scripts. Fortunately most
 // testing environments have same conditions (MAX_CPUS=8, MAX_VMS=16.) And

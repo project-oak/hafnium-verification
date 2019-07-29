@@ -64,6 +64,7 @@ const STACK_SIZE: usize = PAGE_SIZE;
 pub const INTERRUPT_REGISTER_BITS: usize = 32;
 
 #[repr(C)]
+#[derive(PartialEq)]
 pub enum VCpuStatus {
     /// The vcpu is switched off.
     Off,

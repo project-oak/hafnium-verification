@@ -92,6 +92,7 @@ pub struct Vm {
 
 /// Encapsulates a VM whose lock is held.
 #[repr(C)]
+#[derive(Copy, Clone)]
 pub struct VmLocked {
     pub vm: *mut Vm,
 }
