@@ -52,6 +52,9 @@ pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 /// The number of virtual interrupt IDs which are supported.
 pub const HF_NUM_INTIDS: usize = 64;
 
+/// Interrupt ID returned when there is no interrupt pending.
+pub const HF_INVALID_INTID: u32 = 0xffffffff;
+
 /// The virtual interrupt ID used for the virtual timer.
 pub const HF_VIRTUAL_TIMER_INTID: u32 = 3;
 

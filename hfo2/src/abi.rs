@@ -100,6 +100,22 @@ pub struct HfVCpuRunReturn {
     pub detail: HfVCpuRunDetail,
 }
 
+#[repr(C)]
+#[derive(PartialEq)]
+pub enum HfShare {
+    /// Relinquish ownership and access to the memory and pass them to the
+	/// recipient.
+    Give,
+    
+    /// Retain ownership of the memory but relinquish access to the
+	/// recipient.
+    Lend,
+
+    /// Retain ownership and access but additionally allow access to the
+	/// recipient.
+    Share,
+}
+
 /// Encode an HfVCpuRunReturn struct in the 64-bit packing ABI.
 #[inline]
 pub unsafe fn hf_vcpu_run_return_encode(res: HfVCpuRunReturn) -> u64 {

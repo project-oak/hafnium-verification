@@ -17,8 +17,13 @@
 use core::marker::PhantomData;
 use core::mem;
 
+use crate::addr::*;
 use crate::types::*;
 use crate::vm::*;
+
+pub const SPCI_VERSION_MAJOR: i32 = 0x0;
+pub const SPCI_VERSION_MINOR: i32 = 0x9;
+pub const SPCI_VERSION_MAJOR_OFFSET: usize = 16;
 
 // SPCI return codes.
 pub const SPCI_SUCCESS: i32 = 0;
@@ -29,6 +34,12 @@ pub const SPCI_BUSY: i32 = -4;
 pub const SPCI_INTERRUPTED: i32 = -5;
 pub const SPCI_DENIED: i32 = -6;
 pub const SPCI_RETRY: i32 = -7;
+
+/// Architected memory sharing message IDs.
+#[repr(C)]
+pub enum SpciMemoryShare {
+    Donate = 0x2,
+}
 
 // SPCI function specific constants.
 pub const SPCI_MSG_RECV_BLOCK_MASK: u32 = 0x1;
@@ -53,6 +64,18 @@ extern "C" {
         from_message_replica: *mut SpciMessage,
         to_msg: *mut SpciMessage,
     ) -> spci_return_t;
+
+    pub fn spci_msg_check_transition(
+        to: *mut Vm,
+        from: *mut Vm,
+        share: SpciMemoryShare,
+        orig_from_mode: *mut c_int,
+        begin: ipaddr_t,
+        end: ipaddr_t,
+        memory_to_attributes: u32,
+        from_mode: *mut c_int,
+        to_mode: *mut c_int,
+    ) -> bool;
 }
 
 /// SPCI common message header.
@@ -104,8 +127,8 @@ pub struct SpciArchitectedMessageHeader {
 
 #[repr(C)]
 pub struct SpciMemoryRegionConstituent {
-    address: u64,
-    page_count: u32,
+    pub address: u64,
+    pub page_count: u32,
     reserved: u32,
 }
 
@@ -113,10 +136,10 @@ pub struct SpciMemoryRegionConstituent {
 pub struct SpciMemoryRegion {
     handle: spci_memory_handle_t,
     count: u32,
-    constituents: PhantomData<[SpciMemoryRegionConstituent]>,
+    pub constituents: PhantomData<[SpciMemoryRegionConstituent]>,
 }
 
-/// Optain a pointer to the architected header in the spci_message.
+/// Obtain a pointer to the architected header in the spci_message.
 ///
 /// Note: the argument "message" has const qualifier. This qualifier
 /// is meant to forbid changes in information enclosed in the

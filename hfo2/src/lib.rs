@@ -15,6 +15,7 @@
  */
 
 #![no_std]
+#![feature(core_intrinsics)]
 #![feature(const_fn)]
 #![feature(const_panic)]
 #![feature(maybe_uninit_ref)]
