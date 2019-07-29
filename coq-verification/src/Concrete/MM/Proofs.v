@@ -189,9 +189,15 @@ Section Proofs.
   Qed.
 
   Lemma mm_start_of_next_block_is_start a block_size :
+    N.is_power_of_two (N.of_nat block_size) ->
     is_start_of_block (mm_start_of_next_block a block_size) block_size.
   Proof.
-  Admitted. (* TODO *)
+    cbv [is_start_of_block]; intros.
+    rewrite mm_start_of_next_block_eq' by auto.
+    rewrite N.land_ones' by auto.
+    rewrite N.pow2_log2 by auto.
+    apply N.mod_mul; auto using N.power_two_nonzero.
+  Qed.
 
   Lemma mm_start_of_next_block_shift a level :
     (mm_start_of_next_block a (mm_entry_size level)
@@ -224,7 +230,7 @@ Section Proofs.
     apply Nnat.N2Nat.inj_iff.
     rewrite !N.land_ones' by auto using N.shiftl_power_two.
     rewrite N.shiftl_1_l, N.log2_pow2 by lia.
-    rewrite mm_start_of_next_block_eq'.
+    rewrite mm_start_of_next_block_eq' by auto using mm_entry_size_power_two.
     cbv [mm_entry_size] in *.
     rewrite Nnat.N2Nat.id in *.
     remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N.
@@ -356,7 +362,7 @@ Section Proofs.
     mm_level_end (mm_start_of_next_block a (mm_entry_size level) - b) level = mm_level_end a level.
   Proof.
     intros; apply mm_level_end_high_eq.
-    rewrite mm_start_of_next_block_eq'.
+    rewrite mm_start_of_next_block_eq' by auto using mm_entry_size_power_two.
     rewrite mm_entry_size_step.
     rewrite Nnat.Nat2N.inj_mul, Nat2N.inj_pow.
     change (N.of_nat 2) with 2%N.
@@ -784,8 +790,9 @@ Section Proofs.
         apply mm_map_level_pointers_ok.
         auto. }
       { (* is_begin_or_block_start start_begin begin  *)
-        cbv [is_begin_or_block_start].
-        right. apply mm_start_of_next_block_is_start. }
+        cbv [is_begin_or_block_start]. right.
+        apply mm_start_of_next_block_is_start;
+          auto using mm_entry_size_power_two. }
       { (* index sequences don't change *)
         cbv [table_index_expression] in *; simplify; [ ].
         apply Forall_forall; intros.
