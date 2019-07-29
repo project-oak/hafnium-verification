@@ -162,37 +162,35 @@ Section Proofs.
 
   (*** Proofs about [mm_start_of_next_block] ***)
 
-  Lemma mm_start_of_next_block_eq a level :
-    mm_start_of_next_block a (mm_entry_size level)
-    = (a + mm_entry_size level - a mod mm_entry_size level)%N.
+  Lemma mm_start_of_next_block_eq a block_size :
+    N.is_power_of_two (N.of_nat block_size) ->
+    mm_start_of_next_block a block_size = (a + block_size - a mod block_size)%N.
   Proof.
-    cbv [mm_start_of_next_block mm_entry_size].
+    cbv [mm_start_of_next_block]; intros.
     repeat progress rewrite ?Nnat.N2Nat.inj_add, ?Nnat.N2Nat.inj_mul, ?Nnat.N2Nat.id.
-    rewrite N.and_not by auto using N.shiftl_power_two.
-    rewrite N.mod_add_cancel_r by (rewrite N.shiftl_eq_0_iff; lia).
-    rewrite N.shiftl_1_l.
+    rewrite N.and_not by auto.
+    rewrite N.mod_add_cancel_r by auto using N.power_two_nonzero.
     reflexivity.
   Qed.
 
-  Lemma mm_start_of_next_block_eq' a level :
-    mm_start_of_next_block a (mm_entry_size level)
-    = ((a / mm_entry_size level + 1) * mm_entry_size level)%N.
+  Lemma mm_start_of_next_block_eq' a block_size :
+    N.is_power_of_two (N.of_nat block_size) ->
+    @eq N (mm_start_of_next_block a block_size) ((a / block_size + 1) * block_size)%N.
   Proof.
-    rewrite mm_start_of_next_block_eq.
-    pose proof mm_entry_size_pos level.
-    pose proof N.mod_bound_pos a (mm_entry_size level).
+    intros. rewrite mm_start_of_next_block_eq by auto.
+    pose proof N.power_two_nonzero _ ltac:(eassumption).
+    pose proof N.mod_bound_pos a block_size.
     match goal with |- context [(?a + ?m - ?a mod ?m)%N] =>
                     replace (a + m - a mod m)%N with (m + (a - a mod m))%N
                       by (rewrite N.mod_eq; solver);
                       rewrite <-(N.mul_div a m) by solver
     end.
-    rewrite N.mul_add_distr_r, N.mul_1_l.
-    rewrite (N.mul_comm (mm_entry_size level)).
-    apply N.add_comm.
+    solver.
   Qed.
 
   Lemma mm_start_of_next_block_is_start a block_size :
     is_start_of_block (mm_start_of_next_block a block_size) block_size.
+  Proof.
   Admitted. (* TODO *)
 
   Lemma mm_start_of_next_block_shift a level :

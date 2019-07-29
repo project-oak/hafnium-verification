@@ -74,6 +74,12 @@ Module N.
       auto using N.log2_nonneg; solver.
   Qed.
 
+  Lemma power_two_nonzero (n : N) :
+    is_power_of_two n -> n <> 0.
+  Proof.
+    intros; pose proof power_two_pos n ltac:(assumption); solver.
+  Qed.
+
   Lemma shiftl_power_two n :
     is_power_of_two (N.shiftl 1 n).
   Proof.
