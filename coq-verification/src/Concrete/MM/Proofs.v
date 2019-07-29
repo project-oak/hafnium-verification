@@ -166,110 +166,6 @@ Section Proofs.
     lia.
   Qed.
 
-  (* TODO: move *)
-  (* some of this is unused but maybe good to have around anyway *)
-  Lemma N_mod_add_cancel_r a b : (b <> 0 -> (a + b) mod b = a mod b)%N.
-  Proof.
-    repeat match goal with
-           | _ => progress basics
-           | _ => rewrite N.mod_same by auto
-           | _ => rewrite N.mod_mod by auto
-           | _ => rewrite N.add_0_r
-           | _ => rewrite (N.add_mod a b) by auto
-           | _ => solver
-           end.
-  Qed.
-  Lemma N_lt_pred_le a b : (a < b -> a <= N.pred b)%N.
-  Proof. basics; solver. Qed.
-  Lemma N_shiftr_le_mono_r a b n :
-    ((a <= b) -> (a >> n) <= (b >> n))%N.
-  Proof.
-    repeat match goal with
-           | _ => progress basics
-           | _ => rewrite N.shiftr_div_pow2
-           | _ => apply N.div_le_mono
-           | _ => apply N.pow_nonzero
-           | _ => solver
-           end.
-  Qed.
-  Lemma N_shiftr_lt_shiftl_mono a b n :
-    ((a < (b << n)) -> (a >> n) < b)%N.
-  Proof.
-    repeat match goal with
-           | _ => progress basics
-           | _ => rewrite N.shiftl_mul_pow2 in *
-           | _ => rewrite N.shiftr_div_pow2
-           | _ => apply N.div_lt_upper_bound
-           | _ => apply N.pow_nonzero
-           | _ => solver
-           end.
-  Qed.
-
-  (* TODO : currently unused -- move to branch or something *)
-  Definition N_high_bits (n i : N) : N := n >> i.
-  Definition N_low_bits (n i : N) : N := n & (1 << i - 1).
-  Definition N_slice (n low high : N) : N := N_high_bits (N_low_bits n high) low.
-  Definition N_concat (n m i : N) : N := n << i + m.
-  Notation "n ++@ i m" :=
-    (N_concat n m i) (left associativity, at level 160, m at next level, only printing, format "n  ++@ i  m") : N_scope.
-  Notation "n [: i ]" := (N_low_bits n i) (at level 150, only printing, format "n [: i ]") : N_scope.
-  Notation "n [ i :]" := (N_high_bits n i) (at level 150, only printing, format "n [ i :]") : N_scope.
-  Notation "n [ i : j ]" := (N_slice n i j) (at level 150, only printing, format "n [ i : j ]") : N_scope.
-  Lemma N_splice (n low high : N) :
-    (low <= high)%N ->
-    n = N_concat
-          (N_concat (N_high_bits n high) (N_slice n low high) high)
-          (N_low_bits n low)
-          low.
-  Proof.
-    intros.
-  Admitted.
-  Lemma N_concat_assoc n m p i j : N_concat (N_concat n m i) p j = N_concat n (N_concat m p j) (i + j).
-  Admitted.
-  Lemma N_high_concat n m i : N_high_bits (N_concat n m i) i = n.
-  Admitted.
-  Lemma N_shiftr_high_bits n i : N.shiftr n i = N_high_bits n i.
-  Proof. reflexivity. Qed.
-
-  Lemma N_shiftr_add_shiftl a b n :
-    ((((a >> n) + b) << n) = a + (b << n) - a mod (2 ^ n))%N.
-  Admitted.
-
-  (* TODO: remove *)
-  Local Open Scope N_scope.
-
-  (* TODO: currently unused, remove if continues to be so *)
-  Lemma start_of_next_block_level_end_eq a level :
-    (mm_start_of_next_block a (mm_entry_size level) < mm_level_end a level)%N ->
-    mm_level_end a level = mm_level_end (mm_start_of_next_block a (mm_entry_size level)) level.
-  Proof.
-    cbv [mm_start_of_next_block mm_entry_size mm_level_end]; intros.
-    repeat progress rewrite ?Nnat.Nat2N.inj_add, ?Nnat.Nat2N.inj_mul, ?Nnat.N2Nat.id in *.
-    replace (N.of_nat 1) with 1%N in * by reflexivity.
-    replace (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)%N
-      with (PAGE_BITS + level * PAGE_LEVEL_BITS + PAGE_LEVEL_BITS)%N in * by lia.
-    remember (PAGE_BITS + level * PAGE_LEVEL_BITS) as S.
-    remember (N.of_nat PAGE_LEVEL_BITS) as L.
-    match goal with
-    | |- context [1 << ?n] =>
-      assert ((1 << n) <> 0) by (rewrite N.shiftl_1_l; apply N.pow_nonzero; lia)
-    end.
-    rewrite N.and_not in * by auto using N.shiftl_power_two.
-    rewrite N_mod_add_cancel_r in * by auto.
-    repeat match goal with
-           | |- (_ << ?y) = (_ << ?y) => f_equal
-           | |- _ + ?x = _ + ?x => f_equal
-           end.
-    apply N_shiftr_lt_shiftl_mono in H.
-    apply N.le_antisymm; try solver; [ ].
-    apply N_shiftr_le_mono_r.
-    match goal with
-    | |- context [(?x mod ?y)%N] =>
-      pose proof (N.mod_upper_bound x y ltac:(auto))
-    end.
-    lia.
-  Qed.
-
   (* helper lemma for mm_index_start_of_next_block *)
   Lemma level_bits_small a level :
     (mm_start_of_next_block a (mm_entry_size level) < mm_level_end a level)%N ->
@@ -279,28 +175,28 @@ Section Proofs.
     cbv [mm_level_end]; intros.
     repeat progress rewrite ?Nnat.Nat2N.inj_add, ?Nnat.Nat2N.inj_mul in *.
     change (N.of_nat 1) with 1%N in *.
-    replace (2 ^ PAGE_LEVEL_BITS) with
-        ((1 << (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)) >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) by
+    replace (2 ^ PAGE_LEVEL_BITS)%N with
+        ((1 << (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)) >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N by
         (rewrite N.shiftr_shiftl_l, N.shiftl_1_l by lia; f_equal; lia).
     replace (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)%N with
         (PAGE_BITS + level * PAGE_LEVEL_BITS + PAGE_LEVEL_BITS)%N in * by lia.
-    apply N_shiftr_lt_shiftl_mono in H.
+    apply N.shiftr_lt_shiftl_mono in H.
     rewrite <-!(N.shiftr_shiftr _ _ (N.of_nat PAGE_LEVEL_BITS)) in H.
     rewrite mm_start_of_next_block_shift in H.
     rewrite N.shiftr_shiftl_l by lia.
     match goal with
-      |- context [ 1 << ?n ] => replace n with (N.of_nat PAGE_LEVEL_BITS) by lia
+      |- context [ (1 << ?n)%N ] => replace n with (N.of_nat PAGE_LEVEL_BITS) by lia
     end.
-    remember (a >> N.of_nat PAGE_BITS + N.of_nat level * N.of_nat PAGE_LEVEL_BITS) as A.
+    remember (a >> N.of_nat PAGE_BITS + N.of_nat level * N.of_nat PAGE_LEVEL_BITS)%N as A.
     remember (N.of_nat PAGE_LEVEL_BITS) as N.
-    assert ((1 << N) <> 0) by (rewrite N.shiftl_eq_0_iff; lia).
-    pose proof (N.mod_bound_pos (A + 1) (1 << N)).
-    assert (A mod (1 << N) + 1 = (A + 1) mod (1 << N)); [|lia].
+    assert ((1 << N) <> 0)%N by (rewrite N.shiftl_eq_0_iff; lia).
+    pose proof (N.mod_bound_pos (A + 1)%N (1 << N)%N).
+    assert (A mod (1 << N) + 1 = (A + 1) mod (1 << N))%N; [|lia].
     rewrite !N.mod_eq by solver.
     rewrite N.shiftl_1_l, <-!N.shiftr_div_pow2.
     let H := fresh in
-    assert (((A + 1) >> N) = (A >> N)) as H
-        by (apply N.le_antisymm; try solver; apply N_shiftr_le_mono_r; solver);
+    assert (((A + 1) >> N) = (A >> N))%N as H
+        by (apply N.le_antisymm; try solver; apply N.shiftr_le_mono_r; solver);
       rewrite H in *.
     rewrite <-N.add_sub_swap by (rewrite N.shiftr_div_pow2;
                                  apply N.mul_div_le; apply N.pow_nonzero; lia).
@@ -323,8 +219,6 @@ Section Proofs.
     rewrite N.mod_small by (apply level_bits_small; auto).
     lia.
   Qed.
-  (* TODO : remove *)
-  Close Scope N_scope.
 
   Lemma mm_start_of_next_block_lt a block_size :
     N.is_power_of_two (N.of_nat block_size) ->
@@ -378,7 +272,7 @@ Section Proofs.
   Lemma mm_level_end_lt a level : (a < mm_level_end a level)%N.
   Proof.
     cbv [mm_level_end]; intros.
-    rewrite N_shiftr_add_shiftl.
+    rewrite N.shiftr_add_shiftl.
     rewrite N.shiftl_1_l.
     match goal with
     | |- context [(2 ^ ?x)%N] =>
@@ -555,13 +449,6 @@ Section Proofs.
              (skipn i (mm_page_table_from_pa root_ptable.(root))).
   Admitted. (* TODO *)
 
-  (* TODO : move *)
-  Definition N_lt_le_dec n m : {(n < m)%N} + {(m <= n)%N}.
-  Proof.
-    destruct (N.eq_dec n m); [ right; lia | ].
-    destruct (N.min_dec n m); [left | right ]; lia.
-  Defined.
-
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition is_begin_or_block_start
              (start_begin begin : ptable_addr_t) root_level : Prop :=
@@ -569,7 +456,7 @@ Section Proofs.
 
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition table_index_expression (begin end_ : ptable_addr_t) root_level : size_t :=
-    if N_lt_le_dec begin end_
+    if N.lt_le_dec begin end_
     then
       (* if we're still looping through, we know that we haven't passed the end of
          the table, so we're still in sync with [begin]*)
@@ -650,7 +537,7 @@ Section Proofs.
     cbv [mm_start_of_next_block mm_entry_size].
     repeat progress rewrite ?Nnat.N2Nat.inj_add, ?Nnat.N2Nat.inj_mul, ?Nnat.N2Nat.id.
     rewrite N.and_not by auto using N.shiftl_power_two.
-    rewrite N_mod_add_cancel_r by (rewrite N.shiftl_eq_0_iff; lia).
+    rewrite N.mod_add_cancel_r by (rewrite N.shiftl_eq_0_iff; lia).
     rewrite N.shiftl_1_l.
     reflexivity.
   Qed.
@@ -684,15 +571,6 @@ Section Proofs.
     f_equal; lia.
   Qed.
 
-  (* TODO: move *)
-  Lemma N_shiftl_inj_iff a b n :
-    (a = b <-> N.shiftl a n = N.shiftl b n).
-  Proof.
-    rewrite !N.shiftl_mul_pow2.
-    rewrite N.mul_cancel_r by (apply N.pow_nonzero; lia).
-    reflexivity.
-  Qed.
-
   (* TODO : move *)
   Lemma mm_level_end_high_eq a b level :
     (a / mm_entry_size (level + 1))%N = (b / mm_entry_size (level + 1))%N <->
@@ -704,7 +582,7 @@ Section Proofs.
                     replace (2 ^ N.of_nat x)%N with (N.of_nat (2 ^ x)) by apply Nat2N.inj_pow
     end.
     rewrite <-mm_entry_size_eq.
-    rewrite <-N_shiftl_inj_iff.
+    rewrite <-N.shiftl_inj_iff.
     split; solver.
   Qed.
 
@@ -727,29 +605,6 @@ Section Proofs.
   Qed.
 
   (* TODO: move *)
-  Lemma N_div_add_l' a b c :
-    b <> 0%N -> ((b * a + c) / b)%N = (a + c / b)%N.
-  Proof. intros. rewrite (N.mul_comm b a). apply N.div_add_l; auto. Qed.
-
-  Lemma N_mul_div a b : b <> 0%N -> (b * (a / b) = a - a mod b)%N.
-  Proof.
-    (* TODO: this proof badly needs some autorewrite dbs *)
-    intros.
-    rewrite (N.div_mod a b) by auto.
-    rewrite N_div_add_l' by auto.
-    rewrite N.mul_add_distr_l.
-    rewrite (N.div_small (_ mod _)) by (apply N.mod_bound_pos; solver).
-    rewrite N.mul_0_r, N.add_0_r by auto.
-    rewrite N.add_mod by auto.
-    rewrite N.mul_mod by auto.
-    rewrite N.mod_same by auto.
-    rewrite N.mod_mod by auto.
-    rewrite N.mul_0_l, N.mod_0_l, N.add_0_l by auto.
-    rewrite N.mod_mod by auto.
-    solver.
-  Qed.
-
-  (* TODO: move *)
   Lemma mm_start_of_next_block_eq' a level :
     mm_start_of_next_block a (mm_entry_size level)
     = ((a / mm_entry_size level + 1) * mm_entry_size level)%N.
@@ -760,7 +615,7 @@ Section Proofs.
     match goal with |- context [(?a + ?m - ?a mod ?m)%N] =>
                     replace (a + m - a mod m)%N with (m + (a - a mod m))%N
                       by (rewrite N.mod_eq; solver);
-                      rewrite <-(N_mul_div a m) by solver
+                      rewrite <-(N.mul_div a m) by solver
     end.
     rewrite N.mul_add_distr_r, N.mul_1_l.
     rewrite (N.mul_comm (mm_entry_size level)).
@@ -776,38 +631,6 @@ Section Proofs.
     apply Nat.pow_add_r.
   Qed.
 
-  Lemma N_mod_sub_small a b c :
-    c <> 0%N ->
-    (0 < a)%N ->
-    (0 < b < c)%N ->
-    ((a * c - b) mod c = c - b)%N.
-  Proof.
-    intros.
-    assert (b < a * c)%N by nia.
-    transitivity ((a * c - b + c) mod c)%N;
-      [ rewrite N.add_mod, N.mod_same, N.add_0_r, N.mod_mod by solver;
-        reflexivity | ].
-    rewrite <-N.add_sub_swap by solver.
-    rewrite <-N.add_sub_assoc by solver.
-    rewrite N.add_mod, N.mod_mul, N.add_0_l, N.mod_mod by solver.
-    rewrite !N.mod_small by solver.
-    reflexivity.
-  Qed.
-
-  Lemma N_div_sub_small a b c :
-    c <> 0%N ->
-    (0 < b < c)%N ->
-    ((a * c - b) / c = a - 1)%N.
-  Proof.
-    intros.
-    destruct (N.eq_dec a 0); [ subst; solver | ].
-    apply N.mul_cancel_l with (p:=c); [solver | ].
-    rewrite N_mul_div by solver.
-    rewrite N_mod_sub_small by solver.
-    rewrite N.mul_sub_distr_l, N.mul_1_r.
-    solver.
-  Qed.
-
   (* TODO : move *)
   Lemma mm_level_end_start_of_next_block_previous a b level :
     (0 < b < mm_entry_size level)%N ->
@@ -820,30 +643,9 @@ Section Proofs.
     change (N.of_nat 2) with 2%N.
     pose proof N.pow_nonzero 2%N PAGE_LEVEL_BITS.
     rewrite <-!N.div_div by solver.
-    rewrite N_div_sub_small by solver.
+    rewrite N.div_sub_small by solver.
     rewrite N.add_sub.
     reflexivity.
-  Qed.
-
-  Lemma N_div_between_eq a b c d :
-    d <> 0%N ->
-    (a <= b <= c)%N ->
-    (a / d = c / d)%N ->
-    (b / d = a / d)%N.
-  Proof.
-    intros.
-    match goal with
-    | H : (?a / ?d = ?c / ?d)%N |- _ =>
-      replace c with (d * (a / d) + (a mod d + (c - a)))%N in H
-        by (rewrite N.add_assoc, <-N.div_mod; lia)
-    end.
-    replace b with (d * (a / d) + (a mod d + (b - a)))%N
-      by (rewrite N.add_assoc, <-N.div_mod; lia).
-    rewrite !N_div_add_l' in * by auto.
-    assert ((a mod d + (c - a)) / d = 0)%N as Hdivsmall by lia.
-    rewrite N.div_small_iff in Hdivsmall by auto.
-    rewrite (N.div_small (_ + _)) by lia.
-    lia.
   Qed.
 
   (* TODO : move *)
@@ -856,7 +658,7 @@ Section Proofs.
     pose proof mm_entry_size_pos (level + 1).
     apply N.mul_cancel_l with (p:=mm_entry_size (level + 1));
       try solver; [ ].
-    rewrite (N_div_between_eq a b c); solver.
+    rewrite (N.div_between_eq a b c); solver.
   Qed.
 
   (* TODO : move *)
