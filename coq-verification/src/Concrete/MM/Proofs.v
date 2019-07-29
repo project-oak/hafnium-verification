@@ -304,10 +304,6 @@ Section Proofs.
     lia.
   Qed.
 
-  Lemma mm_start_of_next_block_level_end a level :
-    (mm_start_of_next_block a (mm_entry_size level) <= mm_level_end a level)%N.
-  Admitted. (* TODO *)
-
   (*** Proofs about [mm_level_end] ***)
 
   Lemma mm_level_end_lt a level : (a < mm_level_end a level)%N.
