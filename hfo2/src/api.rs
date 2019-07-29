@@ -1234,6 +1234,7 @@ pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
 ///
 /// Returns -1 on failure or if there are no waiters; the VM id of the next
 /// waiter otherwise.
+#[no_mangle]
 pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *const VCpu) -> i64 {
     // Only primary VMs are allowed to call this function.
     if (*(*current).vm).id != HF_PRIMARY_VM_ID {

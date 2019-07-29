@@ -57,7 +57,6 @@ pub fn _print(args: fmt::Arguments) {
 
 /// Send the contents of the given VM's log buffer to the log, preceded by the
 /// VM ID and followed by a newline.
-#[no_mangle]
 pub unsafe extern "C" fn dlog_flush_vm_buffer(vm: VmLocked) {
     use core::fmt::Write;
     let mut writer = WRITER.lock();
