@@ -19,6 +19,12 @@ use core::ptr;
 
 use crate::types::*;
 
+/// Check whether the value `v` is aligned to the boundary `a`,
+/// with `a` power of 2.
+pub fn is_aligned(v: usize, a: usize) -> bool {
+    (v & (a - 1)) == 0
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn memset_s(dest: *const c_void, destsz: size_t, ch: c_int, count: size_t) {
     if dest.is_null() || destsz > RSIZE_MAX || count > RSIZE_MAX || count > destsz {
