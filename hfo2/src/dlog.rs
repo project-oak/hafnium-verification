@@ -17,6 +17,7 @@
 use core::fmt;
 
 use crate::spinlock::*;
+use crate::vm::*;
 
 extern "C" {
     fn plat_console_putchar(c: u8);
@@ -52,4 +53,24 @@ macro_rules! dlog {
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
+}
+
+/// Send the contents of the given VM's log buffer to the log, preceded by the
+/// VM ID and followed by a newline.
+#[no_mangle]
+pub unsafe extern "C" fn dlog_flush_vm_buffer(vm: VmLocked) {
+    use core::fmt::Write;
+    let mut writer = WRITER.lock();
+
+    writer.write_str("VM ");
+    writer.write_fmt(format_args!("{}", (*vm.vm).id));
+    writer.write_str(": ");
+
+    for i in 0..(*vm.vm).log_buffer_length {
+        plat_console_putchar((*vm.vm).log_buffer[i]);
+        (*vm.vm).log_buffer[i] = '\0' as u32 as u8;
+    }
+
+    (*vm.vm).log_buffer_length = 0;
+    plat_console_putchar('\n' as u32 as u8);
 }

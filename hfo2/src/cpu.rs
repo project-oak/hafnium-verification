@@ -137,7 +137,7 @@ pub struct VCpuLocked {
 #[repr(C)]
 pub struct Cpu {
     /// CPU identifier. Doesn't have to be contiguous.
-    id: cpu_id_t,
+    pub id: cpu_id_t,
 
     /// Pointer to bottom of the stack.
     stack_bottom: *mut c_void,
