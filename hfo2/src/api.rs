@@ -1595,7 +1595,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
 
 /// Shares memory from the calling VM with another. The memory can be shared in
 /// different modes.
-/// 
+///
 /// TODO: the interface for sharing memory will need to be enhanced to allow
 ///       sharing with different modes e.g. read-only, informing the recipient
 ///       of the memory they have been given, opting to not wipe the memory and
@@ -1603,7 +1603,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
 ///       look like is TBD.
 #[no_mangle]
 pub unsafe extern "C" fn api_share_memory(
-    vm_id: spci_vm_id_t, 
+    vm_id: spci_vm_id_t,
     addr: ipaddr_t,
     size: size_t,
     share: HfShare,
@@ -1626,8 +1626,7 @@ pub unsafe extern "C" fn api_share_memory(
     let end = ipa_add(addr, size);
 
     // Fail if addresses are not page-aligned.
-    if !is_aligned(ipa_addr(begin), PAGE_SIZE) ||
-        !is_aligned(ipa_addr(end), PAGE_SIZE) {
+    if !is_aligned(ipa_addr(begin), PAGE_SIZE) || !is_aligned(ipa_addr(end), PAGE_SIZE) {
         return -1;
     }
 
@@ -1703,10 +1702,11 @@ pub unsafe extern "C" fn api_share_memory(
     // owning VM.
     if orig_from_mode as u32 & Mode::UNOWNED.bits() != 0 {
         let mut orig_to_mode = mem::uninitialized();
-        
-        if share != HfShare::Give ||
-            !mm_vm_get_mode(&mut (*to).ptable, begin, end, &mut orig_to_mode) ||
-            orig_to_mode as u32 & Mode::UNOWNED.bits() != 0 {
+
+        if share != HfShare::Give
+            || !mm_vm_get_mode(&mut (*to).ptable, begin, end, &mut orig_to_mode)
+            || orig_to_mode as u32 & Mode::UNOWNED.bits() != 0
+        {
             // goto fail;
             ret = -1;
 
@@ -1734,24 +1734,36 @@ pub unsafe extern "C" fn api_share_memory(
 
     // First update the mapping for the sender so there is not overlap with
     // the recipient.
-    if !mm_vm_identity_map(&mut (*from).ptable, pa_begin, pa_end, from_mode,
-        ptr::null_mut(), &mut local_page_pool) {
-            // goto fail;
-            ret = -1;
+    if !mm_vm_identity_map(
+        &mut (*from).ptable,
+        pa_begin,
+        pa_end,
+        from_mode,
+        ptr::null_mut(),
+        &mut local_page_pool,
+    ) {
+        // goto fail;
+        ret = -1;
 
-            sl_unlock(&(*from).lock);
-            sl_unlock(&(*to).lock);
+        sl_unlock(&(*from).lock);
+        sl_unlock(&(*to).lock);
 
-            mpool_fini(&mut local_page_pool);
+        mpool_fini(&mut local_page_pool);
 
-            return ret;
+        return ret;
     }
 
     // Clear the memory so no VM or device can see the previous contents.
     if !api_clear_memory(pa_begin, pa_end, &mut local_page_pool) {
         // goto fail_return_to_sender;
-        assert!(mm_vm_identity_map(&mut (*from).ptable, pa_begin, pa_end,
-            orig_from_mode, ptr::null_mut(), &mut local_page_pool));
+        assert!(mm_vm_identity_map(
+            &mut (*from).ptable,
+            pa_begin,
+            pa_end,
+            orig_from_mode,
+            ptr::null_mut(),
+            &mut local_page_pool
+        ));
 
         ret = -1;
 
@@ -1763,14 +1775,26 @@ pub unsafe extern "C" fn api_share_memory(
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if !mm_vm_identity_map(&mut (*to).ptable, pa_begin, pa_end, to_mode,
-        ptr::null_mut(), &mut local_page_pool) {
+    if !mm_vm_identity_map(
+        &mut (*to).ptable,
+        pa_begin,
+        pa_end,
+        to_mode,
+        ptr::null_mut(),
+        &mut local_page_pool,
+    ) {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         mm_vm_defrag(&mut (*from).ptable, &mut local_page_pool);
         // goto fail_return_to_sender;
-        assert!(mm_vm_identity_map(&mut (*from).ptable, pa_begin, pa_end,
-            orig_from_mode, ptr::null_mut(), &mut local_page_pool));
+        assert!(mm_vm_identity_map(
+            &mut (*from).ptable,
+            pa_begin,
+            pa_end,
+            orig_from_mode,
+            ptr::null_mut(),
+            &mut local_page_pool
+        ));
 
         // fail:
         ret = -1;
@@ -1793,8 +1817,14 @@ pub unsafe extern "C" fn api_share_memory(
     return ret;
 
     // fail_return_to_sender:
-    assert!(mm_vm_identity_map(&mut (*from).ptable, pa_begin, pa_end,
-        orig_from_mode, ptr::null_mut(), &mut local_page_pool));
+    assert!(mm_vm_identity_map(
+        &mut (*from).ptable,
+        pa_begin,
+        pa_end,
+        orig_from_mode,
+        ptr::null_mut(),
+        &mut local_page_pool
+    ));
 
     // fail:
     ret = -1;
@@ -1824,8 +1854,10 @@ pub unsafe extern "C" fn api_debug_log(c: c_char, current: *mut VCpu) -> i64 {
     let vm = (*current).vm;
     let mut vm_locked = vm_lock(vm);
 
-    if c == '\n' as u32 as u8 || c == '\0' as u32 as u8 ||
-        (*vm).log_buffer_length == (*vm).log_buffer.len() {
+    if c == '\n' as u32 as u8
+        || c == '\0' as u32 as u8
+        || (*vm).log_buffer_length == (*vm).log_buffer.len()
+    {
         dlog_flush_vm_buffer(vm_locked);
     } else {
         (*vm).log_buffer[(*vm).log_buffer_length] = c;
