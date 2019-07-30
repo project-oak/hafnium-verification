@@ -74,4 +74,55 @@ Section PointerLocations.
            (ptr : ptable_pointer) (root_ptable : mm_ptable) :=
     index_sequences_to_pointer'
       ptr 0 (ptr_from_va (va_from_pa root_ptable.(root))).
+
+  Inductive pointer_location (ppool : mpool) : Type :=
+  | table_loc : mm_ptable -> list nat -> pointer_location ppool
+  | mpool_loc : pointer_location ppool
+  .
+
+  Definition pointer_location_eq_dec
+             (ppool : mpool) (loc1 loc2 : pointer_location ppool)
+    : { loc1 = loc2 } + { loc1 <> loc2 }.
+  Proof.
+    destruct loc1, loc2;
+    repeat match goal with
+           | p : mm_ptable |- _ => destruct p
+           | r1 : paddr_t, r2 : paddr_t |- _ =>
+             destruct (paddr_t_eq_dec r1 r2); [ subst | right; congruence ]
+           | l1 : list nat, l2 : list nat |- _ =>
+             destruct (list_eq_dec Nat.eq_dec l1 l2); [ subst | right; congruence ]
+           | _ => right; congruence
+           | _ => left; congruence
+           end.
+  Defined.
+
+  (* This section includes some definitions which use information from the
+     concrete parameters *)
+  Section with_concrete_params.
+    Context (root_tables : list mm_ptable) (ppool : mpool).
+
+    Inductive has_location : ptable_pointer -> pointer_location ppool -> Prop :=
+    | has_table_loc :
+        forall root_ptable idxs ptr,
+          In root_ptable root_tables ->
+          In idxs (index_sequences_to_pointer ptr root_ptable) ->
+          has_location ptr (table_loc ppool root_ptable idxs)
+    | has_mpool_loc :
+        forall ptr,
+          mpool_contains ppool ptr ->
+          has_location ptr (mpool_loc ppool)
+    .
+
+    (* TODO: just guessing that this might come in handy; remove if unused *)
+    Lemma table_locations_exclusive ptr1 ptr2 root_ptable idxs :
+      has_location ptr1 (table_loc ppool root_ptable idxs) ->
+      has_location ptr2 (table_loc ppool root_ptable idxs) ->
+      ptr1 = ptr2.
+    Admitted.
+
+    (* every ptable_pointer has at most one location *)
+    Definition locations_exclusive : Prop :=
+      forall ptr loc1 loc2,
+        has_location ptr loc1 -> has_location ptr loc2 -> loc1 = loc2.
+  End with_concrete_params.
 End PointerLocations.

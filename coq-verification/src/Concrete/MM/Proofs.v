@@ -746,6 +746,13 @@ Section Proofs.
         apply N.lt_le_incl.
         apply mm_start_of_next_block_lt;
           auto using mm_entry_size_power_two. }
+      { (* is_valid s *)
+        apply represents_valid_concrete.
+        destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
+        eapply reassign_pointer_represents; eauto; [ ].
+        apply has_uniform_attrs_reassign_pointer;
+          [ solve [auto using mm_map_level_noncircular] | ].
+        auto using mm_map_level_table_attrs_strong. }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
