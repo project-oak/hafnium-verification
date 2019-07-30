@@ -134,7 +134,10 @@ Module N.
   Qed.
 
   Lemma to_nat_lt_iff x y : (N.to_nat x < N.to_nat y)%nat <-> x < y.
-  Admitted. (* TODO *)
+  Proof.
+    rewrite <-N.compare_lt_iff, <-Nat.compare_lt_iff.
+    rewrite N2Nat.inj_compare. reflexivity.
+  Qed.
 
   (* this lemma exists to be added to [auto], so [auto] can solve [2 ^ _ <> 0] by
      [N.pow_nonneg] *)
