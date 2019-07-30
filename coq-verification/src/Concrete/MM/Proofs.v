@@ -94,6 +94,19 @@ Section Proofs.
     break_match; subst; auto using in_eq, in_cons.
   Qed.
 
+  (* if [begin] is the start of the block at the level above, then we can freely
+     use a smaller address for [begin], because [has_uniform_attrs] ignores
+     addresses outside of [table]'s range. *)
+  Lemma has_uniform_attrs_block_start
+        ptable_deref table level attrs begin end_ idxs :
+    is_start_of_block begin (mm_entry_size level) ->
+    address_matches_indices begin idxs ->
+    forall begin',
+      (begin' <= begin)%N ->
+      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin end_ ->
+      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin' end_.
+  Admitted.
+
   (*** Proofs about [mm_page_table_from_pa] ***)
 
   Lemma mm_page_table_from_pa_length t flags :
@@ -105,6 +118,14 @@ Section Proofs.
       eauto using correct_number_of_root_tables_stage1,
       correct_number_of_root_tables_stage2.
   Qed.
+
+  Lemma has_location_in_state_root root_level flags c t i :
+    is_root root_level flags ->
+    ptable_is_root t flags ->
+    i < length (mm_page_table_from_pa (root t)) ->
+    has_location_in_state c (nth_default_oobe (mm_page_table_from_pa (root t)) i) (cons i nil).
+  Admitted. (* TODO *)
+  Hint Resolve has_location_in_state_root.
 
   (*** Proofs about [mm_root_table_count] ***)
 
@@ -391,6 +412,11 @@ Section Proofs.
     { rewrite mm_level_end_start_of_next_block_previous; solver. }
   Qed.
 
+  Lemma address_matches_indices_root root_level a flags :
+    is_root root_level flags ->
+    address_matches_indices a (mm_index a root_level :: nil).
+  Admitted. (* TODO *)
+  Hint Resolve address_matches_indices_root.
 
   (*** Proofs about [mm_free_page_pte] ***)
 
@@ -466,28 +492,16 @@ Section Proofs.
   Qed.
 
   Lemma mm_map_level_table_attrs conc begin end_ pa attrs table level
-        flags ppool :
+        flags ppool ptr idxs :
     let ret :=
         mm_map_level conc begin end_ pa attrs table (level-1) flags ppool in
     let success := fst (fst (fst ret)) in
-    let table := snd (fst (fst ret)) in
+    let new_table := snd (fst (fst ret)) in
     let conc' := snd (fst ret) in
     let ppool' := snd ret in
-    has_uniform_attrs conc.(ptable_deref) table (level - 1) attrs begin end_.
-  Admitted.
-
-  (* TODO: move *)
-  (* TODO: has_uniform_attrs needs to know what the address of the start of its
-     block is -- otherwise it won't properly ignore out-of-range addresses *)
-  (* if [begin] is the start of the block at the level above, then we can freely
-     use a smaller address for [begin], because [has_uniform_attrs] ignores
-     addresses outside of [table]'s range. *)
-  Lemma has_uniform_attrs_block_start ptable_deref table level attrs begin end_ :
-    is_start_of_block begin (mm_entry_size level) ->
-    forall begin',
-      (begin' <= begin)%N ->
-      has_uniform_attrs ptable_deref table (level - 1) attrs begin end_ ->
-      has_uniform_attrs ptable_deref table (level - 1) attrs begin' end_.
+    conc.(ptable_deref) ptr = table ->
+    has_location_in_state conc ptr idxs ->
+    has_uniform_attrs conc.(ptable_deref) idxs new_table (level - 1) attrs begin end_.
   Admitted.
 
   Lemma mm_map_level_noncircular c begin end_ pa attrs ptr level flags ppool :
@@ -748,12 +762,13 @@ Section Proofs.
         apply mm_start_of_next_block_lt;
           auto using mm_entry_size_power_two. }
       { (* is_valid s *)
+        cbv [table_index_expression] in *; simplify; [ ].
         apply represents_valid_concrete.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
         eapply reassign_pointer_represents; eauto; [ ].
         apply has_uniform_attrs_reassign_pointer;
           try auto using mm_map_level_noncircular; try solver; [ ].
-        auto using mm_map_level_table_attrs. }
+        eauto using mm_map_level_table_attrs. }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -776,7 +791,6 @@ Section Proofs.
           by (autorewrite with push_length; lia).
         rewrite fold_left_app.
         cbn [fold_left].
-        cbv [nth_default_oobe ptable_pointer_oobe oob_value].
 
         (* swap out starting concrete state for current one *)
         match goal with
@@ -790,16 +804,16 @@ Section Proofs.
                      end
         end.
 
-        apply reassign_pointer_represents with (level := root_level - 1).
-        { assumption. }
-        { apply has_uniform_attrs_reassign_pointer;
+        eapply reassign_pointer_represents with (level := root_level - 1);
+          try solver; [ ].
+        apply has_uniform_attrs_reassign_pointer;
           try auto using mm_map_level_noncircular; try solver; [ ].
-          match goal with
-          | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
-            destruct H; [ subst; apply mm_map_level_table_attrs; solver | ]
-          end.
-          eapply has_uniform_attrs_block_start; try eassumption; [ ].
-          apply mm_map_level_table_attrs. } } }
+        match goal with
+        | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
+          destruct H; [ subst; eapply mm_map_level_table_attrs; solver | ]
+        end.
+        eapply has_uniform_attrs_block_start; try solver; [ ].
+        eapply mm_map_level_table_attrs; solver. } }
 
     { (* Subgoal 2 : invariant holds at start *)
       right.

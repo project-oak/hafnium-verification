@@ -182,21 +182,35 @@ Section Proofs.
       abst
       vms.
 
+  Definition indices_from_address (a : uintpaddr_t) : list nat :=
+    map (fun lvl => get_index lvl a) (rev (seq 0 4)).
+
+  Definition address_matches_indices (a : uintpaddr_t) (idxs : list nat) : Prop :=
+    firstn (length idxs) (indices_from_address a) = idxs.
+
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
+             (table_loc : list nat)
              (t : mm_page_table) (level : nat) (attrs : attributes)
              (begin end_ : uintvaddr_t) : Prop :=
     forall (a : uintvaddr_t) (pte : pte_t),
+      address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc ->
       (begin <= a < end_)%N ->
       page_lookup' ptable_deref a t (4 - level) = Some pte ->
-     forall lvl, arch_mm_pte_attrs pte lvl = attrs.
+      forall lvl, arch_mm_pte_attrs pte lvl = attrs.
 
-  Lemma reassign_pointer_represents conc ptr t abst:
+  Definition has_location_in_state conc ptr idxs : Prop :=
+    exists root_ptable,
+      has_location (ptable_deref conc) all_root_ptables (api_page_pool conc)
+                   ptr (table_loc conc.(api_page_pool) root_ptable idxs).
+
+  Lemma reassign_pointer_represents conc ptr t abst idxs:
     represents abst conc ->
+    has_location_in_state conc ptr idxs ->
     let conc' := conc.(reassign_pointer) ptr t in
     forall attrs level begin end_,
       has_uniform_attrs
-        conc'.(ptable_deref) t level attrs begin end_ ->
+        conc'.(ptable_deref) idxs t level attrs begin end_ ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -256,13 +270,15 @@ Section Proofs.
 
   (* has_uniform_attrs doesn't care if we reassign the pointer we started from *)
   (* TODO : fill in preconditions *)
-  Lemma has_uniform_attrs_reassign_pointer c ptr new_table t level attrs begin end_:
+  Lemma has_uniform_attrs_reassign_pointer
+        c ptr new_table t level attrs begin end_ idxs:
     is_valid c ->
     ~ pointer_in_table (ptable_deref c) ptr t level ->
-    has_uniform_attrs (ptable_deref c) t level attrs begin end_ ->
+    has_location_in_state c ptr idxs ->
+    has_uniform_attrs (ptable_deref c) idxs t level attrs begin end_ ->
     has_uniform_attrs
       (ptable_deref (reassign_pointer c ptr new_table))
-      t level attrs begin end_.
+      idxs t level attrs begin end_.
   Admitted. (* TODO *)
 
   Definition no_addresses_in_range deref ptr begin end_ : Prop :=

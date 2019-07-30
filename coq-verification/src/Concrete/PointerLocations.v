@@ -29,6 +29,9 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 Section PointerLocations.
   Context (ptable_deref : ptable_pointer -> mm_page_table).
 
+  (* TODO: change everything everywhere about "lvls_to_go" -- it is based on the
+     incorrect understanding that the root is level 0, when really it's level 4
+     and the levels *decrease* as we go deeper *)
   (* We haven't formalized anywhere that pointers don't repeat, so we return a
      list of all locations where the provided pointer exists even though we
      expect there is only one. *)
