@@ -43,7 +43,7 @@ linux_initrd("linux_test_initrd") {
 initrd("linux_test") {
   testonly = true
 
-  primary_vm_prebuilt = "//prebuilts/linux-aarch64/linux/vmlinuz"
+  primary_vm = "//third_party:linux__prebuilt"
   primary_initrd = ":linux_test_initrd"
 }
 

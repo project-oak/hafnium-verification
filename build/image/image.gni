@@ -150,9 +150,8 @@ template("linux_initrd") {
 
 # Build the initial RAM disk for the hypervisor.
 template("initrd") {
-  assert(
-      defined(invoker.primary_vm) || defined(invoker.primary_vm_prebuilt),
-      "initrd() must specify a \"primary_vm\" or \"primary_vm_prebuilt\" value")
+  assert(defined(invoker.primary_vm),
+         "initrd() must specify a \"primary_vm\" value")
 
   action(target_name) {
     forward_variables_from(invoker, [ "testonly" ])
@@ -162,24 +161,22 @@ template("initrd") {
     initrd_file = "${initrd_base}.img"
     initrd_staging = "${initrd_base}"
 
-    deps = []
+    # Cannot get target outputs here as they are defined in a different file.
+    primary_vm_image = get_label_info(invoker.primary_vm, "target_out_dir") +
+                       "/" + get_label_info(invoker.primary_vm, "name") + ".bin"
 
-    if (defined(invoker.primary_vm_prebuilt)) {
-      primary_vm_output = invoker.primary_vm_prebuilt
-    } else {
-      primary_vm_output =
-          get_label_info(invoker.primary_vm, "target_out_dir") + "/" +
-          get_label_info(invoker.primary_vm, "name") + ".bin"
-      deps += [ invoker.primary_vm ]
-    }
+    deps = [
+      invoker.primary_vm,
+    ]
     args = [
       "--primary_vm",
-      rebase_path(primary_vm_output),
+      rebase_path(primary_vm_image),
       "--staging",
       rebase_path(initrd_staging),
       "--output",
       rebase_path(initrd_file),
     ]
+
     if (defined(invoker.primary_initrd)) {
       deps += [ invoker.primary_initrd ]
       primary_initrd_outputs = get_target_outputs(invoker.primary_initrd)

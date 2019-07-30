@@ -58,4 +58,5 @@ source_set("gtest_main") {
 
 linux_kernel("linux") {
   kernel_dir = "linux"
+  prebuilt = "//prebuilts/linux-aarch64/linux/vmlinuz"
 }

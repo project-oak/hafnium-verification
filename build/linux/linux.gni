@@ -31,6 +31,7 @@ template("source_dir") {
 template("linux_kernel") {
   source_target = "${target_name}__source"
   defconfig_target = "${target_name}__defconfig"
+  prebuilt_target = "${target_name}__prebuilt"
 
   # Args to build/make.py to start the Linux build.
   shared_args = [
@@ -89,6 +90,18 @@ template("linux_kernel") {
       ":${defconfig_target}",
       ":${source_target}",
     ]
+  }
+
+  # Subtarget for a prebuilt image, if defined.
+  if (defined(invoker.prebuilt)) {
+    copy(prebuilt_target) {
+      sources = [
+        invoker.prebuilt,
+      ]
+      outputs = [
+        "${target_out_dir}/${prebuilt_target}.bin",
+      ]
+    }
   }
 }
 
