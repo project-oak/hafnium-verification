@@ -38,8 +38,9 @@ Hint Rewrite <- Nat2N.inj_add Nat2N.inj_mul
 (* autorewrite database [nsimplify] for simplifying arithmetic in N *)
 Hint Rewrite N.add_0_r N.add_0_l N.mul_0_r N.mul_0_l N.sub_0_r N.sub_0_l
      N.min_0_r N.min_0_l N.max_0_l N.max_0_r N.pow_0_l N.pow_0_r N.shiftr_0_l
-     N.shiftr_0_r N.shiftl_0_l N.shiftl_0_r N.div_0_l N.mul_1_l N.mul_1_r
-     N.log2_pow2 N.mod_0_l N.mod_1_r N.add_sub using solver : nsimplify.
+     N.shiftr_0_r N.shiftl_0_l N.shiftl_0_r N.land_0_l N.land_0_r N.lor_0_l
+     N.lor_0_r N.div_0_l N.mul_1_l N.mul_1_r N.log2_pow2 N.mod_0_l N.mod_1_r
+     N.add_sub using solver : nsimplify.
 Hint Rewrite N.mod_small N.mod_same N.mod_mod N.mod_mul N.mod_add using solver
   : nsimplify.
 Hint Rewrite N.div_small N.div_same N.div_add N.div_add_l N.div_mul using solver
@@ -144,6 +145,41 @@ Module N.
   Lemma two_nonzero : 2 <> 0. Proof. congruence. Qed.
   Hint Resolve two_nonzero.
 
+  Lemma div_mul_l a b : b <> 0 -> b * a / b = a.
+  Proof. intros; rewrite N.mul_comm; nsimplify. solver. Qed.
+
+  Lemma div_add_l' a b c :
+    b <> 0 -> (b * a + c) / b = a + c / b.
+  Proof. intros. rewrite (N.mul_comm b a). apply N.div_add_l; auto. Qed.
+  Hint Rewrite div_add_l' using solver : nsimplify.
+
+  Lemma div_add_l_exact a b :
+    b <> 0 -> (b + a) / b = 1 + a / b.
+  Proof.
+    intros. replace (b + a) with (1 * b + a) by lia. nsimplify. reflexivity.
+  Qed.
+
+  Lemma mod_div_small a b :
+    b <> 0 -> (a mod b / b) = 0.
+  Proof.
+    intros; apply N.div_small.
+    apply N.mod_bound_pos; try apply N.neq_0_lt_0; auto.
+  Qed.
+  Hint Rewrite mod_div_small using solver : nsimplify.
+
+  Lemma mul_div a b : b <> 0 -> b * (a / b) = a - a mod b.
+  Proof.
+    intros. rewrite (N.div_mod a b) by auto.
+    repeat match goal with
+           | _ => progress nsimplify
+           | _ => progress nsimplify_mod
+           | _ => solver
+           end.
+  Qed.
+
+  Lemma mul_div' a b : b <> 0 -> (a / b) * b = a - a mod b.
+  Proof. intros; rewrite N.mul_comm; apply mul_div; auto. Qed.
+
   Definition is_power_of_two (n : N) : Prop := n = N.pow 2 (N.log2 n).
 
   Lemma power_two_pos (n : N) :
@@ -177,11 +213,6 @@ Module N.
     reflexivity.
   Qed.
 
-  Lemma and_not a b :
-    is_power_of_two b ->
-    N.land a (N.lnot (b - 1) (N.size a)) = a - a mod b.
-  Admitted. (* TODO *)
-
   Lemma power_two_minus_1 n :
     is_power_of_two n ->
     n - 1 = N.ones (N.log2 n).
@@ -196,6 +227,18 @@ Module N.
   Proof.
     intros. rewrite power_two_minus_1 by auto.
     apply N.land_ones.
+  Qed.
+
+  Lemma and_not a b :
+    is_power_of_two b ->
+    N.land a (N.lnot (b - 1) (N.size a)) = a - a mod b.
+  Proof.
+    intros; destruct (N.eq_dec a 0); [subst; nsimplify; reflexivity|].
+    rewrite power_two_minus_1 by auto.
+    rewrite <-N.ldiff_land_low by (rewrite N.size_log2; solver).
+    rewrite N.ldiff_ones_r. autorewrite with bits2arith.
+    rewrite mul_div', pow2_log2 by auto.
+    reflexivity.
   Qed.
 
   Lemma power_two_trivial n :
@@ -252,38 +295,6 @@ Module N.
     reflexivity.
   Qed.
 
-  Lemma div_mul_l a b : b <> 0 -> b * a / b = a.
-  Proof. intros; rewrite N.mul_comm; nsimplify. solver. Qed.
-
-  Lemma div_add_l' a b c :
-    b <> 0 -> (b * a + c) / b = a + c / b.
-  Proof. intros. rewrite (N.mul_comm b a). apply N.div_add_l; auto. Qed.
-  Hint Rewrite div_add_l' using solver : nsimplify.
-
-  Lemma div_add_l_exact a b :
-    b <> 0 -> (b + a) / b = 1 + a / b.
-  Proof.
-    intros. replace (b + a) with (1 * b + a) by lia. nsimplify. reflexivity.
-  Qed.
-
-  Lemma mod_div_small a b :
-    b <> 0 -> (a mod b / b) = 0.
-  Proof.
-    intros; apply N.div_small.
-    apply N.mod_bound_pos; try apply N.neq_0_lt_0; auto.
-  Qed.
-  Hint Rewrite mod_div_small using solver : nsimplify.
-
-  Lemma mul_div a b : b <> 0 -> b * (a / b) = a - a mod b.
-  Proof.
-    intros. rewrite (N.div_mod a b) by auto.
-    repeat match goal with
-           | _ => progress nsimplify
-           | _ => progress nsimplify_mod
-           | _ => solver
-           end.
-  Qed.
-
   Lemma mod_sub_small a b c :
     c <> 0 ->
     0 < a ->
@@ -332,9 +343,6 @@ Module N.
   Lemma shiftr_add_shiftl a b n :
     N.shiftl (N.shiftr a n + b) n = a + N.shiftl b n - a mod (2 ^ n).
   Admitted.
-
-  Lemma mul_div' a b : b <> 0 -> (a / b) * b = a - a mod b.
-  Proof. intros; rewrite N.mul_comm; apply mul_div; auto. Qed.
 End N.
 Hint Resolve N.to_nat_lt_iff N.to_nat_le_iff.
 
