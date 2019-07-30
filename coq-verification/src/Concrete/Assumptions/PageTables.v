@@ -58,22 +58,20 @@ Fixpoint page_lookup'
          (ptable_deref : ptable_pointer -> mm_page_table)
          (a : uintpaddr_t)
          (table : mm_page_table)
-         (* encode the level as (4 - level), so Coq knows this terminates *)
-         (lvls_to_go : nat)
+         (level : nat)
   : option pte_t :=
-  match lvls_to_go with
+  match level with
   | 0 => None
-  | S lvls_to_go' =>
-    let lvl := 4 - lvls_to_go in
-    match (get_entry table (get_index lvl a)) with
+  | S level' =>
+    match (get_entry table (get_index level a)) with
     | Some pte =>
-      if (arch_mm_pte_is_table pte lvl)
+      if (arch_mm_pte_is_table pte level)
       then
         (* follow the pointer to the next table *)
         let next_ptr := ptable_pointer_from_address
-                          (arch_mm_table_from_pte pte lvl) in
+                          (arch_mm_table_from_pte pte level) in
         let next_table := ptable_deref next_ptr in
-        page_lookup' ptable_deref a next_table lvls_to_go'
+        page_lookup' ptable_deref a next_table level'
       else Some pte
     | None => None
     end
