@@ -22,6 +22,7 @@ Require Import Coq.omega.Omega.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.StateProofs.
 Require Import Hafnium.Util.BinNat.

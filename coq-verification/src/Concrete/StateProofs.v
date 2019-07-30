@@ -21,6 +21,7 @@ Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Util.List.
 Require Import Hafnium.Util.Tactics.
 Require Import Hafnium.Concrete.Assumptions.Addr.
@@ -114,56 +115,6 @@ Section Proofs.
   Definition deref_noncircular (c : concrete_state) : Prop :=
     forall ptr,
       ~ pointer_in_table c.(ptable_deref) ptr (c.(ptable_deref) ptr).
-
-  (* We haven't formalized anywhere that pointers don't repeat, so we return a
-     list of all locations where the provided pointer exists even though we
-     expect there is only one. *)
-  Fixpoint index_sequences_to_pointer'' (ptable_deref : ptable_pointer -> mm_page_table)
-           (ptr : ptable_pointer) (root : ptable_pointer) (lvls_to_go : nat)
-    : list (list nat) :=
-    match lvls_to_go with
-    | 0 => nil
-    | S lvls_to_go' =>
-      let lvl := 4 - lvls_to_go in
-      if ptable_pointer_eq_dec root ptr
-      then cons nil nil
-      else
-        flat_map
-          (fun index =>
-             let ptable := ptable_deref root in
-             match get_entry ptable index with
-             | Some pte =>
-               if arch_mm_pte_is_table pte lvl
-               then
-                 let next_root :=
-                     ptable_pointer_from_address
-                       (arch_mm_table_from_pte pte lvl) in
-                 map
-                   (cons index)
-                   (index_sequences_to_pointer''
-                      ptable_deref ptr next_root lvls_to_go')
-               else nil
-             | None => nil
-             end)
-          (seq 0 MM_PTE_PER_PAGE)
-    end.
-  Fixpoint index_sequences_to_pointer'
-           (ptable_deref : ptable_pointer -> mm_page_table)
-           (ptr : ptable_pointer) (root_index : nat)
-           (root_ptrs : list ptable_pointer) : list (list nat) :=
-    match root_ptrs with
-    | nil => nil
-    | cons root_ptr root_ptrs' =>
-      (map (cons root_index)
-           (index_sequences_to_pointer'' ptable_deref ptr root_ptr 4))
-        ++
-        index_sequences_to_pointer' ptable_deref ptr (S root_index) root_ptrs'
-    end.
-  Definition index_sequences_to_pointer
-           (ptable_deref : ptable_pointer -> mm_page_table)
-           (ptr : ptable_pointer) (root_ptable : mm_ptable) :=
-    index_sequences_to_pointer'
-      ptable_deref ptr 0 (ptr_from_va (va_from_pa root_ptable.(root))).
 
   Definition abstract_change_attrs (abst : abstract_state)
              (a : paddr_t) (e : entity_id) (owned valid : bool) :=

@@ -3,6 +3,7 @@ src/AbstractModel.v
 src/Concrete/Datatypes.v
 src/Concrete/Model.v
 src/Concrete/Notations.v
+src/Concrete/PointerLocations.v
 src/Concrete/State.v
 src/Concrete/StateProofs.v
 src/Util/BinNat.v
