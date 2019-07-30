@@ -59,6 +59,7 @@ Section Proofs.
   (* [represents] includes [is_valid] as one of its conditions *)
   Lemma represents_valid_concrete conc : (exists abst, represents abst conc) -> is_valid conc.
   Proof. cbv [represents]; basics; auto. Qed.
+  Hint Resolve represents_valid_concrete.
 
   (* if the new table is the same as the old, abstract state doesn't change *)
   Lemma reassign_pointer_noop_represents conc ptr t abst :
@@ -85,26 +86,22 @@ Section Proofs.
     | S lvls_to_go' =>
       let lvl := 4 - lvls_to_go in
       Exists
-        (fun i =>
-           match get_entry t i with
-           | Some pte =>
-             if arch_mm_pte_is_table pte lvl
-             then
-               let next_t_ptr :=
-                   ptable_pointer_from_address (arch_mm_table_from_pte pte lvl) in
-               if ptable_pointer_eq_dec ptr next_t_ptr
-               then True
-               else pointer_in_table' deref ptr (deref next_t_ptr) lvls_to_go'
-             else False
-           | None => False
-           end)
-        (seq 0 MM_PTE_PER_PAGE)
+        (fun pte =>
+           if arch_mm_pte_is_table pte lvl
+           then
+             let next_t_ptr :=
+                 ptable_pointer_from_address (arch_mm_table_from_pte pte lvl) in
+             if ptable_pointer_eq_dec ptr next_t_ptr
+             then True
+             else pointer_in_table' deref ptr (deref next_t_ptr) lvls_to_go'
+           else False)
+        t.(entries)
     end.
 
   Definition pointer_in_table
              (deref : ptable_pointer -> mm_page_table) (ptr : ptable_pointer)
-             (t : mm_page_table) : Prop :=
-    Forall (pointer_in_table' deref ptr t) (seq 0 4).
+             (t : mm_page_table) (level : nat) : Prop :=
+    pointer_in_table' deref ptr t (4 - level).
 
   Definition abstract_change_attrs (abst : abstract_state)
              (a : paddr_t) (e : entity_id) (owned valid : bool) :=
@@ -192,7 +189,7 @@ Section Proofs.
     forall (a : uintvaddr_t) (pte : pte_t),
       (begin <= a < end_)%N ->
       page_lookup' ptable_deref a t (4 - level) = Some pte ->
-      forall lvl, arch_mm_pte_attrs pte lvl = attrs.
+     forall lvl, arch_mm_pte_attrs pte lvl = attrs.
 
   Lemma reassign_pointer_represents conc ptr t abst:
     represents abst conc ->
@@ -260,7 +257,8 @@ Section Proofs.
   (* has_uniform_attrs doesn't care if we reassign the pointer we started from *)
   (* TODO : fill in preconditions *)
   Lemma has_uniform_attrs_reassign_pointer c ptr new_table t level attrs begin end_:
-    ~ pointer_in_table (ptable_deref c) ptr t ->
+    is_valid c ->
+    ~ pointer_in_table (ptable_deref c) ptr t level ->
     has_uniform_attrs (ptable_deref c) t level attrs begin end_ ->
     has_uniform_attrs
       (ptable_deref (reassign_pointer c ptr new_table))
