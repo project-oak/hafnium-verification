@@ -120,31 +120,21 @@ Section Proofs.
     mm_entry_size level = 2 ^ (PAGE_BITS + level * PAGE_LEVEL_BITS).
   Proof.
     cbv [mm_entry_size].
-    rewrite N.shiftl_1_l.
-    (* TODO : clean this up with a push_Nat2N tactic *)
     apply Nnat.Nat2N.inj_iff.
-    rewrite Nnat.N2Nat.id.
-    rewrite Nat2N.inj_pow.
-    rewrite Nnat.Nat2N.inj_add.
-    rewrite Nnat.Nat2N.inj_mul.
-    reflexivity.
+    autorewrite with bits2arith push_nat2n nsimplify.
+    solver.
   Qed.
 
   Lemma mm_entry_size_power_two level :
     N.is_power_of_two (N.of_nat (mm_entry_size level)).
-  Proof.
-    cbv [mm_entry_size].
-    rewrite Nnat.N2Nat.id.
-    apply N.shiftl_power_two.
-  Qed.
+  Proof. cbv [mm_entry_size]; push_nat2n; auto. Qed.
 
   Lemma mm_entry_size_gt_1 level : (1 < mm_entry_size level)%N.
   Proof.
     intros; rewrite mm_entry_size_eq.
     pose proof PAGE_BITS_pos.
-    rewrite Nat2N.inj_pow.
+    push_nat2n.
     change 1%N with (2 ^ 0)%N.
-    change (N.of_nat 2) with 2%N.
     apply N.pow_lt_mono_r; solver.
   Qed.
 
@@ -167,9 +157,7 @@ Section Proofs.
     mm_start_of_next_block a block_size = (a + block_size - a mod block_size)%N.
   Proof.
     cbv [mm_start_of_next_block]; intros.
-    repeat progress rewrite ?Nnat.N2Nat.inj_add, ?Nnat.N2Nat.inj_mul, ?Nnat.N2Nat.id.
-    rewrite N.and_not by auto.
-    rewrite N.mod_add_cancel_r by auto using N.power_two_nonzero.
+    rewrite N.and_not, N.mod_add_cancel_r by auto.
     reflexivity.
   Qed.
 
@@ -178,8 +166,6 @@ Section Proofs.
     @eq N (mm_start_of_next_block a block_size) ((a / block_size + 1) * block_size)%N.
   Proof.
     intros. rewrite mm_start_of_next_block_eq by auto.
-    pose proof N.power_two_nonzero _ ltac:(eassumption).
-    pose proof N.mod_bound_pos a block_size.
     match goal with |- context [(?a + ?m - ?a mod ?m)%N] =>
                     replace (a + m - a mod m)%N with (m + (a - a mod m))%N
                       by (rewrite N.mod_eq; solver);
@@ -194,9 +180,27 @@ Section Proofs.
   Proof.
     cbv [is_start_of_block]; intros.
     rewrite mm_start_of_next_block_eq' by auto.
-    rewrite N.land_ones' by auto.
-    rewrite N.pow2_log2 by auto.
-    apply N.mod_mul; auto using N.power_two_nonzero.
+    autorewrite with bits2arith nsimplify.
+    reflexivity.
+  Qed.
+
+  Lemma mm_start_of_next_block_div a block_size :
+    N.is_power_of_two (N.of_nat block_size) ->
+    (mm_start_of_next_block a block_size / block_size =
+    (a / N.of_nat block_size) + 1)%N.
+  Proof.
+    intros.
+    rewrite <-(N.pow2_log2 (N.of_nat block_size)) by auto.
+    cbv [mm_start_of_next_block].
+    repeat match goal with
+           | _ => progress simplify
+           | _ => progress autorewrite with push_n2nat bits2arith nsimplify
+           | _ => progress nsimplify_mod
+           | |- context [(?a + ?m - ?a mod ?m)%N] =>
+             replace (a + m - a mod m)%N with (m + (a - a mod m))%N
+               by (rewrite N.mod_eq; solver);
+               rewrite <-(N.mul_div a m) by solver
+           end.
   Qed.
 
   Lemma mm_start_of_next_block_shift a level :
@@ -204,77 +208,59 @@ Section Proofs.
                             >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N =
     ((a >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) + 1)%N.
   Proof.
-    intros. pose proof PAGE_BITS_pos.
-    cbv [mm_start_of_next_block mm_entry_size].
-    rewrite !Nnat.N2Nat.id, N.shiftr_land, N.lnot_shiftr.
-    rewrite N.shiftr_eq_0 with (a:=((_ << _) - 1)%N) by
-        (rewrite N.sub_1_r, N.shiftl_1_l, N.log2_pred_pow2 by lia; lia).
-    rewrite N.lnot_0_l.
-    match goal with
-    | |- context [((_ + (_ << ?x)) >> ?x)%N] =>
-      pose proof (N.log2_add_shiftl_1 a x);
-        assert ((1 << x) <> 0)%N by (rewrite N.shiftl_eq_0_iff; lia)
-    end.
-    rewrite N.land_ones_low by (rewrite N.log2_shiftr, N.size_log2 by lia; lia).
-    rewrite !N.shiftr_div_pow2, !N.shiftl_mul_pow2.
-    rewrite N.div_add by (apply N.pow_nonzero; lia).
-    lia.
+    intros.
+    rewrite mm_entry_size_eq.
+    autorewrite with bits2arith pull_nat2n.
+    apply mm_start_of_next_block_div; autorewrite with push_nat2n; auto.
   Qed.
 
   Lemma mm_index_start_of_next_block_previous a b level :
     (0 < b <= mm_entry_size level)%N ->
     mm_index (mm_start_of_next_block a (mm_entry_size level) - b) level = mm_index a level.
   Proof.
-    (* TODO: clean up this proof! *)
-    cbv [mm_index]; intros.
+    cbv [mm_index mm_entry_size]; intros.
     apply Nnat.N2Nat.inj_iff.
-    rewrite !N.land_ones' by auto using N.shiftl_power_two.
-    rewrite N.shiftl_1_l, N.log2_pow2 by lia.
-    rewrite mm_start_of_next_block_eq' by auto using mm_entry_size_power_two.
-    cbv [mm_entry_size] in *.
-    rewrite Nnat.N2Nat.id in *.
-    remember (PAGE_BITS + level * PAGE_LEVEL_BITS)%N.
-    rewrite !N.shiftl_1_l in *.
-    rewrite !N.shiftr_div_pow2.
-    rewrite N.div_sub_small by solver.
-    f_equal; lia.
+    repeat match goal with
+           | _ => progress autorewrite with push_n2nat bits2arith nsimplify in *
+           | _ => rewrite mm_start_of_next_block_eq' by (push_n2nat; auto)
+           | _ => rewrite N.div_sub_small by solver
+           | _ => solver
+           end.
   Qed.
 
   (* helper lemma for mm_index_start_of_next_block *)
   Lemma level_bits_small a level :
     (mm_start_of_next_block a (mm_entry_size level) < mm_level_end a level)%N ->
-    ((a >> (PAGE_BITS + level * PAGE_LEVEL_BITS)) mod 2 ^ PAGE_LEVEL_BITS + 1 < 2 ^ PAGE_LEVEL_BITS)%N.
+    ((a / 2 ^ (PAGE_BITS + level * PAGE_LEVEL_BITS)) mod 2 ^ PAGE_LEVEL_BITS + 1 < 2 ^ PAGE_LEVEL_BITS)%N.
   Proof.
-    (* TODO : clean up this proof! *)
     cbv [mm_level_end]; intros.
-    repeat progress rewrite ?Nnat.Nat2N.inj_add, ?Nnat.Nat2N.inj_mul in *.
-    change (N.of_nat 1) with 1%N in *.
-    replace (2 ^ PAGE_LEVEL_BITS)%N with
-        ((1 << (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)) >> (PAGE_BITS + level * PAGE_LEVEL_BITS))%N by
-        (rewrite N.shiftr_shiftl_l, N.shiftl_1_l by lia; f_equal; lia).
-    replace (PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS)%N with
-        (PAGE_BITS + level * PAGE_LEVEL_BITS + PAGE_LEVEL_BITS)%N in * by lia.
-    apply N.shiftr_lt_shiftl_mono in H.
-    rewrite <-!(N.shiftr_shiftr _ _ (N.of_nat PAGE_LEVEL_BITS)) in H.
-    rewrite mm_start_of_next_block_shift in H.
-    rewrite N.shiftr_shiftl_l by lia.
-    match goal with
-      |- context [ (1 << ?n)%N ] => replace n with (N.of_nat PAGE_LEVEL_BITS) by lia
-    end.
-    remember (a >> N.of_nat PAGE_BITS + N.of_nat level * N.of_nat PAGE_LEVEL_BITS)%N as A.
-    remember (N.of_nat PAGE_LEVEL_BITS) as N.
-    assert ((1 << N) <> 0)%N by (rewrite N.shiftl_eq_0_iff; lia).
-    pose proof (N.mod_bound_pos (A + 1)%N (1 << N)%N).
-    assert (A mod (1 << N) + 1 = (A + 1) mod (1 << N))%N; [|lia].
-    rewrite !N.mod_eq by solver.
-    rewrite N.shiftl_1_l, <-!N.shiftr_div_pow2.
     let H := fresh in
-    assert (((A + 1) >> N) = (A >> N))%N as H
-        by (apply N.le_antisymm; try solver; apply N.shiftr_le_mono_r; solver);
-      rewrite H in *.
-    rewrite <-N.add_sub_swap by (rewrite N.shiftr_div_pow2;
-                                 apply N.mul_div_le; apply N.pow_nonzero; lia).
-    solver.
+    pose proof mm_start_of_next_block_div
+         a (mm_entry_size level) ltac:(auto using mm_entry_size_power_two) as H;
+      remember (mm_start_of_next_block a (mm_entry_size level));
+      rewrite mm_entry_size_eq in H.
+    autorewrite with push_nat2n push_nmul in *.
+    repeat match goal with
+           | _ => progress autorewrite with bits2arith nsimplify in *
+           | _ => progress push_nat2n_all
+           | _ => rewrite N.add_assoc in *
+           | _ => rewrite N.mul_assoc in *
+           | H : _ |- _ => rewrite (N.pow_add_r _ _ (N.of_nat PAGE_LEVEL_BITS)) in H
+           | H : _ |- _ => rewrite <-(N.div_div _ _ (2 ^ PAGE_LEVEL_BITS)) in H by solver
+           | H : context [((?w / ?x + ?y) * ?z * ?x)%N] |- _ =>
+             replace ((w / x + y) * z * x)%N with (z * (x * (w / x + y)))%N in H by solver;
+               rewrite (N.mul_add_distr_l x) in H; rewrite N.mul_div in H by solver;
+                 apply N.div_lt_upper_bound in H
+           | H : (?x < ?y)%N, H' : ?x = ?z |- _ => rewrite H' in H
+           | _ => solver
+           end.
+    (* some additional pose proofs let [solver] solve the goal *)
+    match goal with
+    | |- context [(?y mod ?m)%N] =>
+      pose proof N.mod_le y m ltac:(auto);
+        pose proof N.mod_bound_pos y m ltac:(auto) ltac:(solver);
+        solver
+    end.
   Qed.
 
   Lemma mm_index_start_of_next_block a level :
@@ -282,16 +268,13 @@ Section Proofs.
     mm_index (mm_start_of_next_block a (mm_entry_size level)) level
     = S (mm_index a level).
   Proof.
-    intros.
-    cbv [mm_index].
-    rewrite <-Nnat.N2Nat.inj_succ; apply Nnat.N2Nat.inj_iff.
-    rewrite N.shiftl_1_l.
-    rewrite !N.land_ones' by auto using N.power_two_trivial.
-    rewrite !N.log2_pow2 by lia.
+    intros. cbv [mm_index].
+    autorewrite with pull_n2nat; apply Nnat.N2Nat.inj_iff.
     rewrite mm_start_of_next_block_shift.
-    rewrite <-N.add_mod_idemp_l by (apply N.pow_nonzero; lia).
-    rewrite N.mod_small by (apply level_bits_small; auto).
-    lia.
+    autorewrite with bits2arith nsimplify.
+    rewrite <-N.add_mod_idemp_l by solver.
+    rewrite N.mod_small by auto using level_bits_small.
+    solver.
   Qed.
 
   Lemma mm_start_of_next_block_lt a block_size :
@@ -299,13 +282,8 @@ Section Proofs.
     (a < mm_start_of_next_block a block_size)%N.
   Proof.
     cbv [mm_start_of_next_block]; intros.
-    rewrite N.and_not by auto.
-    match goal with
-    | |- context [(?x mod ?y)%N] =>
-      pose proof
-           (N.mod_bound_pos x y ltac:(lia) ltac:(auto using N.power_two_pos))
-    end.
-    lia.
+    autorewrite with bits2arith.
+    assert_nmod_bounds. solver.
   Qed.
 
   (*** Proofs about [mm_level_end] ***)
@@ -313,35 +291,22 @@ Section Proofs.
   Lemma mm_level_end_lt a level : (a < mm_level_end a level)%N.
   Proof.
     cbv [mm_level_end]; intros.
-    rewrite N.shiftr_add_shiftl.
-    rewrite N.shiftl_1_l.
-    match goal with
-    | |- context [(2 ^ ?x)%N] =>
-      pose proof (N.pow_nonzero 2 x)
-    end.
-    match goal with
-    | |- context [(?x mod ?y)%N] =>
-      pose proof (N.mod_bound_pos x y)
-    end.
-    lia.
+    autorewrite with bits2arith push_nmul.
+    rewrite N.mul_div' by auto.
+    assert_nmod_bounds. solver.
   Qed.
 
   Lemma mm_level_end_le a level : (a <= mm_level_end a level)%N.
-  Proof.
-    intros; apply N.lt_le_incl; apply mm_level_end_lt.
-  Qed.
+  Proof. intros; auto using mm_level_end_lt. Qed.
 
   Lemma mm_level_end_high_eq a b level :
     (a / mm_entry_size (level + 1))%N = (b / mm_entry_size (level + 1))%N <->
     mm_level_end a level = mm_level_end b level.
   Proof.
     cbv [mm_level_end]; intros.
-    rewrite !N.shiftr_div_pow2.
-    match goal with |- context [(2 ^ N.of_nat ?x)%N] =>
-                    replace (2 ^ N.of_nat x)%N with (N.of_nat (2 ^ x)) by apply Nat2N.inj_pow
-    end.
+    autorewrite with bits2arith pull_nat2n.
     rewrite <-mm_entry_size_eq.
-    rewrite <-N.shiftl_inj_iff.
+    rewrite N.mul_cancel_r by (apply N.neq_0_lt_0; auto using mm_entry_size_pos).
     split; solver.
   Qed.
 
@@ -363,14 +328,10 @@ Section Proofs.
   Proof.
     intros; apply mm_level_end_high_eq.
     rewrite mm_start_of_next_block_eq' by auto using mm_entry_size_power_two.
-    rewrite mm_entry_size_step.
-    rewrite Nnat.Nat2N.inj_mul, Nat2N.inj_pow.
-    change (N.of_nat 2) with 2%N.
-    pose proof N.pow_nonzero 2%N PAGE_LEVEL_BITS.
+    rewrite mm_entry_size_step. push_nat2n.
     rewrite <-!N.div_div by solver.
     rewrite N.div_sub_small by solver.
-    rewrite N.add_sub.
-    reflexivity.
+    nsimplify. solver.
   Qed.
 
   (*** Proofs about [mm_index] ***)
@@ -381,47 +342,35 @@ Section Proofs.
     mm_index a level <= mm_index b level.
   Proof.
     rewrite <-mm_level_end_high_eq; intros.
-    rewrite mm_entry_size_step in *.
-    rewrite mm_entry_size_eq in *.
-    repeat progress rewrite ?Nnat.Nat2N.inj_mul, ?Nat2N.inj_pow, ?Nnat.Nat2N.inj_add in *.
-    change (N.of_nat 2) with 2%N in *.
-    pose proof mm_entry_size_pos level.
-    rewrite <-!N.div_div in * by
-        (change 0%N with (N.of_nat 0); rewrite ?Nnat.Nat2N.inj_iff;
-         try apply N.pow_nonzero; solver).
-    cbv [mm_index].
-    apply N.to_nat_le_iff.
-    rewrite !N.shiftr_div_pow2.
-    rewrite N.shiftl_1_l.
-    rewrite !N.land_ones' by auto using N.power_two_trivial.
-    rewrite N.log2_pow2 by lia.
+    rewrite mm_entry_size_step, mm_entry_size_eq in *.
+    push_nat2n_all.
+    rewrite <-!N.div_div in * by auto.
+    cbv [mm_index]. apply N.to_nat_le_iff.
+    autorewrite with bits2arith nsimplify.
     rewrite !N.mod_eq by (apply N.pow_nonzero; solver).
     match goal with
     | H : (_ / _ = _ / _)%N |- _ => rewrite H
     end.
-    apply N.sub_le_mono_r.
-    apply N.div_le_mono; try apply N.pow_nonzero; solver.
+    apply N.sub_le_mono_r; solver.
   Qed.
 
   Lemma mm_index_capped level (a : ptable_addr_t) i :
     i < 2 ^ PAGE_LEVEL_BITS ->
-    N.to_nat a < i * mm_entry_size level ->
+    (N.to_nat a < i * mm_entry_size level) ->
     mm_index a level < i.
   Proof.
-    cbv [mm_index mm_entry_size]; intros.
-    rewrite !N.shiftl_1_l in *.
-    assert (N.to_nat (a >> PAGE_BITS + level * PAGE_LEVEL_BITS)%N < i).
-    { rewrite <-(Nnat.Nat2N.id i).
-      apply N.to_nat_lt_iff.
-      rewrite N.shiftr_div_pow2.
-      apply N.div_lt_upper_bound;
-        try apply N.pow_nonzero; lia. }
-    { rewrite N.land_ones' by auto using N.power_two_trivial.
-      rewrite N.log2_pow2 by lia.
-      replace (2 ^ PAGE_LEVEL_BITS)%N with (N.of_nat (2 ^ PAGE_LEVEL_BITS))
-        by (rewrite Nat2N.inj_pow; reflexivity).
-      rewrite N.mod_small by solver.
-      solver. }
+    cbv [mm_index]; intros.
+    rewrite <-(Nnat.Nat2N.id i). apply N.to_nat_lt_iff.
+    autorewrite with bits2arith nsimplify pull_nat2n.
+    rewrite <-mm_entry_size_eq.
+    pose proof mm_entry_size_pos level.
+    assert (a < N.of_nat i * N.of_nat (mm_entry_size level))%N by solver.
+    assert (N.of_nat i < N.of_nat (2 ^ PAGE_LEVEL_BITS))%N by solver.
+    assert (a < N.of_nat (mm_entry_size level) * N.of_nat (2 ^ PAGE_LEVEL_BITS))%N
+      by (eapply N.lt_trans; [eassumption|]; rewrite N.mul_comm;
+          apply N.mul_lt_mono_pos_l; auto).
+    rewrite N.mod_small by (apply N.div_lt_upper_bound; solver).
+    apply N.div_lt_upper_bound; solver.
   Qed.
 
   Lemma mm_index_eq a b level :
