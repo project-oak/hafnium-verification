@@ -12,8 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+template("source_dir") {
+  action("${target_name}") {
+    depfile = "${target_out_dir}/${target_name}.d"
+    outputs = [
+      "$target_out_dir/${target_name}.script.stamp",
+    ]
+
+    script = "//build/linux/gen_depfile.py"
+    args = [
+      rebase_path(invoker.path, root_build_dir),
+      rebase_path(outputs[0], root_build_dir),
+      rebase_path(depfile, root_build_dir),
+    ]
+  }
+}
+
 template("linux_kernel") {
-  # TODO: target has no "sources"
+  source_target = "${target_name}__source"
+  defconfig_target = "${target_name}__defconfig"
 
   # Args to build/make.py to start the Linux build.
   shared_args = [
@@ -32,9 +49,15 @@ template("linux_kernel") {
     "-j24",
   ]
 
+  # Subtarget which generates a depfile with all files in the Linux tree
+  # and gets invalidated if any of them change.
+  source_dir(source_target) {
+    path = invoker.kernel_dir
+  }
+
   # Subtarget which runs `defconfig` and `modules_prepare`. Used by targets
   # which do not require the whole kernel to have been built.
-  action("${target_name}__defconfig") {
+  action(defconfig_target) {
     script = "//build/make.py"
     args = shared_args + [
              "defconfig",
@@ -45,6 +68,9 @@ template("linux_kernel") {
     # its timestamp to change after a recompile. Use the .config file.
     outputs = [
       "${target_out_dir}/.config",
+    ]
+    deps = [
+      ":${source_target}",
     ]
   }
 
@@ -60,7 +86,8 @@ template("linux_kernel") {
       output_file,
     ]
     deps = [
-      ":${target_name}__defconfig",
+      ":${defconfig_target}",
+      ":${source_target}",
     ]
   }
 }
