@@ -333,7 +333,10 @@ Section ListQualifiers.
 
   Lemma Forall_map {A B} (P : B -> Prop) (f : A -> B) ls :
     Forall P (map f ls) -> Forall (fun a => P (f a)) ls.
-  Admitted. (* TODO *)
+  Proof.
+    induction ls; cbn [map]; intros; [solver|].
+    invert_list_properties. solver.
+  Qed.
 
   (*** Some proofs about [ForallOrdPairs] ***)
 
