@@ -64,7 +64,7 @@ Hint Rewrite N.shiftl_1_l N.shiftl_mul_pow2 N.shiftr_div_pow2 N.land_ones
 
 (* Add common side conditions for N lemmas to [auto] *)
 Hint Resolve N.pow_nonzero N.div_le_mono N.mod_bound_pos N.neq_0_lt_0 N.le_0_l
-     N.lt_le_incl.
+     N.lt_le_incl N.mod_le.
 
 Ltac nsimplify := autorewrite with nsimplify.
 Ltac nsimplify_all := autorewrite with nsimplify in *.
@@ -342,7 +342,12 @@ Module N.
 
   Lemma shiftr_add_shiftl a b n :
     N.shiftl (N.shiftr a n + b) n = a + N.shiftl b n - a mod (2 ^ n).
-  Admitted.
+  Proof.
+    autorewrite with bits2arith push_nmul.
+    rewrite mul_div' by auto.
+    rewrite N.add_sub_swap by auto.
+    solver.
+  Qed.
 End N.
 Hint Resolve N.to_nat_lt_iff N.to_nat_le_iff.
 
