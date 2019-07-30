@@ -344,8 +344,7 @@ Module N.
     N.shiftl (N.shiftr a n + b) n = a + N.shiftl b n - a mod (2 ^ n).
   Proof.
     autorewrite with bits2arith push_nmul.
-    rewrite mul_div' by auto.
-    rewrite N.add_sub_swap by auto.
+    rewrite mul_div', N.add_sub_swap by auto.
     solver.
   Qed.
 End N.

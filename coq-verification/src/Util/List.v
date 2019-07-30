@@ -151,7 +151,9 @@ Section NthDefault.
   Lemma In_nth_default ls i :
     i < length ls ->
     In (nth_default d ls i) ls.
-  Admitted. (* TODO *)
+  Proof.
+    intros; rewrite nth_default_eq; auto using nth_In.
+  Qed.
 End NthDefault.
 Hint Rewrite @nth_default_nil @nth_default_cons : push_nth_default.
 
@@ -170,7 +172,11 @@ Section FoldRight.
   Lemma fold_right_ext (f g : A -> B -> B) b ls :
     (forall a b, In a ls -> f a b = g a b) ->
     fold_right f b ls = fold_right g b ls.
-  Admitted. (* TODO *)
+  Proof.
+    intro Hfg.
+    induction ls; cbn [fold_right];
+      rewrite ?IHls, ?Hfg by solver; solver.
+  Qed.
 End FoldRight.
 
 Section FoldLeft.
@@ -190,10 +196,17 @@ End FoldLeft.
 Section FirstnSkipn.
   Context {A : Type}.
 
-  Lemma firstn_snoc i ls d :
-    i < length ls ->
-    @firstn A (S i) ls = firstn i ls ++ (nth_default d ls i :: nil).
-  Admitted. (* TODO *)
+  Lemma firstn_snoc ls d :
+    forall i,
+      i < length ls ->
+      @firstn A (S i) ls = firstn i ls ++ (nth_default d ls i :: nil).
+  Proof.
+    induction ls; intros;
+      autorewrite with push_nth_default push_length in *; [solver|].
+    cbn [firstn]. destruct i; [reflexivity|].
+    rewrite IHls by solver.
+    reflexivity.
+  Qed.
 
   Lemma in_firstn (a : A) ls : forall i, In a (firstn i ls) -> In a ls.
   Proof.
