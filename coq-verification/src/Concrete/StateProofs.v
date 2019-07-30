@@ -55,6 +55,10 @@ Section Proofs.
     represents abst' conc.
   Admitted.
 
+  (* [represents] includes [is_valid] as one of its conditions *)
+  Lemma represents_valid_concrete abst conc : represents abst conc -> is_valid conc.
+  Proof. cbv [represents]; basics; auto. Qed.
+
   (* if the new table is the same as the old, abstract state doesn't change *)
   Lemma reassign_pointer_noop_represents conc ptr t abst :
     conc.(ptable_deref) ptr = t ->
@@ -110,15 +114,6 @@ Section Proofs.
   Definition deref_noncircular (c : concrete_state) : Prop :=
     forall ptr,
       ~ pointer_in_table c.(ptable_deref) ptr (c.(ptable_deref) ptr).
-
-  (* TODO : It's not clear that this definition is the correct approach. Consider
-     other ways to keep track of the fact that page tables don't have circular
-     references and don't use any locations in the freelist. *)
-  Definition pointers_ok (c : concrete_state) (ppool : mpool) : Prop :=
-    deref_noncircular c
-    /\ (forall ptr,
-           mpool_contains ppool ptr <->
-           (forall ptr2, ~ pointer_in_table c.(ptable_deref) ptr (c.(ptable_deref) ptr2))).
 
   (* We haven't formalized anywhere that pointers don't repeat, so we return a
      list of all locations where the provided pointer exists even though we

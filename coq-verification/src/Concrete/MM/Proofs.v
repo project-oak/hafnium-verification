@@ -489,21 +489,11 @@ Section Proofs.
   Admitted.
 
   Lemma mm_map_level_noncircular c begin end_ pa attrs ptr level flags ppool :
-    pointers_ok c ppool ->
+    is_valid c ->
     let ret := mm_map_level
                  c begin end_ pa attrs (ptable_deref c ptr) level flags ppool in
     let table := snd (fst (fst ret)) in
     ~ pointer_in_table (ptable_deref c) ptr table.
-  Admitted. (* TODO *)
-
-  (* TODO: needs preconditions *)
-  Lemma mm_map_level_pointers_ok c begin end_ pa attrs ptr level flags ppool :
-    pointers_ok c ppool ->
-    let ret := mm_map_level
-                 c begin end_ pa attrs (ptable_deref c ptr) level flags ppool in
-    let table := snd (fst (fst ret)) in
-    let ppool' := snd ret in
-    pointers_ok (reassign_pointer c ptr table) ppool'.
   Admitted. (* TODO *)
 
   (* TODO: might want a nicer reasoning framework for this *)
@@ -511,7 +501,7 @@ Section Proofs.
      level at which it operates *)
   Lemma mm_map_level_index_sequences
         c begin end_ pa attrs root_ptr ptr level flags ppool :
-    pointers_ok c ppool ->
+    is_valid c ->
     let ret := mm_map_level
                  c begin end_ pa attrs (ptable_deref c ptr) level flags ppool in
     let table := snd (fst (fst ret)) in
@@ -580,8 +570,8 @@ Section Proofs.
      (table_index = table_index_expression begin end_ root_level
       (* ...and [begin] increases monotonically *)
       /\ (start_begin <= begin)%N
-      (* ...and we never create circular references *)
-      /\ pointers_ok s ppool
+      (* ...and the concrete state stays valid *)
+      /\ is_valid s
       (* ..and [begin] is either equal to its starting value or is the start
          of a block *)
       /\ is_begin_or_block_start start_begin begin root_level
@@ -657,8 +647,6 @@ Section Proofs.
     ptable_is_root t flags ->
     (* and that [begin] and [end_ - 1] are on the same level *)
     mm_level_end begin root_level = mm_level_end (end_ - 1) root_level ->
-    (* nothing weird and circular going on with pointers *)
-    pointers_ok conc ppool ->
     forall abst,
       represents abst conc ->
       represents (fold_left
@@ -757,9 +745,6 @@ Section Proofs.
         apply N.lt_le_incl.
         apply mm_start_of_next_block_lt;
           auto using mm_entry_size_power_two. }
-      { (* pointers_ok s ppool *)
-        apply mm_map_level_pointers_ok.
-        auto. }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -804,7 +789,8 @@ Section Proofs.
 
     { (* Subgoal 2 : invariant holds at start *)
       right.
-      cbv [table_index_expression] in *; simplify; [ | | ].
+      cbv [table_index_expression] in *; simplify; [ | | | ].
+      { eauto using represents_valid_concrete. }
       { cbv [is_begin_or_block_start]; simplify. }
       { apply Forall_forall; intros.
         apply Forall_forall; intros.
