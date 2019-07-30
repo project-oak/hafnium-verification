@@ -59,8 +59,7 @@ pub unsafe extern "C" fn api_init(ppool: *mut MPool) {
 /// This triggers the scheduling logic to run. Run in the context of secondary
 /// VM to cause HF_VCPU_RUN to return and the primary VM to regain control of
 /// the cpu.
-#[no_mangle]
-pub unsafe extern "C" fn api_switch_to_primary(
+unsafe fn api_switch_to_primary(
     current: *mut VCpu,
     mut primary_ret: HfVCpuRunReturn,
     secondary_state: VCpuStatus,
@@ -248,8 +247,7 @@ pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
 
 /// Retrieves the next waiter and removes it from the wait list if the VM's
 /// mailbox is in a writable state.
-#[no_mangle]
-pub unsafe extern "C" fn api_fetch_waiter(locked_vm: VmLocked) -> *mut WaitEntry {
+unsafe fn api_fetch_waiter(locked_vm: VmLocked) -> *mut WaitEntry {
     let entry: *mut WaitEntry;
     let vm = locked_vm.vm;
 
@@ -299,7 +297,7 @@ unsafe fn internal_interrupt_inject(
     if (*target_vcpu).interrupts.enabled[intid_index as usize]
         & !(*target_vcpu).interrupts.pending[intid_index as usize]
         & intid_mask
-        != 0
+        == 0
     {
         // goto out;
         // Either way, make it pending.
@@ -356,6 +354,7 @@ unsafe fn api_vcpu_prepare_run(
     // dependencies in the common run case meaning the sensitive context
     // switch performance is consistent.
     loop {
+        dlog!("L");
         sl_lock(&(*vcpu).lock);
 
         // The VM needs to be locked to deliver mailbox messages.
@@ -393,16 +392,29 @@ unsafe fn api_vcpu_prepare_run(
         if need_vm_lock {
             sl_unlock(&(*(*vcpu).vm).lock);
         }
+    }
 
-        if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
-            if (*vcpu).state != VCpuStatus::Aborted {
-                dlog!(
-                    "Aborting VM {} vCPU {}\n",
-                    (*(*vcpu).vm).id,
-                    vcpu_index(vcpu)
-                );
-                (*vcpu).state = VCpuStatus::Aborted;
-            }
+    if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
+        if (*vcpu).state != VCpuStatus::Aborted {
+            dlog!(
+                "Aborting VM {} vCPU {}\n",
+                (*(*vcpu).vm).id,
+                vcpu_index(vcpu)
+            );
+            (*vcpu).state = VCpuStatus::Aborted;
+        }
+        ret = false;
+        // goto out;
+        sl_unlock(&(*vcpu).lock);
+        if need_vm_lock {
+            sl_unlock(&(*(*vcpu).vm).lock);
+        }
+
+        return ret;
+    }
+
+    match (*vcpu).state {
+        VCpuStatus::Running | VCpuStatus::Off | VCpuStatus::Aborted => {
             ret = false;
             // goto out;
             sl_unlock(&(*vcpu).lock);
@@ -413,75 +425,61 @@ unsafe fn api_vcpu_prepare_run(
             return ret;
         }
 
-        match (*vcpu).state {
-            VCpuStatus::Running | VCpuStatus::Off | VCpuStatus::Aborted => {
-                ret = false;
-                // goto out;
-                sl_unlock(&(*vcpu).lock);
-                if need_vm_lock {
-                    sl_unlock(&(*(*vcpu).vm).lock);
-                }
-
-                return ret;
+        VCpuStatus::BlockedMailbox
+            // A pending message allows the vCPU to run so the message can
+            // be delivered directly.
+            if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
+                arch_regs_set_retval(&mut (*vcpu).regs, SPCI_SUCCESS as uintreg_t);
+                (*(*vcpu).vm).mailbox.state = MailboxState::Read;
+                // break;
             }
+            // Fall through. (TODO: isn't it too verbose?)
 
-            VCpuStatus::BlockedMailbox
-                // A pending message allows the vCPU to run so the message can
-                // be delivered directly.
-                if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
-                    arch_regs_set_retval(&mut (*vcpu).regs, SPCI_SUCCESS as uintreg_t);
-                    (*(*vcpu).vm).mailbox.state = MailboxState::Read;
-                    // break;
-                }
-                // Fall through. (TODO: isn't it too verbose?)
-
-            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-                // Allow virtual interrupts to be delivered.
-                if (*vcpu).interrupts.enabled_and_pending_count > 0 => {
-                    // break;
-                }
-
-            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-                // The timer expired so allow the interrupt to be delivered.
-                if arch_timer_pending(&(*vcpu).regs) => {
-                    // break;
-                }
-
-            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
-                // The vCPU is not ready to run, return the appropriate code to
-                // the primary which called vcpu_run.
-                if arch_timer_enabled(&(*vcpu).regs) {
-                    (*run_ret).code =
-                        if (*vcpu).state == VCpuStatus::BlockedMailbox {
-                            HfVCpuRunCode::WaitForMessage
-                        } else {
-                            HfVCpuRunCode::WaitForInterrupt
-                        };
-                    (*run_ret).detail.sleep = HfVCpuRunSleep {
-                        ns: arch_timer_remaining_ns(&mut (*vcpu).regs),
-                    };
-                }
-
-                ret = false;
-                // goto out;
-                sl_unlock(&(*vcpu).lock);
-                if need_vm_lock {
-                    sl_unlock(&(*(*vcpu).vm).lock);
-                }
-
-                return ret;
-            }
-
-            VCpuStatus::BlockedMailbox | VCpuStatus::Ready => {
+        VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
+            // Allow virtual interrupts to be delivered.
+            if (*vcpu).interrupts.enabled_and_pending_count > 0 => {
                 // break;
             }
 
+        VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
+            // The timer expired so allow the interrupt to be delivered.
+            if arch_timer_pending(&(*vcpu).regs) => {
+                // break;
+            }
+
+        VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
+            // The vCPU is not ready to run, return the appropriate code to
+            // the primary which called vcpu_run.
+            if arch_timer_enabled(&(*vcpu).regs) {
+                (*run_ret).code =
+                    if (*vcpu).state == VCpuStatus::BlockedMailbox {
+                        HfVCpuRunCode::WaitForMessage
+                    } else {
+                        HfVCpuRunCode::WaitForInterrupt
+                    };
+                (*run_ret).detail.sleep = HfVCpuRunSleep {
+                    ns: arch_timer_remaining_ns(&mut (*vcpu).regs),
+                };
+            }
+
+            ret = false;
+            // goto out;
+            sl_unlock(&(*vcpu).lock);
+            if need_vm_lock {
+                sl_unlock(&(*(*vcpu).vm).lock);
+            }
+
+            return ret;
         }
 
-        // It has been decided that the vCPU should be run.
-        (*vcpu).cpu = (*current).cpu;
-        (*vcpu).state = VCpuStatus::Running;
+        VCpuStatus::Ready => {
+            // break;
+        }
     }
+
+    // It has been decided that the vCPU should be run.
+    (*vcpu).cpu = (*current).cpu;
+    (*vcpu).state = VCpuStatus::Running;
 
     // Mark the registers as unavailable now that we're about to reflect
     // them onto the real registers. This will also prevent another physical
@@ -1329,7 +1327,7 @@ pub unsafe extern "C" fn api_interrupt_enable(intid: u32, enable: bool, current:
     } else {
         // If it is pending and was enabled before, decrement the count.
         if ((*current).interrupts.pending[intid_index]
-            & !(*current).interrupts.enabled[intid_index]
+            & (*current).interrupts.enabled[intid_index]
             & intid_mask)
             != 0
         {
@@ -1495,7 +1493,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     from_locked: VmLocked,
     memory_region: *mut SpciMemoryRegion,
     memory_to_attributes: u32,
-    share: SpciMemoryShare,
+    share: usize,
 ) -> spci_return_t {
     let to = to_locked.vm;
     let from = from_locked.vm;
@@ -1526,6 +1524,11 @@ pub unsafe extern "C" fn api_spci_share_memory(
     let mut orig_from_mode = mem::uninitialized();
     let mut from_mode = mem::uninitialized();
     let mut to_mode = mem::uninitialized();
+    let share = match share {
+        0x2 => SpciMemoryShare::Donate,
+        _ => return SPCI_INVALID_PARAMETERS,
+    };
+
     if !spci_msg_check_transition(
         to,
         from,
@@ -1607,13 +1610,14 @@ pub unsafe extern "C" fn api_share_memory(
     vm_id: spci_vm_id_t,
     addr: ipaddr_t,
     size: size_t,
-    share: HfShare,
+    share: usize,
     current: *mut VCpu,
 ) -> i64 {
     let from = (*current).vm;
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if vm_id == (*from).id {
+        assert!(false);
         return -1;
     }
 
@@ -1634,6 +1638,16 @@ pub unsafe extern "C" fn api_share_memory(
     // Convert the sharing request to memory management modes.
     let from_mode;
     let to_mode;
+    let share = match share {
+        0 => HfShare::Give,
+        1 => HfShare::Lend,
+        2 => HfShare::Share,
+        _ => {
+            // The input is untrusted so might not be a valid value.
+            return -1;
+        }
+    };
+
     match share {
         HfShare::Give => {
             from_mode = (Mode::INVALID | Mode::UNOWNED).bits() as c_int;
@@ -1646,13 +1660,6 @@ pub unsafe extern "C" fn api_share_memory(
         HfShare::Share => {
             from_mode = (Mode::R | Mode::W | Mode::X | Mode::SHARED).bits() as c_int;
             to_mode = (Mode::R | Mode::W | Mode::X | Mode::UNOWNED | Mode::SHARED).bits() as c_int;
-        }
-
-        _ => {
-            // The input is untrusted so might not be a valid value.
-            // TODO: This is UB in Rust. Change the type of share into usize and
-            // make a method like HfShare::try_from(usize) -> Option<HfShare>.
-            return -1;
         }
     }
 
