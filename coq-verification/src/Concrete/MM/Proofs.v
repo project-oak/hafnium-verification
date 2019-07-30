@@ -495,7 +495,7 @@ Section Proofs.
     let ret := mm_map_level
                  c begin end_ pa attrs (ptable_deref c ptr) level flags ppool in
     let table := snd (fst (fst ret)) in
-    ~ pointer_in_table (ptable_deref c) ptr table.
+    ~ pointer_in_table (ptable_deref c) ptr table level.
   Admitted. (* TODO *)
 
   (* TODO: might want a nicer reasoning framework for this *)
@@ -752,7 +752,7 @@ Section Proofs.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
         eapply reassign_pointer_represents; eauto; [ ].
         apply has_uniform_attrs_reassign_pointer;
-          [ solve [auto using mm_map_level_noncircular] | ].
+          try auto using mm_map_level_noncircular; try solver; [ ].
         auto using mm_map_level_table_attrs. }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
@@ -793,7 +793,7 @@ Section Proofs.
         apply reassign_pointer_represents with (level := root_level - 1).
         { assumption. }
         { apply has_uniform_attrs_reassign_pointer;
-            [ solve [auto using mm_map_level_noncircular] | ].
+          try auto using mm_map_level_noncircular; try solver; [ ].
           match goal with
           | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
             destruct H; [ subst; apply mm_map_level_table_attrs; solver | ]
