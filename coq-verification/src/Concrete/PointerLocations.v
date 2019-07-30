@@ -29,19 +29,15 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 Section PointerLocations.
   Context (ptable_deref : ptable_pointer -> mm_page_table).
 
-  (* TODO: change everything everywhere about "lvls_to_go" -- it is based on the
-     incorrect understanding that the root is level 0, when really it's level 4
-     and the levels *decrease* as we go deeper *)
   (* We haven't formalized anywhere that pointers don't repeat, so we return a
      list of all locations where the provided pointer exists even though we
      expect there is only one. *)
   Fixpoint index_sequences_to_pointer''
-           (ptr : ptable_pointer) (root : ptable_pointer) (lvls_to_go : nat)
+           (ptr : ptable_pointer) (root : ptable_pointer) (level : nat)
     : list (list nat) :=
-    match lvls_to_go with
+    match level with
     | 0 => nil
-    | S lvls_to_go' =>
-      let lvl := 4 - lvls_to_go in
+    | S level' =>
       if ptable_pointer_eq_dec root ptr
       then cons nil nil
       else
@@ -50,14 +46,14 @@ Section PointerLocations.
           (fun index =>
              match get_entry ptable index with
              | Some pte =>
-               if arch_mm_pte_is_table pte lvl
+               if arch_mm_pte_is_table pte level
                then
                  let next_root :=
                      ptable_pointer_from_address
-                       (arch_mm_table_from_pte pte lvl) in
+                       (arch_mm_table_from_pte pte level) in
                  map
                    (cons index)
-                   (index_sequences_to_pointer'' ptr next_root lvls_to_go')
+                   (index_sequences_to_pointer'' ptr next_root level')
                else nil
              | None => nil
              end)
