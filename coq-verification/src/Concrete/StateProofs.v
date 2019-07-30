@@ -78,30 +78,24 @@ Section Proofs.
            end.
   Qed.
 
-  Fixpoint pointer_in_table'
+  Fixpoint pointer_in_table
              (deref : ptable_pointer -> mm_page_table) (ptr : ptable_pointer)
-             (t : mm_page_table) (lvls_to_go : nat) : Prop :=
-    match lvls_to_go with
+             (t : mm_page_table) (level : nat) : Prop :=
+    match level with
     | 0 => False
-    | S lvls_to_go' =>
-      let lvl := 4 - lvls_to_go in
+    | S level' =>
       Exists
         (fun pte =>
-           if arch_mm_pte_is_table pte lvl
+           if arch_mm_pte_is_table pte level
            then
              let next_t_ptr :=
-                 ptable_pointer_from_address (arch_mm_table_from_pte pte lvl) in
+                 ptable_pointer_from_address (arch_mm_table_from_pte pte level) in
              if ptable_pointer_eq_dec ptr next_t_ptr
              then True
-             else pointer_in_table' deref ptr (deref next_t_ptr) lvls_to_go'
+             else pointer_in_table deref ptr (deref next_t_ptr) level'
            else False)
         t.(entries)
     end.
-
-  Definition pointer_in_table
-             (deref : ptable_pointer -> mm_page_table) (ptr : ptable_pointer)
-             (t : mm_page_table) (level : nat) : Prop :=
-    pointer_in_table' deref ptr t (4 - level).
 
   Definition abstract_change_attrs (abst : abstract_state)
              (a : paddr_t) (e : entity_id) (owned valid : bool) :=
