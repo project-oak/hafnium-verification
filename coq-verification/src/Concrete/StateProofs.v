@@ -57,7 +57,7 @@ Section Proofs.
   Admitted.
 
   (* [represents] includes [is_valid] as one of its conditions *)
-  Lemma represents_valid_concrete abst conc : represents abst conc -> is_valid conc.
+  Lemma represents_valid_concrete conc : (exists abst, represents abst conc) -> is_valid conc.
   Proof. cbv [represents]; basics; auto. Qed.
 
   (* if the new table is the same as the old, abstract state doesn't change *)
@@ -76,12 +76,6 @@ Section Proofs.
                     [ | | solve[eauto] ]; eauto; [ ]
            end.
   Qed.
-
-  Definition all_root_ptables : list mm_ptable :=
-    hafnium_ptable :: map vm_ptable vms.
-
-  Definition all_root_ptable_pointers : list ptable_pointer :=
-    hafnium_root_tables ++ flat_map vm_root_tables vms.
 
   Fixpoint pointer_in_table'
              (deref : ptable_pointer -> mm_page_table) (ptr : ptable_pointer)
@@ -111,10 +105,6 @@ Section Proofs.
              (deref : ptable_pointer -> mm_page_table) (ptr : ptable_pointer)
              (t : mm_page_table) : Prop :=
     Forall (pointer_in_table' deref ptr t) (seq 0 4).
-
-  Definition deref_noncircular (c : concrete_state) : Prop :=
-    forall ptr,
-      ~ pointer_in_table c.(ptable_deref) ptr (c.(ptable_deref) ptr).
 
   Definition abstract_change_attrs (abst : abstract_state)
              (a : paddr_t) (e : entity_id) (owned valid : bool) :=

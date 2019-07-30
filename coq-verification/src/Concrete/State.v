@@ -20,6 +20,7 @@ Require Import Coq.NArith.BinNat.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.ArchMM.
 Require Import Hafnium.Concrete.Assumptions.Constants.
@@ -83,14 +84,21 @@ Class params_valid {cp : concrete_params} :=
         = arch_mm_stage2_root_table_count
   }.
 
+Definition all_root_ptables {cp : concrete_params} : list mm_ptable :=
+  hafnium_ptable :: map vm_ptable vms.
+
+Definition all_root_ptable_pointers {cp : concrete_params}
+  : list ptable_pointer := hafnium_root_tables ++ flat_map vm_root_tables vms.
+
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
+  locations_exclusive s.(ptable_deref) all_root_ptables s.(api_page_pool)
   (* Possible constraints:
         - Block PTEs have the valid bit set
         - page tables have a constant size
         - page table indices are always below page table size
         - vm_id corresponds to a VM's place in the vms list
    *)
-  True.
+  .
 
 Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
   find (fun v => (v.(vm_id) =? vid)) vms.
