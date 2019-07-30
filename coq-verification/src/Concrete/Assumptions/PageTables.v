@@ -26,10 +26,8 @@ Require Import Hafnium.Concrete.MM.Datatypes.
      be considered part of the TCB, because the proofs rely on this transcription
      being a correct description of the lookup procedure. ***)
 
-(* index in root-level page table *)
+(* index in each level of the page table (highest is root) *)
 Axiom index0 : uintpaddr_t -> nat.
-
-(* index in the other 3 levels of page table *)
 Axiom index1 : uintpaddr_t -> nat.
 Axiom index2 : uintpaddr_t -> nat.
 Axiom index3 : uintpaddr_t -> nat.
