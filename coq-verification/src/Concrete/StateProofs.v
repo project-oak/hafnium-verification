@@ -119,34 +119,44 @@ Section Proofs.
            else prev)
     |}.
 
-  (* given a sequence of page table indices, says whether the address is found
-     under the same sequence of page table indexing *)
-  Definition is_under_path (indices : list nat) (addr : uintpaddr_t) : bool :=
-    forallb
-      (fun '(lvl, i) => get_index lvl addr =? i)
-      (combine (seq 0 4) indices).
+  (* indices_from_address starts with the index of the root table in the list of
+     root tables (0 if there's only one) and then gives the index in the table at
+     [max_level]. The length of this sequence of indices is therefore
+     [max_level + 2], because it's [0..(max_level + 1)] *inclusive*. *)
+  Definition indices_from_address (a : uintpaddr_t) (stage : Stage) : list nat :=
+    map (fun lvl => get_index stage lvl a) (rev (seq 0 (S (S (max_level stage))))).
+
+  Definition address_matches_indices (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : Prop :=
+    firstn (length idxs) (indices_from_address a stage) = idxs.
+
+  Definition address_matches_indices_bool (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : bool :=
+    forallb (fun '(x,y) => x =? y) (combine (indices_from_address a stage) idxs).
 
   Definition addresses_under_pointer_in_range
              (deref : ptable_pointer -> mm_page_table)
              (ptr : ptable_pointer) (root_ptable : mm_ptable)
-             (begin end_ : uintvaddr_t) : list paddr_t :=
+             (begin end_ : uintvaddr_t) (stage : Stage) : list paddr_t :=
     let vrange := map N.of_nat (seq (N.to_nat begin) (N.to_nat end_)) in
     let prange := map (fun va => pa_from_va (va_init va)) vrange in
-    let paths := index_sequences_to_pointer deref ptr root_ptable in
+    let paths := index_sequences_to_pointer deref ptr root_ptable stage in
     filter
-      (fun a => existsb (fun p => is_under_path p (pa_addr a)) paths) prange.
+      (fun a => existsb (fun p => address_matches_indices_bool (pa_addr a) p stage) paths) prange.
 
   Definition abstract_reassign_pointer_for_entity
              (abst : abstract_state) (conc : concrete_state)
              (ptr : ptable_pointer) (owned valid : bool)
              (e : entity_id) (root_ptable : mm_ptable)
              (begin end_ : uintvaddr_t) : abstract_state :=
+    let stage := match e with
+                 | inl _ => Stage2
+                 | inr _ => Stage1
+                 end in
     fold_right
       (fun pa abst =>
          abstract_change_attrs abst pa e owned valid)
       abst
       (addresses_under_pointer_in_range
-         conc.(ptable_deref) ptr root_ptable begin end_).
+         conc.(ptable_deref) ptr root_ptable begin end_ stage).
 
   (* Update the abstract state to make everything under the given pointer have
      the provided new owned/valid bits. *)
@@ -176,35 +186,31 @@ Section Proofs.
       abst
       vms.
 
-  Definition indices_from_address (a : uintpaddr_t) : list nat :=
-    map (fun lvl => get_index lvl a) (rev (seq 0 4)).
-
-  Definition address_matches_indices (a : uintpaddr_t) (idxs : list nat) : Prop :=
-    firstn (length idxs) (indices_from_address a) = idxs.
-
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
              (table_loc : list nat)
              (t : mm_page_table) (level : nat) (attrs : attributes)
-             (begin end_ : uintvaddr_t) : Prop :=
+             (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
     forall (a : uintvaddr_t) (pte : pte_t),
-      address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc ->
+      address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc stage ->
       (begin <= a < end_)%N ->
-      page_lookup' ptable_deref a t (4 - level) = Some pte ->
+      level <= max_level stage ->
+      page_lookup' ptable_deref a t level stage = Some pte ->
       forall lvl, arch_mm_pte_attrs pte lvl = attrs.
 
   Definition has_location_in_state conc ptr idxs : Prop :=
     exists root_ptable,
-      has_location (ptable_deref conc) all_root_ptables (api_page_pool conc)
-                   ptr (table_loc conc.(api_page_pool) root_ptable idxs).
+      has_location (ptable_deref conc) (map vm_ptable vms) hafnium_ptable
+                   (api_page_pool conc) ptr
+                   (table_loc conc.(api_page_pool) root_ptable idxs).
 
-  Lemma reassign_pointer_represents conc ptr t abst idxs:
+  Lemma reassign_pointer_represents conc ptr t abst idxs stage :
     represents abst conc ->
     has_location_in_state conc ptr idxs ->
     let conc' := conc.(reassign_pointer) ptr t in
     forall attrs level begin end_,
       has_uniform_attrs
-        conc'.(ptable_deref) idxs t level attrs begin end_ ->
+        conc'.(ptable_deref) idxs t level attrs begin end_ stage ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -265,21 +271,22 @@ Section Proofs.
   (* has_uniform_attrs doesn't care if we reassign the pointer we started from *)
   (* TODO : fill in preconditions *)
   Lemma has_uniform_attrs_reassign_pointer
-        c ptr new_table t level attrs begin end_ idxs:
+        c ptr new_table t level attrs begin end_ idxs stage :
     is_valid c ->
     ~ pointer_in_table (ptable_deref c) ptr t level ->
     has_location_in_state c ptr idxs ->
-    has_uniform_attrs (ptable_deref c) idxs t level attrs begin end_ ->
+    has_uniform_attrs (ptable_deref c) idxs t level attrs begin end_ stage ->
     has_uniform_attrs
       (ptable_deref (reassign_pointer c ptr new_table))
-      idxs t level attrs begin end_.
+      idxs t level attrs begin end_ stage.
   Admitted. (* TODO *)
 
   Definition no_addresses_in_range deref ptr begin end_ : Prop :=
     Forall
       (fun root_ptable =>
-         addresses_under_pointer_in_range deref ptr root_ptable begin end_ = nil)
-      all_root_ptables.
+         addresses_under_pointer_in_range deref ptr root_ptable begin end_ Stage2 = nil)
+      (map vm_ptable vms)
+    /\ addresses_under_pointer_in_range deref ptr hafnium_ptable begin end_ Stage1 = nil.
 
   (* abstract_reassign_pointer is a no-op if the given tables don't have any
      addresses in range *)
