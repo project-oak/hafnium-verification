@@ -354,7 +354,6 @@ unsafe fn api_vcpu_prepare_run(
     // dependencies in the common run case meaning the sensitive context
     // switch performance is consistent.
     loop {
-        dlog!("L");
         sl_lock(&(*vcpu).lock);
 
         // The VM needs to be locked to deliver mailbox messages.
@@ -425,38 +424,38 @@ unsafe fn api_vcpu_prepare_run(
             return ret;
         }
 
-        VCpuStatus::BlockedMailbox
-            // A pending message allows the vCPU to run so the message can
-            // be delivered directly.
-            if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
-                arch_regs_set_retval(&mut (*vcpu).regs, SPCI_SUCCESS as uintreg_t);
-                (*(*vcpu).vm).mailbox.state = MailboxState::Read;
-                // break;
-            }
-            // Fall through. (TODO: isn't it too verbose?)
+        // A pending message allows the vCPU to run so the message can
+        // be delivered directly.
+        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
+            arch_regs_set_retval(&mut (*vcpu).regs, SPCI_SUCCESS as uintreg_t);
+            (*(*vcpu).vm).mailbox.state = MailboxState::Read;
+            // break;
+        }
+        // Fall through. (TODO: isn't it too verbose?)
 
+        // Allow virtual interrupts to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            // Allow virtual interrupts to be delivered.
-            if (*vcpu).interrupts.enabled_and_pending_count > 0 => {
-                // break;
-            }
+            if (*vcpu).interrupts.enabled_and_pending_count > 0 =>
+        {
+            // break;
+        }
 
+        // The timer expired so allow the interrupt to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            // The timer expired so allow the interrupt to be delivered.
-            if arch_timer_pending(&(*vcpu).regs) => {
-                // break;
-            }
+            if arch_timer_pending(&(*vcpu).regs) =>
+        {
+            // break;
+        }
 
+        // The vCPU is not ready to run, return the appropriate code to
+        // the primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
-            // The vCPU is not ready to run, return the appropriate code to
-            // the primary which called vcpu_run.
             if arch_timer_enabled(&(*vcpu).regs) {
-                (*run_ret).code =
-                    if (*vcpu).state == VCpuStatus::BlockedMailbox {
-                        HfVCpuRunCode::WaitForMessage
-                    } else {
-                        HfVCpuRunCode::WaitForInterrupt
-                    };
+                (*run_ret).code = if (*vcpu).state == VCpuStatus::BlockedMailbox {
+                    HfVCpuRunCode::WaitForMessage
+                } else {
+                    HfVCpuRunCode::WaitForInterrupt
+                };
                 (*run_ret).detail.sleep = HfVCpuRunSleep {
                     ns: arch_timer_remaining_ns(&mut (*vcpu).regs),
                 };
