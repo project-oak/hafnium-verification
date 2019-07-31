@@ -317,6 +317,8 @@ Section Abstract.
     /\ (forall (vid : vm_id) (a : addr), owns vid a -> In vid vms)
     (* ...and at least one entity always has access to memory *)
     /\ (forall a, exists (e : entity_id), has_access e a)
+    (* ...and memory is always owned by exactly one VM *)
+    /\ (forall a, length (owned_by a) = 1)
     (* ...and memory is accessible by at most 2 VMs *)
     /\ (forall a, length (accessible_by a) <= 2)
     (* ...and no one has access to Hafnium's memory but Hafnium (id = [hid]) *)
