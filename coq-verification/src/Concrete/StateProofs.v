@@ -61,6 +61,24 @@ Section Proofs.
   Proof. cbv [represents]; basics; auto. Qed.
   Hint Resolve represents_valid_concrete.
 
+  (* [abstract_state_equiv] is reflexive *)
+  Lemma abstract_state_equiv_refl abst : abstract_state_equiv abst abst.
+  Proof. cbv [abstract_state_equiv]. solver. Qed.
+  Hint Resolve abstract_state_equiv_refl.
+
+  (* [abstract_state_equiv] is transitive *)
+  Lemma abstract_state_equiv_trans abst1 abst2 abst3 :
+    abstract_state_equiv abst1 abst2 ->
+    abstract_state_equiv abst2 abst3 ->
+    abstract_state_equiv abst1 abst3.
+  Proof.
+    cbv [abstract_state_equiv].
+    basics; try solver.
+    match goal with
+    | H : context [_ <-> _] |- _ => rewrite H; solver
+    end.
+  Qed.
+
   (* if the new table is the same as the old, abstract state doesn't change *)
   Lemma reassign_pointer_noop_represents conc ptr t abst :
     conc.(ptable_deref) ptr = t ->
@@ -136,7 +154,7 @@ Section Proofs.
              (deref : ptable_pointer -> mm_page_table)
              (ptr : ptable_pointer) (root_ptable : mm_ptable)
              (begin end_ : uintvaddr_t) (stage : Stage) : list paddr_t :=
-    let vrange := map N.of_nat (seq (N.to_nat begin) (N.to_nat end_)) in
+    let vrange := map N.of_nat (seq (N.to_nat begin) (N.to_nat (end_ - begin))) in
     let prange := map (fun va => pa_from_va (va_init va)) vrange in
     let paths := index_sequences_to_pointer deref ptr root_ptable stage in
     filter
@@ -223,12 +241,46 @@ Section Proofs.
     (* TODO: 4 subgoals *)
   Admitted.
 
+  (* if the address range is empty (end_ <= begin), then there can be no
+     addresses in that range under the given pointer *)
+  Lemma addresses_under_pointer_in_range_empty
+        deref ptr root_ptbl begin end_ stage :
+    (end_ <= begin)%N ->
+    addresses_under_pointer_in_range deref ptr root_ptbl begin end_ stage = nil.
+  Proof.
+    intros; cbv [addresses_under_pointer_in_range].
+    replace (end_ - begin)%N with 0%N by solver.
+    reflexivity.
+  Qed.
+
+  (* if the address range is empty (end_ <= begin), then the abstract state
+     doesn't change *)
+  Lemma abstract_reassign_pointer_for_entity_trivial
+        abst conc ptr owned valid e root_ptable begin end_ :
+    (end_ <= begin)%N ->
+    abstract_state_equiv
+      abst
+      (abstract_reassign_pointer_for_entity
+         abst conc ptr owned valid e root_ptable begin end_).
+  Proof.
+    intros; cbv [abstract_reassign_pointer_for_entity].
+    rewrite addresses_under_pointer_in_range_empty by solver.
+    cbn [fold_right]; auto.
+  Qed.
+
+  (* if the address range is empty (end_ <= begin), then the abstract state
+     doesn't change *)
   Lemma abstract_reassign_pointer_trivial abst conc ptr attrs begin end_:
     (end_ <= begin)%N ->
     abstract_state_equiv
       abst
       (abstract_reassign_pointer abst conc ptr attrs begin end_).
-  Admitted. (* TODO *)
+  Proof.
+    intros; cbv [abstract_reassign_pointer].
+    apply fold_right_invariant; intros;
+      [ eapply abstract_state_equiv_trans; [eassumption|] | ];
+      auto using abstract_reassign_pointer_for_entity_trivial.
+  Qed.
 
   Lemma abstract_reassign_pointer_for_entity_change_concrete
         abst conc conc' ptr owned valid e root_ptr begin end_ :
