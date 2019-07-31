@@ -227,16 +227,17 @@ Section Proofs.
     has_location_in_state conc ptr idxs ->
     let conc' := conc.(reassign_pointer) ptr t in
     forall attrs level begin end_,
+      locations_exclusive
+        conc'.(ptable_deref) (map vm_ptable vms) hafnium_ptable conc.(api_page_pool) ->
       has_uniform_attrs
         conc'.(ptable_deref) idxs t level attrs begin end_ stage ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
   Proof.
-    cbv [reassign_pointer represents].
-    cbv [is_valid].
+    cbv [reassign_pointer represents is_valid].
     cbv [vm_page_valid haf_page_valid vm_page_owned haf_page_owned].
-    cbn [ptable_deref].
+    cbn [ptable_deref api_page_pool].
     basics; try solver.
     (* TODO: 4 subgoals *)
   Admitted.
@@ -324,8 +325,8 @@ Section Proofs.
   (* TODO : fill in preconditions *)
   Lemma has_uniform_attrs_reassign_pointer
         c ptr new_table t level attrs begin end_ idxs stage :
-    is_valid c ->
-    ~ pointer_in_table (ptable_deref c) ptr t level ->
+    (* this precondition is so we know c doesn't show up in the new table *)
+    is_valid (reassign_pointer c ptr new_table) ->
     has_location_in_state c ptr idxs ->
     has_uniform_attrs (ptable_deref c) idxs t level attrs begin end_ stage ->
     has_uniform_attrs

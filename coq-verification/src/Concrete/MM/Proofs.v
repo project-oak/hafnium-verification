@@ -533,13 +533,40 @@ Section Proofs.
     has_uniform_attrs conc.(ptable_deref) idxs new_table level attrs begin end_ (stage_from_flags flags).
   Admitted.
 
-  Lemma mm_map_level_noncircular c begin end_ pa attrs ptr level flags ppool :
-    is_valid c ->
-    let ret := mm_map_level
-                 c begin end_ pa attrs (ptable_deref c ptr) level flags ppool in
-    let table := snd (fst (fst ret)) in
-    ~ pointer_in_table (ptable_deref c) ptr table level.
+  (* TODO: make locations_exclusive take a list of mpools so we can include the
+     fact that the local pool doesn't overlap with active tables -- this will be
+     needed when we eventually call mpool_fini and add those locations to the
+     global freelist *)
+  (* states that mm_map_level returns a table such that *)
+  Lemma mm_map_level_locations_exclusive conc begin end_ pa attrs table level
+        flags ppool ptr :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let success := fst (fst (fst ret)) in
+    let new_table := snd (fst (fst ret)) in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    conc.(ptable_deref) ptr = table ->
+    locations_exclusive
+      (ptable_deref (reassign_pointer conc ptr new_table))
+      (map vm_ptable vms) hafnium_ptable conc.(api_page_pool).
   Admitted. (* TODO *)
+
+  Lemma mm_map_level_reassign_pointer conc begin end_ pa attrs table level
+        flags ppool ptr :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let success := fst (fst (fst ret)) in
+    let new_table := snd (fst (fst ret)) in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    conc.(ptable_deref) ptr = table ->
+    is_valid (reassign_pointer conc ptr new_table).
+  Proof.
+    cbv [is_valid]; basics.
+    cbn [api_page_pool reassign_pointer].
+    auto using mm_map_level_locations_exclusive.
+  Qed.
 
   (* TODO: might want a nicer reasoning framework for this *)
   (* mm_map_level doesn't alter the global locations of any pointers above the
@@ -795,10 +822,11 @@ Section Proofs.
         cbv [table_index_expression] in *; simplify; [ ].
         apply represents_valid_concrete.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
-        eapply reassign_pointer_represents; eauto; [ ].
-        apply has_uniform_attrs_reassign_pointer;
-          try auto using mm_map_level_noncircular; try solver; [ ].
-        eapply mm_map_level_table_attrs; solver. }
+        eapply reassign_pointer_represents; eauto; [ | ].
+        { apply mm_map_level_locations_exclusive; solver. }
+        { apply has_uniform_attrs_reassign_pointer;
+            try apply mm_map_level_reassign_pointer;
+            try eapply mm_map_level_table_attrs; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -835,9 +863,9 @@ Section Proofs.
         end.
 
         eapply reassign_pointer_represents with (level := root_level - 1);
-          try solver; [ ].
+          try apply mm_map_level_locations_exclusive; try solver; [ ].
         apply has_uniform_attrs_reassign_pointer;
-          try auto using mm_map_level_noncircular; try solver; [ ].
+          try auto using mm_map_level_reassign_pointer; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
           destruct H; [ subst;
