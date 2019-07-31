@@ -19,9 +19,9 @@ use crate::types::*;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub enum HfVCpuRunCode {
-    /// The vCPU has been preempted but still has work to do. If the
-    /// scheduling quantum has not expired, the scheduler MUST call
-    /// `hf_vcpu_run` on the vCPU to allow it to continue.
+    /// The vCPU has been preempted but still has work to do. If the scheduling
+    /// quantum has not expired, the scheduler MUST call `hf_vcpu_run` on the
+    /// vCPU to allow it to continue.
     Preempted = 0,
 
     /// The vCPU has voluntarily yielded the CPU. The scheduler SHOULD take a
@@ -31,10 +31,9 @@ pub enum HfVCpuRunCode {
 
     /// The vCPU is blocked waiting for an interrupt. The scheduler MUST take
     /// it off the run queue and not call `hf_vcpu_run` on the vCPU until it
-    /// has injected an interrupt, received `HF_VCPU_RUN_WAKE_UP` for it
-    /// from another vCPU or the timeout provided in
-    /// `hf_vcpu_run_return.sleep` is not `HF_SLEEP_INDEFINITE` and the
-    /// specified duration has expired.
+    /// has injected an interrupt, received `HF_VCPU_RUN_WAKE_UP` for it from
+    /// another vCPU or the timeout provided in `hf_vcpu_run_return.sleep` is
+    /// not `HF_SLEEP_INDEFINITE` and the specified duration has expired.
     WaitForInterrupt = 2,
 
     /// The vCPU is blocked waiting for a message. The scheduler MUST take it
@@ -52,9 +51,9 @@ pub enum HfVCpuRunCode {
     /// update any CPU state which might have changed.
     WakeUp = 4,
 
-    /// A message has been sent by the vCPU. The scheduler MUST run a vCPU
-    /// from the recipient VM and priority SHOULD be given to those vCPUs
-    /// that are waiting for a message.
+    /// A message has been sent by the vCPU. The scheduler MUST run a vCPU from
+    /// the recipient VM and priority SHOULD be given to those vCPUs that are
+    /// waiting for a message.
     Message = 5,
 
     /// The vCPU has made the mailbox writable and there are pending waiters.
@@ -107,8 +106,7 @@ pub enum HfShare {
     /// recipient.
     Give,
 
-    /// Retain ownership of the memory but relinquish access to the
-    /// recipient.
+    /// Retain ownership of the memory but relinquish access to the recipient.
     Lend,
 
     /// Retain ownership and access but additionally allow access to the

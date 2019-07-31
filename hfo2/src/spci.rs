@@ -118,9 +118,8 @@ pub struct SpciMessage {
 pub struct SpciArchitectedMessageHeader {
     r#type: u16,
 
-    // TODO: Padding is present to ensure that the field
-    // payload is aligned on a 64B boundary. SPCI
-    // spec must be updated to reflect this.
+    // TODO: Padding is present to ensure that the field payload is aligned on
+    // a 64B boundary. SPCI spec must be updated to reflect this.
     reserved: [u16; 3],
     payload: PhantomData<[u8]>,
 }
@@ -141,12 +140,11 @@ pub struct SpciMemoryRegion {
 
 /// Obtain a pointer to the architected header in the spci_message.
 ///
-/// Note: the argument "message" has const qualifier. This qualifier
-/// is meant to forbid changes in information enclosed in the
-/// struct SpciMessage. The SpciArchitectedMessageHeader, for which
-/// a pointer is returned in this function, is not part of SpciMessage.
-/// Its information is meant to be changed and hence the returned pointer
-/// does not have const type qualifier.
+/// Note: the argument "message" has const qualifier. This qualifier is meant
+/// to forbid changes in information enclosed in the struct SpciMessage. The
+/// SpciArchitectedMessageHeader, for which a pointer is returned in this
+/// function, is not part of SpciMessage. Its information is meant to be
+/// changed and hence the returned pointer does not have const type qualifier.
 #[inline]
 pub unsafe fn spci_get_architected_message_header(
     message: *const SpciMessage,
