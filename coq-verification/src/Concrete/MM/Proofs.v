@@ -81,10 +81,21 @@ Section Proofs.
     then t = hafnium_ptable
     else In t (map vm_ptable vms).
 
+  Definition stage_from_flags (flags : int) : Stage :=
+    if ((flags & MM_FLAG_STAGE1) != 0)%N
+    then Stage1
+    else Stage2.
+
+  Notation uintvaddr_to_uintpaddr a := (pa_addr (pa_from_va (va_init a))) (only parsing).
+
   (*** Generally useful lemmas ***)
 
   Lemma root_pos level flags : is_root level flags -> 0 < level.
   Proof. cbv [is_root]; simplify. Qed.
+
+  Lemma root_le_max_level level flags :
+    is_root level flags -> level <= max_level (stage_from_flags flags) + 1.
+  Proof. cbv [is_root mm_max_level max_level stage_from_flags]; simplify. Qed.
 
   Lemma ptable_is_root_In (t : mm_ptable) (flags : int) :
     ptable_is_root t flags ->
@@ -98,13 +109,13 @@ Section Proofs.
      use a smaller address for [begin], because [has_uniform_attrs] ignores
      addresses outside of [table]'s range. *)
   Lemma has_uniform_attrs_block_start
-        ptable_deref table level attrs begin end_ idxs :
+        ptable_deref table level attrs begin end_ idxs stage :
     is_start_of_block begin (mm_entry_size level) ->
-    address_matches_indices begin idxs ->
+    address_matches_indices (uintvaddr_to_uintpaddr begin) idxs stage ->
     forall begin',
       (begin' <= begin)%N ->
-      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin end_ ->
-      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin' end_.
+      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin end_ stage ->
+      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin' end_ stage.
   Admitted.
 
   (*** Proofs about [mm_page_table_from_pa] ***)
@@ -126,6 +137,12 @@ Section Proofs.
     has_location_in_state c (nth_default_oobe (mm_page_table_from_pa (root t)) i) (cons i nil).
   Admitted. (* TODO *)
   Hint Resolve has_location_in_state_root.
+
+  (*** Proofs about [mm_max_level] ***)
+
+  Lemma mm_max_level_eq flags :
+    mm_max_level flags = max_level (stage_from_flags flags).
+  Proof. cbv [mm_max_level max_level stage_from_flags]; simplify. Qed.
 
   (*** Proofs about [mm_root_table_count] ***)
 
@@ -414,8 +431,19 @@ Section Proofs.
 
   Lemma address_matches_indices_root root_level a flags :
     is_root root_level flags ->
-    address_matches_indices a (mm_index a root_level :: nil).
-  Admitted. (* TODO *)
+    address_matches_indices
+      (uintvaddr_to_uintpaddr a) (mm_index a root_level :: nil) (stage_from_flags flags).
+  Proof.
+    intro H. cbv [is_root] in H; rewrite H; intros.
+    cbv [address_matches_indices indices_from_address].
+    rewrite seq_snoc, rev_unit, Nat.add_0_l.
+    cbn [length firstn map].
+    rewrite index_of_uintvaddr by solver.
+    cbv [mm_index]. autorewrite with bits2arith nsimplify.
+    rewrite mm_max_level_eq.
+    apply f_equal2; try solver; [ ].
+    repeat (f_equal; try solver).
+  Qed.
   Hint Resolve address_matches_indices_root.
 
   (*** Proofs about [mm_free_page_pte] ***)
@@ -494,14 +522,15 @@ Section Proofs.
   Lemma mm_map_level_table_attrs conc begin end_ pa attrs table level
         flags ppool ptr idxs :
     let ret :=
-        mm_map_level conc begin end_ pa attrs table (level-1) flags ppool in
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
     let success := fst (fst (fst ret)) in
     let new_table := snd (fst (fst ret)) in
     let conc' := snd (fst ret) in
     let ppool' := snd ret in
     conc.(ptable_deref) ptr = table ->
     has_location_in_state conc ptr idxs ->
-    has_uniform_attrs conc.(ptable_deref) idxs new_table (level - 1) attrs begin end_.
+    level <= max_level (stage_from_flags flags) ->
+    has_uniform_attrs conc.(ptable_deref) idxs new_table level attrs begin end_ (stage_from_flags flags).
   Admitted.
 
   Lemma mm_map_level_noncircular c begin end_ pa attrs ptr level flags ppool :
@@ -685,8 +714,9 @@ Section Proofs.
        solve [eauto using abstract_reassign_pointer_trivial,
               represents_proper_abstr] ].
 
-    (* useful fact about root_level *)
-    pose proof (root_pos root_level ltac:(auto)).
+    (* useful facts about root_level *)
+    pose proof (root_pos root_level flags ltac:(auto)).
+    pose proof (root_le_max_level root_level flags ltac:(auto)).
 
     (* unfold [mm_map_root] to begin the real work *)
     cbv [mm_map_root] in *; simplify.
@@ -768,7 +798,7 @@ Section Proofs.
         eapply reassign_pointer_represents; eauto; [ ].
         apply has_uniform_attrs_reassign_pointer;
           try auto using mm_map_level_noncircular; try solver; [ ].
-        eauto using mm_map_level_table_attrs. }
+        eapply mm_map_level_table_attrs; solver. }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -810,7 +840,8 @@ Section Proofs.
           try auto using mm_map_level_noncircular; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
-          destruct H; [ subst; eapply mm_map_level_table_attrs; solver | ]
+          destruct H; [ subst;
+                        eapply mm_map_level_table_attrs; solver | ]
         end.
         eapply has_uniform_attrs_block_start; try solver; [ ].
         eapply mm_map_level_table_attrs; solver. } }
