@@ -118,6 +118,9 @@ Fixpoint page_lookup'
 
 Definition page_lookup
            (ptable_deref : ptable_pointer -> mm_page_table)
-           (root_ptable : ptable_pointer) (s : Stage)
+           (root_ptable : mm_ptable) (s : Stage)
            (a : uintpaddr_t) : option pte_t :=
-  page_lookup' ptable_deref a (ptable_deref root_ptable) (max_level s) s.
+  let root_tables := ptr_from_va (va_from_pa (root root_ptable)) in
+  let index := get_index s (max_level s + 1) a in
+  let table_ptr := nth_default null_pointer root_tables index in
+  page_lookup' ptable_deref a (ptable_deref table_ptr) (max_level s) s.
