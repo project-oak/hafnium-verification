@@ -25,11 +25,6 @@ pub fn is_aligned(v: usize, a: usize) -> bool {
     (v & (a - 1)) == 0
 }
 
-/// Count trailing zeros.
-pub fn ctz(i: u32) -> u32 {
-    core::intrinsics::cttz(i)
-}
-
 #[no_mangle]
 pub unsafe extern "C" fn memset_s(dest: *const c_void, destsz: size_t, ch: c_int, count: size_t) {
     if dest.is_null() || destsz > RSIZE_MAX || count > RSIZE_MAX || count > destsz {

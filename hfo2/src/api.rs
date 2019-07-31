@@ -1353,7 +1353,7 @@ pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> u32 {
         let enabled_and_pending =
             (*current).interrupts.enabled[i] & (*current).interrupts.pending[i];
         if enabled_and_pending != 0 {
-            let bit_index = ctz(enabled_and_pending);
+            let bit_index = enabled_and_pending.trailing_zeros();
 
             // Mark it as no longer pending and decrement the count.
             (*current).interrupts.pending[i] &= !(1u32 << bit_index);
