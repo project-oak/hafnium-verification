@@ -61,18 +61,18 @@ Section PointerLocations.
     end.
   Fixpoint index_sequences_to_pointer'
            (ptr : ptable_pointer) (root_index : nat)
-           (root_ptrs : list ptable_pointer) : list (list nat) :=
+           (root_ptrs : list ptable_pointer) (stage : Stage) : list (list nat) :=
     match root_ptrs with
     | nil => nil
     | cons root_ptr root_ptrs' =>
       (map (cons root_index)
-           (index_sequences_to_pointer'' ptr root_ptr 4))
-        ++ index_sequences_to_pointer' ptr (S root_index) root_ptrs'
+           (index_sequences_to_pointer'' ptr root_ptr (max_level stage)))
+        ++ index_sequences_to_pointer' ptr (S root_index) root_ptrs' stage
     end.
   Definition index_sequences_to_pointer
-           (ptr : ptable_pointer) (root_ptable : mm_ptable) :=
+           (ptr : ptable_pointer) (root_ptable : mm_ptable) (stage : Stage) :=
     index_sequences_to_pointer'
-      ptr 0 (ptr_from_va (va_from_pa root_ptable.(root))).
+      ptr 0 (ptr_from_va (va_from_pa root_ptable.(root))) stage.
 
   Inductive pointer_location (ppool : mpool) : Type :=
   | table_loc : mm_ptable -> list nat -> pointer_location ppool
@@ -98,14 +98,18 @@ Section PointerLocations.
   (* This section includes some definitions which use information from the
      concrete parameters *)
   Section with_concrete_params.
-    Context (root_tables : list mm_ptable) (ppool : mpool).
+    Context (vm_ptables : list mm_ptable) (haf_ptable : mm_ptable) (ppool : mpool).
 
     Inductive has_location : ptable_pointer -> pointer_location ppool -> Prop :=
-    | has_table_loc :
+    | has_table_loc_stage1 :
+        forall idxs ptr,
+          In idxs (index_sequences_to_pointer ptr haf_ptable Stage1) ->
+          has_location ptr (table_loc ppool haf_ptable idxs)
+    | has_table_loc_stage2 :
         forall root_ptable idxs ptr,
-          In root_ptable root_tables ->
-          In idxs (index_sequences_to_pointer ptr root_ptable) ->
-          has_location ptr (table_loc ppool root_ptable idxs)
+          In root_ptable vm_ptables ->
+          In idxs (index_sequences_to_pointer ptr root_ptable Stage2) ->
+          has_location ptr (table_loc ppool haf_ptable idxs)
     | has_mpool_loc :
         forall ptr,
           mpool_contains ppool ptr ->
