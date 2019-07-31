@@ -124,8 +124,10 @@ Section Abstract.
     {
       (* accessible_by is a function from address to list of entity IDs *)
       accessible_by : addr -> list entity_id;
-      (* owned_by is a function from address to list of entity IDs *)
-      owned_by : addr -> entity_id;
+      (* owned_by is a function from address to list of entity IDs -- only
+         single-element lists are considered valid, but for intermediate steps
+         we leave other lengths representable *)
+      owned_by : addr -> list entity_id;
     }.
 
   (*** The following definitions describe some basic operations on the abstract
@@ -186,7 +188,7 @@ Section Abstract.
                      if addr_eq_dec a a'
                      then
                        (* a = a'; to_id is the owner *)
-                       to_id
+                       [to_id]
                      else
                        (* a != a'; get the owner from the old state*)
                        owned_by a')
@@ -218,7 +220,7 @@ Section Abstract.
         {s : abstract_state} (id : entity_id) (a : addr) :=
     accessible_by a = [id].
   Local Definition owns {s : abstract_state} (id : entity_id) (a : addr) :=
-    owned_by a = id.
+    In id (owned_by a).
 
   (* tell [autounfold] to unfold these definitions *)
   Hint Unfold has_access has_exclusive_access owns.
@@ -248,7 +250,7 @@ Section Abstract.
           {|
             (* only the owner has access *)
             accessible_by := fun a => [owned_by_init a];
-            owned_by := owned_by_init;
+            owned_by := fun a => [owned_by_init a];
           |}
 
   (* a VM can give memory it owns to another VM *)

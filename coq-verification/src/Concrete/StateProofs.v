@@ -132,8 +132,8 @@ Section Proofs.
            let prev := abst.(owned_by) a' in
            if paddr_t_eq_dec a a'
            then if owned
-                then e (* TODO: make the state with multiple owners representable (although still not valid) *)
-                else inr hid (* TODO: make unowned memory representable (although still not valid) *)
+                then nodup eq_dec (e :: prev)
+                else remove eq_dec e prev
            else prev)
     |}.
 
@@ -176,6 +176,30 @@ Section Proofs.
       (addresses_under_pointer_in_range
          conc.(ptable_deref) ptr root_ptable begin end_ stage).
 
+  Definition owned_from_attrs (attrs : attributes) (stage : Stage) : bool :=
+    match stage with
+    | Stage1 =>
+      let mode := arch_mm_stage1_attrs_to_mode attrs in
+      let unowned := ((mode & MM_MODE_UNOWNED) != 0)%N in
+      negb unowned
+    | Stage2 =>
+      let mode := arch_mm_stage2_attrs_to_mode attrs in
+      let unowned := ((mode & MM_MODE_UNOWNED) != 0)%N in
+      negb unowned
+    end.
+
+  Definition valid_from_attrs (attrs : attributes) (stage : Stage) : bool :=
+    match stage with
+    | Stage1 =>
+      let mode := arch_mm_stage1_attrs_to_mode attrs in
+      let invalid := ((mode & MM_MODE_INVALID) != 0)%N in
+      negb invalid
+    | Stage2 =>
+      let mode := arch_mm_stage2_attrs_to_mode attrs in
+      let invalid := ((mode & MM_MODE_INVALID) != 0)%N in
+      negb invalid
+    end.
+
   (* Update the abstract state to make everything under the given pointer have
      the provided new owned/valid bits. *)
   Definition abstract_reassign_pointer
@@ -183,12 +207,10 @@ Section Proofs.
              (ptr : ptable_pointer) (attrs : attributes)
              (begin end_ : uintvaddr_t) : abstract_state :=
     (* first, get the owned/valid bits *)
-    let stage1_mode := arch_mm_stage1_attrs_to_mode attrs in
-    let stage2_mode := arch_mm_stage2_attrs_to_mode attrs in
-    let s1_owned := ((stage1_mode & MM_MODE_UNOWNED) != 0)%N in
-    let s1_valid := ((stage1_mode & MM_MODE_INVALID) != 0)%N in
-    let s2_owned := ((stage2_mode & MM_MODE_UNOWNED) != 0)%N in
-    let s2_valid := ((stage2_mode & MM_MODE_INVALID) != 0)%N in
+    let s1_owned := owned_from_attrs attrs Stage1 in
+    let s2_owned := owned_from_attrs attrs Stage2 in
+    let s1_valid := valid_from_attrs attrs Stage1 in
+    let s2_valid := valid_from_attrs attrs Stage2 in
 
     (* update the state with regard to Hafnium *)
     let abst :=
@@ -226,9 +248,11 @@ Section Proofs.
     represents abst conc ->
     has_location_in_state conc ptr idxs ->
     let conc' := conc.(reassign_pointer) ptr t in
+    locations_exclusive
+      conc.(ptable_deref) (map vm_ptable vms) hafnium_ptable conc.(api_page_pool) ->
+    locations_exclusive
+      conc'.(ptable_deref) (map vm_ptable vms) hafnium_ptable conc.(api_page_pool) ->
     forall attrs level begin end_,
-      locations_exclusive
-        conc'.(ptable_deref) (map vm_ptable vms) hafnium_ptable conc.(api_page_pool) ->
       has_uniform_attrs
         conc'.(ptable_deref) idxs t level attrs begin end_ stage ->
       represents (abstract_reassign_pointer
