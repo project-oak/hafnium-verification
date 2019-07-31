@@ -148,11 +148,11 @@ Definition represents
   /\ (forall (a : paddr_t),
          In (inr hid) (abst.(accessible_by) a) <-> conc.(haf_page_valid) a)
   /\ (forall (vid : nat) (a : paddr_t),
-         abst.(owned_by) a = inl vid <->
+         In (inl vid) (abst.(owned_by) a) <->
          (exists v : vm,
              vm_find vid = Some v /\ conc.(vm_page_owned) v a))
   /\ (forall (a : paddr_t),
-         abst.(owned_by) a = inr hid <-> conc.(haf_page_owned) a)
+         In (inr hid) (abst.(owned_by) a) <-> conc.(haf_page_owned) a)
 .
 Definition represents_valid
            {ap : abstract_state_parameters}
