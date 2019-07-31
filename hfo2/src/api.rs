@@ -336,6 +336,12 @@ unsafe fn internal_interrupt_inject(
 
 /// Prepares the vcpu to run by updating its state and fetching whether a return
 /// value needs to be forced onto the vCPU.
+/// TODO: Porting this function into Rust impacted test performance badly.
+/// In order to pass all test suites,
+///  - currently, enlong the time limits in test/hftest/hftest.py and
+///    kokoro/ubuntu/test.sh.
+///  - in the future, modify this function as one in this PR
+///    (https://hafnium-review.googlesource.com/c/hafnium/+/5600).
 unsafe fn api_vcpu_prepare_run(
     current: *const VCpu,
     vcpu: *mut VCpu,
@@ -371,12 +377,10 @@ unsafe fn api_vcpu_prepare_run(
         if (*vcpu).state == VCpuStatus::Running {
             // vCPU is running on another pCPU.
             //
-            // It's ok not to return the sleep duration here because
-            // the other physical CPU that is currently running this
-            // vCPU will return the sleep duration if needed. The
-            // default return value is
-            // HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no need to set it
-            // explicitly.
+            // It's ok not to return the sleep duration here because the other
+            // physical CPU that is currently running this  vCPU will return
+            // the sleep duration if needed. The default return value is
+            // HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no need to set it explicitly.
             ret = false;
             // goto out;
             sl_unlock(&(*vcpu).lock);
@@ -424,8 +428,8 @@ unsafe fn api_vcpu_prepare_run(
             return ret;
         }
 
-        // A pending message allows the vCPU to run so the message can
-        // be delivered directly.
+        // A pending message allows the vCPU to run so the message can be
+        // delivered directly.
         VCpuStatus::BlockedMailbox if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
             arch_regs_set_retval(&mut (*vcpu).regs, SPCI_SUCCESS as uintreg_t);
             (*(*vcpu).vm).mailbox.state = MailboxState::Read;
@@ -447,8 +451,8 @@ unsafe fn api_vcpu_prepare_run(
             // break;
         }
 
-        // The vCPU is not ready to run, return the appropriate code to
-        // the primary which called vcpu_run.
+        // The vCPU is not ready to run, return the appropriate code to the
+        // primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
             if arch_timer_enabled(&(*vcpu).regs) {
                 (*run_ret).code = if (*vcpu).state == VCpuStatus::BlockedMailbox {
@@ -480,9 +484,9 @@ unsafe fn api_vcpu_prepare_run(
     (*vcpu).cpu = (*current).cpu;
     (*vcpu).state = VCpuStatus::Running;
 
-    // Mark the registers as unavailable now that we're about to reflect
-    // them onto the real registers. This will also prevent another physical
-    // CPU from trying to read these registers.
+    // Mark the registers as unavailable now that we're about to reflect them
+    // onto the real registers. This will also prevent another physical CPU
+    // from trying to read these registers.
     (*vcpu).regs_available = false;
 
     ret = true;
@@ -550,19 +554,18 @@ pub unsafe extern "C" fn api_vcpu_run(
         // Make virtual timer interrupt pending.
         internal_interrupt_inject(vcpu, HF_VIRTUAL_TIMER_INTID, vcpu, ptr::null_mut());
 
-        // Set the mask bit so the hardware interrupt doesn't fire
-        // again. Ideally we wouldn't do this because it affects what
-        // the secondary vcPU sees, but if we don't then we end up with
-        // a loop of the interrupt firing each time we try to return to
-        // the secondary vCPU.
+        // Set the mask bit so the hardware interrupt doesn't fire again.
+        // Ideally we wouldn't do this because it affects what the secondary
+        // vcPU sees, but if we don't then we end up with a loop of the
+        // interrupt firing each time we try to return to the secondary vCPU.
         arch_timer_mask(&mut (*vcpu).regs);
     }
 
     // Switch to the vcpu.
     *next = vcpu;
 
-    // Set a placeholder return code to the scheduler. This will be
-    // overwritten when the switch back to the primary occurs.
+    // Set a placeholder return code to the scheduler. This will be overwritten
+    // when the switch back to the primary occurs.
     ret.code = HfVCpuRunCode::Preempted;
 
     return ret;
@@ -705,9 +708,9 @@ unsafe fn api_vm_configure_pages(
     let ret;
     let mut local_page_pool: MPool = mem::uninitialized();
 
-    // Create a local pool so any freed memory can't be used by another
-    // thread. This is to ensure the original mapping can be restored if any
-    // stage of the process fails.
+    // Create a local pool so any freed memory can't be used by another thread.
+    // This is to ensure the original mapping can be restored if any stage of
+    // the process fails.
     mpool_init_with_fallback(&mut local_page_pool, API_PAGE_POOL.get_ref());
 
     // Take memory ownership away from the VM and mark as shared.
@@ -788,8 +791,8 @@ unsafe fn api_vm_configure_pages(
     mpool_fini(&mut local_page_pool);
     return ret;
 
-    // The following mappings will not require more memory than is available
-    // in the local pool.
+    // The following mappings will not require more memory than is available in
+    // the local pool.
     // fail_undo_send_and_recv:
     assert!(mm_vm_identity_map(
         &mut (*vm_locked.vm).ptable,
@@ -872,8 +875,8 @@ pub unsafe extern "C" fn api_vm_configure(
         return ret;
     }
 
-    // Ensure the pages are valid, owned and exclusive to the VM and that
-    // the VM has the required access to the memory.
+    // Ensure the pages are valid, owned and exclusive to the VM and that the
+    // VM has the required access to the memory.
     if !mm_vm_get_mode(
         &mut (*vm).ptable,
         send,
@@ -956,8 +959,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     let notify = (attributes & SPCI_MSG_SEND_NOTIFY_MASK) == SPCI_MSG_SEND_NOTIFY;
 
-    // Check that the sender has configured its send buffer. Copy the
-    // message header. If the tx mailbox at from_msg is configured (i.e.
+    // Check that the sender has configured its send buffer. Copy the message
+    // header. If the tx mailbox at from_msg is configured (i.e.
     // from_msg != ptr::null()) then it can be safely accessed after releasing
     // the lock since the tx mailbox address can only be configured once.
     sl_lock(&(*from).lock);
@@ -993,12 +996,11 @@ pub unsafe extern "C" fn api_spci_msg_send(
         return SPCI_INVALID_PARAMETERS;
     }
 
-    // Hf needs to hold the lock on `to` before the mailbox state is
-    // checked. The lock on `to` must be held until the information is
-    // copied to `to` Rx buffer. Since in
-    // spci_msg_handle_architected_message we may call api_spci_share_memory
-    // which must hold the `from` lock, we must hold the `from` lock at this
-    // point to prevent a deadlock scenario.
+    // Hf needs to hold the lock on `to` before the mailbox state is checked.
+    // The lock on `to` must be held until the information is copied to `to` Rx
+    // buffer. Since in spci_msg_handle_architected_message we may call
+    // api_spci_share_memory which must hold the `from` lock, we must hold the
+    // `from` lock at this point to prevent a deadlock scenario.
     let mut vm_from_to_lock = vm_lock_both(to, from);
 
     if (*to).mailbox.state != MailboxState::Empty || (*to).mailbox.recv == ptr::null_mut() {
@@ -1063,11 +1065,10 @@ pub unsafe extern "C" fn api_spci_msg_send(
             message_buffer.as_mut_ptr() as usize as *mut _;
 
         // Note that message_buffer is passed as the third parameter to
-        // spci_msg_handle_architected_message. The execution flow
-        // commencing at spci_msg_handle_architected_message will make
-        // several accesses to fields in message_buffer. The memory area
-        // message_buffer must be exclusively owned by Hf so that TOCTOU
-        // issues do not arise.
+        // spci_msg_handle_architected_message. The execution flow commencing
+        // at spci_msg_handle_architected_message will make several accesses to
+        // fields in message_buffer. The memory area message_buffer must be
+        // exclusively owned by Hf so that TOCTOU issues do not arise.
         ret = spci_msg_handle_architected_message(
             vm_from_to_lock.vm1,
             vm_from_to_lock.vm2,
@@ -1137,8 +1138,8 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     let return_code: i32;
     let block = (attributes & SPCI_MSG_RECV_BLOCK_MASK) == SPCI_MSG_RECV_BLOCK;
 
-    // The primary VM will receive messages as a status code from running
-    // vcpus and must not call this function.
+    // The primary VM will receive messages as a status code from running vcpus
+    // and must not call this function.
     if (*vm).id == HF_PRIMARY_VM_ID {
         return SPCI_INTERRUPTED;
     }
@@ -1165,8 +1166,8 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     }
 
     // From this point onward this call can only be interrupted or a message
-    // received. If a message is received the return value will be set at
-    // that time to SPCI_SUCCESS.
+    // received. If a message is received the return value will be set at that
+    // time to SPCI_SUCCESS.
     return_code = SPCI_INTERRUPTED;
 
     // Don't block if there are enabled and pending interrupts, to match
@@ -1313,8 +1314,7 @@ pub unsafe extern "C" fn api_interrupt_enable(intid: u32, enable: bool, current:
 
     sl_lock(&(*current).lock);
     if enable {
-        // If it is pending and was not enabled before, increment the
-        // count.
+        // If it is pending and was not enabled before, increment the count.
         if ((*current).interrupts.pending[intid_index]
             & !(*current).interrupts.enabled[intid_index]
             & intid_mask)
@@ -1432,10 +1432,9 @@ pub unsafe extern "C" fn api_interrupt_inject(
 /// Clears a region of physical memory by overwriting it with zeros. The data is
 /// flushed from the cache so the memory has been cleared across the system.
 unsafe fn api_clear_memory(begin: paddr_t, end: paddr_t, ppool: *mut MPool) -> bool {
-    // TODO: change this to a cpu local single page window rather than a
-    //       global mapping of the whole range. Such an approach will limit
-    //       the changes to stage-1 tables and will allow only local
-    //       invalidation.
+    // TODO: change this to a cpu local single page window rather than a global
+    //       mapping of the whole range. Such an approach will limit the
+    //       changes to stage-1 tables and will allow only local invalidation.
 
     let ret;
     let mut stage1_locked = mm_lock_stage1();
@@ -1503,9 +1502,9 @@ pub unsafe extern "C" fn api_spci_share_memory(
         return SPCI_INVALID_PARAMETERS;
     }
 
-    // Create a local pool so any freed memory can't be used by another
-    // thread. This is to ensure the original mapping can be restored if any
-    // stage of the process fails.
+    // Create a local pool so any freed memory can't be used by another thread.
+    // This is to ensure the original mapping can be restored if any stage of
+    // the process fails.
     let mut local_page_pool: MPool = mem::uninitialized();
     mpool_init_with_fallback(&mut local_page_pool, API_PAGE_POOL.get_ref());
 
@@ -1517,9 +1516,9 @@ pub unsafe extern "C" fn api_spci_share_memory(
     let begin = ipa_init((*constituent).address as usize);
     let end = ipa_add(begin, size as usize);
 
-    // Check if the state transition is lawful for both VMs involved
-    // in the memory exchange, ensure that all constituents of a memory
-    // region being shared are at the same state.
+    // Check if the state transition is lawful for both VMs involved in the
+    // memory exchange, ensure that all constituents of a memory region being
+    // shared are at the same state.
     let mut orig_from_mode = mem::uninitialized();
     let mut from_mode = mem::uninitialized();
     let mut to_mode = mem::uninitialized();
@@ -1545,8 +1544,8 @@ pub unsafe extern "C" fn api_spci_share_memory(
     let pa_begin = pa_from_ipa(begin);
     let pa_end = pa_from_ipa(end);
 
-    // First update the mapping for the sender so there is not overlap with
-    // the recipient.
+    // First update the mapping for the sender so there is not overlap with the
+    // recipient.
     if !mm_vm_identity_map(
         &mut (*from).ptable,
         pa_begin,
@@ -1662,9 +1661,9 @@ pub unsafe extern "C" fn api_share_memory(
         }
     }
 
-    // Create a local pool so any freed memory can't be used by antoher
-    // thread. This is to ensure the original mapping can be restored if any
-    // stage of the process fails.
+    // Create a local pool so any freed memory can't be used by antoher thread.
+    // This is to ensure the original mapping can be restored if any stage of
+    // the process fails.
     // TODO: So that's reason why Hafnium use local_page_pool! We need to verify
     // this.
     let mut local_page_pool = mem::uninitialized();
@@ -1689,9 +1688,9 @@ pub unsafe extern "C" fn api_share_memory(
         return ret;
     }
 
-    // Ensure the memory range is valid for the sender. If it isn't, the
-    // sender has either shared it with another VM already or has no claim
-    // to the memory.
+    // Ensure the memory range is valid for the sender. If it isn't, the sender
+    // has either shared it with another VM already or has no claim to the
+    // memory.
     if orig_from_mode as u32 & Mode::INVALID.bits() != 0 {
         // goto fail;
         ret = -1;
@@ -1704,9 +1703,8 @@ pub unsafe extern "C" fn api_share_memory(
         return ret;
     }
 
-    // The sender must own the memory and have exclusive access to it in
-    // order to share it. Alternatively, it is giving memory back to the
-    // owning VM.
+    // The sender must own the memory and have exclusive access to it in order
+    // to share it. Alternatively, it is giving memory back to the owning VM.
     if orig_from_mode as u32 & Mode::UNOWNED.bits() != 0 {
         let mut orig_to_mode = mem::uninitialized();
 
@@ -1739,8 +1737,8 @@ pub unsafe extern "C" fn api_share_memory(
     let pa_begin = pa_from_ipa(begin);
     let pa_end = pa_from_ipa(end);
 
-    // First update the mapping for the sender so there is not overlap with
-    // the recipient.
+    // First update the mapping for the sender so there is not overlap with the
+    // recipient.
     if !mm_vm_identity_map(
         &mut (*from).ptable,
         pa_begin,
