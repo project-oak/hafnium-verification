@@ -15,9 +15,14 @@
  */
 
 .section .text.smc, "ax"
-.global smc32
+.global smc32_internal
 .global smc64_internal
-smc32:
+
+smc32_internal:
 smc64_internal:
+	str x8, [sp, #-8] !
 	smc #0
+	ldr x8, [sp], #8
+        stp x0, x1, [x8]
+        stp x2, x3, [x8, #16]
 	ret

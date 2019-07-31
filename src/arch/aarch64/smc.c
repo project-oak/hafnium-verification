@@ -18,10 +18,24 @@
 
 #include <stdint.h>
 
-uint64_t smc64_internal(uint64_t func, uint64_t arg0, uint64_t arg1,
-			uint64_t arg2);
+smc_res_t smc32_internal(uint32_t func, uint32_t arg0, uint32_t arg1,
+			 uint32_t arg2, uint32_t arg3, uint32_t arg4,
+			 uint32_t arg5, uint32_t caller_id);
 
-uint64_t smc64(uint32_t func, uint64_t arg0, uint64_t arg1, uint64_t arg2)
+smc_res_t smc32(uint32_t func, uint32_t arg0, uint32_t arg1, uint32_t arg2,
+		uint32_t arg3, uint32_t arg4, uint32_t arg5, uint32_t caller_id)
 {
-	return smc64_internal(func | SMCCC_64_BIT, arg0, arg1, arg2);
+	return smc32_internal(func | SMCCC_32_BIT, arg0, arg1, arg2, arg3, arg4,
+			      arg5, caller_id);
+}
+
+smc_res_t smc64_internal(uint32_t func, uint64_t arg0, uint64_t arg1,
+			 uint64_t arg2, uint64_t arg3, uint64_t arg4,
+			 uint64_t arg5, uint32_t caller_id);
+
+smc_res_t smc64(uint32_t func, uint64_t arg0, uint64_t arg1, uint64_t arg2,
+		uint64_t arg3, uint64_t arg4, uint64_t arg5, uint32_t caller_id)
+{
+	return smc64_internal(func | SMCCC_64_BIT, arg0, arg1, arg2, arg3, arg4,
+			      arg5, caller_id);
 }
