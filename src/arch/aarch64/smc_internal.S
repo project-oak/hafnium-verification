@@ -20,9 +20,9 @@
 
 smc32_internal:
 smc64_internal:
-	str x8, [sp, #-8] !
+	str x8, [sp, #-16] ! /* AArch64 stack pointer alignment is 16 bytes */
 	smc #0
-	ldr x8, [sp], #8
-        stp x0, x1, [x8]
-        stp x2, x3, [x8, #16]
+	ldr x8, [sp], #16
+	stp x0, x1, [x8]
+	stp x2, x3, [x8, #16]
 	ret
