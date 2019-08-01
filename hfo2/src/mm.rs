@@ -79,12 +79,12 @@ extern "C" {
 
     fn plat_console_mm_init(stage1_locked: mm_stage1_locked, mpool: *const MPool);
 
-    fn layout_text_begin() -> usize;
-    fn layout_text_end() -> usize;
-    fn layout_rodata_begin() -> usize;
-    fn layout_rodata_end() -> usize;
-    fn layout_data_begin() -> usize;
-    fn layout_data_end() -> usize;
+    fn layout_text_begin() -> paddr_t;
+    fn layout_text_end() -> paddr_t;
+    fn layout_rodata_begin() -> paddr_t;
+    fn layout_rodata_end() -> paddr_t;
+    fn layout_data_begin() -> paddr_t;
+    fn layout_data_end() -> paddr_t;
 }
 
 bitflags! {
@@ -824,12 +824,14 @@ impl<S: Stage> PageTable<S> {
     /// into the address space with the architecture-agnostic mode provided.
     fn identity_update(
         &mut self,
-        begin: usize,
-        end: usize,
+        begin: paddr_t,
+        end: paddr_t,
         attrs: usize,
         flags: Flags,
         mpool: &MPool,
     ) -> Option<()> {
+        let begin = pa_addr(begin);
+        let end = pa_addr(end);
         let root_level = S::max_level() + 1;
         let ptable_end = S::root_table_count() as usize * addr::entry_size(root_level);
         let end = cmp::min(addr::round_up_to_page(end), ptable_end);
@@ -872,8 +874,8 @@ impl<S: Stage> PageTable<S> {
 
     pub fn identity_map(
         &mut self,
-        begin: usize,
-        end: usize,
+        begin: paddr_t,
+        end: paddr_t,
         mode: Mode,
         mpool: &MPool,
     ) -> Option<()> {
@@ -882,7 +884,7 @@ impl<S: Stage> PageTable<S> {
 
     /// nUpdates the VM's table such that the given physical address range has no connection to the
     /// VM.
-    pub fn unmap(&mut self, begin: usize, end: usize, mpool: &MPool) -> Option<()> {
+    pub fn unmap(&mut self, begin: paddr_t, end: paddr_t, mpool: &MPool) -> Option<()> {
         self.identity_update(
             begin,
             end,
@@ -924,8 +926,8 @@ impl<S: Stage> PageTable<S> {
     /// the same mode.
     ///
     /// Returns true if the range is mapped with the same mode and false otherwise.}
-    pub fn get_mode(&self, begin: usize, end: usize) -> Option<Mode> {
-        let attrs = self.get_attrs(begin, end)?;
+    pub fn get_mode(&self, begin: ipaddr_t, end: ipaddr_t) -> Option<Mode> {
+        let attrs = self.get_attrs(ipa_addr(begin), ipa_addr(end))?;
         Some(S::attrs_to_mode(attrs))
     }
 }
@@ -1016,15 +1018,15 @@ pub unsafe extern "C" fn mm_vm_identity_map(
     begin: paddr_t,
     end: paddr_t,
     mode: Mode,
-    ipa: *mut usize,
+    ipa: *mut ipaddr_t,
     mpool: *const MPool,
 ) -> bool {
     let t = &mut *t;
     let mpool = &*mpool;
-    t.identity_map(pa_addr(begin), pa_addr(end), mode, mpool)
+    t.identity_map(begin, end, mode, mpool)
         .map(|_| {
             if !ipa.is_null() {
-                ptr::write(ipa, pa_addr(begin));
+                ptr::write(ipa, ipa_from_pa(begin));
             }
         })
         .is_some()
@@ -1040,8 +1042,8 @@ pub unsafe extern "C" fn mm_vm_unmap(
     let t = &mut *t;
     let mpool = &*mpool;
     t.identity_update(
-        pa_addr(begin),
-        pa_addr(end),
+        begin,
+        end,
         Stage2::mode_to_attrs(Mode::UNOWNED | Mode::INVALID | Mode::SHARED),
         Flags::UNMAP,
         mpool,
@@ -1093,7 +1095,7 @@ pub unsafe extern "C" fn mm_vm_get_mode(
     mode: *mut Mode,
 ) -> bool {
     let t = &mut *t;
-    t.get_mode(ipa_addr(begin), ipa_addr(end))
+    t.get_mode(begin, end)
         .map(|m| *mode = m)
         .is_some()
 }
@@ -1108,7 +1110,7 @@ pub unsafe extern "C" fn mm_identity_map(
 ) -> *mut usize {
     let mpool = &*mpool;
     stage1_locked
-        .identity_map(pa_addr(begin), pa_addr(end), mode, mpool)
+        .identity_map(begin, end, mode, mpool)
         .map(|_| pa_addr(begin) as *mut _)
         .unwrap_or_else(|| ptr::null_mut())
 }
@@ -1122,7 +1124,7 @@ pub unsafe extern "C" fn mm_unmap(
 ) -> bool {
     let mpool = &*mpool;
     stage1_locked
-        .unmap(pa_addr(begin), pa_addr(end), mpool)
+        .unmap(begin, end, mpool)
         .is_some()
 }
 
@@ -1130,18 +1132,18 @@ pub unsafe extern "C" fn mm_unmap(
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     dlog!(
         "text: {:#x} - {:#x}\n",
-        layout_text_begin(),
-        layout_text_end()
+        pa_addr(layout_text_begin()),
+        pa_addr(layout_text_end())
     );
     dlog!(
         "rodata: {:#x} - {:#x}\n",
-        layout_rodata_begin(),
-        layout_rodata_end()
+        pa_addr(layout_rodata_begin()),
+        pa_addr(layout_rodata_end())
     );
     dlog!(
         "data: {:#x} - {:#x}\n",
-        layout_data_begin(),
-        layout_data_end()
+        pa_addr(layout_data_begin()),
+        pa_addr(layout_data_end())
     );
 
     let mpool = &*mpool;
