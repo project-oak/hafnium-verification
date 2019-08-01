@@ -1103,10 +1103,9 @@ pub unsafe extern "C" fn mm_identity_map(
     mut stage1_locked: mm_stage1_locked,
     begin: paddr_t,
     end: paddr_t,
-    mode: c_int,
+    mode: Mode,
     mpool: *const MPool,
 ) -> *mut usize {
-    let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
     stage1_locked
         .identity_map(pa_addr(begin), pa_addr(end), mode, mpool)

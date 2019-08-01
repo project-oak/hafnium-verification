@@ -602,7 +602,7 @@ unsafe fn api_vm_configure_stage1(
         mm_stage1_locked,
         pa_send_begin,
         pa_send_end,
-        Mode::R.bits() as i32,
+        Mode::R,
         local_page_pool,
     ) as usize as *const SpciMessage;
     if (*vm_locked.vm).mailbox.send == ptr::null() {
@@ -623,7 +623,7 @@ unsafe fn api_vm_configure_stage1(
         mm_stage1_locked,
         pa_recv_begin,
         pa_recv_end,
-        Mode::W.bits() as i32,
+        Mode::W,
         local_page_pool,
     ) as usize as *mut SpciMessage;
     if (*vm_locked.vm).mailbox.recv == ptr::null_mut() {
@@ -1414,7 +1414,7 @@ unsafe fn api_clear_memory(begin: paddr_t, end: paddr_t, ppool: *mut MPool) -> b
     // TODO: Refactor result variable name.
     // But mm_identity_map returns begin if succeed or null pointer otherwise.
     // Hence the name is not important.
-    let ptr_ = mm_identity_map(stage1_locked, begin, end, Mode::W.bits() as i32, ppool);
+    let ptr_ = mm_identity_map(stage1_locked, begin, end, Mode::W, ppool);
     let size = pa_difference(begin, end);
 
     if ptr_ == ptr::null_mut() {
