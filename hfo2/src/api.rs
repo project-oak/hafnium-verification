@@ -942,7 +942,7 @@ pub unsafe extern "C" fn api_vm_configure(
 /// caller to be notified when the recipient's receive buffer becomes available.
 #[no_mangle]
 pub unsafe extern "C" fn api_spci_msg_send(
-    attributes: u32,
+    attributes: SpciMsgSendAttributes,
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> SpciReturn {
@@ -957,7 +957,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // immutable.
     let mut ret;
 
-    let notify = (attributes & SPCI_MSG_SEND_NOTIFY_MASK) == SPCI_MSG_SEND_NOTIFY;
+    let notify = attributes.contains(SpciMsgSendAttributes::NOTIFY);
 
     // Check that the sender has configured its send buffer. Copy the message
     // header. If the tx mailbox at from_msg is configured (i.e.
@@ -1026,7 +1026,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     let to_msg = (*to).mailbox.recv;
 
     // Handle architected messages.
-    if from_msg_replica.flags & SPCI_MESSAGE_IMPDEF_MASK != SPCI_MESSAGE_IMPDEF {
+    if !from_msg_replica.flags.contains(SpciMessageFlags::IMPDEF) {
         // Buffer holding the internal copy of the shared memory regions.
         // TODO: Buffer is temporarily in the stack.
         let mut message_buffer: [u8; mem::size_of::<SpciArchitectedMessageHeader>()
@@ -1130,13 +1130,13 @@ pub unsafe extern "C" fn api_spci_msg_send(
 /// No new messages can be received until the mailbox has been cleared.
 #[no_mangle]
 pub unsafe extern "C" fn api_spci_msg_recv(
-    attributes: u32,
+    attributes: SpciMsgRecvAttributes,
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> SpciReturn {
     let vm = (*current).vm;
     let return_code: SpciReturn;
-    let block = (attributes & SPCI_MSG_RECV_BLOCK_MASK) == SPCI_MSG_RECV_BLOCK;
+    let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
     // The primary VM will receive messages as a status code from running vcpus
     // and must not call this function.
