@@ -74,7 +74,7 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
 
 	/* Try to start the CPU. */
 	smc_res = smc32(PSCI_CPU_ON, id, (size_t)&vm_cpu_entry_raw, (size_t)&s,
-			0, 0, 0, 0);
+			0, 0, 0, SMCCC_CALLER_HYPERVISOR);
 	if (smc_res.res0 != PSCI_RETURN_SUCCESS) {
 		return false;
 	}
@@ -93,7 +93,7 @@ bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
  */
 noreturn void cpu_stop(void)
 {
-	smc32(PSCI_CPU_OFF, 0, 0, 0, 0, 0, 0, 0);
+	smc32(PSCI_CPU_OFF, 0, 0, 0, 0, 0, 0, SMCCC_CALLER_HYPERVISOR);
 	for (;;) {
 		/* This should never be reached. */
 	}
@@ -120,7 +120,7 @@ enum power_status cpu_status(cpu_id_t cpu_id)
 	 * this is the case.
 	 */
 	smc_res = smc32(PSCI_AFFINITY_INFO, cpu_id, lowest_affinity_level, 0, 0,
-			0, 0, 0);
+			0, 0, SMCCC_CALLER_HYPERVISOR);
 	return smc_res.res0;
 }
 
@@ -129,7 +129,7 @@ enum power_status cpu_status(cpu_id_t cpu_id)
  */
 noreturn void arch_power_off(void)
 {
-	smc32(PSCI_SYSTEM_OFF, 0, 0, 0, 0, 0, 0, 0);
+	smc32(PSCI_SYSTEM_OFF, 0, 0, 0, 0, 0, 0, SMCCC_CALLER_HYPERVISOR);
 	for (;;) {
 		/* This should never be reached. */
 	}
