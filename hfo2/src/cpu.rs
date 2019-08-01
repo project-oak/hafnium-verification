@@ -103,7 +103,7 @@ pub struct VCpuFaultInfo {
     ipaddr: ipaddr_t,
     vaddr: vaddr_t,
     pc: vaddr_t,
-    mode: c_int,
+    mode: Mode,
 }
 
 #[repr(C)]
@@ -379,7 +379,7 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
 ) -> bool {
     let vm = (*current).vm;
     let mut mode = mem::uninitialized(); // to avoid use-of-uninitialized error
-    let mask = (*f).mode | Mode::INVALID.bits() as i32;
+    let mask = (*f).mode | Mode::INVALID;
     let resume;
 
     sl_lock(&(*vm).lock);
@@ -409,7 +409,7 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
             vcpu_index(current),
             (*f).vaddr,
             (*f).ipaddr,
-            (*f).mode
+            (*f).mode.bits() as u32
         );
     }
 

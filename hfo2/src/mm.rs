@@ -1015,12 +1015,11 @@ pub unsafe extern "C" fn mm_vm_identity_map(
     t: *mut PageTable<Stage2>,
     begin: paddr_t,
     end: paddr_t,
-    mode: c_int,
+    mode: Mode,
     ipa: *mut usize,
     mpool: *const MPool,
 ) -> bool {
     let t = &mut *t;
-    let mode = Mode::from_bits_truncate(mode as u32);
     let mpool = &*mpool;
     t.identity_map(pa_addr(begin), pa_addr(end), mode, mpool)
         .map(|_| {
@@ -1091,11 +1090,11 @@ pub unsafe extern "C" fn mm_vm_get_mode(
     t: *mut PageTable<Stage2>,
     begin: ipaddr_t,
     end: ipaddr_t,
-    mode: *mut c_int,
+    mode: *mut Mode,
 ) -> bool {
     let t = &mut *t;
     t.get_mode(ipa_addr(begin), ipa_addr(end))
-        .map(|m| *mode = m.bits as c_int)
+        .map(|m| *mode = m)
         .is_some()
 }
 

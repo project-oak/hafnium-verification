@@ -553,8 +553,8 @@ pub unsafe extern "C" fn api_vcpu_run(
 }
 
 /// Check that the mode indicates memory that is vaid, owned and exclusive.
-fn api_mode_valid_owned_and_exclusive(mode: c_int) -> bool {
-    (mode as u32 & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED).bits()) == 0
+fn api_mode_valid_owned_and_exclusive(mode: Mode) -> bool {
+    (mode & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED)).is_empty()
 }
 
 /// Determines the value to be returned by api_vm_configure and
@@ -678,10 +678,10 @@ unsafe fn api_vm_configure_pages(
     vm_locked: VmLocked,
     pa_send_begin: paddr_t,
     pa_send_end: paddr_t,
-    orig_send_mode: c_int,
+    orig_send_mode: Mode,
     pa_recv_begin: paddr_t,
     pa_recv_end: paddr_t,
-    orig_recv_mode: c_int,
+    orig_recv_mode: Mode,
 ) -> bool {
     let ret;
     let mut local_page_pool: MPool = mem::uninitialized();
@@ -696,7 +696,7 @@ unsafe fn api_vm_configure_pages(
         &mut (*vm_locked.vm).ptable,
         pa_send_begin,
         pa_send_end,
-        (Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W).bits() as c_int,
+        (Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W),
         ptr::null_mut(),
         &mut local_page_pool,
     ) {
@@ -710,7 +710,7 @@ unsafe fn api_vm_configure_pages(
         &mut (*vm_locked.vm).ptable,
         pa_recv_begin,
         pa_recv_end,
-        (Mode::UNOWNED | Mode::SHARED | Mode::R).bits() as c_int,
+        (Mode::UNOWNED | Mode::SHARED | Mode::R),
         ptr::null_mut(),
         &mut local_page_pool,
     ) {
@@ -861,8 +861,8 @@ pub unsafe extern "C" fn api_vm_configure(
         ipa_add(send, PAGE_SIZE),
         &mut orig_send_mode,
     ) || !api_mode_valid_owned_and_exclusive(orig_send_mode)
-        || (orig_send_mode & Mode::R.bits() as c_int) == 0
-        || (orig_send_mode & Mode::W.bits() as c_int) == 0
+        || !orig_send_mode.contains(Mode::R)
+        || !orig_send_mode.contains(Mode::W)
     {
         // goto fail;
         ret = -1;
@@ -876,7 +876,7 @@ pub unsafe extern "C" fn api_vm_configure(
         ipa_add(recv, PAGE_SIZE),
         &mut orig_recv_mode,
     ) || !api_mode_valid_owned_and_exclusive(orig_recv_mode)
-        || (orig_recv_mode & Mode::R.bits() as c_int) == 0
+        || !orig_recv_mode.contains(Mode::R)
     {
         // goto fail;
         ret = -1;
@@ -1607,8 +1607,6 @@ pub unsafe extern "C" fn api_share_memory(
     }
 
     // Convert the sharing request to memory management modes.
-    let from_mode;
-    let to_mode;
     let share = match share {
         0 => HfShare::Give,
         1 => HfShare::Lend,
@@ -1619,20 +1617,20 @@ pub unsafe extern "C" fn api_share_memory(
         }
     };
 
-    match share {
-        HfShare::Give => {
-            from_mode = (Mode::INVALID | Mode::UNOWNED).bits() as c_int;
-            to_mode = (Mode::R | Mode::W | Mode::X).bits() as c_int;
-        }
-        HfShare::Lend => {
-            from_mode = Mode::INVALID.bits() as c_int;
-            to_mode = (Mode::R | Mode::W | Mode::X | Mode::UNOWNED).bits() as c_int;
-        }
-        HfShare::Share => {
-            from_mode = (Mode::R | Mode::W | Mode::X | Mode::SHARED).bits() as c_int;
-            to_mode = (Mode::R | Mode::W | Mode::X | Mode::UNOWNED | Mode::SHARED).bits() as c_int;
-        }
-    }
+    let (from_mode, to_mode) = match share {
+        HfShare::Give => (
+            (Mode::INVALID | Mode::UNOWNED),
+            (Mode::R | Mode::W | Mode::X)
+        ),
+        HfShare::Lend => (
+            Mode::INVALID,
+            (Mode::R | Mode::W | Mode::X | Mode::UNOWNED)
+        ),
+        HfShare::Share => (
+            (Mode::R | Mode::W | Mode::X | Mode::SHARED),
+            (Mode::R | Mode::W | Mode::X | Mode::UNOWNED | Mode::SHARED)
+        ),
+    };
 
     // Create a local pool so any freed memory can't be used by antoher thread.
     // This is to ensure the original mapping can be restored if any stage of
@@ -1664,7 +1662,7 @@ pub unsafe extern "C" fn api_share_memory(
     // Ensure the memory range is valid for the sender. If it isn't, the sender
     // has either shared it with another VM already or has no claim to the
     // memory.
-    if orig_from_mode as u32 & Mode::INVALID.bits() != 0 {
+    if orig_from_mode.contains(Mode::INVALID) {
         // goto fail;
         ret = -1;
 
@@ -1678,12 +1676,12 @@ pub unsafe extern "C" fn api_share_memory(
 
     // The sender must own the memory and have exclusive access to it in order
     // to share it. Alternatively, it is giving memory back to the owning VM.
-    if orig_from_mode as u32 & Mode::UNOWNED.bits() != 0 {
+    if orig_from_mode.contains(Mode::UNOWNED) {
         let mut orig_to_mode = mem::uninitialized();
 
         if share != HfShare::Give
             || !mm_vm_get_mode(&mut (*to).ptable, begin, end, &mut orig_to_mode)
-            || orig_to_mode as u32 & Mode::UNOWNED.bits() != 0
+            || orig_to_mode.contains(Mode::UNOWNED)
         {
             // goto fail;
             ret = -1;
@@ -1695,7 +1693,7 @@ pub unsafe extern "C" fn api_share_memory(
 
             return ret;
         }
-    } else if orig_from_mode as u32 & Mode::SHARED.bits() != 0 {
+    } else if orig_from_mode.contains(Mode::SHARED) {
         // goto fail;
         ret = -1;
 
