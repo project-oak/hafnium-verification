@@ -47,15 +47,29 @@ pub enum SpciMemoryShare {
 }
 
 // SPCI function specific constants.
-pub const SPCI_MSG_RECV_BLOCK_MASK: u32 = 0x1;
-pub const SPCI_MSG_SEND_NOTIFY_MASK: u32 = 0x1;
+bitflags! {
+    /// For SpciMessage::flags
+    /// flags[15:1] reserved(MBZ).
+    pub struct SpciMessageFlags: u16 {
+        /// Architected message payload.
+        const ARCHITECTED = 0b0000;
 
-pub const SPCI_MESSAGE_ARCHITECTED: usize = 0x0;
-pub const SPCI_MESSAGE_IMPDEF: u16 = 0x1;
-pub const SPCI_MESSAGE_IMPDEF_MASK: u16 = 0x1;
+        /// Implementation defined message payload.
+        const IMPDEF = 0b0001;
+    }
+}
 
-pub const SPCI_MSG_SEND_NOTIFY: u32 = 0x1;
-pub const SPCI_MSG_RECV_BLOCK: u32 = 0x1;
+bitflags! {
+    pub struct SpciMsgRecvAttributes: u32 {
+        const BLOCK = 0b0001;
+    }
+}
+
+bitflags! {
+    pub struct SpciMsgSendAttributes: u32 {
+        const NOTIFY = 0b0001;
+    }
+}
 
 /// The maximum length possible for a single message.
 pub const SPCI_MSG_PAYLOAD_MAX: usize = HF_MAILBOX_SIZE - mem::size_of::<SpciMessage>();
@@ -89,11 +103,7 @@ pub struct SpciMessage {
     // TODO: version is part of SPCI alpha2 but will be
     // removed in the next spec revision hence we are not
     // including it in the header.
-    /// flags[0]:
-    ///     0: Architected message payload;
-    ///     1: Implementation defined message payload.
-    /// flags[15:1] reserved (MBZ).
-    pub flags: u16,
+    pub flags: SpciMessageFlags,
 
     /// TODO: Padding is present to ensure controlled offset
     /// of the length field. SPCI spec must be updated
