@@ -43,10 +43,6 @@ pub type spci_vcpu_index_t = u16;
 /// it a different name to make the different semantics clear.
 pub type spci_vcpu_count_t = spci_vcpu_index_t;
 
-/// Return type of SPCI functions.
-/// TODO: Reuse spci_return_t type on all SPCI functions declarations.
-pub type spci_return_t = i32;
-
 pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 
 /// The number of virtual interrupt IDs which are supported.

@@ -137,9 +137,9 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
 /// Returns to the primary vm to allow this cpu to be used for other tasks as
 /// the vcpu does not have work to do at this moment. The current vcpu is masked
 /// as ready to be scheduled again. This SPCI function always returns
-/// SPCI_SUCCESS.
+/// SpciReturn::Success.
 #[no_mangle]
-pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu) -> i32 {
+pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu) -> SpciReturn {
     let ret = HfVCpuRunReturn {
         code: HfVCpuRunCode::Yield,
         detail: mem::uninitialized(),
@@ -147,13 +147,13 @@ pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu
 
     if (*(*current).vm).id == HF_PRIMARY_VM_ID {
         // Noop on the primary as it makes the scheduling decisions.
-        return SPCI_SUCCESS;
+        return SpciReturn::Success;
     }
 
     *next = api_switch_to_primary(current, ret, VCpuStatus::Ready);
 
     // SPCI_YIELD always returns SPCI_SUCCESS.
-    SPCI_SUCCESS
+    SpciReturn::Success
 }
 
 /// Switches to the primary so that it can switch to the target, or kick tit if
@@ -431,7 +431,7 @@ unsafe fn api_vcpu_prepare_run(
         // A pending message allows the vCPU to run so the message can be
         // delivered directly.
         VCpuStatus::BlockedMailbox if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
-            arch_regs_set_retval(&mut (*vcpu).regs, SPCI_SUCCESS as uintreg_t);
+            arch_regs_set_retval(&mut (*vcpu).regs, SpciReturn::Success as uintreg_t);
             (*(*vcpu).vm).mailbox.state = MailboxState::Read;
             // break;
         }
@@ -945,7 +945,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     attributes: u32,
     current: *mut VCpu,
     next: *mut *mut VCpu,
-) -> spci_return_t {
+) -> SpciReturn {
     let from = (*current).vm;
 
     let mut primary_ret = HfVCpuRunReturn {
@@ -968,7 +968,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     sl_unlock(&(*from).lock);
 
     if from_msg == ptr::null() {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     // Note that the payload is not copied when the message header is.
@@ -976,24 +976,24 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Ensure source VM id corresponds to the current VM.
     if from_msg_replica.source_vm_id != (*from).id {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     let size = from_msg_replica.length as usize;
     // Limit the size of transfer.
     if size > SPCI_MSG_PAYLOAD_MAX {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     // Disallow reflexive requests as this suggests an error in the VM.
     if from_msg_replica.target_vm_id == (*from).id {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     // Ensure the target VM exists.
     let to = vm_find(from_msg_replica.target_vm_id);
     if to == ptr::null_mut() {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     // Hf needs to hold the lock on `to` before the mailbox state is checked.
@@ -1015,7 +1015,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
             }
         }
 
-        ret = SPCI_BUSY;
+        ret = SpciReturn::Busy;
         // goto out;
         vm_unlock(&mut vm_from_to_lock.vm1);
         vm_unlock(&mut vm_from_to_lock.vm2);
@@ -1036,7 +1036,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         let architected_header = spci_get_architected_message_header((*from).mailbox.send);
 
         if from_msg_replica.length as usize > message_buffer.len() {
-            ret = SPCI_INVALID_PARAMETERS;
+            ret =SpciReturn::InvalidParameters;
             // goto out;
             vm_unlock(&mut vm_from_to_lock.vm1);
             vm_unlock(&mut vm_from_to_lock.vm2);
@@ -1045,7 +1045,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         }
 
         if (from_msg_replica.length as usize) < mem::size_of::<SpciArchitectedMessageHeader>() {
-            ret = SPCI_INVALID_PARAMETERS;
+            ret = SpciReturn::InvalidParameters;
             // goto out;
             vm_unlock(&mut vm_from_to_lock.vm1);
             vm_unlock(&mut vm_from_to_lock.vm2);
@@ -1077,7 +1077,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
             to_msg,
         );
 
-        if ret != SPCI_SUCCESS {
+        if ret != SpciReturn::Success {
             //goto out;
             vm_unlock(&mut vm_from_to_lock.vm1);
             vm_unlock(&mut vm_from_to_lock.vm2);
@@ -1096,7 +1096,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     }
 
     primary_ret.detail.message.vm_id = (*to).id;
-    ret = SPCI_SUCCESS;
+    ret = SpciReturn::Success;
 
     // Messages for the primary VM are delivered directly.
     if (*to).id == HF_PRIMARY_VM_ID {
@@ -1133,15 +1133,15 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     attributes: u32,
     current: *mut VCpu,
     next: *mut *mut VCpu,
-) -> i32 {
+) -> SpciReturn {
     let vm = (*current).vm;
-    let return_code: i32;
+    let return_code: SpciReturn;
     let block = (attributes & SPCI_MSG_RECV_BLOCK_MASK) == SPCI_MSG_RECV_BLOCK;
 
     // The primary VM will receive messages as a status code from running vcpus
     // and must not call this function.
     if (*vm).id == HF_PRIMARY_VM_ID {
-        return SPCI_INTERRUPTED;
+        return SpciReturn::Interrupted;
     }
 
     sl_lock(&(*vm).lock);
@@ -1149,7 +1149,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     // Return pending messages without blocking.
     if (*vm).mailbox.state == MailboxState::Received {
         (*vm).mailbox.state = MailboxState::Read;
-        return_code = SPCI_SUCCESS;
+        return_code = SpciReturn::Success;
         // goto out;
         sl_unlock(&(*vm).lock);
 
@@ -1158,7 +1158,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 
     // No pending message so fail if not allowed to block.
     if !block {
-        return_code = SPCI_RETRY;
+        return_code = SpciReturn::Retry;
         // goto out;
         sl_unlock(&(*vm).lock);
 
@@ -1168,7 +1168,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     // From this point onward this call can only be interrupted or a message
     // received. If a message is received the return value will be set at that
     // time to SPCI_SUCCESS.
-    return_code = SPCI_INTERRUPTED;
+    return_code = SpciReturn::Interrupted;
 
     // Don't block if there are enabled and pending interrupts, to match
     // behaviour of wait_for_interrupt.
@@ -1492,14 +1492,14 @@ pub unsafe extern "C" fn api_spci_share_memory(
     memory_region: *mut SpciMemoryRegion,
     memory_to_attributes: u32,
     share: usize,
-) -> spci_return_t {
+) -> SpciReturn {
     let to = to_locked.vm;
     let from = from_locked.vm;
     let ret;
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if to == from {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     // Create a local pool so any freed memory can't be used by another thread.
@@ -1524,7 +1524,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     let mut to_mode = mem::uninitialized();
     let share = match share {
         0x2 => SpciMemoryShare::Donate,
-        _ => return SPCI_INVALID_PARAMETERS,
+        _ => return SpciReturn::InvalidParameters,
     };
 
     if !spci_msg_check_transition(
@@ -1538,7 +1538,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
         &mut from_mode,
         &mut to_mode,
     ) {
-        return SPCI_INVALID_PARAMETERS;
+        return SpciReturn::InvalidParameters;
     }
 
     let pa_begin = pa_from_ipa(begin);
@@ -1554,7 +1554,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
         ptr::null_mut(),
         &mut local_page_pool,
     ) {
-        ret = SPCI_NO_MEMORY;
+        ret = SpciReturn::NoMemory;
         // goto out;
         mpool_fini(&mut local_page_pool);
         return ret;
@@ -1573,7 +1573,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
         // Recover any memory consumed in failed mapping.
         mm_vm_defrag(&mut (*from).ptable, &mut local_page_pool);
 
-        ret = SPCI_NO_MEMORY;
+        ret = SpciReturn::NoMemory;
 
         assert!(mm_vm_identity_map(
             &mut (*from).ptable,
@@ -1588,7 +1588,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
         return ret;
     }
 
-    ret = SPCI_SUCCESS;
+    ret = SpciReturn::Success;
 
     // out:
     mpool_fini(&mut local_page_pool);

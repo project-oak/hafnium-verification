@@ -25,15 +25,20 @@ pub const SPCI_VERSION_MAJOR: i32 = 0x0;
 pub const SPCI_VERSION_MINOR: i32 = 0x9;
 pub const SPCI_VERSION_MAJOR_OFFSET: usize = 16;
 
-// SPCI return codes.
-pub const SPCI_SUCCESS: i32 = 0;
-pub const SPCI_NOT_SUPPORTED: i32 = -1;
-pub const SPCI_INVALID_PARAMETERS: i32 = -2;
-pub const SPCI_NO_MEMORY: i32 = -3;
-pub const SPCI_BUSY: i32 = -4;
-pub const SPCI_INTERRUPTED: i32 = -5;
-pub const SPCI_DENIED: i32 = -6;
-pub const SPCI_RETRY: i32 = -7;
+/// Return type of SPCI functions.
+/// TODO: Reuse `SpciReturn` type on all SPCI functions declarations.
+#[repr(i32)]
+#[derive(PartialEq)]
+pub enum SpciReturn {
+    Success = 0,
+    NotSupported = -1,
+    InvalidParameters = -2,
+    NoMemory = -3,
+    Busy = -4,
+    Interrupted = -5,
+    Denied = -6,
+    Retry = -7,
+}
 
 /// Architected memory sharing message IDs.
 #[repr(C)]
@@ -63,7 +68,7 @@ extern "C" {
         architected_message_replica: *const SpciArchitectedMessageHeader,
         from_message_replica: *mut SpciMessage,
         to_msg: *mut SpciMessage,
-    ) -> spci_return_t;
+    ) -> SpciReturn;
 
     pub fn spci_msg_check_transition(
         to: *mut Vm,
