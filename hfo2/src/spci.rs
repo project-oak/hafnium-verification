@@ -20,6 +20,7 @@ use core::mem;
 use crate::addr::*;
 use crate::types::*;
 use crate::vm::*;
+use crate::mm::*;
 
 pub const SPCI_VERSION_MAJOR: i32 = 0x0;
 pub const SPCI_VERSION_MINOR: i32 = 0x9;
@@ -88,12 +89,12 @@ extern "C" {
         to: *mut Vm,
         from: *mut Vm,
         share: SpciMemoryShare,
-        orig_from_mode: *mut c_int,
+        orig_from_mode: *mut Mode,
         begin: ipaddr_t,
         end: ipaddr_t,
         memory_to_attributes: u32,
-        from_mode: *mut c_int,
-        to_mode: *mut c_int,
+        from_mode: *mut Mode,
+        to_mode: *mut Mode,
     ) -> bool;
 }
 
