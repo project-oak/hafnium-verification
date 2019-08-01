@@ -16,87 +16,53 @@
 
 use crate::types::*;
 
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub enum HfVCpuRunCode {
+pub enum HfVCpuRunReturn {
     /// The vCPU has been preempted but still has work to do. If the scheduling
     /// quantum has not expired, the scheduler MUST call `hf_vcpu_run` on the
     /// vCPU to allow it to continue.
-    Preempted = 0,
+    Preempted,
 
     /// The vCPU has voluntarily yielded the CPU. The scheduler SHOULD take a
     /// scheduling decision to give cycles to those that need them but MUST
     /// call `hf_vcpu_run` on the vCPU at a later point.
-    Yield = 1,
+    Yield,
 
     /// The vCPU is blocked waiting for an interrupt. The scheduler MUST take
     /// it off the run queue and not call `hf_vcpu_run` on the vCPU until it
-    /// has injected an interrupt, received `HF_VCPU_RUN_WAKE_UP` for it from
-    /// another vCPU or the timeout provided in `hf_vcpu_run_return.sleep` is
-    /// not `HF_SLEEP_INDEFINITE` and the specified duration has expired.
-    WaitForInterrupt = 2,
+    /// has injected an interrupt, received `HfVCpuRunReturn::WakeUp` for it 
+    /// from another vCPU or the timeout provided in `ns` is not
+    ///  `HF_SLEEP_INDEFINITE` and the specified duration has expired.
+    WaitForInterrupt { ns: u64 },
 
     /// The vCPU is blocked waiting for a message. The scheduler MUST take it
     /// off the run queue and not call `hf_vcpu_run` on the vCPU until it has
     /// injected an interrupt, sent it a message, or received
-    /// `HF_VCPU_RUN_WAKE_UP` for it from another vCPU from another vCPU or
-    /// the timeout provided in `hf_vcpu_run_return.sleep` is not
-    /// `HF_SLEEP_INDEFINITE` and the specified duration has expired.
-    WaitForMessage = 3,
+    /// `HfVCpuRunReturn::WakeUp` for it from another vCPU from another vCPU or
+    /// the timeout provided in `ns` is not `HF_SLEEP_INDEFINITE` and the
+    /// specified duration has expired.
+    WaitForMessage { ns: u64 },
 
     /// Hafnium would like `hf_vcpu_run` to be called on another vCPU,
-    /// specified by `hf_vcpu_run_return.wake_up`. The scheduler MUST either
-    /// wake the vCPU in question up if it is blocked, or preempt and re-run
-    /// it if it is already running somewhere. This gives Hafnium a chance to
-    /// update any CPU state which might have changed.
-    WakeUp = 4,
+    /// specified by `HfVCpuRunReturn::WakeUp`. The scheduler MUST either wake
+    /// the vCPU in question up if it is blocked, or preempt and re-run it if
+    /// it is already running somewhere. This gives Hafnium a chance to update
+    /// any CPU state which might have changed.
+    WakeUp { vm_id: spci_vm_id_t, vcpu: spci_vcpu_index_t },
 
     /// A message has been sent by the vCPU. The scheduler MUST run a vCPU from
     /// the recipient VM and priority SHOULD be given to those vCPUs that are
     /// waiting for a message.
-    Message = 5,
+    Message { vm_id: spci_vm_id_t },
 
     /// The vCPU has made the mailbox writable and there are pending waiters.
     /// The scheduler MUST call hf_mailbox_waiter_get() repeatedly and notify
     /// all waiters by injecting an HF_MAILBOX_WRITABLE_INTID interrupt.
-    NotifyWaiters = 6,
+    NotifyWaiters,
 
     /// The vCPU has aborted triggering the whole VM to abort. The scheduler
-    /// MUST treat this as `HF_VCPU_RUN_WAIT_FOR_INTERRUPT` for this vCPU and
-    /// `HF_VCPU_RUN_WAKE_UP` for all the other vCPUs of the VM.
-    Aborted = 7,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct HfVCpuRunWakeUp {
-    pub vm_id: spci_vm_id_t,
-    pub vcpu: spci_vcpu_index_t,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct HfVCpuRunMessage {
-    pub vm_id: spci_vm_id_t,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct HfVCpuRunSleep {
-    pub ns: u64,
-}
-
-#[repr(C)]
-pub union HfVCpuRunDetail {
-    pub wake_up: HfVCpuRunWakeUp,
-    pub message: HfVCpuRunMessage,
-    pub sleep: HfVCpuRunSleep,
-}
-
-#[repr(C)]
-pub struct HfVCpuRunReturn {
-    pub code: HfVCpuRunCode,
-    pub detail: HfVCpuRunDetail,
+    /// MUST treat this as `HfVCpuRunReturn::WaitForInterrupt` for this vCPU and
+    /// `HfVCpuRunReturn::WakeUp` for all the other vCPUs of the VM.
+    Aborted,
 }
 
 #[repr(C)]
@@ -116,22 +82,18 @@ pub enum HfShare {
 
 /// Encode an HfVCpuRunReturn struct in the 64-bit packing ABI.
 #[inline]
-pub unsafe fn hf_vcpu_run_return_encode(res: HfVCpuRunReturn) -> u64 {
-    let mut ret = res.code as u64 & 0xff;
+pub unsafe extern "C" fn hf_vcpu_run_return_encode(res: HfVCpuRunReturn) -> u64 {
+    use HfVCpuRunReturn::*;
 
-    match res.code {
-        HfVCpuRunCode::WakeUp => {
-            ret |= (res.detail.wake_up.vm_id as u64) << 32;
-            ret |= (res.detail.wake_up.vcpu as u64) << 16;
-        }
-        HfVCpuRunCode::Message => {
-            ret |= (res.detail.message.vm_id as u64) << 8;
-        }
-        HfVCpuRunCode::WaitForInterrupt | HfVCpuRunCode::WaitForMessage => {
-            ret |= (res.detail.sleep.ns as u64) << 8;
-        }
-        _ => (),
+    match res {
+        Preempted => 0,
+        Yield => 1,
+        WaitForInterrupt { ns } => 2 | (ns << 8),
+        WaitForMessage { ns } => 3 | (ns << 8),
+        WakeUp { vm_id, vcpu } =>
+            4 | ((vm_id as u64) << 32) | ((vcpu as u64) << 16),
+        Message { vm_id } => 5 | ((vm_id as u64) << 8),
+        NotifyWaiters => 6,
+        Aborted => 7,
     }
-
-    ret
 }

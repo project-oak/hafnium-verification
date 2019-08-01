@@ -69,9 +69,10 @@ unsafe fn api_switch_to_primary(
 
     // If the secondary is blocked but has a timer running, sleep until the
     // timer fires rather than indefinitely.
-    match primary_ret.code {
-        HfVCpuRunCode::WaitForInterrupt | HfVCpuRunCode::WaitForMessage => {
-            primary_ret.detail.sleep.ns = if arch_timer_enabled_current() {
+    match &mut primary_ret {
+        HfVCpuRunReturn::WaitForInterrupt { ns }
+        | HfVCpuRunReturn::WaitForMessage { ns } => {
+            *ns = if arch_timer_enabled_current() {
                 arch_timer_remaining_ns_current()
             } else {
                 HF_SLEEP_INDEFINITE
@@ -99,10 +100,7 @@ unsafe fn api_switch_to_primary(
 /// Returns to the primary vm and signals that the vcpu still has work to do so.
 #[no_mangle]
 pub unsafe extern "C" fn api_preempt(current: *mut VCpu) -> *mut VCpu {
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::Preempted,
-        detail: mem::uninitialized(),
-    };
+    let ret = HfVCpuRunReturn::Preempted;
 
     api_switch_to_primary(current, ret, VCpuStatus::Ready)
 }
@@ -111,9 +109,10 @@ pub unsafe extern "C" fn api_preempt(current: *mut VCpu) -> *mut VCpu {
 /// vm.
 #[no_mangle]
 pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *mut VCpu {
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::WaitForInterrupt,
-        detail: mem::uninitialized(),
+    let ret = HfVCpuRunReturn::WaitForInterrupt {
+        // TODO: `api_switch_to_primary` always initialize this variable,
+        // but it would be better if we don't use `mem::uninitialized()`.
+        ns: mem::uninitialized(),
     };
 
     api_switch_to_primary(current, ret, VCpuStatus::BlockedInterrupt)
@@ -122,9 +121,10 @@ pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *mut VCpu
 /// Puts the current vCPU in off mode, and returns to the primary VM.
 #[no_mangle]
 pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::WaitForInterrupt,
-        detail: mem::uninitialized(),
+    let ret = HfVCpuRunReturn::WaitForInterrupt {
+        // TODO: `api_switch_to_primary` always initialize this variable,
+        // but it would be better if we don't use `mem::uninitialized()`.
+        ns: mem::uninitialized(),
     };
 
     // Disable the timer, so the scheduler doesn't get told to call back
@@ -140,10 +140,7 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
 /// SpciReturn::Success.
 #[no_mangle]
 pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu) -> SpciReturn {
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::Yield,
-        detail: mem::uninitialized(),
-    };
+    let ret = HfVCpuRunReturn::Yield;
 
     if (*(*current).vm).id == HF_PRIMARY_VM_ID {
         // Noop on the primary as it makes the scheduling decisions.
@@ -160,14 +157,9 @@ pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu
 /// it is already running on a different physical CPU.
 #[no_mangle]
 pub unsafe extern "C" fn api_wake_up(current: *mut VCpu, target_vcpu: *mut VCpu) -> *mut VCpu {
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::WakeUp,
-        detail: HfVCpuRunDetail {
-            wake_up: HfVCpuRunWakeUp {
-                vm_id: (*(*target_vcpu).vm).id,
-                vcpu: vcpu_index(target_vcpu),
-            },
-        },
+    let ret = HfVCpuRunReturn::WakeUp {
+        vm_id: (*(*target_vcpu).vm).id,
+        vcpu: vcpu_index(target_vcpu),
     };
 
     api_switch_to_primary(current, ret, VCpuStatus::Ready)
@@ -176,10 +168,7 @@ pub unsafe extern "C" fn api_wake_up(current: *mut VCpu, target_vcpu: *mut VCpu)
 /// Aborts the vCPU and triggers its VM to abort fully.
 #[no_mangle]
 pub unsafe extern "C" fn api_abort(current: *mut VCpu) -> *mut VCpu {
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::Aborted,
-        detail: mem::uninitialized(),
-    };
+    let ret = HfVCpuRunReturn::Aborted;
 
     dlog!(
         "Aborting VM {} vCPU {}\n",
@@ -455,13 +444,12 @@ unsafe fn api_vcpu_prepare_run(
         // primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
             if arch_timer_enabled(&(*vcpu).regs) {
-                (*run_ret).code = if (*vcpu).state == VCpuStatus::BlockedMailbox {
-                    HfVCpuRunCode::WaitForMessage
+                let ns = arch_timer_remaining_ns(&mut (*vcpu).regs);
+
+                *run_ret = if (*vcpu).state == VCpuStatus::BlockedMailbox {
+                    HfVCpuRunReturn::WaitForMessage { ns }
                 } else {
-                    HfVCpuRunCode::WaitForInterrupt
-                };
-                (*run_ret).detail.sleep = HfVCpuRunSleep {
-                    ns: arch_timer_remaining_ns(&mut (*vcpu).regs),
+                    HfVCpuRunReturn::WaitForInterrupt { ns }
                 };
             }
 
@@ -507,43 +495,36 @@ pub unsafe extern "C" fn api_vcpu_run(
     vcpu_idx: spci_vcpu_index_t,
     current: *const VCpu,
     next: *mut *mut VCpu,
-) -> HfVCpuRunReturn {
+) -> u64 {
     let vm;
     let vcpu;
-    let mut ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::WaitForInterrupt,
-        detail: HfVCpuRunDetail {
-            sleep: HfVCpuRunSleep {
-                ns: HF_SLEEP_INDEFINITE,
-            },
-        },
-    };
+    let mut ret = HfVCpuRunReturn::WaitForInterrupt { ns: HF_SLEEP_INDEFINITE };
 
     // Only the primary VM can switch vcpus.
     if (*(*current).vm).id != HF_PRIMARY_VM_ID {
-        return ret;
+        return hf_vcpu_run_return_encode(ret);
     }
 
     // Only the secondary VM vcpus can be run.
     if vm_id == HF_PRIMARY_VM_ID {
-        return ret;
+        return hf_vcpu_run_return_encode(ret);
     }
 
     // The requested VM must exist.
     vm = vm_find(vm_id);
     if vm == ptr::null_mut() {
-        return ret;
+        return hf_vcpu_run_return_encode(ret);
     }
 
     // The requested vcpu must exist.
     if vcpu_idx >= (*vm).vcpu_count {
-        return ret;
+        return hf_vcpu_run_return_encode(ret);
     }
 
     // Update state if allowed.
     vcpu = vm_get_vcpu(vm, vcpu_idx);
     if !api_vcpu_prepare_run(current, vcpu, &mut ret) {
-        return ret;
+        return hf_vcpu_run_return_encode(ret);
     }
 
     // Inject timer interrupt if timer has expired. It's safe to access
@@ -566,9 +547,9 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // Set a placeholder return code to the scheduler. This will be overwritten
     // when the switch back to the primary occurs.
-    ret.code = HfVCpuRunCode::Preempted;
+    ret = HfVCpuRunReturn::Preempted;
 
-    return ret;
+    return hf_vcpu_run_return_encode(ret);
 }
 
 /// Check that the mode indicates memory that is vaid, owned and exclusive.
@@ -582,10 +563,7 @@ fn api_mode_valid_owned_and_exclusive(mode: c_int) -> bool {
 /// waiters up.
 unsafe fn api_waiter_result(locked_vm: VmLocked, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let vm = locked_vm.vm;
-    let ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::NotifyWaiters,
-        detail: mem::uninitialized(),
-    };
+    let ret = HfVCpuRunReturn::NotifyWaiters;
 
     if list_empty(&(*vm).mailbox.waiter_list) {
         // No waiters, nothing else to do.
@@ -948,11 +926,6 @@ pub unsafe extern "C" fn api_spci_msg_send(
 ) -> SpciReturn {
     let from = (*current).vm;
 
-    let mut primary_ret = HfVCpuRunReturn {
-        code: HfVCpuRunCode::Message,
-        detail: mem::uninitialized(),
-    };
-
     // TODO: Refactor the control flow of this function, and make this variable
     // immutable.
     let mut ret;
@@ -1095,7 +1068,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
         *to_msg = from_msg_replica;
     }
 
-    primary_ret.detail.message.vm_id = (*to).id;
+
+    let primary_ret = HfVCpuRunReturn::Message { vm_id: (*to).id };
     ret = SpciReturn::Success;
 
     // Messages for the primary VM are delivered directly.
@@ -1181,9 +1155,8 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 
     // Switch back to primary vm to block.
     {
-        let run_return = HfVCpuRunReturn {
-            code: HfVCpuRunCode::WaitForMessage,
-            detail: mem::uninitialized(),
+        let run_return = HfVCpuRunReturn::WaitForMessage {
+            ns: mem::uninitialized(),
         };
 
         *next = api_switch_to_primary(current, run_return, VCpuStatus::BlockedMailbox);
