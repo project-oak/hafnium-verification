@@ -294,8 +294,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		break;
 
 	case HF_VCPU_RUN:
-		ret.user_ret = hf_vcpu_run_return_encode(
-			api_vcpu_run(arg1, arg2, current(), &ret.new));
+		ret.user_ret = api_vcpu_run(arg1, arg2, current(), &ret.new);
 		break;
 
 	case SPCI_YIELD_32:
