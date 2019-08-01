@@ -68,85 +68,85 @@ impl fmt::Display for vaddr_t {
 
 /// Initializes a physical address.
 #[inline]
-pub fn pa_init(p: uintpaddr_t) -> paddr_t {
+pub const fn pa_init(p: uintpaddr_t) -> paddr_t {
     paddr_t { pa: p }
 }
 
 /// Extracts the absolute physical address.
 #[inline]
-pub fn pa_addr(pa: paddr_t) -> uintpaddr_t {
+pub const fn pa_addr(pa: paddr_t) -> uintpaddr_t {
     pa.pa
 }
 
 /// Advances a physical address.
 #[inline]
-pub fn pa_add(pa: paddr_t, n: size_t) -> paddr_t {
+pub const fn pa_add(pa: paddr_t, n: size_t) -> paddr_t {
     pa_init(pa_addr(pa) + n)
 }
 
 /// Returns the difference between two physical addresses.
 #[inline]
-pub fn pa_difference(start: paddr_t, end: paddr_t) -> size_t {
+pub const fn pa_difference(start: paddr_t, end: paddr_t) -> size_t {
     pa_addr(end) - pa_addr(start)
 }
 
 /// Initializes an intermediate physical address.
 #[inline]
-pub fn ipa_init(ipa: uintpaddr_t) -> ipaddr_t {
+pub const fn ipa_init(ipa: uintpaddr_t) -> ipaddr_t {
     ipaddr_t { ipa: ipa }
 }
 
 /// Extracts the absolute intermediate physical address.
 #[inline]
-pub fn ipa_addr(ipa: ipaddr_t) -> uintpaddr_t {
+pub const fn ipa_addr(ipa: ipaddr_t) -> uintpaddr_t {
     ipa.ipa
 }
 
 /// Advances an intermediate physical address.
 #[inline]
-pub fn ipa_add(ipa: ipaddr_t, n: size_t) -> ipaddr_t {
+pub const fn ipa_add(ipa: ipaddr_t, n: size_t) -> ipaddr_t {
     ipa_init(ipa_addr(ipa) + n)
 }
 
 /// Initializes a virtual address.
 #[inline]
-pub fn va_init(v: uintvaddr_t) -> vaddr_t {
+pub const fn va_init(v: uintvaddr_t) -> vaddr_t {
     vaddr_t { va: v }
 }
 
 /// Extracts the absolute virtual address.
 #[inline]
-pub fn va_addr(va: vaddr_t) -> uintvaddr_t {
+pub const fn va_addr(va: vaddr_t) -> uintvaddr_t {
     va.va
 }
 
 /// Casts a physical address to a virtual address.
 #[inline]
-pub fn va_from_pa(pa: paddr_t) -> vaddr_t {
+pub const fn va_from_pa(pa: paddr_t) -> vaddr_t {
     va_init(pa_addr(pa))
 }
 
 /// Casts a physical address to an intermediate physical address.
 #[inline]
-pub fn ipa_from_pa(pa: paddr_t) -> ipaddr_t {
+pub const fn ipa_from_pa(pa: paddr_t) -> ipaddr_t {
     ipa_init(pa_addr(pa))
 }
 
 /// Casts a virtual address to a physical address.
 #[inline]
-pub fn pa_from_va(va: vaddr_t) -> paddr_t {
+pub const fn pa_from_va(va: vaddr_t) -> paddr_t {
     pa_init(va_addr(va))
 }
 
 /// Casts an intermediate physical address to a physical address.
 #[inline]
-pub fn pa_from_ipa(ipa: ipaddr_t) -> paddr_t {
+pub const fn pa_from_ipa(ipa: ipaddr_t) -> paddr_t {
     pa_init(ipa_addr(ipa))
 }
 
 /// Casts a pointer to a virtual address.
 #[inline]
-pub fn va_from_ptr(p: *const c_void) -> vaddr_t {
+pub const unsafe fn va_from_ptr(p: *const c_void) -> vaddr_t {
     vaddr_t {
         va: p as uintvaddr_t,
     }
@@ -156,6 +156,6 @@ pub fn va_from_ptr(p: *const c_void) -> vaddr_t {
 /// mapped for the calling context.
 /// TODO: check the mapping for a range and return a memiter?
 #[inline]
-pub fn ptr_from_va(va: vaddr_t) -> *mut c_void {
+pub const fn ptr_from_va(va: vaddr_t) -> *mut c_void {
     va_addr(va) as *mut c_void
 }

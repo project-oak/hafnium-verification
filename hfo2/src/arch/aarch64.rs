@@ -35,6 +35,9 @@ pub type uintpaddr_t = uintptr_t;
 /// Integer type large enough to hold a virtual address.
 pub type uintvaddr_t = uintptr_t;
 
+/// The type of a page table entry (PTE).
+pub type pte_t = u64;
+
 /// The struct for storing a floating point register.
 ///
 /// 2 64-bit integers used to avoid need for FP support at this level.
