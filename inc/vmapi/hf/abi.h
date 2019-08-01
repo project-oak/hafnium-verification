@@ -122,6 +122,32 @@ enum hf_share {
 };
 
 /**
+ * Encode an hf_vcpu_run_return struct in the 64-bit packing ABI.
+ */
+static inline uint64_t hf_vcpu_run_return_encode(struct hf_vcpu_run_return res)
+{
+	uint64_t ret = res.code & 0xff;
+
+	switch (res.code) {
+	case HF_VCPU_RUN_WAKE_UP:
+		ret |= (uint64_t)res.wake_up.vm_id << 32;
+		ret |= (uint64_t)res.wake_up.vcpu << 16;
+		break;
+	case HF_VCPU_RUN_MESSAGE:
+		ret |= res.message.vm_id << 8;
+		break;
+	case HF_VCPU_RUN_WAIT_FOR_INTERRUPT:
+	case HF_VCPU_RUN_WAIT_FOR_MESSAGE:
+		ret |= res.sleep.ns << 8;
+		break;
+	default:
+		break;
+	}
+
+	return ret;
+}
+
+/**
  * Decode an hf_vcpu_run_return struct from the 64-bit packing ABI.
  */
 static inline struct hf_vcpu_run_return hf_vcpu_run_return_decode(uint64_t res)
