@@ -40,30 +40,31 @@ use crate::page::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
+use crate::arch::*;
 
 extern "C" {
-    fn arch_mm_absent_pte(level: u8) -> usize;
-    fn arch_mm_table_pte(level: u8, pa: usize) -> usize;
-    fn arch_mm_block_pte(level: u8, pa: usize, attrs: usize) -> usize;
+    fn arch_mm_absent_pte(level: u8) -> pte_t;
+    fn arch_mm_table_pte(level: u8, pa: paddr_t) -> pte_t;
+    fn arch_mm_block_pte(level: u8, pa: paddr_t, attrs: u64) -> pte_t;
 
     fn arch_mm_is_block_allowed(level: u8) -> bool;
-    fn arch_mm_pte_is_present(pte: usize, level: u8) -> bool;
-    fn arch_mm_pte_is_valid(pte: usize, level: u8) -> bool;
-    fn arch_mm_pte_is_block(pte: usize, level: u8) -> bool;
-    fn arch_mm_pte_is_table(pte: usize, level: u8) -> bool;
+    fn arch_mm_pte_is_present(pte: pte_t, level: u8) -> bool;
+    fn arch_mm_pte_is_valid(pte: pte_t, level: u8) -> bool;
+    fn arch_mm_pte_is_block(pte: pte_t, level: u8) -> bool;
+    fn arch_mm_pte_is_table(pte: pte_t, level: u8) -> bool;
 
-    fn arch_mm_clear_pa(pa: usize) -> usize;
-    fn arch_mm_block_from_pte(pte: usize, level: u8) -> usize;
-    fn arch_mm_table_from_pte(pte: usize, level: u8) -> usize;
-    fn arch_mm_pte_attrs(pte: usize, level: u8) -> usize;
+    fn arch_mm_clear_pa(pa: paddr_t) -> paddr_t;
+    fn arch_mm_block_from_pte(pte: pte_t, level: u8) -> paddr_t;
+    fn arch_mm_table_from_pte(pte: pte_t, level: u8) -> paddr_t;
+    fn arch_mm_pte_attrs(pte: pte_t, level: u8) -> u64;
 
-    fn arch_mm_invalidate_stage1_range(begin: usize, end: usize);
-    fn arch_mm_invalidate_stage2_range(begin: usize, end: usize);
+    fn arch_mm_invalidate_stage1_range(begin: vaddr_t, end: vaddr_t);
+    fn arch_mm_invalidate_stage2_range(begin: ipaddr_t, end: ipaddr_t);
 
-    fn arch_mm_mode_to_stage1_attrs(mode: c_int) -> usize;
-    fn arch_mm_mode_to_stage2_attrs(mode: c_int) -> usize;
+    fn arch_mm_mode_to_stage1_attrs(mode: c_int) -> u64;
+    fn arch_mm_mode_to_stage2_attrs(mode: c_int) -> u64;
 
-    fn arch_mm_stage2_attrs_to_mode(attrs: usize) -> c_int;
+    fn arch_mm_stage2_attrs_to_mode(attrs: u64) -> c_int;
 
     pub fn arch_mm_write_back_dcache(base: usize, size: size_t);
 
@@ -73,9 +74,9 @@ extern "C" {
     fn arch_mm_stage1_root_table_count() -> u8;
     fn arch_mm_stage2_root_table_count() -> u8;
 
-    fn arch_mm_init(table: usize, first: bool) -> bool;
+    fn arch_mm_init(table: paddr_t, first: bool) -> bool;
 
-    fn arch_mm_combine_table_entry_attrs(table_attrs: usize, block_attrs: usize) -> usize;
+    fn arch_mm_combine_table_entry_attrs(table_attrs: u64, block_attrs: u64) -> u64;
 
     fn plat_console_mm_init(stage1_locked: mm_stage1_locked, mpool: *const MPool);
 
@@ -151,6 +152,13 @@ bitflags! {
     }
 }
 
+/// The type of addresses stored in the page table.
+type ptable_addr_t = uintvaddr_t;
+
+/// For stage 2, the input is an intermediate physical addresses rather than a
+/// virtual address so:
+const_assert_eq!(addr_size_eq; mem::size_of::<ptable_addr_t>(), mem::size_of::<uintpaddr_t>());
+
 /// The hypervisor page table.
 static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
     SpinLock::new(unsafe { PageTable::null() });
@@ -160,15 +168,16 @@ pub static STAGE2_INVALIDATE: AtomicBool = AtomicBool::new(false);
 
 /// Utility functions for address manipulation.
 mod addr {
+    use super::ptable_addr_t;
     use crate::page::*;
 
     /// Rounds an address down to a page boundary.
-    pub fn round_down_to_page(addr: usize) -> usize {
+    pub fn round_down_to_page(addr: ptable_addr_t) -> ptable_addr_t {
         addr & !(PAGE_SIZE - 1)
     }
 
     /// Rounds an address up to a page boundary.
-    pub fn round_up_to_page(addr: usize) -> usize {
+    pub fn round_up_to_page(addr: ptable_addr_t) -> ptable_addr_t {
         round_down_to_page(addr + PAGE_SIZE - 1)
     }
 
@@ -178,22 +187,23 @@ mod addr {
         1usize << (PAGE_BITS + level as usize * PAGE_LEVEL_BITS)
     }
 
-    /// Gets the address of the start of the next block of the given size. The size must be a power
+    /// Gets the address of the start of the next block of the given size. The size must be a pow
+    /// er
     /// of two.
-    pub fn start_of_next_block(addr: usize, block_size: usize) -> usize {
+    pub fn start_of_next_block(addr: ptable_addr_t, block_size: usize) -> ptable_addr_t {
         (addr + block_size) & !(block_size - 1)
     }
 
     /// For a given address, calculates the maximum (plus one) address that can be represented by
     /// the same table at the given level.
-    pub fn level_end(addr: usize, level: u8) -> usize {
+    pub fn level_end(addr: ptable_addr_t, level: u8) -> ptable_addr_t {
         let offset = PAGE_BITS + (level as usize + 1) * PAGE_LEVEL_BITS;
         ((addr >> offset) + 1) << offset
     }
 
     /// For a given address, calculates the index at which its entry is stored in a table at the
     /// given level.
-    pub fn index(addr: usize, level: u8) -> usize {
+    pub fn index(addr: ptable_addr_t, level: u8) -> usize {
         let v = addr >> (PAGE_BITS + level as usize * PAGE_LEVEL_BITS);
         v & ((1usize << PAGE_LEVEL_BITS) - 1)
     }
@@ -208,13 +218,13 @@ pub trait Stage {
     fn root_table_count() -> u8;
 
     /// Invalidates the TLB for the given address range.
-    fn invalidate_tlb(begin: usize, end: usize);
+    fn invalidate_tlb(begin: ptable_addr_t, end: ptable_addr_t);
 
     /// Converts the mode into attributes for a block PTE.
-    fn mode_to_attrs(mode: Mode) -> usize;
+    fn mode_to_attrs(mode: Mode) -> u64;
 
     /// Converts the attributes back to the corresponding mode.
-    fn attrs_to_mode(attrs: usize) -> Mode;
+    fn attrs_to_mode(attrs: u64) -> Mode;
 }
 
 /// The page table stage for the hypervisor.
@@ -231,15 +241,15 @@ impl Stage for Stage1 {
 
     fn invalidate_tlb(begin: usize, end: usize) {
         unsafe {
-            arch_mm_invalidate_stage1_range(begin, end);
+            arch_mm_invalidate_stage1_range(va_init(begin), va_init(end));
         }
     }
 
-    fn mode_to_attrs(mode: Mode) -> usize {
+    fn mode_to_attrs(mode: Mode) -> u64 {
         unsafe { arch_mm_mode_to_stage1_attrs(mode.bits as c_int) }
     }
 
-    fn attrs_to_mode(_attrs: usize) -> Mode {
+    fn attrs_to_mode(_attrs: u64) -> Mode {
         panic!("`arch_mm_stage2_attrs_to_mode()` doesn't exist");
     }
 }
@@ -259,16 +269,16 @@ impl Stage for Stage2 {
     fn invalidate_tlb(begin: usize, end: usize) {
         if STAGE2_INVALIDATE.load(Ordering::Relaxed) {
             unsafe {
-                arch_mm_invalidate_stage2_range(begin, end);
+                arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
             }
         }
     }
 
-    fn mode_to_attrs(mode: Mode) -> usize {
+    fn mode_to_attrs(mode: Mode) -> u64 {
         unsafe { arch_mm_mode_to_stage2_attrs(mode.bits as c_int) }
     }
 
-    fn attrs_to_mode(attrs: usize) -> Mode {
+    fn attrs_to_mode(attrs: u64) -> Mode {
         Mode::from_bits_truncate(unsafe { arch_mm_stage2_attrs_to_mode(attrs) } as u32)
     }
 }
@@ -276,7 +286,7 @@ impl Stage for Stage2 {
 /// Page table entry.
 #[repr(C)]
 struct PageTableEntry {
-    inner: usize,
+    inner: pte_t,
 }
 
 impl PageTableEntry {
@@ -286,7 +296,7 @@ impl PageTableEntry {
     ///
     /// Improper use of this function may lead to memory problems.  For example, a double-free may
     /// occur if the function is called twice on the same raw pointer.
-    unsafe fn from_raw(inner: usize) -> Self {
+    unsafe fn from_raw(inner: pte_t) -> Self {
         Self { inner }
     }
 
@@ -294,7 +304,7 @@ impl PageTableEntry {
         unsafe { Self::from_raw(arch_mm_absent_pte(level)) }
     }
 
-    fn block(level: u8, begin: usize, attrs: usize) -> Self {
+    fn block(level: u8, begin: paddr_t, attrs: u64) -> Self {
         unsafe { Self::from_raw(arch_mm_block_pte(level, begin, attrs)) }
     }
 
@@ -302,7 +312,7 @@ impl PageTableEntry {
     ///
     /// `page` should be a proper page table.
     unsafe fn table(level: u8, page: Page) -> Self {
-        Self::from_raw(arch_mm_table_pte(level, page.into_raw() as usize))
+        Self::from_raw(arch_mm_table_pte(level, pa_init(page.into_raw() as uintpaddr_t)))
     }
 
     fn is_present(&self, level: u8) -> bool {
@@ -321,11 +331,11 @@ impl PageTableEntry {
         unsafe { arch_mm_pte_is_table(self.inner, level) }
     }
 
-    fn attrs(&self, level: u8) -> usize {
+    fn attrs(&self, level: u8) -> u64 {
         unsafe { arch_mm_pte_attrs(self.inner, level) }
     }
 
-    fn as_block(&self, level: u8) -> Option<usize> {
+    fn as_block(&self, level: u8) -> Option<paddr_t> {
         if self.is_block(level) {
             Some(unsafe { self.as_block_unchecked(level) })
         } else {
@@ -333,13 +343,13 @@ impl PageTableEntry {
         }
     }
 
-    unsafe fn as_block_unchecked(&self, level: u8) -> usize {
+    unsafe fn as_block_unchecked(&self, level: u8) -> paddr_t {
         arch_mm_block_from_pte(self.inner, level)
     }
 
     fn as_table(&self, level: u8) -> Option<&RawPageTable> {
         if self.is_table(level) {
-            unsafe { Some(&*(arch_mm_table_from_pte(self.inner, level) as *const _)) }
+            unsafe { Some(&*(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *const _)) }
         } else {
             None
         }
@@ -348,7 +358,7 @@ impl PageTableEntry {
     fn as_table_mut(&mut self, level: u8) -> Option<&mut RawPageTable> {
         unsafe {
             if arch_mm_pte_is_table(self.inner, level) {
-                Some(&mut *(arch_mm_table_from_pte(self.inner, level) as *mut _))
+                Some(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _))
             } else {
                 None
             }
@@ -381,7 +391,7 @@ impl PageTableEntry {
     fn replace<S: Stage>(
         &mut self,
         new_pte: PageTableEntry,
-        begin: usize,
+        begin: ptable_addr_t,
         level: u8,
         mpool: &MPool,
     ) {
@@ -411,7 +421,7 @@ impl PageTableEntry {
     /// is, if it does not yet point to another table.
     ///
     /// Returns a pointer to the table the entry now points to.
-    fn populate_table<S: Stage>(&mut self, begin: usize, level: u8, mpool: &MPool) -> Option<()> {
+    fn populate_table<S: Stage>(&mut self, begin: ptable_addr_t, level: u8, mpool: &MPool) -> Option<()> {
         // Just return if it's already populated.
         if self.is_table(level) {
             return Some(());
@@ -435,7 +445,7 @@ impl PageTableEntry {
                 unsafe {
                     ptr::write(
                         pte,
-                        Self::block(level_below, self.inner + i * entry_size, attrs),
+                        Self::block(level_below, pa_init(self.inner as usize + i * entry_size), attrs),
                     );
                 }
             }
@@ -459,7 +469,7 @@ impl PageTableEntry {
 
     /// Defragments the given PTE by recursively replacing any tables with blocks or absent entries
     /// where possible.
-    fn defrag(&mut self, level: u8, mpool: &MPool) -> Option<usize> {
+    fn defrag(&mut self, level: u8, mpool: &MPool) -> Option<u64> {
         let attrs = self.attrs(level);
 
         if self.is_block(level) {
@@ -597,9 +607,9 @@ impl RawPageTable {
     /// recursion is bound by the maximum number of levels in a page table.
     fn map_level<S: Stage>(
         &mut self,
-        begin: usize,
-        end: usize,
-        attrs: usize,
+        begin: ptable_addr_t,
+        end: ptable_addr_t,
+        attrs: u64,
         level: u8,
         flags: Flags,
         mpool: &MPool,
@@ -636,7 +646,7 @@ impl RawPageTable {
                     let new_pte = if unmap {
                         PageTableEntry::absent(level)
                     } else {
-                        PageTableEntry::block(level, begin, attrs)
+                        PageTableEntry::block(level, pa_init(begin), attrs)
                     };
                     pte.replace::<S>(new_pte, begin, level, mpool);
                 }
@@ -674,7 +684,7 @@ impl RawPageTable {
     /// The value returned in `attrs` is only valid if the function returns true.
     ///
     /// Returns true if the whole range has the same attributes and false otherwise.
-    pub fn get_attrs_level(&self, begin: usize, end: usize, level: u8) -> Option<usize> {
+    pub fn get_attrs_level(&self, begin: ptable_addr_t, end: ptable_addr_t, level: u8) -> Option<u64> {
         let ptes = self[addr::index(begin, level)..].iter();
         let begins = BlockIter::new(
             begin,
@@ -720,12 +730,12 @@ impl RawPageTable {
 /// Page table.
 pub struct PageTable<S: Stage> {
     // TODO: Modify other codes not to read this directly, and make it private.
-    pub root: usize,
+    pub root: paddr_t,
     _marker: PhantomData<S>,
 }
 
 impl<S: Stage> PageTable<S> {
-    const unsafe fn from_raw(root: usize) -> Self {
+    const unsafe fn from_raw(root: paddr_t) -> Self {
         Self {
             root,
             _marker: PhantomData,
@@ -733,7 +743,7 @@ impl<S: Stage> PageTable<S> {
     }
 
     const unsafe fn null() -> Self {
-        Self::from_raw(0)
+        Self::from_raw(pa_init(0))
     }
 
     /// Creates a new page table.
@@ -751,7 +761,7 @@ impl<S: Stage> PageTable<S> {
 
         // TODO: halloc could return a virtual or physical address if mm not enabled?
         Some(Self {
-            root: pages.into_raw() as usize,
+            root: pa_init(pages.into_raw() as usize),
             _marker: PhantomData,
         })
     }
@@ -769,19 +779,19 @@ impl<S: Stage> PageTable<S> {
         }
 
         mpool.free_pages(unsafe {
-            Pages::from_raw(self.root as *mut _, S::root_table_count() as usize)
+            Pages::from_raw(pa_addr(self.root) as *mut _, S::root_table_count() as usize)
         });
         mem::forget(self);
     }
 
     fn get_raw(&self) -> *const RawPage {
-        self.root as *const RawPage
+        pa_addr(self.root) as *const RawPage
     }
 
     fn deref(&self) -> &[RawPageTable] {
         unsafe {
             slice::from_raw_parts(
-                self.root as *const RawPageTable,
+                pa_addr(self.root) as *const RawPageTable,
                 S::root_table_count() as usize,
             )
         }
@@ -790,7 +800,7 @@ impl<S: Stage> PageTable<S> {
     fn deref_mut(&mut self) -> &mut [RawPageTable] {
         unsafe {
             slice::from_raw_parts_mut(
-                self.root as *mut RawPageTable,
+                pa_addr(self.root) as *mut RawPageTable,
                 S::root_table_count() as usize,
             )
         }
@@ -801,9 +811,9 @@ impl<S: Stage> PageTable<S> {
     /// given range instead.
     fn map_root(
         &mut self,
-        begin: usize,
-        end: usize,
-        attrs: usize,
+        begin: ptable_addr_t,
+        end: ptable_addr_t,
+        attrs: u64,
         root_level: u8,
         flags: Flags,
         mpool: &MPool,
@@ -826,16 +836,14 @@ impl<S: Stage> PageTable<S> {
         &mut self,
         begin: paddr_t,
         end: paddr_t,
-        attrs: usize,
+        attrs: u64,
         flags: Flags,
         mpool: &MPool,
     ) -> Option<()> {
-        let begin = pa_addr(begin);
-        let end = pa_addr(end);
         let root_level = S::max_level() + 1;
         let ptable_end = S::root_table_count() as usize * addr::entry_size(root_level);
-        let end = cmp::min(addr::round_up_to_page(end), ptable_end);
-        let begin = unsafe { arch_mm_clear_pa(begin) };
+        let end = cmp::min(addr::round_up_to_page(pa_addr(end)), ptable_end);
+        let begin = pa_addr(unsafe { arch_mm_clear_pa(begin) });
 
         // Do it in two steps to prevent leaving the table in a halfway updated state. In such a
         // two-step implementation, the table may be left with extra internal tables, but no
@@ -899,7 +907,7 @@ impl<S: Stage> PageTable<S> {
     /// The value returned in `attrs` is only valid if the function returns true.
     ///
     /// Returns true if the whole range has the same attributes and false otherwise.
-    pub fn get_attrs(&self, begin: usize, end: usize) -> Option<usize> {
+    pub fn get_attrs(&self, begin: ptable_addr_t, end: ptable_addr_t) -> Option<u64> {
         let max_level = S::max_level();
         let root_level = max_level + 1;
         let root_table_size = addr::entry_size(root_level);
@@ -1176,8 +1184,8 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().get_raw();
-    arch_mm_init(ptable as usize, false)
+    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().root;
+    arch_mm_init(ptable, false)
 }
 
 #[no_mangle]

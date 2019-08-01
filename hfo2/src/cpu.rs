@@ -358,7 +358,7 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
             false,
             (*vm).id,
             vcpu_index(vcpu) as cpu_id_t,
-            pa_init((*vm).ptable.root),
+            (*vm).ptable.root,
         );
         vcpu_on(vcpu_locked, entry, arg);
     }
