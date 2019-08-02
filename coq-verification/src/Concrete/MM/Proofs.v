@@ -106,16 +106,16 @@ Section Proofs.
   Qed.
 
   (* if [begin] is the start of the block at the level above, then we can freely
-     use a smaller address for [begin], because [has_uniform_attrs] ignores
+     use a smaller address for [begin], because [attrs_changed_in_range] ignores
      addresses outside of [table]'s range. *)
-  Lemma has_uniform_attrs_block_start
-        ptable_deref table level attrs begin end_ idxs stage :
+  Lemma attrs_changed_in_range_block_start
+        ptable_deref old_table table level attrs begin end_ idxs stage :
     is_start_of_block begin (mm_entry_size level) ->
     address_matches_indices (uintvaddr_to_uintpaddr begin) idxs stage ->
     forall begin',
       (begin' <= begin)%N ->
-      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin end_ stage ->
-      has_uniform_attrs ptable_deref idxs table (level - 1) attrs begin' end_ stage.
+      attrs_changed_in_range ptable_deref idxs old_table table (level - 1) attrs begin end_ stage ->
+      attrs_changed_in_range ptable_deref idxs old_table table (level - 1) attrs begin' end_ stage.
   Admitted.
 
   (*** Proofs about [mm_page_table_from_pa] ***)
@@ -530,7 +530,8 @@ Section Proofs.
     conc.(ptable_deref) ptr = table ->
     has_location_in_state conc ptr idxs ->
     level <= max_level (stage_from_flags flags) ->
-    has_uniform_attrs conc.(ptable_deref) idxs new_table level attrs begin end_ (stage_from_flags flags).
+    attrs_changed_in_range (ptable_deref conc) idxs table new_table level attrs
+                           begin end_ (stage_from_flags flags).
   Admitted.
 
   (* TODO: make locations_exclusive take a list of mpools so we can include the
@@ -692,6 +693,37 @@ Section Proofs.
              end.
   Qed.
 
+  (* TODO : move *)
+  Lemma has_location_nth_default deref ppool flags root_ptable i :
+    i < mm_root_table_count flags ->
+    ptable_is_root root_ptable flags ->
+    has_location deref (map vm_ptable vms) hafnium_ptable ppool
+                 (nth_default_oobe (mm_page_table_from_pa (root root_ptable)) i)
+                 (table_loc ppool root_ptable (cons i nil)).
+  Admitted. (* TODO *)
+
+  (* TODO : move *)
+  Lemma has_location_in_state_nth_default conc flags root_ptable i :
+    i < mm_root_table_count flags ->
+    ptable_is_root root_ptable flags ->
+    has_location_in_state
+      conc (nth_default_oobe (mm_page_table_from_pa (root root_ptable)) i)
+      (cons i nil).
+  Proof.
+    cbv [has_location_in_state]. intros; eexists.
+    eapply has_location_nth_default; eauto.
+  Qed.
+
+  (* TODO : move *)
+  Lemma root_matches_stage_from_flags t flags :
+    ptable_is_root t flags ->
+    root_ptable_matches_stage t (stage_from_flags flags).
+  Proof.
+    cbv [ptable_is_root stage_from_flags root_ptable_matches_stage].
+    break_match; solver.
+  Qed.
+  Hint Resolve root_matches_stage_from_flags.
+
   (* TODO:
      This proof says only that if success = true and commit = true
      then the abstract state changed. We need two more proofs for full
@@ -822,11 +854,11 @@ Section Proofs.
         cbv [table_index_expression] in *; simplify; [ ].
         apply represents_valid_concrete.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
-        eapply reassign_pointer_represents; eauto; [ | ].
+        eapply reassign_pointer_represents; eauto; [ | | ].
+        { rewrite mm_page_table_from_pa_length with (flags:=flags) in * by eauto.
+          apply has_location_nth_default with (flags:=flags); eauto. }
         { apply mm_map_level_locations_exclusive; solver. }
-        { apply has_uniform_attrs_reassign_pointer;
-            try apply mm_map_level_reassign_pointer;
-            try eapply mm_map_level_table_attrs; solver. } }
+        { eapply mm_map_level_table_attrs; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -862,17 +894,19 @@ Section Proofs.
                      end
         end.
 
+        rewrite mm_page_table_from_pa_length with (flags:=flags) in * by eauto.
         eapply reassign_pointer_represents with (level := root_level - 1);
+          try apply has_location_nth_default with (flags:=flags);
           try apply mm_map_level_locations_exclusive; try solver; [ ].
-        apply has_uniform_attrs_reassign_pointer;
-          try auto using mm_map_level_reassign_pointer; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
-          destruct H; [ subst;
-                        eapply mm_map_level_table_attrs; solver | ]
+          destruct H; [ subst | ]
         end.
-        eapply has_uniform_attrs_block_start; try solver; [ ].
-        eapply mm_map_level_table_attrs; solver. } }
+        { eapply mm_map_level_table_attrs; try solver.
+          eapply has_location_in_state_nth_default; eauto. }
+        { eapply attrs_changed_in_range_block_start; try solver; [ ].
+          eapply mm_map_level_table_attrs; try solver; [ ].
+          eapply has_location_in_state_nth_default; eauto. } } }
 
     { (* Subgoal 2 : invariant holds at start *)
       right.

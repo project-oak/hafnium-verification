@@ -109,7 +109,7 @@ Section PointerLocations.
         forall root_ptable idxs ptr,
           In root_ptable vm_ptables ->
           In idxs (index_sequences_to_pointer ptr root_ptable Stage2) ->
-          has_location ptr (table_loc ppool haf_ptable idxs)
+          has_location ptr (table_loc ppool root_ptable idxs)
     | has_mpool_loc :
         forall ptr,
           mpool_contains ppool ptr ->

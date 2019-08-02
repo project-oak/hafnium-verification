@@ -23,6 +23,7 @@ Import ListNotations.
 (* perform inversion on list-based inductives in hypotheses *)
 Ltac invert_list_properties :=
   repeat match goal with
+         | H : NoDup (_ :: _) |- _ => invert H
          | H : Exists _ (_ :: _) |- _ => invert H
          | H : Exists _ [] |- _ => invert H
          | H : Forall _ (_ :: _) |- _ => invert H
