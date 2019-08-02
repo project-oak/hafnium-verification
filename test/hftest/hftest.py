@@ -205,7 +205,11 @@ def Main():
         full_log.write(out)
         full_log.write("\r\n\r\n")
         hftest_json = "\n".join(hftest_lines(out))
-        tests = json.loads(hftest_json)
+        try:
+            tests = json.loads(hftest_json)
+        except ValueError:
+            print(hftest_json)
+            return 2
         # Run the selected tests.
         tests_run = 0
         failures = 0
