@@ -528,6 +528,39 @@ Section Proofs.
            end.
   Defined.
 
+  (* solves the [reassign_pointer_represents] goals when changed pointer has
+     affected a different stage than the one in the goal (and therefore, no
+     properties of the stage in the goal have changed *)
+  Local Ltac unaffected_stage :=
+      repeat match goal with
+             | _ => progress basics
+             | |- _ <-> _ => split
+             | |- inl _ = inr _ \/ _ => right
+             | |- inr _ = inl _ \/ _ => right
+             | H : (forall _, In (inr hid) _ <-> ?f _ _),
+                   H' : In (inr hid) _ |- ?f _ _ => apply H in H'
+             | H : (forall _, In (inr hid) _ <-> ?f _ _)
+               |- In (inr hid) _ => apply H
+             | H : (forall _ _, In (inl _) _ <-> exists _, _),
+                   H' : In (inl _) _ |- exists _, _ =>
+               apply H in H'; let x := fresh in destruct H' as [x H']; exists x
+             | H : (forall _ _, In (inl _) _ <-> exists _, _)
+               |- In (inl _) _ =>  apply H
+             | _ => eapply haf_page_valid_proper; [|eassumption]
+             | _ => eapply haf_page_owned_proper; [|eassumption]
+             | _ => eapply vm_page_valid_proper; [|eassumption]
+             | _ => eapply vm_page_owned_proper; [|eassumption]
+             | _ => eapply hafnium_table_unchanged_stage2; solver
+             | _ => eapply hafnium_table_unchanged_sym;
+                      eapply hafnium_table_unchanged_stage2; solver
+             | _ => eapply vm_table_unchanged_stage1; solver
+             | _ => eapply vm_table_unchanged_sym;
+                      eapply vm_table_unchanged_stage1; solver
+             | _ => break_match
+             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
+             | _ => solver
+             end.
+
   Lemma reassign_pointer_represents_stage1 conc ptr t abst idxs :
     represents abst conc ->
     has_location (ptable_deref conc) (api_page_pool conc) ptr
@@ -548,46 +581,12 @@ Section Proofs.
     basics; try solver; [ | | | ].
     { (* stage-2 [accessible_by] states match *) 
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
-      repeat match goal with
-             | _ => progress basics
-             | |- _ <-> _ => split
-             | |- inl _ = inr _ \/ _ => right
-             | |- inr _ = inl _ \/ _ => right
-             | H : (forall _ _, In (?f _) _ <-> exists _, _),
-                   H' : In (?f _) _ |- exists _, _ =>
-               apply H in H'; let x := fresh in destruct H' as [x H']; exists x
-             | H : (forall _ _, In (?f _) _ <-> exists _, _) |- In (?f _) _ =>
-               apply H
-             | _ => eapply vm_page_valid_proper; [|eassumption]
-             | _ => eapply vm_table_unchanged_stage1; solver
-             | _ => eapply vm_table_unchanged_sym;
-                      eapply vm_table_unchanged_stage1; solver
-             | _ => break_match
-             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
-             | _ => solver
-             end. }
+      unaffected_stage. }
     { (* stage-1 [accessible_by] states match *) 
       admit. }
     { (* stage-2 [owned_by] states match *) 
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
-      repeat match goal with
-             | _ => progress basics
-             | |- _ <-> _ => split
-             | |- inl _ = inr _ \/ _ => right
-             | |- inr _ = inl _ \/ _ => right
-             | H : (forall _ _, In (?f _) _ <-> exists _, _),
-                   H' : In (?f _) _ |- exists _, _ =>
-               apply H in H'; let x := fresh in destruct H' as [x H']; exists x
-             | H : (forall _ _, In (?f _) _ <-> exists _, _) |- In (?f _) _ =>
-               apply H
-             | _ => eapply vm_page_owned_proper; [|eassumption]
-             | _ => eapply vm_table_unchanged_stage1; solver
-             | _ => eapply vm_table_unchanged_sym;
-                      eapply vm_table_unchanged_stage1; solver
-             | _ => break_match
-             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
-             | _ => solver
-             end. }
+      unaffected_stage. }
     { (* stage-1 [owned_by] states match *) 
       admit. }
   Admitted.
@@ -610,6 +609,7 @@ Section Proofs.
     cbv [reassign_pointer represents is_valid].
     cbv [has_location_in_state].
     cbn [ptable_deref api_page_pool].
+    intros. assert (In (vm_ptable v) (map vm_ptable vms)) by (apply in_map_iff; eauto).
     basics; try solver; [ | | | ].
     { (* stage-2 [accessible_by] states match *) 
         rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
@@ -684,11 +684,13 @@ Section Proofs.
           (* A *)
           admit. } }
     { (* stage-1 [accessible_by] states match *)
-      admit. }
+      rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
+      unaffected_stage. }
     { (* stage-2 [owned_by] states match *)
       admit. }
     { (* stage-1 [owned_by] states match *)
-      admit. }
+      rewrite owned_by_abstract_reassign_pointer_stage2 by eauto.
+      unaffected_stage. }
   Admitted.
 
   Lemma reassign_pointer_represents conc ptr t abst idxs root_ptable stage :
