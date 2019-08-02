@@ -461,6 +461,14 @@ Section Proofs.
     hafnium_page_table_unchanged deref (update_deref deref ptr t).
   Admitted. (* TODO *)
 
+  (* if the changed pointer is in a different VM's page table, then other VMs' page tables are unchanged *)
+  Lemma vm_table_unchanged_stage2 v1 v2 deref ptr t ppool idxs :
+    has_location deref ppool ptr (table_loc ppool (vm_ptable v1) idxs) ->
+    locations_exclusive deref ppool ->
+    v1 <> v2 ->
+    vm_page_table_unchanged deref (update_deref deref ptr t) v2.
+  Admitted. (* TODO *)
+
   (* If hafnium's table is unchanged, then haf_page_valid is the same for all
      addresses *)
   Lemma haf_page_valid_proper conc conc' a:
@@ -505,14 +513,25 @@ Section Proofs.
     (* a is not one of the addresses that changed *)
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
-    vm_page_valid conc v a ->
-    vm_page_valid (reassign_pointer conc ptr t) v a.
+    vm_page_valid conc v a <-> vm_page_valid (reassign_pointer conc ptr t) v a.
   Admitted. (* TODO *)
 
   (* TODO : move *)
   Lemma vm_find_Some v : In v vms -> vm_find (vm_id v) = Some v.
   Admitted. (* TODO *)
   Hint Resolve vm_find_Some.
+
+  (* TODO : move *)
+  Lemma vm_find_sound v vid : vm_find vid = Some v -> vm_id v = vid.
+  Admitted. (* TODO *)
+  Hint Resolve vm_find_sound.
+
+  Lemma vm_find_unique_entity v1 v2 vid :
+    vm_find vid = Some v2 ->
+    v1 <> v2 ->
+    ~ (@eq entity_id (inl vid) (inl (vm_id v1))).
+  Admitted. (* TODO *)
+  Hint Resolve vm_find_unique_entity.
 
   (* TODO : move *)
   Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
@@ -528,10 +547,18 @@ Section Proofs.
            end.
   Defined.
 
-  (* solves the [reassign_pointer_represents] goals when changed pointer has
-     affected a different stage than the one in the goal (and therefore, no
-     properties of the stage in the goal have changed *)
-  Local Ltac unaffected_stage :=
+  Local Ltac destruct_vm_eq :=
+    match goal with
+    | x : vm, y : vm |- _ =>
+      progress match goal with
+               | H : x <> y |- _ => idtac
+               | H : y <> x |- _ => idtac
+               | _ => destruct (vm_eq_dec x y); basics
+               end
+    end.
+
+  (* simplify [reassign_pointer_represents] subgoals *)
+  Local Ltac preprocess_represents :=
       repeat match goal with
              | _ => progress basics
              | |- _ <-> _ => split
@@ -545,7 +572,32 @@ Section Proofs.
                    H' : In (inl _) _ |- exists _, _ =>
                apply H in H'; let x := fresh in destruct H' as [x H']; exists x
              | H : (forall _ _, In (inl _) _ <-> exists _, _)
-               |- In (inl _) _ =>  apply H
+               |- context [In (inl _) _] => rewrite H
+             | _ => destruct_vm_eq
+             | H : vm_find _ = Some _ |- _ =>
+               rewrite (vm_find_sound _ _ H) in * by auto
+             | H : vm_find ?vid = Some ?x, H' : ?v <> ?x
+               |- inl ?vid = inl (vm_id ?v) \/ _ => right
+             | _ => eapply vm_page_valid_proper; [|eassumption];
+                    apply vm_table_unchanged_sym;
+                    eapply vm_table_unchanged_stage2; solver
+             | _ => eapply vm_page_valid_proper; [|eassumption];
+                    eapply vm_table_unchanged_stage2; solver
+             | H : ~ In _ (addresses_under_pointer_in_range
+                             (ptable_deref ?conc) _ _ _ _ _) |- _ =>
+               eapply vm_page_valid_unaffected_address with (conc:=conc); solver
+             | _ => break_match
+             | |- exists _, _ /\ _ => eexists; split; eauto using vm_find_Some; [ ]
+             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
+             | _ => solver
+             end.
+
+  (* solves the [reassign_pointer_represents] goals when changed pointer has
+     affected a different stage than the one in the goal (and therefore, no
+     properties of the stage in the goal have changed *)
+  Local Ltac unaffected_stage :=
+      repeat match goal with
+             | _ => progress preprocess_represents
              | _ => eapply haf_page_valid_proper; [|eassumption]
              | _ => eapply haf_page_owned_proper; [|eassumption]
              | _ => eapply vm_page_valid_proper; [|eassumption]
@@ -556,8 +608,6 @@ Section Proofs.
              | _ => eapply vm_table_unchanged_stage1; solver
              | _ => eapply vm_table_unchanged_sym;
                       eapply vm_table_unchanged_stage1; solver
-             | _ => break_match
-             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
              | _ => solver
              end.
 
@@ -583,12 +633,15 @@ Section Proofs.
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
       unaffected_stage. }
     { (* stage-1 [accessible_by] states match *) 
-      admit. }
+      rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
+      preprocess_represents.
+      1-6:admit. }
     { (* stage-2 [owned_by] states match *) 
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
       unaffected_stage. }
     { (* stage-1 [owned_by] states match *) 
-      admit. }
+      preprocess_represents.
+      1-6:admit. }
   Admitted.
 
   Lemma reassign_pointer_represents_stage2 conc ptr t abst idxs v :
@@ -613,75 +666,22 @@ Section Proofs.
     basics; try solver; [ | | | ].
     { (* stage-2 [accessible_by] states match *) 
         rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
-        repeat match goal with
-               | _ => progress basics
-               | |- _ <-> _ => split
-               | |- inl ?x = inl ?y \/ _ =>
-                 destruct (Nat.eq_dec x y); [left; basics; solver | right]
-               | H : (forall _ _, In (?f _) _ <-> exists _, _),
-                     H' : In (?f _) _ |- exists _, _ =>
-                 apply H in H'; let x := fresh in destruct H' as [x H']; exists x
-               | H : (forall _ _, In (?f _) _ <-> exists _, _) |- In (?f _) _ =>
-                 apply H
-               | _ => break_match
-               | H : _ |- exists v, vm_find (vm_id ?x) = Some v /\ _ =>
-                 exists x; split; [ solver | ]
-               | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
-               | _ => solver
-               end.
-
-        (* main reasoning cases:
-           A : not in addresses_under_pointer -> nothing changed wrt a (need new version of page_valid_proper)
-           B : changed pointer in a different VM's table -> page_valid_proper
-           C : page valid for x under new deref -> new attrs say invalid -> in addresses_under_pointer ptr ->
-                    ptr in x2's page table -> x <> x2
-           D : valid before -> new attributes say valid -> valid now
-         *)
-
-        (* PROBLEM with A :
-           
-           it's addresses_under_pointer_in_range, not addresses_under_pointer -- we need to somehow have the
-           information that a is unchanged unless it's in range
-        *)
-
-
-        
-        (* order of attack : A, B, D, C *)
+        preprocess_represents.
 
         { (* here, we know it's valid even though it was changed because attrs say valid *)
           (* D *)
           admit. }
-        { (* here, need to split on whether H11 = x0. If so, same as last case. If not, then
-             we need to use vm_page_valid_proper to say that the pointer can't be in H11's table *)
-          (* destruct dec (H11 = x0); [ D | B ] *)
+        { (* here, we know it's valid even though it was changed because attrs say valid *)
+          (* D *)
           admit. }
-        { (* here, we know H12 <> x0 and same as second clause of last case *)
-          (* B *)
+        { (* here, we know that the new attrs say invalid, so the vm_page_valid
+             with the new deref is a contradiction *)
+          exfalso.
+          (* rewrite <-D -> contradiction *)
           admit. }
-        { (* here, a was not affected by the change because it's not in the addresses_under_pointer *)
-          (* destruct dec (H10 = x0); [ A | B ] *)
-          match goal with
-          | x : vm, y : vm |- _ => destruct (vm_eq_dec x y); basics
-          end.
-          { eapply vm_page_valid_unaffected_address; eauto. }
-          (* A *)
-          admit. }
-        { (* we know x <> x0, so ptr not in x's table and page_valid_proper, same as second clause of case 2 and as case 3 *) 
-          (* B *)
-          admit. }
-        { (* we know the page is valid for x under the new deref and that the
-             new attributes say it's invalid, so for x0 it would be invalid;
-             therefore x <> x0 *)
-          (* C *)
-          admit. }
-        { (* we know the page is valid for x under the new deref and that the
-             new attributes say it's invalid, so for x0 it would be invalid;
-             therefore x <> x0 and x's page table hasn't changed -- solve with
-             page_valid_proper *)
-          (* C; B *)
-          admit. }
-        { (* a unaffected because it's not in the addresses_under_pointer *)
-          (* A *)
+        { (* here, we know that the new attrs say invalid, so the vm_page_valid
+             with the new deref is a contradiction *)
+          exfalso.
           admit. } }
     { (* stage-1 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.

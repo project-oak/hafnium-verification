@@ -92,7 +92,8 @@ Class params_valid {cp : concrete_params} :=
         In t (map vm_ptable vms) ->
         length (ptr_from_va (va_from_pa t.(root)))
         = arch_mm_stage2_root_table_count;
-    no_duplicate_ptables : NoDup all_root_ptables
+    no_duplicate_ptables : NoDup all_root_ptables;
+    no_duplicate_ids : NoDup (map vm_id vms)
   }.
 
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
