@@ -37,7 +37,12 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 
 Section Proofs.
   Context {ap : @abstract_state_parameters paddr_t nat}
-          {cp : concrete_params}.
+          {cp : concrete_params} {cp_valid : params_valid}.
+
+  Local Notation has_location deref :=
+   (has_location deref (map vm_ptable vms) hafnium_ptable).
+  Local Notation locations_exclusive deref :=
+   (locations_exclusive deref (map vm_ptable vms) hafnium_ptable).
 
   (* if two concrete states are equivalent and an abstract state represents one
      of them, then it also represents the other. *)
@@ -88,6 +93,7 @@ Section Proofs.
     repeat match goal with
            | _ => progress basics
            | _ => progress cbn [reassign_pointer ptable_deref]
+           | _ => progress cbv [update_deref]
            | |- _ <-> _ => split
            | _ => break_match
            | _ => solver
@@ -157,8 +163,9 @@ Section Proofs.
     let vrange := map N.of_nat (seq (N.to_nat begin) (N.to_nat (end_ - begin))) in
     let prange := map (fun va => pa_from_va (va_init va)) vrange in
     let paths := index_sequences_to_pointer deref ptr root_ptable stage in
+    let path := hd nil paths in (* expects at most one sequence -- prove by locations_exclusive *)
     filter
-      (fun a => existsb (fun p => address_matches_indices_bool (pa_addr a) p stage) paths) prange.
+      (fun a => address_matches_indices_bool (pa_addr a) path stage) prange.
 
   Definition abstract_reassign_pointer_for_entity
              (abst : abstract_state) (conc : concrete_state)
@@ -238,33 +245,481 @@ Section Proofs.
       page_lookup' ptable_deref a t level stage = Some pte ->
       forall lvl, arch_mm_pte_attrs pte lvl = attrs.
 
+  Definition attrs_outside_range_unchanged
+             (ptable_deref : ptable_pointer -> mm_page_table)
+             (table_loc : list nat)
+             (t_orig t : mm_page_table) (level : nat) (attrs : attributes)
+             (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
+    forall (a : uintvaddr_t) (pte : pte_t),
+      address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc stage ->
+      (a < begin \/ end_ <= a)%N ->
+      level <= max_level stage ->
+      page_lookup' ptable_deref a t level stage = Some pte ->
+      (exists pte_orig,
+          page_lookup' ptable_deref a t_orig level stage = Some pte_orig
+          /\ forall lvl, arch_mm_pte_attrs pte lvl = arch_mm_pte_attrs pte_orig lvl). 
+
+  Definition attrs_changed_in_range
+             (ptable_deref : ptable_pointer -> mm_page_table)
+             (table_loc : list nat)
+             (t_orig t : mm_page_table) (level : nat) (attrs : attributes)
+             (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
+    has_uniform_attrs ptable_deref table_loc t level attrs begin end_ stage
+    /\ attrs_outside_range_unchanged
+         ptable_deref table_loc t_orig t level attrs begin end_ stage.
+
   Definition has_location_in_state conc ptr idxs : Prop :=
     exists root_ptable,
-      has_location (ptable_deref conc) (map vm_ptable vms) hafnium_ptable
-                   (api_page_pool conc) ptr
+      has_location (ptable_deref conc) (api_page_pool conc) ptr
                    (table_loc conc.(api_page_pool) root_ptable idxs).
 
-  Lemma reassign_pointer_represents conc ptr t abst idxs stage :
+  Definition root_ptable_matches_stage root_ptable stage : Prop :=
+    match stage with
+    | Stage1 => root_ptable = hafnium_ptable
+    | Stage2 => In root_ptable (map vm_ptable vms)
+    end.
+
+  (* gives the new [accessible_by] value of an address under an abstract state
+     with a pointer reassigned, assuming the pointer is in a VM's page table *)
+  Lemma accessible_by_abstract_reassign_pointer_stage2
+        abst conc ptr attrs begin end_ (a : paddr_t) v ppool :
+    (* v is in the vms list *)
+    In v vms ->
+    (* ptr is located under v's root ptable *)
+    (exists idxs,
+        has_location
+          (ptable_deref conc) ppool ptr
+          (table_loc ppool (vm_ptable v) idxs)) ->
+    (* ptr is not located anywhere else *)
+    locations_exclusive conc.(ptable_deref) ppool ->
+    (* list of addresses that changed *)
+    let changed_addrs :=
+        addresses_under_pointer_in_range
+          (ptable_deref conc) ptr (vm_ptable v) begin end_ Stage2 in
+    (* new abstract state *)
+    let new_abst := 
+        abstract_reassign_pointer abst conc ptr attrs begin end_ in
+    forall e : entity_id,
+      In e (accessible_by new_abst a) <->
+      if (in_dec paddr_t_eq_dec a changed_addrs)
+      then
+        if valid_from_attrs attrs Stage2
+        then e = inl (vm_id v) \/ In e (accessible_by abst a)
+        else e <> inl (vm_id v) /\ In e (accessible_by abst a)
+      else In e (accessible_by abst a).
+  Admitted. (* TODO *)
+
+  (* gives the new [accessible_by] value of an address under an abstract state
+     with a pointer reassigned, assuming the pointer is in hafnium's table *)
+  Lemma accessible_by_abstract_reassign_pointer_stage1
+        abst conc ptr attrs begin end_ (a : paddr_t) ppool :
+    (* ptr is located under hafnium's root ptable *)
+    (exists idxs,
+        has_location
+          (ptable_deref conc) ppool ptr
+          (table_loc ppool hafnium_ptable idxs)) ->
+    (* ptr is not located anywhere else *)
+    locations_exclusive conc.(ptable_deref) ppool ->
+    (* list of addresses that changed *)
+    let changed_addrs :=
+        addresses_under_pointer_in_range
+          (ptable_deref conc) ptr hafnium_ptable begin end_ Stage1 in
+    (* new abstract state *)
+    let new_abst := 
+        abstract_reassign_pointer abst conc ptr attrs begin end_ in
+    forall e : entity_id,
+      In e (accessible_by new_abst a) <->
+      if (in_dec paddr_t_eq_dec a changed_addrs)
+      then
+        if valid_from_attrs attrs Stage1
+        then e = inr hid \/ In e (accessible_by abst a)
+        else e <> inr hid /\ In e (accessible_by abst a)
+      else In e (accessible_by abst a).
+  Admitted. (* TODO *)
+
+  (* gives the new [owned_by] value of an address under an abstract state with a
+     pointer reassigned, assuming the pointer is in a VM's page table *)
+  Lemma owned_by_abstract_reassign_pointer_stage2
+        abst conc ptr attrs begin end_ (a : paddr_t) v ppool :
+    (* v is in the vms list *)
+    In v vms ->
+    (* ptr is located under v's root ptable *)
+    (exists idxs,
+        has_location
+          (ptable_deref conc) ppool ptr
+          (table_loc ppool (vm_ptable v) idxs)) ->
+    (* ptr is not located anywhere else *)
+    locations_exclusive conc.(ptable_deref) ppool ->
+    (* list of addresses that changed *)
+    let changed_addrs :=
+        addresses_under_pointer_in_range
+          (ptable_deref conc) ptr (vm_ptable v) begin end_ Stage2 in
+    (* new abstract state *)
+    let new_abst := 
+        abstract_reassign_pointer abst conc ptr attrs begin end_ in
+    forall e : entity_id,
+      In e (owned_by new_abst a) <->
+      if (in_dec paddr_t_eq_dec a changed_addrs)
+      then
+        if valid_from_attrs attrs Stage2
+        then e = inl (vm_id v) \/ In e (owned_by abst a)
+        else e <> inl (vm_id v) /\ In e (owned_by abst a)
+      else In e (owned_by abst a).
+  Admitted. (* TODO *)
+
+  (* gives the new [owned_by] value of an address under an abstract state with a
+     pointer reassigned, assuming the pointer is in hafnium's table *)
+  Lemma owned_by_abstract_reassign_pointer_stage1
+        abst conc ptr attrs begin end_ (a : paddr_t) ppool :
+    (* ptr is located under hafnium's root ptable *)
+    (exists idxs,
+        has_location (ptable_deref conc) ppool ptr
+          (table_loc ppool hafnium_ptable idxs)) ->
+    (* ptr is not located anywhere else *)
+    locations_exclusive conc.(ptable_deref) ppool ->
+    (* list of addresses that changed *)
+    let changed_addrs :=
+        addresses_under_pointer_in_range
+          (ptable_deref conc) ptr hafnium_ptable begin end_ Stage1 in
+    (* new abstract state *)
+    let new_abst := 
+        abstract_reassign_pointer abst conc ptr attrs begin end_ in
+    forall e : entity_id,
+      In e (owned_by new_abst a) <->
+      if (in_dec paddr_t_eq_dec a changed_addrs)
+      then
+        if owned_from_attrs attrs Stage1
+        then e = inr hid \/ In e (owned_by abst a)
+        else e <> inr hid /\ In e (owned_by abst a)
+      else In e (owned_by abst a).
+  Admitted. (* TODO *)
+
+  Lemma index_sequences_to_pointer_change_start deref ptr root_ptable stage t ppool :
+    In root_ptable all_root_ptables ->
+    locations_exclusive deref ppool ->
+    index_sequences_to_pointer
+      (fun ptr' : ptable_pointer => if ptable_pointer_eq_dec ptr ptr' then t else deref ptr')
+      ptr root_ptable stage = index_sequences_to_pointer deref ptr root_ptable stage.
+  Admitted.
+
+  (* states that if we change the ptable_deref function but only affect pointers
+     in the stage-1 table, then stage-2 lookups are unaltered *)
+  Lemma page_lookup_proper_stage2 deref1 deref2 root_ptable ppool a:
+    (* all pointers have at most 1 location *)
+    locations_exclusive deref1 ppool ->
+    (* root_ptable is a stage-2 table *)
+    In root_ptable (map vm_ptable vms) ->
+    (* forall pointers, if the pointer is NOT in the stage1 page table, then
+       deref1 is the same as deref2 *) 
+    (forall ptr,
+        index_sequences_to_pointer deref1 ptr hafnium_ptable Stage1 = nil ->
+        deref1 ptr = deref2 ptr) ->
+      page_lookup deref1 root_ptable Stage2 a = page_lookup deref2 root_ptable Stage2 a.
+  Admitted. (* TODO *)
+
+  Definition vm_page_table_unchanged deref1 deref2 v : Prop :=
+    forall ptr,
+      index_sequences_to_pointer deref1 ptr (vm_ptable v) Stage2 <> nil
+      \/ index_sequences_to_pointer deref2 ptr (vm_ptable v) Stage2 <> nil ->
+      deref1 ptr = deref2 ptr.
+
+  Definition hafnium_page_table_unchanged deref1 deref2 : Prop :=
+    forall ptr,
+      index_sequences_to_pointer deref1 ptr hafnium_ptable Stage1 <> nil
+      \/ index_sequences_to_pointer deref2 ptr hafnium_ptable Stage1 <> nil ->
+      deref1 ptr = deref2 ptr.
+
+  Lemma vm_table_unchanged_sym deref1 deref2 v :
+    vm_page_table_unchanged deref1 deref2 v ->
+    vm_page_table_unchanged deref2 deref1 v.
+  Proof.
+    cbv [vm_page_table_unchanged]; basics;
+      symmetry; solver.
+  Qed.
+
+  Lemma hafnium_table_unchanged_sym deref1 deref2 :
+    hafnium_page_table_unchanged deref1 deref2 ->
+    hafnium_page_table_unchanged deref2 deref1.
+  Proof.
+    cbv [hafnium_page_table_unchanged]; basics;
+      symmetry; solver.
+  Qed.
+
+  (* Modifying the stage-1 table doesn't change the VM page tables *)
+  Lemma vm_table_unchanged_stage1 deref ptr idxs t ppool :
+    has_location deref ppool ptr (table_loc ppool hafnium_ptable idxs) ->
+    locations_exclusive deref ppool ->
+    forall v,
+      vm_page_table_unchanged deref (update_deref deref ptr t) v.
+  Admitted. (* TODO *)
+
+  (* Modifying the stage-2 tables doesn't change hafnium's table *)
+  Lemma hafnium_table_unchanged_stage2 deref ptr idxs t ppool root_ptable :
+    In root_ptable (map vm_ptable vms) ->
+    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
+    locations_exclusive deref ppool ->
+    hafnium_page_table_unchanged deref (update_deref deref ptr t).
+  Admitted. (* TODO *)
+
+  (* If hafnium's table is unchanged, then haf_page_valid is the same for all
+     addresses *)
+  Lemma haf_page_valid_proper conc conc' a:
+    hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) -> 
+    haf_page_valid conc a ->
+    haf_page_valid conc' a.
+  Admitted. (* TODO *)
+
+  (* If hafnium's table is unchanged, then haf_page_owned is the same for all
+     addresses *)
+  Lemma haf_page_owned_proper conc conc' a:
+    hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) -> 
+    haf_page_owned conc a ->
+    haf_page_owned conc' a.
+  Admitted. (* TODO *)
+
+  (* If a VM's page tables are unchanged, then vm_page_valid is the same for all
+     addresses *)
+  Lemma vm_page_valid_proper conc conc' v a:
+    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v -> 
+    vm_page_valid conc v a ->
+    vm_page_valid conc' v a.
+  Admitted. (* TODO *)
+
+  (* If a VM's page tables are unchanged, then vm_page_owned is the same for all
+     addresses *)
+  Lemma vm_page_owned_proper conc conc' v a:
+    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v  -> 
+    vm_page_owned conc v a ->
+    vm_page_owned conc' v a.
+  Admitted. (* TODO *)
+
+  (* If an address isn't in the range that changed, then vm_page_valid remains true *)
+  Lemma vm_page_valid_unaffected_address
+        conc ptr ppool v a begin end_ attrs idxs level t :
+    (* ptr exists in v's page table *)
+    has_location
+      (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+    (* attributes of the new table match the old, except in the rang specified *)
+    attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                           level attrs begin end_ Stage2 ->
+    (* a is not one of the addresses that changed *)
+    ~ In a (addresses_under_pointer_in_range
+              conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
+    vm_page_valid conc v a ->
+    vm_page_valid (reassign_pointer conc ptr t) v a.
+  Admitted. (* TODO *)
+
+  (* TODO : move *)
+  Lemma vm_find_Some v : In v vms -> vm_find (vm_id v) = Some v.
+  Admitted. (* TODO *)
+  Hint Resolve vm_find_Some.
+
+  (* TODO : move *)
+  Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
+  Proof.
+    repeat match goal with
+           | _ => progress subst
+           | x : vm |- _ => destruct x
+           | x : mm_ptable |- _ => destruct x
+           | _ => right; congruence
+           | _ => left; congruence
+           | x : nat, y : nat |- _ => destruct (Nat.eq_dec x y)
+           | x : paddr_t, y : paddr_t |- _ => destruct (paddr_t_eq_dec x y)
+           end.
+  Defined.
+
+  Lemma reassign_pointer_represents_stage1 conc ptr t abst idxs :
     represents abst conc ->
-    has_location_in_state conc ptr idxs ->
+    has_location (ptable_deref conc) (api_page_pool conc) ptr
+                 (table_loc (api_page_pool conc) hafnium_ptable idxs) ->
     let conc' := conc.(reassign_pointer) ptr t in
-    locations_exclusive
-      conc.(ptable_deref) (map vm_ptable vms) hafnium_ptable conc.(api_page_pool) ->
-    locations_exclusive
-      conc'.(ptable_deref) (map vm_ptable vms) hafnium_ptable conc.(api_page_pool) ->
+    locations_exclusive conc.(ptable_deref) conc.(api_page_pool) ->
+    locations_exclusive conc'.(ptable_deref) conc.(api_page_pool) ->
     forall attrs level begin end_,
-      has_uniform_attrs
-        conc'.(ptable_deref) idxs t level attrs begin end_ stage ->
+      attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                             level attrs begin end_ Stage1 ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
   Proof.
     cbv [reassign_pointer represents is_valid].
-    cbv [vm_page_valid haf_page_valid vm_page_owned haf_page_owned].
+    cbv [has_location_in_state].
     cbn [ptable_deref api_page_pool].
-    basics; try solver.
-    (* TODO: 4 subgoals *)
+    basics; try solver; [ | | | ].
+    { (* stage-2 [accessible_by] states match *) 
+      rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
+      repeat match goal with
+             | _ => progress basics
+             | |- _ <-> _ => split
+             | |- inl _ = inr _ \/ _ => right
+             | |- inr _ = inl _ \/ _ => right
+             | H : (forall _ _, In (?f _) _ <-> exists _, _),
+                   H' : In (?f _) _ |- exists _, _ =>
+               apply H in H'; let x := fresh in destruct H' as [x H']; exists x
+             | H : (forall _ _, In (?f _) _ <-> exists _, _) |- In (?f _) _ =>
+               apply H
+             | _ => eapply vm_page_valid_proper; [|eassumption]
+             | _ => eapply vm_table_unchanged_stage1; solver
+             | _ => eapply vm_table_unchanged_sym;
+                      eapply vm_table_unchanged_stage1; solver
+             | _ => break_match
+             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
+             | _ => solver
+             end. }
+    { (* stage-1 [accessible_by] states match *) 
+      admit. }
+    { (* stage-2 [owned_by] states match *) 
+      rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
+      repeat match goal with
+             | _ => progress basics
+             | |- _ <-> _ => split
+             | |- inl _ = inr _ \/ _ => right
+             | |- inr _ = inl _ \/ _ => right
+             | H : (forall _ _, In (?f _) _ <-> exists _, _),
+                   H' : In (?f _) _ |- exists _, _ =>
+               apply H in H'; let x := fresh in destruct H' as [x H']; exists x
+             | H : (forall _ _, In (?f _) _ <-> exists _, _) |- In (?f _) _ =>
+               apply H
+             | _ => eapply vm_page_owned_proper; [|eassumption]
+             | _ => eapply vm_table_unchanged_stage1; solver
+             | _ => eapply vm_table_unchanged_sym;
+                      eapply vm_table_unchanged_stage1; solver
+             | _ => break_match
+             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
+             | _ => solver
+             end. }
+    { (* stage-1 [owned_by] states match *) 
+      admit. }
   Admitted.
+
+  Lemma reassign_pointer_represents_stage2 conc ptr t abst idxs v :
+    represents abst conc ->
+    In v vms ->
+    has_location (ptable_deref conc) (api_page_pool conc) ptr
+                 (table_loc (api_page_pool conc) (vm_ptable v) idxs) ->
+    let conc' := conc.(reassign_pointer) ptr t in
+    locations_exclusive conc.(ptable_deref) conc.(api_page_pool) ->
+    locations_exclusive conc'.(ptable_deref) conc.(api_page_pool) ->
+    forall attrs level begin end_,
+      attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                             level attrs begin end_ Stage2 ->
+      represents (abstract_reassign_pointer
+                    abst conc ptr attrs begin end_)
+                 conc'.
+  Proof.
+    cbv [reassign_pointer represents is_valid].
+    cbv [has_location_in_state].
+    cbn [ptable_deref api_page_pool].
+    basics; try solver; [ | | | ].
+    { (* stage-2 [accessible_by] states match *) 
+        rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
+        repeat match goal with
+               | _ => progress basics
+               | |- _ <-> _ => split
+               | |- inl ?x = inl ?y \/ _ =>
+                 destruct (Nat.eq_dec x y); [left; basics; solver | right]
+               | H : (forall _ _, In (?f _) _ <-> exists _, _),
+                     H' : In (?f _) _ |- exists _, _ =>
+                 apply H in H'; let x := fresh in destruct H' as [x H']; exists x
+               | H : (forall _ _, In (?f _) _ <-> exists _, _) |- In (?f _) _ =>
+                 apply H
+               | _ => break_match
+               | H : _ |- exists v, vm_find (vm_id ?x) = Some v /\ _ =>
+                 exists x; split; [ solver | ]
+               | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
+               | _ => solver
+               end.
+
+        (* main reasoning cases:
+           A : not in addresses_under_pointer -> nothing changed wrt a (need new version of page_valid_proper)
+           B : changed pointer in a different VM's table -> page_valid_proper
+           C : page valid for x under new deref -> new attrs say invalid -> in addresses_under_pointer ptr ->
+                    ptr in x2's page table -> x <> x2
+           D : valid before -> new attributes say valid -> valid now
+         *)
+
+        (* PROBLEM with A :
+           
+           it's addresses_under_pointer_in_range, not addresses_under_pointer -- we need to somehow have the
+           information that a is unchanged unless it's in range
+        *)
+
+
+        
+        (* order of attack : A, B, D, C *)
+
+        { (* here, we know it's valid even though it was changed because attrs say valid *)
+          (* D *)
+          admit. }
+        { (* here, need to split on whether H11 = x0. If so, same as last case. If not, then
+             we need to use vm_page_valid_proper to say that the pointer can't be in H11's table *)
+          (* destruct dec (H11 = x0); [ D | B ] *)
+          admit. }
+        { (* here, we know H12 <> x0 and same as second clause of last case *)
+          (* B *)
+          admit. }
+        { (* here, a was not affected by the change because it's not in the addresses_under_pointer *)
+          (* destruct dec (H10 = x0); [ A | B ] *)
+          match goal with
+          | x : vm, y : vm |- _ => destruct (vm_eq_dec x y); basics
+          end.
+          { eapply vm_page_valid_unaffected_address; eauto. }
+          (* A *)
+          admit. }
+        { (* we know x <> x0, so ptr not in x's table and page_valid_proper, same as second clause of case 2 and as case 3 *) 
+          (* B *)
+          admit. }
+        { (* we know the page is valid for x under the new deref and that the
+             new attributes say it's invalid, so for x0 it would be invalid;
+             therefore x <> x0 *)
+          (* C *)
+          admit. }
+        { (* we know the page is valid for x under the new deref and that the
+             new attributes say it's invalid, so for x0 it would be invalid;
+             therefore x <> x0 and x's page table hasn't changed -- solve with
+             page_valid_proper *)
+          (* C; B *)
+          admit. }
+        { (* a unaffected because it's not in the addresses_under_pointer *)
+          (* A *)
+          admit. } }
+    { (* stage-1 [accessible_by] states match *)
+      admit. }
+    { (* stage-2 [owned_by] states match *)
+      admit. }
+    { (* stage-1 [owned_by] states match *)
+      admit. }
+  Admitted.
+
+  Lemma reassign_pointer_represents conc ptr t abst idxs root_ptable stage :
+    represents abst conc ->
+    has_location (ptable_deref conc) (api_page_pool conc) ptr
+                 (table_loc (api_page_pool conc) root_ptable idxs) ->
+    root_ptable_matches_stage root_ptable stage ->
+    let conc' := conc.(reassign_pointer) ptr t in
+    locations_exclusive conc.(ptable_deref) conc.(api_page_pool) ->
+    locations_exclusive conc'.(ptable_deref) conc.(api_page_pool) ->
+    forall attrs level begin end_,
+      attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                             level attrs begin end_ stage ->
+      represents (abstract_reassign_pointer
+                    abst conc ptr attrs begin end_)
+                 conc'.
+  Proof.
+    cbv [has_location_in_state root_ptable_matches_stage].
+    intros.
+    assert (~ In hafnium_ptable (map vm_ptable vms))
+      by (pose proof no_duplicate_ptables; cbv [all_root_ptables] in *;
+          invert_list_properties; solver).
+    match goal with
+    | H : context [has_location _] |- _ => pose proof H; invert H
+    end; (destruct stage; try solver; [ ]).
+    { eapply reassign_pointer_represents_stage1; eauto. }
+    { match goal with
+      | H : _ |- _ => apply in_map_iff in H; basics
+      end.
+      eapply reassign_pointer_represents_stage2; eauto. }
+  Qed.
 
   (* if the address range is empty (end_ <= begin), then there can be no
      addresses in that range under the given pointer *)
@@ -345,17 +800,18 @@ Section Proofs.
            end.
   Qed.
 
-  (* has_uniform_attrs doesn't care if we reassign the pointer we started from *)
+  (* attrs_changed_in_range doesn't care if we reassign the pointer we started from *)
   (* TODO : fill in preconditions *)
-  Lemma has_uniform_attrs_reassign_pointer
+  Lemma attrs_changed_in_range_reassign_pointer
         c ptr new_table t level attrs begin end_ idxs stage :
     (* this precondition is so we know c doesn't show up in the new table *)
     is_valid (reassign_pointer c ptr new_table) ->
     has_location_in_state c ptr idxs ->
-    has_uniform_attrs (ptable_deref c) idxs t level attrs begin end_ stage ->
-    has_uniform_attrs
+    attrs_changed_in_range
+      (ptable_deref c) idxs (ptable_deref c ptr) t level attrs begin end_ stage ->
+    attrs_changed_in_range
       (ptable_deref (reassign_pointer c ptr new_table))
-      idxs t level attrs begin end_ stage.
+      idxs (ptable_deref c ptr) t level attrs begin end_ stage.
   Admitted. (* TODO *)
 
   Definition no_addresses_in_range deref ptr begin end_ : Prop :=

@@ -60,17 +60,27 @@ Record concrete_state :=
     api_page_pool : mpool;
   }.
 
+Definition update_deref (deref : ptable_pointer -> mm_page_table)
+           (ptr : ptable_pointer) (t : mm_page_table)
+  : ptable_pointer -> mm_page_table :=
+  (fun ptr' =>
+     if ptable_pointer_eq_dec ptr ptr'
+     then t
+     else deref ptr').
 Definition reassign_pointer
            (s : concrete_state) (ptr : ptable_pointer) (t : mm_page_table)
   : concrete_state :=
   {|
-    ptable_deref :=
-      (fun ptr' =>
-         if ptable_pointer_eq_dec ptr ptr'
-         then t
-         else s.(ptable_deref) ptr');
+    ptable_deref := update_deref s.(ptable_deref) ptr t;
     api_page_pool := s.(api_page_pool);
   |}.
+
+Definition all_root_ptables {cp : concrete_params} : list mm_ptable :=
+  hafnium_ptable :: map vm_ptable vms.
+
+Definition all_root_ptable_pointers {cp : concrete_params}
+  : list ptable_pointer := hafnium_root_tables ++ flat_map vm_root_tables vms.
+
 
 Class params_valid {cp : concrete_params} :=
   {
@@ -81,14 +91,9 @@ Class params_valid {cp : concrete_params} :=
       forall t,
         In t (map vm_ptable vms) ->
         length (ptr_from_va (va_from_pa t.(root)))
-        = arch_mm_stage2_root_table_count
+        = arch_mm_stage2_root_table_count;
+    no_duplicate_ptables : NoDup all_root_ptables
   }.
-
-Definition all_root_ptables {cp : concrete_params} : list mm_ptable :=
-  hafnium_ptable :: map vm_ptable vms.
-
-Definition all_root_ptable_pointers {cp : concrete_params}
-  : list ptable_pointer := hafnium_root_tables ++ flat_map vm_root_tables vms.
 
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   locations_exclusive s.(ptable_deref) (map vm_ptable vms) hafnium_ptable s.(api_page_pool)
@@ -105,9 +110,8 @@ Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
 
 Definition vm_page_valid {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
-  exists (e : pte_t) (root_ptable : mm_ptable),
-    In root_ptable (map vm_ptable vms)
-    /\ page_lookup s.(ptable_deref) root_ptable Stage2 a.(pa_addr) = Some e
+  exists (e : pte_t),
+    page_lookup s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) = Some e
     /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
 
 Definition haf_page_valid
@@ -121,9 +125,8 @@ Local Definition owned (mode : mode_t) : Prop :=
 
 Definition vm_page_owned {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
-  exists (e : pte_t) (root_ptable : mm_ptable),
-    In root_ptable (map vm_ptable vms)
-    /\ page_lookup s.(ptable_deref) root_ptable Stage2 a.(pa_addr) = Some e
+  exists (e : pte_t),
+    page_lookup s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) = Some e
     /\ forall lvl,
       owned (arch_mm_stage2_attrs_to_mode (arch_mm_pte_attrs e lvl)).
 
