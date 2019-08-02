@@ -76,3 +76,5 @@ Axiom arch_mm_combine_table_entry_attrs : attributes -> attributes -> attributes
 (* Assumptions about the properties of arch/mm.c *)
 Axiom stage1_root_table_count_ok : arch_mm_stage1_root_table_count < Nat.pow 2 PAGE_LEVEL_BITS.
 Axiom stage2_root_table_count_ok : arch_mm_stage2_root_table_count < Nat.pow 2 PAGE_LEVEL_BITS.
+Axiom stage1_max_level_pos : 0 < arch_mm_stage1_max_level.
+Axiom stage2_max_level_pos : 0 < arch_mm_stage2_max_level.

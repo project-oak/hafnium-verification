@@ -136,6 +136,10 @@ Section NthDefault.
     nth_default d (a :: ls) (S i) = nth_default d ls i.
   Proof. reflexivity. Qed.
 
+  Lemma nth_default_cons_0 a ls :
+    nth_default d (a :: ls) 0 = a.
+  Proof. reflexivity. Qed.
+
   Lemma nth_default_in_bounds i ls :
     nth_default d ls i <> d -> i < length ls.
   Proof.
@@ -156,7 +160,8 @@ Section NthDefault.
     intros; rewrite nth_default_eq; auto using nth_In.
   Qed.
 End NthDefault.
-Hint Rewrite @nth_default_nil @nth_default_cons : push_nth_default.
+Hint Rewrite @nth_default_nil @nth_default_cons @nth_default_cons_0
+  : push_nth_default.
 
 Section FoldRight.
   Context {A B : Type}.
@@ -397,7 +402,7 @@ Definition nth_default_oobe
 (* populate the list_quals hint database *)
 Hint Resolve FOP_nil FOP_cons Forall_nil Forall_forall
   : list_quals.
-Hint Resolve in_or_app in_cons in_eq : list_quals.
+Hint Resolve in_or_app in_cons in_eq.
 
 (* simplify goals with list qualifiers *)
 Ltac simpl_list_qualifiers :=
