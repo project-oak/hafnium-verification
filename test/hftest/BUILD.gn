@@ -18,7 +18,7 @@ config("hftest_config") {
   include_dirs = [ "inc" ]
 }
 
-# Testing framework for a primary vm.
+# Testing framework for a primary VM.
 source_set("hftest_primary_vm") {
   testonly = true
 
@@ -30,7 +30,7 @@ source_set("hftest_primary_vm") {
   ]
 }
 
-# Testing framework for a secondary vm. It's currently just a slave VM and
+# Testing framework for a secondary VM. It's currently just a slave VM and
 # can't affect the tests directly.
 source_set("hftest_secondary_vm") {
   testonly = true

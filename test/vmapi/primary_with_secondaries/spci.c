@@ -50,7 +50,7 @@ TEST(spci, msg_send)
 }
 
 /**
- * Send a message to a secondary VM spoofing the source vm id.
+ * Send a message to a secondary VM spoofing the source VM id.
  */
 TEST(spci, msg_send_spoof)
 {
