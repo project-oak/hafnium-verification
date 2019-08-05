@@ -1,7 +1,38 @@
 # Testing
 
-Testing of Hafnium is currently evolving. There are basic tests running on QEMU
-but we want more and more kinds of tests e.g. unit tests.
+## Overview
+
+Hafnium has 4 main kinds of tests:
+
+1.  Host tests
+    *   Unit tests of core functionality, e.g. page table manipulation.
+    *   Source in `src/*_test.cc`.
+    *   Using the [Google Test](https://github.com/google/googletest) framework,
+        built against 'fake' architecture (`src/arch/fake`).
+1.  Arch tests
+    *   Architecture-specific unit tests, e.g. MMU setup.
+    *   Source under `test/arch`.
+    *   Using our own _hftest_ framework, with `standalone_main.c`.
+    *   Build own hypervisor image, run in EL2.
+1.  VM API tests
+    *   Exercise hypervisor API from both primary and secondary VMs.
+    *   Source under `test/vmapi`.
+    *   Tests are run from the primary VM under a normal build of the Hafnium
+        hypervisor, possibly communicating with a helper service in one or more
+        secondary VMs.
+    *   Using our own _hftest_ framework, with `standalone_main.c` for the
+        primary VM and `hftest_service.c` for secondary VMs.
+    *   Build own primary and secondary VMs, run in EL1 under actual Hafnium
+        image.
+1.  Linux tests
+    *   Exercise the Hafnium Linux kernel module.
+    *   Source under `test/linux`.
+    *   Tests are run from userspace (PID 1) under Linux in the primary VM under
+        Hafnium, possibly with other secondary VMs.
+    *   Using our own _hftest_ framework, with `linux_main.c`.
+
+Host tests run directly on the host machine where they are built, whereas the
+other 3 types can run under an emulator such as QEMU, or on real hardware.
 
 ## Presubmit
 
@@ -23,9 +54,9 @@ Or to just run the tests after having built everything manually run:
 These tests boot Hafnium on QEMU and the VMs make calls to Hafnium to test its
 behaviour.
 
-### `hftest`
+### hftest
 
-Having a framework for tests makes them easier to read and write. `hftest` is a
+Having a framework for tests makes them easier to read and write. _hftest_ is a
 framework to meet the needs of VM based tests for Hafnium. It consists of:
 
 *   assertions
