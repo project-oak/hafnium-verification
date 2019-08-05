@@ -59,6 +59,12 @@ Definition is_stage1 (s : Stage) : bool :=
   | Stage2 => false
   end.
 
+Definition root_table_count (s : Stage) : nat :=
+  match s with
+  | Stage1 => arch_mm_stage1_root_table_count
+  | Stage2 => arch_mm_stage2_root_table_count
+  end.
+
 Axiom stage1_index_of_uintvaddr :
   forall (a : uintvaddr_t) (level : nat),
     (* level offset for uintvaddr_t *)
@@ -97,12 +103,12 @@ Fixpoint page_lookup'
          (ptable_deref : ptable_pointer -> mm_page_table)
          (a : uintpaddr_t)
          (table : mm_page_table)
-         (level : nat)
+         (level_above : nat)
          (s : Stage)
   : option (pte_t * nat) :=
-  match level with
+  match level_above with
   | 0 => None
-  | S level' =>
+  | S level =>
     match (get_entry table (get_index s level a)) with
     | Some pte =>
       if (arch_mm_pte_is_table pte level)
@@ -111,7 +117,7 @@ Fixpoint page_lookup'
         let next_ptr := ptable_pointer_from_address
                           (arch_mm_table_from_pte pte level) in
         let next_table := ptable_deref next_ptr in
-        page_lookup' ptable_deref a next_table level' s
+        page_lookup' ptable_deref a next_table level s
       else Some (pte, level)
     | None => None
     end
@@ -123,5 +129,8 @@ Definition page_lookup
            (a : uintpaddr_t) : option (pte_t * nat) :=
   let root_tables := ptr_from_va (va_from_pa (root root_ptable)) in
   let index := get_index s (max_level s + 1) a in
-  let table_ptr := nth_default null_pointer root_tables index in
-  page_lookup' ptable_deref a (ptable_deref table_ptr) (max_level s) s.
+  match nth_error root_tables index with
+  | None => None
+  | Some table_ptr =>
+    page_lookup' ptable_deref a (ptable_deref table_ptr) (max_level s + 1) s
+  end.

@@ -35,6 +35,13 @@ Ltac basics :=
          | H : inr _ = inr _ |- _ => invert H
          end.
 
+(* destruct tuples *)
+Ltac destruct_tuples :=
+  repeat match goal with
+         | _ => progress cbn [fst snd] in *
+         | p : _ * _ |- _ => destruct p
+         end.
+
 (* break up goal into multiple cases *)
 Ltac break_match :=
   match goal with
@@ -46,9 +53,9 @@ Ltac break_match :=
     match type of x with
     | sumbool _ _ => destruct x
     end
-  | |- context [match ?x with _ => _ end] => case_eq x; intro
+  | |- context [match ?x with _ => _ end] => case_eq x; intros *; intro
   | H : context [match ?x with _ => _ end] |- _ =>
-    let Heq := fresh in case_eq x; intro Heq; rewrite Heq in H
+    let Heq := fresh in case_eq x; intros *; intro Heq; rewrite Heq in *
   end.
 
 (* solves relatively easy goals with some common methods *)
