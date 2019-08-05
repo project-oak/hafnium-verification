@@ -20,6 +20,7 @@ Require Import Coq.NArith.BinNat.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.PageTablesWf.
 Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.ArchMM.
@@ -98,12 +99,8 @@ Class params_valid {cp : concrete_params} :=
 
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   locations_exclusive s.(ptable_deref) (map vm_ptable vms) hafnium_ptable s.(api_page_pool)
-(* Possible constraints:
-        - Block PTEs have the valid bit set
-        - page tables have a constant size
-        - page table indices are always below page table size
-        - vm_id corresponds to a VM's place in the vms list
- *)
+  /\ Forall (root_ptable_wf s.(ptable_deref) Stage2) (map vm_ptable vms)
+  /\ root_ptable_wf s.(ptable_deref) Stage1 hafnium_ptable 
 .
 
 Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
@@ -149,17 +146,21 @@ Definition represents
            (conc : concrete_state) : Prop :=
   is_valid conc
   /\ (forall (vid : nat) (a : paddr_t),
-      In (inl vid) (abst.(accessible_by) a) <->
-         (exists v : vm,
-             vm_find vid = Some v /\ conc.(vm_page_valid) v a))
+         address_wf (pa_addr a) Stage2 ->
+         (In (inl vid) (abst.(accessible_by) a) <->
+          (exists v : vm,
+              vm_find vid = Some v /\ conc.(vm_page_valid) v a)))
   /\ (forall (a : paddr_t),
-         In (inr hid) (abst.(accessible_by) a) <-> conc.(haf_page_valid) a)
+         address_wf (pa_addr a) Stage1 ->
+         (In (inr hid) (abst.(accessible_by) a) <-> conc.(haf_page_valid) a))
   /\ (forall (vid : nat) (a : paddr_t),
-         In (inl vid) (abst.(owned_by) a) <->
-         (exists v : vm,
-             vm_find vid = Some v /\ conc.(vm_page_owned) v a))
+         address_wf (pa_addr a) Stage2 ->
+         (In (inl vid) (abst.(owned_by) a) <->
+          (exists v : vm,
+              vm_find vid = Some v /\ conc.(vm_page_owned) v a)))
   /\ (forall (a : paddr_t),
-         In (inr hid) (abst.(owned_by) a) <-> conc.(haf_page_owned) a)
+         address_wf (pa_addr a) Stage1 ->
+         (In (inr hid) (abst.(owned_by) a) <-> conc.(haf_page_owned) a))
 .
 Definition represents_valid
            {ap : abstract_state_parameters}

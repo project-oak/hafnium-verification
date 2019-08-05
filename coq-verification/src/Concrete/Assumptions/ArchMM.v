@@ -14,6 +14,7 @@
  * limitations under the License.
  *)
 
+Require Import Coq.NArith.BinNat.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Constants.
 Require Import Hafnium.Concrete.Assumptions.Datatypes.
@@ -76,3 +77,8 @@ Axiom stage1_root_table_count_ok : arch_mm_stage1_root_table_count < Nat.pow 2 P
 Axiom stage2_root_table_count_ok : arch_mm_stage2_root_table_count < Nat.pow 2 PAGE_LEVEL_BITS.
 Axiom stage1_max_level_pos : 0 < arch_mm_stage1_max_level.
 Axiom stage2_max_level_pos : 0 < arch_mm_stage2_max_level.
+(* arch_mm_pte_is_valid is true iff [ attrs & PTE_VALID != 0 ] *)
+Axiom is_valid_matches_flag :
+  forall pte level,
+    let attrs := arch_mm_pte_attrs pte level in
+    arch_mm_pte_is_valid pte level = negb (N.eqb (N.land attrs PTE_VALID) 0).

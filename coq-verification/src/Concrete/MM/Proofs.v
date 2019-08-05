@@ -22,6 +22,7 @@ Require Import Coq.omega.Omega.
 Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.PageTablesWf.
 Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.StateProofs.
@@ -610,13 +611,40 @@ Section Proofs.
         mm_map_level conc begin end_ pa attrs table level flags ppool in
     let success := fst (fst (fst ret)) in
     let new_table := snd (fst (fst ret)) in
-    let conc' := snd (fst ret) in
-    let ppool' := snd ret in
     conc.(ptable_deref) ptr = table ->
     locations_exclusive
       (ptable_deref (reassign_pointer conc ptr new_table))
       (map vm_ptable vms) hafnium_ptable conc.(api_page_pool).
   Admitted. (* TODO *)
+
+  (* TODO : need preconditions *)
+  Lemma mm_map_level_wf_stage1
+        conc begin end_ pa attrs table level flags ppool ptr :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let new_table := snd (fst (fst ret)) in
+    let ppool' := snd ret in
+    conc.(ptable_deref) ptr = table ->
+    root_ptable_wf conc.(ptable_deref) Stage1 hafnium_ptable ->
+    root_ptable_wf
+      (ptable_deref (reassign_pointer conc ptr new_table)) Stage1 hafnium_ptable.
+  Admitted. (* TODO *)
+  Hint Resolve mm_map_level_wf_stage1.
+
+  (* TODO : need preconditions *)
+  Lemma mm_map_level_wf_stage2
+        conc begin end_ pa attrs table level flags ppool ptr :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let new_table := snd (fst (fst ret)) in
+    let ppool' := snd ret in
+    conc.(ptable_deref) ptr = table ->
+    Forall (root_ptable_wf conc.(ptable_deref) Stage2) (map vm_ptable vms) ->
+    Forall (root_ptable_wf
+              (ptable_deref (reassign_pointer conc ptr new_table)) Stage2)
+           (map vm_ptable vms).
+  Admitted. (* TODO *)
+  Hint Resolve mm_map_level_wf_stage2.
 
   Lemma mm_map_level_reassign_pointer conc begin end_ pa attrs table level
         flags ppool ptr :
@@ -627,23 +655,13 @@ Section Proofs.
     let conc' := snd (fst ret) in
     let ppool' := snd ret in
     conc.(ptable_deref) ptr = table ->
+    is_valid conc ->
     is_valid (reassign_pointer conc ptr new_table).
   Proof.
-    cbv [is_valid]; basics.
-    cbn [api_page_pool reassign_pointer].
-    auto using mm_map_level_locations_exclusive.
+    cbv [is_valid]; basics;
+      cbn [api_page_pool reassign_pointer];
+      eauto using mm_map_level_locations_exclusive.
   Qed.
-
-  Lemma mm_map_level_addresses_not_dropped conc begin end_ pa attrs table level
-        flags ppool ptr :
-    let ret :=
-        mm_map_level conc begin end_ pa attrs table level flags ppool in
-    let new_table := snd (fst (fst ret)) in
-    conc.(ptable_deref) ptr = table ->
-    addresses_not_dropped
-      (ptable_deref conc) (ptable_deref (reassign_pointer conc ptr new_table))
-      table new_table level (stage_from_flags flags).
-  Admitted. (* TODO *)
 
   (* TODO: might want a nicer reasoning framework for this *)
   (* mm_map_level doesn't alter the global locations of any pointers above the
@@ -792,7 +810,7 @@ Section Proofs.
        and we have capped it to not go beyond the end of the table *)
     (N.to_nat end_ <= mm_root_table_count flags * mm_entry_size root_level) ->
     (* we're not invalidating Hafnium's memory *)
-    stage_from_flags flags = Stage1 -> stage1_valid attrs = true ->
+    (stage_from_flags flags = Stage1 -> stage1_valid attrs = true) ->
     (* we need to know we're actually at the root level *)
     is_root root_level flags ->
     ptable_is_root t flags ->
@@ -903,8 +921,14 @@ Section Proofs.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
         eapply reassign_pointer_represents; eauto; [ | | | ].
         { apply has_location_nth_default with (flags:=flags); eauto. }
-        { apply mm_map_level_locations_exclusive; solver. }
-        { eapply mm_map_level_table_attrs; solver. }
+        { apply mm_map_level_reassign_pointer; solver. }
+        {
+          cbn [length]. rewrite Nat.add_sub.
+          replace (root_level - 1) with (max_level (stage_from_flags flags))
+            by (cbv [is_root max_level mm_max_level stage_from_flags] in *; repeat break_match; solver).
+          eapply mm_map_level_table_attrs; solver. }
+        { (* need to figure out how (and if) to deal with the "don't call me on invalid Hafnium memory" precondition *)
+          eapply H3.
         { eapply mm_map_level_addresses_not_dropped; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
