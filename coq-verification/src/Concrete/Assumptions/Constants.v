@@ -40,6 +40,7 @@ Axiom MM_PTE_PER_PAGE : nat.
 Axiom MM_MODE_R_index MM_MODE_W_index MM_MODE_X_index MM_MODE_INVALID_index
       MM_MODE_UNOWNED_index MM_MODE_SHARED_index : nat.
 Axiom MM_FLAG_STAGE1_index MM_FLAG_COMMIT_index MM_FLAG_UNMAP_index : nat.
+Axiom PTE_VALID_index : nat. (* valid bit for stage-1 attributes *)
 
 Definition index_to_N (i : nat) := N.shiftl 1 (N.of_nat i).
 
@@ -52,6 +53,7 @@ Definition MM_MODE_SHARED : N := index_to_N MM_MODE_SHARED_index.
 Definition MM_FLAG_STAGE1 : N := index_to_N MM_FLAG_STAGE1_index.
 Definition MM_FLAG_COMMIT : N := index_to_N MM_FLAG_COMMIT_index.
 Definition MM_FLAG_UNMAP : N := index_to_N MM_FLAG_UNMAP_index.
+Definition PTE_VALID : N := index_to_N PTE_VALID_index.
 
 (* assume that all indices are distinct from each other *)
 Axiom mm_modes_distinct :

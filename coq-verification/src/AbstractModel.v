@@ -321,6 +321,8 @@ Section Abstract.
     /\ (forall a, length (owned_by a) = 1)
     (* ...and memory is accessible by at most 2 VMs *)
     /\ (forall a, length (accessible_by a) <= 2)
+    (* ...and the set of memory owned by Hafnium never changes *)
+    /\ (forall a, owns hid a <-> hafnium_reserved a = true)
     (* ...and no one has access to Hafnium's memory but Hafnium (id = [hid]) *)
     /\ (forall a, hafnium_reserved a = true ->
                   forall (id : entity_id), has_access id a -> id = inr hid).
@@ -359,7 +361,9 @@ Section Abstract.
                                         rewrite H end; solver]
              | H : forall a, length (accessible_by a) <= _
                               |- context [accessible_by ?a] => specialize (H a)
+             | H : context [_ <-> _] |- _ => apply H; solver
              | _ => eexists; cbn; repeat break_match; solver
+             | |- _ <-> _ => split
              | _ => solver
              end.
   Qed.
