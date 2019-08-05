@@ -52,7 +52,8 @@ Or to just run the tests after having built everything manually run:
 ## QEMU tests
 
 These tests boot Hafnium on QEMU and the VMs make calls to Hafnium to test its
-behaviour.
+behaviour. They can also be run on the Arm [FVP](FVP.md) and in some cases on
+real hardware.
 
 ### hftest
 
