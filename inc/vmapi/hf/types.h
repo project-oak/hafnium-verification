@@ -33,10 +33,21 @@ typedef uintptr_t hf_ipaddr_t;
 
 #endif
 
-/** The ID of the primary VM which is responsible for scheduling. */
-#define HF_PRIMARY_VM_ID 0
+/**
+ * An offset to use when assigning VM IDs.
+ * The offset is needed because VM ID 0 is reserved.
+ */
+#define HF_VM_ID_OFFSET 1
 
-/* Sleep value for an indefinite period of time. */
+/**
+ * The ID of the primary VM, which is responsible for scheduling.
+ *
+ * Starts at the offset because ID 0 is reserved for the hypervisor itself.
+ * All other VM IDs come after the primary.
+ */
+#define HF_PRIMARY_VM_ID HF_VM_ID_OFFSET
+
+/** Sleep value for an indefinite period of time. */
 #define HF_SLEEP_INDEFINITE 0xffffffffffffff
 
 /** The amount of data that can be sent to a mailbox. */

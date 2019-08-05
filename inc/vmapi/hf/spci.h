@@ -67,7 +67,7 @@ enum spci_memory_share {
 
 /* clang-format on */
 
-/** The ID of a VM. These are assigned sequentially. */
+/** The ID of a VM. These are assigned sequentially starting with an offset. */
 typedef uint16_t spci_vm_id_t;
 typedef uint32_t spci_memory_handle_t;
 

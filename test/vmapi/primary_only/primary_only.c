@@ -45,7 +45,7 @@ TEST(hf_vm_get_count, no_secondary_vms)
  */
 TEST(hf_vcpu_get_count, primary_has_at_least_one)
 {
-	EXPECT_GE(hf_vcpu_get_count(0), 0);
+	EXPECT_GE(hf_vcpu_get_count(HF_PRIMARY_VM_ID), 0);
 }
 
 /**
@@ -54,7 +54,7 @@ TEST(hf_vcpu_get_count, primary_has_at_least_one)
  */
 TEST(hf_vcpu_get_count, no_secondary_vms)
 {
-	EXPECT_EQ(hf_vcpu_get_count(1), 0);
+	EXPECT_EQ(hf_vcpu_get_count(HF_VM_ID_OFFSET + 1), 0);
 }
 
 /**
@@ -148,10 +148,10 @@ TEST(fp, fp)
 	 * can't optimise them away.
 	 */
 	double a = hf_vm_get_count();
-	double b = hf_vcpu_get_count(0);
+	double b = hf_vcpu_get_count(HF_PRIMARY_VM_ID);
 	double result = a * b;
 	dlog("VM count: %d\n", hf_vm_get_count());
-	dlog("vCPU count: %d\n", hf_vcpu_get_count(0));
+	dlog("vCPU count: %d\n", hf_vcpu_get_count(HF_PRIMARY_VM_ID));
 	dlog("result: %d\n", (int)result);
 	EXPECT_TRUE(a == 1.0);
 	EXPECT_TRUE(b == 8.0);

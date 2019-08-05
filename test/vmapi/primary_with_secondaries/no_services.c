@@ -55,7 +55,7 @@ TEST(hf_vm_get_count, three_secondary_vms)
  */
 TEST(hf_vcpu_get_count, secondary_has_one_vcpu)
 {
-	EXPECT_EQ(hf_vcpu_get_count(1), 1);
+	EXPECT_EQ(hf_vcpu_get_count(SERVICE_VM0), 1);
 }
 
 /**
