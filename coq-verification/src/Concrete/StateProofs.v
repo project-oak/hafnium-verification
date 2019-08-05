@@ -574,9 +574,9 @@ Section Proofs.
       deref idxs (deref ptr) t level attrs begin end_ Stage2 ->
     In a (addresses_under_pointer_in_range
             deref ptr (vm_ptable v) begin end_ Stage2) ->
-    forall flag,
-      stage2_mode_has_value
-        (reassign_pointer conc ptr t) v a flag (stage2_mode_flag_set attrs flag).
+    forall flag value,
+      stage2_mode_flag_set attrs flag = value ->
+      stage2_mode_has_value (reassign_pointer conc ptr t) v a flag value.
   Admitted. (* TODO *)
 
   (* TODO : move *)
@@ -661,6 +661,13 @@ Section Proofs.
                rewrite (vm_find_sound _ _ H) in * by auto
              | H : vm_find ?vid = Some ?x, H' : ?v <> ?x
                |- inl ?vid = inl (vm_id ?v) \/ _ => right
+             | H : ~ In _ (addresses_under_pointer_in_range
+                             (ptable_deref ?conc) _ _ _ _ _) |- _ =>
+               solve_unaffected_address conc
+             | _ => break_match
+             | |- exists _, _ /\ _ => eexists; split; eauto using vm_find_Some; [ ]
+             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
+             | _ => solver
              | _ => eapply vm_page_valid_proper; [|eassumption];
                     solve_table_unchanged
              | _ => eapply vm_page_owned_proper; [|eassumption];
@@ -669,14 +676,16 @@ Section Proofs.
                     solve_table_unchanged
              | _ => eapply haf_page_owned_proper; [|eassumption];
                     solve_table_unchanged
-             | H : ~ In _ (addresses_under_pointer_in_range
-                             (ptable_deref ?conc) _ _ _ _ _) |- _ =>
-               solve_unaffected_address conc
-             | _ => break_match
-             | |- exists _, _ /\ _ => eexists; split; eauto using vm_find_Some; [ ]
-             | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
-             | _ => solver
              end.
+
+  Local Ltac solve_by_stage2_mode :=
+    repeat match goal with
+           | H : stage2_mode_flag_set _ _ = _ |- _ =>
+             eapply changed_has_new_attrs_stage2 in H;
+             try eassumption; first [ solver | (idtac; [ ]) ]
+           | _ : ?P true, _ : ?P false |- _ =>
+             cbv [stage2_mode_has_value] in *; basics; solver
+           end.
 
   Lemma reassign_pointer_represents_stage1 conc ptr t abst idxs :
     represents abst conc ->
@@ -738,51 +747,23 @@ Section Proofs.
                     abst conc ptr attrs begin end_)
                  conc'.
   Proof.
-    cbv [reassign_pointer represents is_valid].
+    cbv [represents is_valid].
     cbv [has_location_in_state].
-    cbn [ptable_deref api_page_pool].
     intros. assert (In (vm_ptable v) (map vm_ptable vms)) by (apply in_map_iff; eauto).
     basics; try solver; [ | | | ].
     { (* stage-2 [accessible_by] states match *)
         rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
-        process_represents.
-
-        { (* here, we know it's valid even though it was changed because attrs say valid *)
-          (* D *)
-          admit. }
-        { (* here, we know it's valid even though it was changed because attrs say valid *)
-          (* D *)
-          admit. }
-        { (* here, we know that the new attrs say invalid, so the vm_page_valid
-             with the new deref is a contradiction *)
-          exfalso.
-          cbv [vm_page_valid] in *.
-          admit. }
-        { (* here, we know that the new attrs say invalid, so the vm_page_valid
-             with the new deref is a contradiction *)
-          exfalso.
-          admit. } }
+        process_represents; cbv [vm_page_valid] in *; solve_by_stage2_mode. }
     { (* stage-1 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
       process_represents. }
     { (* stage-2 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage2 by eauto.
-      process_represents.
-
-      { (* address was changed -> has new attrs *)
-        admit. }
-      { (* address was changed -> has new attrs *)
-        admit. }
-      { (* contradiction; says addres doesnt' have new attrs *)
-        exfalso.
-        admit. }
-      { (* contradiction; says addres doesnt' have new attrs *)
-        exfalso.
-        admit. } }
+        process_represents; cbv [vm_page_owned] in *; solve_by_stage2_mode. }
     { (* stage-1 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage2 by eauto.
       process_represents. }
-  Admitted.
+  Qed.
 
   Lemma reassign_pointer_represents conc ptr t abst idxs root_ptable stage :
     represents abst conc ->
