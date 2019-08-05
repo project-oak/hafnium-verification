@@ -5,16 +5,16 @@ but we want more and more kinds of tests e.g. unit tests.
 
 ## Presubmit
 
-Presubmit builds everything, runs all tests and checks the source for
-formatting and lint errors. This can be run locally with:
+Presubmit builds everything, runs all tests and checks the source for formatting
+and lint errors. This can be run locally with:
 
-``` shell
+```shell
 ./kokoro/ubuntu/build.sh
 ```
 
 Or to just run the tests after having built everything manually run:
 
-``` shell
+```shell
 ./kokoro/ubuntu/test.sh
 ```
 
@@ -28,10 +28,10 @@ behaviour.
 Having a framework for tests makes them easier to read and write. `hftest` is a
 framework to meet the needs of VM based tests for Hafnium. It consists of:
 
-   * assertions
-   * test declarations
-   * base VM image
-   * driver script
+*   assertions
+*   test declarations
+*   base VM image
+*   driver script
 
 Assertions should be familiar from other testing libraries. They make use of
 C11's `_Generic` expressions for type genericity.

@@ -8,7 +8,7 @@ To boot Linux, a kernel image (`vmlinuz`) and a suitable initial RAM disk
 The Linux kernel for the primary VM can be built using the following
 command-line:
 
-``` shell
+```shell
 git clone https://github.com/torvalds/linux.git
 cd linux
 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make defconfig
@@ -24,7 +24,7 @@ From the Hafnium root directory, the following commands can be used to compile
 the kernel module, replacing `<kernel-path>` with the path to the kernel checked
 out in the previous section:
 
-``` shell
+```shell
 cd hafnium/driver/linux/
 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- KERNEL_PATH=<kernel-path> make
 ```
@@ -38,7 +38,7 @@ To make Linux useful, it needs a shell. These following instructions will
 construct a file system for the Linux RAM disk with the BusyBox shell as the
 init process.
 
-``` shell
+```shell
 git clone git://busybox.net/busybox.git
 cd busybox
 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make defconfig
@@ -48,7 +48,7 @@ ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make menuconfig
 At this point you should ensure that the option `Settings > Build static binary
 (no shared libs)` is selected. Then you can proceed with the following commands:
 
-``` shell
+```shell
 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make -j24
 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- make install
 cd _install
@@ -71,13 +71,13 @@ want in the RAM disk, for example, the kernel module built in the previous
 section. Assuming the BusyBox root directory is in the same parent directory as
 the Hafnium root directory:
 
-``` shell
+```shell
 cp ../../hafnium/driver/linux/hafnium.ko .
 ```
 
 Then run the following commands:
 
-``` shell
+```shell
 find . | cpio -o -H newc | gzip > ../initrd.img
 cd ..
 ```

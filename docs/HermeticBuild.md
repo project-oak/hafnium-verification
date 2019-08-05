@@ -8,8 +8,8 @@ environment. The image is hosted on Google Cloud Platform as
 
 Building inside a container is always enabled only for Kokoro pre-submit tests
 but can be enabled for local builds too. It is disabled by default as it
-requires the use of Docker which currently supports rootless containers only
-in nightly builds. As rootless container tools mature, Hafnium may change the
+requires the use of Docker which currently supports rootless containers only in
+nightly builds. As rootless container tools mature, Hafnium may change the
 default settings. For now, running the hermetic build locally is intended
 primarily to reproduce issues in pre-submit tests.
 
@@ -30,16 +30,17 @@ UID/GID as the local user.
 ### Nightly with rootless
 
 The latest nightly version of Docker has support for running containers with
-user namespaces, thus eliminating the need for a daemon with root privileges.
-It can be installed into the local user's `bin` directory with a script:
-``` shell
+user namespaces, thus eliminating the need for a daemon with root privileges. It
+can be installed into the local user's `bin` directory with a script:
+
+```shell
 curl -fsSL https://get.docker.com/rootless -o get-docker.sh
 sh get-docker.sh
 ```
 
-The script will also walk you through the installation of dependencies,
-changes to system configuration files and environment variable values needed
-by the client to discover the rootless daemon.
+The script will also walk you through the installation of dependencies, changes
+to system configuration files and environment variable values needed by the
+client to discover the rootless daemon.
 
 ## Enabling for local builds
 
@@ -48,26 +49,30 @@ variable. Setting it to `true` instructs the build to run commands inside the
 container. Any other value disables the feature.
 
 To always enable hermetic builds, put this line in your `~/.bashrc`:
-``` shell
+
+```shell
 export HAFNIUM_HERMETIC_BUILD=true
 ```
 
 When you now run `make`, you should see the following line:
-``` shell
+
+```shell
 $ make
 Running in container: make all
 ...
 ```
+
 ## Running commands inside the container
 
 An arbitrary command can be executed inside the container with
-`build/run_in_container.sh [-i] <command> ...`. This is done
-automatically inside `Makefile` and `kokoro/ubuntu/build.sh` which
-detect whether they are already running inside the container and respawn
-themselves using `run_in_container.sh` if not.
+`build/run_in_container.sh [-i] <command> ...`. This is done automatically
+inside `Makefile` and `kokoro/ubuntu/build.sh` which detect whether they are
+already running inside the container and respawn themselves using
+`run_in_container.sh` if not.
 
 For example, you can spawn a shell with:
-``` shell
+
+```shell
 ./build/run_in_container.sh -i bash
 ```
 
@@ -75,13 +80,14 @@ For example, you can spawn a shell with:
 
 The container image is defined in `build/docker/Dockerfile` and can be built
 locally:
-``` shell
+
+```shell
 ./build/docker/build.sh
 ```
 
-Owners of the `hafnium-build` GCP repository can publish the new image
-(requires [go/cloud-sdk](https://goto.google.com/cloud-sdk) installed and
-authenticated):
-``` shell
+Owners of the `hafnium-build` GCP repository can publish the new image (requires
+[go/cloud-sdk](https://goto.google.com/cloud-sdk) installed and authenticated):
+
+```shell
 ./build/docker/publish.sh
 ```
