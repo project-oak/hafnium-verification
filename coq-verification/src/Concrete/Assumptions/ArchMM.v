@@ -50,8 +50,6 @@ Axiom arch_mm_pte_attrs : pte_t -> level -> attributes.
 
 Axiom arch_mm_stage2_attrs_to_mode : attributes -> mode_t.
 
-Axiom arch_mm_stage1_attrs_to_mode : attributes -> mode_t.
-
 Axiom arch_mm_stage2_max_level : level.
 
 Axiom arch_mm_stage1_max_level : level.

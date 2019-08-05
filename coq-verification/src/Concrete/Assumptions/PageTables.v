@@ -92,13 +92,14 @@ Qed.
 (* N.B. the [option] here doesn't mean whether the entry is
    valid/present; rather, the lookup should return [Some] for any
    valid input, but the PTE returned might be absent or invalid. *)
+(* Returns both the entry and the level *)
 Fixpoint page_lookup'
          (ptable_deref : ptable_pointer -> mm_page_table)
          (a : uintpaddr_t)
          (table : mm_page_table)
          (level : nat)
          (s : Stage)
-  : option pte_t :=
+  : option (pte_t * nat) :=
   match level with
   | 0 => None
   | S level' =>
@@ -111,7 +112,7 @@ Fixpoint page_lookup'
                           (arch_mm_table_from_pte pte level) in
         let next_table := ptable_deref next_ptr in
         page_lookup' ptable_deref a next_table level' s
-      else Some pte
+      else Some (pte, level)
     | None => None
     end
   end.
@@ -119,7 +120,7 @@ Fixpoint page_lookup'
 Definition page_lookup
            (ptable_deref : ptable_pointer -> mm_page_table)
            (root_ptable : mm_ptable) (s : Stage)
-           (a : uintpaddr_t) : option pte_t :=
+           (a : uintpaddr_t) : option (pte_t * nat) :=
   let root_tables := ptr_from_va (va_from_pa (root root_ptable)) in
   let index := get_index s (max_level s + 1) a in
   let table_ptr := nth_default null_pointer root_tables index in

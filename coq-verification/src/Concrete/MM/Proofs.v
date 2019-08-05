@@ -634,6 +634,17 @@ Section Proofs.
     auto using mm_map_level_locations_exclusive.
   Qed.
 
+  Lemma mm_map_level_addresses_not_dropped conc begin end_ pa attrs table level
+        flags ppool ptr :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let new_table := snd (fst (fst ret)) in
+    conc.(ptable_deref) ptr = table ->
+    addresses_not_dropped
+      (ptable_deref conc) (ptable_deref (reassign_pointer conc ptr new_table))
+      table new_table level (stage_from_flags flags).
+  Admitted. (* TODO *)
+
   (* TODO: might want a nicer reasoning framework for this *)
   (* mm_map_level doesn't alter the global locations of any pointers above the
      level at which it operates *)
@@ -780,6 +791,8 @@ Section Proofs.
     (* before calling mm_map_root, we have rounded end_ up to the nearest page,
        and we have capped it to not go beyond the end of the table *)
     (N.to_nat end_ <= mm_root_table_count flags * mm_entry_size root_level) ->
+    (* we're not invalidating Hafnium's memory *)
+    stage_from_flags flags = Stage1 -> stage1_valid attrs = true ->
     (* we need to know we're actually at the root level *)
     is_root root_level flags ->
     ptable_is_root t flags ->
@@ -888,10 +901,11 @@ Section Proofs.
         cbv [table_index_expression] in *; simplify; [ ].
         apply represents_valid_concrete.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
-        eapply reassign_pointer_represents; eauto; [ | | ].
+        eapply reassign_pointer_represents; eauto; [ | | | ].
         { apply has_location_nth_default with (flags:=flags); eauto. }
         { apply mm_map_level_locations_exclusive; solver. }
-        { eapply mm_map_level_table_attrs; solver. } }
+        { eapply mm_map_level_table_attrs; solver. }
+        { eapply mm_map_level_addresses_not_dropped; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -929,6 +943,7 @@ Section Proofs.
 
         eapply reassign_pointer_represents with (level := root_level - 1);
           try apply has_location_nth_default with (flags:=flags);
+          try eapply mm_map_level_addresses_not_dropped;
           try apply mm_map_level_locations_exclusive; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>

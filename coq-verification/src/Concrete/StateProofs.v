@@ -183,29 +183,12 @@ Section Proofs.
       (addresses_under_pointer_in_range
          conc.(ptable_deref) ptr root_ptable begin end_ stage).
 
-  Definition owned_from_attrs (attrs : attributes) (stage : Stage) : bool :=
-    match stage with
-    | Stage1 =>
-      let mode := arch_mm_stage1_attrs_to_mode attrs in
-      let unowned := ((mode & MM_MODE_UNOWNED) != 0)%N in
-      negb unowned
-    | Stage2 =>
-      let mode := arch_mm_stage2_attrs_to_mode attrs in
-      let unowned := ((mode & MM_MODE_UNOWNED) != 0)%N in
-      negb unowned
-    end.
+  Definition stage2_mode_flag_set (attrs : attributes) (mode_flag : N) : bool :=
+    let mode := arch_mm_stage2_attrs_to_mode attrs in
+    ((mode & mode_flag) != 0)%N.
 
-  Definition valid_from_attrs (attrs : attributes) (stage : Stage) : bool :=
-    match stage with
-    | Stage1 =>
-      let mode := arch_mm_stage1_attrs_to_mode attrs in
-      let invalid := ((mode & MM_MODE_INVALID) != 0)%N in
-      negb invalid
-    | Stage2 =>
-      let mode := arch_mm_stage2_attrs_to_mode attrs in
-      let invalid := ((mode & MM_MODE_INVALID) != 0)%N in
-      negb invalid
-    end.
+  Definition stage1_valid (attrs : attributes) : bool :=
+    ((attrs & PTE_VALID) != 0)%N.
 
   (* Update the abstract state to make everything under the given pointer have
      the provided new owned/valid bits. *)
@@ -213,16 +196,12 @@ Section Proofs.
              (abst : abstract_state) (conc : concrete_state)
              (ptr : ptable_pointer) (attrs : attributes)
              (begin end_ : uintvaddr_t) : abstract_state :=
-    (* first, get the owned/valid bits *)
-    let s1_owned := owned_from_attrs attrs Stage1 in
-    let s2_owned := owned_from_attrs attrs Stage2 in
-    let s1_valid := valid_from_attrs attrs Stage1 in
-    let s2_valid := valid_from_attrs attrs Stage2 in
-
-    (* update the state with regard to Hafnium *)
-    let abst :=
-        abstract_reassign_pointer_for_entity
-          abst conc ptr s1_owned s1_valid (inr hid) hafnium_ptable begin end_ in
+    (* N.B. for now, we don't need to update the abstract state with regard to
+       Hafnium, since Hafnium's owned/valid bits never change. However, once we
+       incorporate send/recv buffers, we'll need readable/writable bits as well,
+       and then Hafnium state will need to change. *)
+    let s2_valid := negb (stage2_mode_flag_set attrs MM_MODE_INVALID) in
+    let s2_owned := negb (stage2_mode_flag_set attrs MM_MODE_UNOWNED) in
 
     (* update the state with regard to each VM *)
     fold_right
@@ -238,26 +217,27 @@ Section Proofs.
              (table_loc : list nat)
              (t : mm_page_table) (level : nat) (attrs : attributes)
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
-    forall (a : uintvaddr_t) (pte : pte_t),
+    forall (a : uintvaddr_t) (pte : pte_t) (lvl : nat),
       address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc stage ->
       (begin <= a < end_)%N ->
       level <= max_level stage ->
-      page_lookup' ptable_deref a t level stage = Some pte ->
-      forall lvl, arch_mm_pte_attrs pte lvl = attrs.
+      page_lookup' ptable_deref a t level stage = Some (pte, lvl) ->
+      arch_mm_pte_attrs pte lvl = attrs.
 
   Definition attrs_outside_range_unchanged
-             (ptable_deref : ptable_pointer -> mm_page_table)
+             (deref : ptable_pointer -> mm_page_table)
              (table_loc : list nat)
              (t_orig t : mm_page_table) (level : nat) (attrs : attributes)
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
-    forall (a : uintvaddr_t) (pte : pte_t),
-      address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc stage ->
-      (a < begin \/ end_ <= a)%N ->
+    forall (a_v : uintvaddr_t) (pte_orig : pte_t) (lvl_orig : nat),
+      (a_v < begin \/ end_ <= a_v)%N ->
+      let a : uintpaddr_t := pa_addr (pa_from_va (va_init a_v)) in
+      address_matches_indices a table_loc stage ->
       level <= max_level stage ->
-      page_lookup' ptable_deref a t level stage = Some pte ->
-      (exists pte_orig,
-          page_lookup' ptable_deref a t_orig level stage = Some pte_orig
-          /\ forall lvl, arch_mm_pte_attrs pte lvl = arch_mm_pte_attrs pte_orig lvl). 
+      page_lookup' deref a t_orig level stage = Some (pte_orig, lvl_orig) ->
+      (exists pte lvl,
+          page_lookup' deref a t level stage = Some (pte, lvl)
+          /\ arch_mm_pte_attrs pte lvl = arch_mm_pte_attrs pte_orig lvl_orig).
 
   Definition attrs_changed_in_range
              (ptable_deref : ptable_pointer -> mm_page_table)
@@ -267,6 +247,14 @@ Section Proofs.
     has_uniform_attrs ptable_deref table_loc t level attrs begin end_ stage
     /\ attrs_outside_range_unchanged
          ptable_deref table_loc t_orig t level attrs begin end_ stage.
+
+  Definition addresses_not_dropped
+             (deref1 : ptable_pointer -> mm_page_table)
+             (deref2 : ptable_pointer -> mm_page_table)
+             (t1 t2 : mm_page_table) (level : nat) (stage : Stage) : Prop :=
+    forall a : uintpaddr_t,
+      page_lookup' deref1 a t1 level stage = None
+      <-> page_lookup' deref2 a t2 level stage = None.
 
   Definition has_location_in_state conc ptr idxs : Prop :=
     exists root_ptable,
@@ -297,15 +285,15 @@ Section Proofs.
         addresses_under_pointer_in_range
           (ptable_deref conc) ptr (vm_ptable v) begin end_ Stage2 in
     (* new abstract state *)
-    let new_abst := 
+    let new_abst :=
         abstract_reassign_pointer abst conc ptr attrs begin end_ in
     forall e : entity_id,
       In e (accessible_by new_abst a) <->
       if (in_dec paddr_t_eq_dec a changed_addrs)
       then
-        if valid_from_attrs attrs Stage2
-        then e = inl (vm_id v) \/ In e (accessible_by abst a)
-        else e <> inl (vm_id v) /\ In e (accessible_by abst a)
+        if stage2_mode_flag_set attrs MM_MODE_INVALID
+        then e <> inl (vm_id v) /\ In e (accessible_by abst a)
+        else e = inl (vm_id v) \/ In e (accessible_by abst a)
       else In e (accessible_by abst a).
   Admitted. (* TODO *)
 
@@ -325,16 +313,10 @@ Section Proofs.
         addresses_under_pointer_in_range
           (ptable_deref conc) ptr hafnium_ptable begin end_ Stage1 in
     (* new abstract state *)
-    let new_abst := 
+    let new_abst :=
         abstract_reassign_pointer abst conc ptr attrs begin end_ in
     forall e : entity_id,
-      In e (accessible_by new_abst a) <->
-      if (in_dec paddr_t_eq_dec a changed_addrs)
-      then
-        if valid_from_attrs attrs Stage1
-        then e = inr hid \/ In e (accessible_by abst a)
-        else e <> inr hid /\ In e (accessible_by abst a)
-      else In e (accessible_by abst a).
+      In e (accessible_by new_abst a) <-> In e (accessible_by abst a).
   Admitted. (* TODO *)
 
   (* gives the new [owned_by] value of an address under an abstract state with a
@@ -355,15 +337,15 @@ Section Proofs.
         addresses_under_pointer_in_range
           (ptable_deref conc) ptr (vm_ptable v) begin end_ Stage2 in
     (* new abstract state *)
-    let new_abst := 
+    let new_abst :=
         abstract_reassign_pointer abst conc ptr attrs begin end_ in
     forall e : entity_id,
       In e (owned_by new_abst a) <->
       if (in_dec paddr_t_eq_dec a changed_addrs)
       then
-        if valid_from_attrs attrs Stage2
-        then e = inl (vm_id v) \/ In e (owned_by abst a)
-        else e <> inl (vm_id v) /\ In e (owned_by abst a)
+        if stage2_mode_flag_set attrs MM_MODE_UNOWNED
+        then e <> inl (vm_id v) /\ In e (owned_by abst a)
+        else e = inl (vm_id v) \/ In e (owned_by abst a)
       else In e (owned_by abst a).
   Admitted. (* TODO *)
 
@@ -382,16 +364,10 @@ Section Proofs.
         addresses_under_pointer_in_range
           (ptable_deref conc) ptr hafnium_ptable begin end_ Stage1 in
     (* new abstract state *)
-    let new_abst := 
+    let new_abst :=
         abstract_reassign_pointer abst conc ptr attrs begin end_ in
     forall e : entity_id,
-      In e (owned_by new_abst a) <->
-      if (in_dec paddr_t_eq_dec a changed_addrs)
-      then
-        if owned_from_attrs attrs Stage1
-        then e = inr hid \/ In e (owned_by abst a)
-        else e <> inr hid /\ In e (owned_by abst a)
-      else In e (owned_by abst a).
+      In e (owned_by new_abst a) <-> In e (owned_by abst a).
   Admitted. (* TODO *)
 
   Lemma index_sequences_to_pointer_change_start deref ptr root_ptable stage t ppool :
@@ -410,7 +386,7 @@ Section Proofs.
     (* root_ptable is a stage-2 table *)
     In root_ptable (map vm_ptable vms) ->
     (* forall pointers, if the pointer is NOT in the stage1 page table, then
-       deref1 is the same as deref2 *) 
+       deref1 is the same as deref2 *)
     (forall ptr,
         index_sequences_to_pointer deref1 ptr hafnium_ptable Stage1 = nil ->
         deref1 ptr = deref2 ptr) ->
@@ -472,7 +448,7 @@ Section Proofs.
   (* If hafnium's table is unchanged, then haf_page_valid is the same for all
      addresses *)
   Lemma haf_page_valid_proper conc conc' a:
-    hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) -> 
+    hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) ->
     haf_page_valid conc a ->
     haf_page_valid conc' a.
   Admitted. (* TODO *)
@@ -480,40 +456,127 @@ Section Proofs.
   (* If hafnium's table is unchanged, then haf_page_owned is the same for all
      addresses *)
   Lemma haf_page_owned_proper conc conc' a:
-    hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) -> 
+    hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) ->
     haf_page_owned conc a ->
     haf_page_owned conc' a.
+  Proof. cbv [haf_page_owned]; eauto using haf_page_valid_proper. Qed.
+
+  Lemma stage2_mode_has_value_proper conc conc' v a flag flag_value :
+    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v ->
+    stage2_mode_has_value conc v a flag flag_value->
+    stage2_mode_has_value conc' v a flag flag_value.
   Admitted. (* TODO *)
 
   (* If a VM's page tables are unchanged, then vm_page_valid is the same for all
      addresses *)
   Lemma vm_page_valid_proper conc conc' v a:
-    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v -> 
+    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v ->
     vm_page_valid conc v a ->
     vm_page_valid conc' v a.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [vm_page_valid]; eauto using stage2_mode_has_value_proper.
+  Qed.
 
   (* If a VM's page tables are unchanged, then vm_page_owned is the same for all
      addresses *)
   Lemma vm_page_owned_proper conc conc' v a:
-    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v  -> 
+    vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v  ->
     vm_page_owned conc v a ->
     vm_page_owned conc' v a.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [vm_page_owned]; eauto using stage2_mode_has_value_proper.
+  Qed.
 
-  (* If an address isn't in the range that changed, then vm_page_valid remains true *)
-  Lemma vm_page_valid_unaffected_address
-        conc ptr ppool v a begin end_ attrs idxs level t :
+  (* If an address isn't in the range that changed, then stage2_mode_has_value
+     is unchanged. *)
+  Lemma stage2_mode_has_value_unaffected_address
+        flag flag_value conc ptr ppool v a begin end_ attrs idxs level t :
     (* ptr exists in v's page table *)
     has_location
       (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
-    (* attributes of the new table match the old, except in the rang specified *)
+    (* attributes of the new table match the old, except in the range specified *)
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
     (* a is not one of the addresses that changed *)
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
+    stage2_mode_has_value conc v a flag flag_value
+    <-> stage2_mode_has_value (reassign_pointer conc ptr t) v a flag flag_value.
+  Admitted. (* TODO *)
+
+  (* If an address isn't in the range that changed, then vm_page_valid remains
+     true (specialized version of stage2_mode_has_value_unaffected_address) *)
+  Lemma vm_page_valid_unaffected_address
+        conc ptr ppool v a begin end_ attrs idxs level t :
+    has_location
+      (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+    attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                           level attrs begin end_ Stage2 ->
+    ~ In a (addresses_under_pointer_in_range
+              conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
     vm_page_valid conc v a <-> vm_page_valid (reassign_pointer conc ptr t) v a.
+  Proof.
+    cbv [vm_page_valid]; eauto using stage2_mode_has_value_unaffected_address.
+  Qed.
+
+  (* If an address isn't in the range that changed, then vm_page_owned remains
+     true (specialized version of stage2_mode_has_value_unaffected_address) *)
+  Lemma vm_page_owned_unaffected_address
+        conc ptr ppool v a begin end_ attrs idxs level t :
+    has_location
+      (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+    attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                           level attrs begin end_ Stage2 ->
+    ~ In a (addresses_under_pointer_in_range
+              conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
+    vm_page_owned conc v a <-> vm_page_owned (reassign_pointer conc ptr t) v a.
+  Proof.
+    cbv [vm_page_owned]; eauto using stage2_mode_has_value_unaffected_address.
+  Qed.
+
+  (* If an address isn't in the range that changed, then haf_page_valid remains true *)
+  Lemma haf_page_valid_unaffected_address
+        conc ptr ppool a begin end_ attrs idxs level t :
+    (* ptr exists in v's page table *)
+    has_location
+      (ptable_deref conc) ppool ptr (table_loc ppool hafnium_ptable idxs) ->
+    (* attributes of the new table match the old, except in the range specified *)
+    attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                           level attrs begin end_ Stage1 ->
+    (* a is not one of the addresses that changed *)
+    ~ In a (addresses_under_pointer_in_range
+              conc.(ptable_deref) ptr hafnium_ptable begin end_ Stage1) ->
+    haf_page_valid conc a <-> haf_page_valid (reassign_pointer conc ptr t) a.
+  Admitted. (* TODO *)
+
+  (* If an address isn't in the range that changed, then haf_page_owned remains true *)
+  Lemma haf_page_owned_unaffected_address
+        conc ptr ppool a begin end_ attrs idxs level t :
+    (* ptr exists in v's page table *)
+    has_location
+      (ptable_deref conc) ppool ptr (table_loc ppool hafnium_ptable idxs) ->
+    (* attributes of the new table match the old, except in the range specified *)
+    attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
+                           level attrs begin end_ Stage1 ->
+    (* a is not one of the addresses that changed *)
+    ~ In a (addresses_under_pointer_in_range
+              conc.(ptable_deref) ptr hafnium_ptable begin end_ Stage1) ->
+    haf_page_owned conc a <-> haf_page_owned (reassign_pointer conc ptr t) a.
+  Proof.
+    cbv [haf_page_owned]; eauto using haf_page_valid_unaffected_address.
+  Qed.
+
+  Lemma changed_has_new_attrs_stage2
+        conc ppool ptr v t a level attrs begin end_ idxs :
+    let deref := conc.(ptable_deref) in
+    has_location deref ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+    attrs_changed_in_range
+      deref idxs (deref ptr) t level attrs begin end_ Stage2 ->
+    In a (addresses_under_pointer_in_range
+            deref ptr (vm_ptable v) begin end_ Stage2) ->
+    forall flag,
+      stage2_mode_has_value
+        (reassign_pointer conc ptr t) v a flag (stage2_mode_flag_set attrs flag).
   Admitted. (* TODO *)
 
   (* TODO : move *)
@@ -557,8 +620,28 @@ Section Proofs.
                end
     end.
 
+  Local Ltac solve_table_unchanged_step :=
+    first [ eapply vm_table_unchanged_stage2; solver
+          | eapply vm_table_unchanged_stage1; solver
+          | eapply hafnium_table_unchanged_stage2; solver ].
+
+  Local Ltac solve_table_unchanged :=
+    first [ solve_table_unchanged_step
+          | apply vm_table_unchanged_sym;
+            solve_table_unchanged_step
+          | apply hafnium_table_unchanged_sym;
+            solve_table_unchanged_step ].
+
+  Local Ltac solve_unaffected_address conc :=
+    first [ eapply vm_page_valid_unaffected_address with (conc:=conc)
+          | eapply vm_page_owned_unaffected_address with (conc:=conc)
+          | eapply haf_page_valid_unaffected_address with (conc:=conc)
+          | eapply haf_page_owned_unaffected_address with (conc:=conc) ];
+    solver.
+
+
   (* simplify [reassign_pointer_represents] subgoals *)
-  Local Ltac preprocess_represents :=
+  Local Ltac process_represents :=
       repeat match goal with
              | _ => progress basics
              | |- _ <-> _ => split
@@ -579,35 +662,19 @@ Section Proofs.
              | H : vm_find ?vid = Some ?x, H' : ?v <> ?x
                |- inl ?vid = inl (vm_id ?v) \/ _ => right
              | _ => eapply vm_page_valid_proper; [|eassumption];
-                    apply vm_table_unchanged_sym;
-                    eapply vm_table_unchanged_stage2; solver
-             | _ => eapply vm_page_valid_proper; [|eassumption];
-                    eapply vm_table_unchanged_stage2; solver
+                    solve_table_unchanged
+             | _ => eapply vm_page_owned_proper; [|eassumption];
+                    solve_table_unchanged
+             | _ => eapply haf_page_valid_proper; [|eassumption];
+                    solve_table_unchanged
+             | _ => eapply haf_page_owned_proper; [|eassumption];
+                    solve_table_unchanged
              | H : ~ In _ (addresses_under_pointer_in_range
                              (ptable_deref ?conc) _ _ _ _ _) |- _ =>
-               eapply vm_page_valid_unaffected_address with (conc:=conc); solver
+               solve_unaffected_address conc
              | _ => break_match
              | |- exists _, _ /\ _ => eexists; split; eauto using vm_find_Some; [ ]
              | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
-             | _ => solver
-             end.
-
-  (* solves the [reassign_pointer_represents] goals when changed pointer has
-     affected a different stage than the one in the goal (and therefore, no
-     properties of the stage in the goal have changed *)
-  Local Ltac unaffected_stage :=
-      repeat match goal with
-             | _ => progress preprocess_represents
-             | _ => eapply haf_page_valid_proper; [|eassumption]
-             | _ => eapply haf_page_owned_proper; [|eassumption]
-             | _ => eapply vm_page_valid_proper; [|eassumption]
-             | _ => eapply vm_page_owned_proper; [|eassumption]
-             | _ => eapply hafnium_table_unchanged_stage2; solver
-             | _ => eapply hafnium_table_unchanged_sym;
-                      eapply hafnium_table_unchanged_stage2; solver
-             | _ => eapply vm_table_unchanged_stage1; solver
-             | _ => eapply vm_table_unchanged_sym;
-                      eapply vm_table_unchanged_stage1; solver
              | _ => solver
              end.
 
@@ -621,6 +688,10 @@ Section Proofs.
     forall attrs level begin end_,
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ Stage1 ->
+      addresses_not_dropped
+        (ptable_deref conc) (ptable_deref conc')
+        (ptable_deref conc ptr) t level Stage1 ->
+      stage1_valid attrs = true ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -629,19 +700,24 @@ Section Proofs.
     cbv [has_location_in_state].
     cbn [ptable_deref api_page_pool].
     basics; try solver; [ | | | ].
-    { (* stage-2 [accessible_by] states match *) 
+    { (* stage-2 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
-      unaffected_stage. }
-    { (* stage-1 [accessible_by] states match *) 
+      process_represents. }
+    { (* stage-1 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
-      preprocess_represents.
-      1-6:admit. }
-    { (* stage-2 [owned_by] states match *) 
+      process_represents.
+      all:cbv [haf_page_valid] in *; basics; cbn [ptable_deref] in *.
+      (* from addresses_not_dropped, we know that a thing that returned Some before will still return Some now, and vice versa *)
+      (* from stage1_valid attrs = true, we know that the new thing will be valid *)
+      (* we need a precondition saying that the old thing is all-valid *)
+      1-2:admit. }
+    { (* stage-2 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
-      unaffected_stage. }
-    { (* stage-1 [owned_by] states match *) 
-      preprocess_represents.
-      1-6:admit. }
+      process_represents. }
+    { (* stage-1 [owned_by] states match *)
+      process_represents.
+      (* same as [valid] *)
+      1-2:admit. }
   Admitted.
 
   Lemma reassign_pointer_represents_stage2 conc ptr t abst idxs v :
@@ -655,6 +731,9 @@ Section Proofs.
     forall attrs level begin end_,
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ Stage2 ->
+      addresses_not_dropped
+        (ptable_deref conc) (ptable_deref conc')
+        (ptable_deref conc ptr) t level Stage2 ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -664,9 +743,9 @@ Section Proofs.
     cbn [ptable_deref api_page_pool].
     intros. assert (In (vm_ptable v) (map vm_ptable vms)) by (apply in_map_iff; eauto).
     basics; try solver; [ | | | ].
-    { (* stage-2 [accessible_by] states match *) 
+    { (* stage-2 [accessible_by] states match *)
         rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
-        preprocess_represents.
+        process_represents.
 
         { (* here, we know it's valid even though it was changed because attrs say valid *)
           (* D *)
@@ -677,7 +756,7 @@ Section Proofs.
         { (* here, we know that the new attrs say invalid, so the vm_page_valid
              with the new deref is a contradiction *)
           exfalso.
-          (* rewrite <-D -> contradiction *)
+          cbv [vm_page_valid] in *.
           admit. }
         { (* here, we know that the new attrs say invalid, so the vm_page_valid
              with the new deref is a contradiction *)
@@ -685,12 +764,24 @@ Section Proofs.
           admit. } }
     { (* stage-1 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage2 by eauto.
-      unaffected_stage. }
+      process_represents. }
     { (* stage-2 [owned_by] states match *)
-      admit. }
+      rewrite owned_by_abstract_reassign_pointer_stage2 by eauto.
+      process_represents.
+
+      { (* address was changed -> has new attrs *)
+        admit. }
+      { (* address was changed -> has new attrs *)
+        admit. }
+      { (* contradiction; says addres doesnt' have new attrs *)
+        exfalso.
+        admit. }
+      { (* contradiction; says addres doesnt' have new attrs *)
+        exfalso.
+        admit. } }
     { (* stage-1 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage2 by eauto.
-      unaffected_stage. }
+      process_represents. }
   Admitted.
 
   Lemma reassign_pointer_represents conc ptr t abst idxs root_ptable stage :
@@ -704,6 +795,10 @@ Section Proofs.
     forall attrs level begin end_,
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ stage ->
+      addresses_not_dropped
+        (ptable_deref conc) (ptable_deref conc')
+        (ptable_deref conc ptr) t level stage ->
+      (stage = Stage1 -> stage1_valid attrs = true) ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.

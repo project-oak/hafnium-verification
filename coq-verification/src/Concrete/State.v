@@ -67,6 +67,7 @@ Definition update_deref (deref : ptable_pointer -> mm_page_table)
      if ptable_pointer_eq_dec ptr ptr'
      then t
      else deref ptr').
+
 Definition reassign_pointer
            (s : concrete_state) (ptr : ptable_pointer) (t : mm_page_table)
   : concrete_state :=
@@ -80,7 +81,6 @@ Definition all_root_ptables {cp : concrete_params} : list mm_ptable :=
 
 Definition all_root_ptable_pointers {cp : concrete_params}
   : list ptable_pointer := hafnium_root_tables ++ flat_map vm_root_tables vms.
-
 
 Class params_valid {cp : concrete_params} :=
   {
@@ -109,34 +109,37 @@ Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
 Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
   find (fun v => (v.(vm_id) =? vid)) vms.
 
+Definition stage2_mode_has_value
+           (s : concrete_state) (v : vm) (a : paddr_t)
+           (mode_flag : N) (expected_value : bool) : Prop :=
+  exists (e : pte_t) (lvl : nat),
+    page_lookup s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) = Some (e, lvl)
+    /\ let attrs := arch_mm_pte_attrs e lvl in
+       let mode := arch_mm_stage2_attrs_to_mode attrs in
+       let flag_set := ((mode & mode_flag) != 0)%N in
+       flag_set = expected_value.
+
 Definition vm_page_valid {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
-  exists (e : pte_t),
-    page_lookup s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) = Some e
-    /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
+  stage2_mode_has_value s v a MM_MODE_INVALID false.
 
 Definition haf_page_valid
            {cp : concrete_params} (s : concrete_state) (a : paddr_t) : Prop :=
-  exists (e : pte_t),
-    page_lookup s.(ptable_deref) hafnium_ptable Stage1 a.(pa_addr) = Some e
-    /\ forall lvl, arch_mm_pte_is_valid e lvl = true.
-
-Local Definition owned (mode : mode_t) : Prop :=
-  (mode & MM_MODE_UNOWNED)%N <> 0.
+  exists (e : pte_t) (lvl : nat),
+    page_lookup s.(ptable_deref) hafnium_ptable Stage1 a.(pa_addr) = Some (e, lvl)
+    /\ arch_mm_pte_is_valid e lvl = true.
 
 Definition vm_page_owned {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
-  exists (e : pte_t),
-    page_lookup s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) = Some e
-    /\ forall lvl,
-      owned (arch_mm_stage2_attrs_to_mode (arch_mm_pte_attrs e lvl)).
+  stage2_mode_has_value s v a MM_MODE_UNOWNED false.
 
+(* Stage-1 attributes don't have a specific bit for "owned". However, Hafnium
+   always owns all the memory it can access; its only shared memory is send/recv
+   buffers, which are shared with VMs but owned by Hafnium. So for Hafnium,
+   "owned" is equivalent to "accessible" or "valid". *)
 Definition haf_page_owned
            {cp : concrete_params} (s : concrete_state) (a : paddr_t) : Prop :=
-  exists (e : pte_t),
-    page_lookup s.(ptable_deref) hafnium_ptable Stage1 a.(pa_addr) = Some e
-    /\ forall lvl,
-      owned (arch_mm_stage1_attrs_to_mode (arch_mm_pte_attrs e lvl)).
+  haf_page_valid s a.
 
 Arguments owned_by {_} {_} _.
 Arguments accessible_by {_} {_} _.
