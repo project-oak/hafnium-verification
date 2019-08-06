@@ -770,8 +770,6 @@ Section Proofs.
     (* before calling mm_map_root, we have rounded end_ up to the nearest page,
        and we have capped it to not go beyond the end of the table *)
     (N.to_nat end_ <= mm_root_table_count flags * mm_entry_size root_level) ->
-    (* we're not invalidating Hafnium's memory *)
-    (stage_from_flags flags = Stage1 -> stage1_valid attrs = true) ->
     (* we need to know we're actually at the root level *)
     is_root root_level flags ->
     ptable_is_root t flags ->

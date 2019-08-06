@@ -764,8 +764,6 @@ Section Proofs.
     forall attrs begin end_,
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ Stage1 ->
-      (* new attributes say the entry is valid *)
-      stage1_valid attrs = true ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -781,12 +779,12 @@ Section Proofs.
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
       process_represents;
         cbv [haf_page_valid] in *; basics; cbn [ptable_deref] in *;
-          match goal with
-          | H : root_ptable_wf ?deref _ _
-            |- context [page_lookup ?deref ?t ?s ?a] =>
-            pose proof H; eapply page_lookup_ok in H; eauto; [ ];
-              case_eq (page_lookup deref t s a); basics; try solver; [ ]
-          end;
+          try match goal with
+              | H : root_ptable_wf ?deref _ _
+                |- context [page_lookup ?deref ?t ?s ?a] =>
+                pose proof H; eapply page_lookup_ok in H; eauto; [ ];
+                  case_eq (page_lookup deref t s a); basics; try solver; [ ]
+              end;
           repeat match goal with
                  | _ => progress basics
                  | _ => progress destruct_tuples
@@ -794,7 +792,7 @@ Section Proofs.
                    eapply changed_has_new_attrs in H;
                      cbv [root_ptable_matches_stage]; try solver; [ ]
                  | _ => solver
-                 | _ => cbv [stage1_valid] in *; rewrite is_valid_matches_flag; solver
+                 | _ => cbv [stage1_valid] in *; rewrite is_valid_matches_flag in *; solver
                  | _ => do 2 eexists; split; [solver|]
                  end. }
     { (* stage-2 [owned_by] states match *)
@@ -861,7 +859,6 @@ Section Proofs.
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ stage ->
       level = max_level stage + 1 - length idxs ->
-      (stage = Stage1 -> stage1_valid attrs = true) ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
