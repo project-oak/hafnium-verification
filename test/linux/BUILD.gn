@@ -13,8 +13,14 @@
 # limitations under the License.
 
 import("//build/image/image.gni")
+import("//build/toolchain/platform.gni")
 
 executable("test_binary") {
+  include_dirs = [
+    "//driver/linux/inc/uapi",
+    "//third_party/linux/include/uapi/",
+  ]
+
   testonly = true
   sources = [
     "linux.c",
@@ -23,6 +29,14 @@ executable("test_binary") {
     "//test/hftest:hftest_linux",
   ]
   output_name = "test_binary"
+}
+
+vm_kernel("socket_vm0") {
+  testonly = true
+
+  deps = [
+    ":hftest_secondary_vm_socket",
+  ]
 }
 
 linux_initrd("linux_test_initrd") {
@@ -45,6 +59,12 @@ initrd("linux_test") {
 
   primary_vm = "//third_party:linux__prebuilt"
   primary_initrd = ":linux_test_initrd"
+  secondary_vms = [ [
+        "1048576",
+        "1",
+        "socket0",
+        ":socket_vm0",
+      ] ]
 }
 
 group("linux") {
@@ -52,5 +72,25 @@ group("linux") {
 
   deps = [
     ":linux_test",
+  ]
+}
+
+# Testing framework for a secondary VM with socket.
+source_set("hftest_secondary_vm_socket") {
+  testonly = true
+
+  configs += [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "hftest_socket.c",
+  ]
+
+  deps = [
+    "//src:dlog",
+    "//src:panic",
+    "//src:std",
+    "//src/arch/${plat_arch}:entry",
+    "//src/arch/${plat_arch}/hftest:entry",
+    "//src/arch/${plat_arch}/hftest:power_mgmt",
   ]
 }
