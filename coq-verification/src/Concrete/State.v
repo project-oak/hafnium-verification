@@ -130,18 +130,19 @@ Definition vm_page_owned {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
   stage2_mode_has_value s v a MM_MODE_UNOWNED false.
 
-(* Stage-1 attributes don't have a specific bit for "owned". However, Hafnium
-   always owns all the memory it can access; its only shared memory is send/recv
-   buffers, which are shared with VMs but owned by Hafnium. So for Hafnium,
-   "owned" is equivalent to "accessible" or "valid". *)
+(* Stage-1 attributes don't have a specific bit for "owned". However, the set of
+   pages owned by Hafnium doesn't change over the course of the program, so we
+   can get it from the starting parameters. *)
 Definition haf_page_owned
-           {cp : concrete_params} (s : concrete_state) (a : paddr_t) : Prop :=
-  haf_page_valid s a.
+           {ap : @abstract_state_parameters paddr_t nat}
+           (s : concrete_state) (a : paddr_t) : Prop :=
+  hafnium_reserved a = true.
 
 Arguments owned_by {_} {_} _.
 Arguments accessible_by {_} {_} _.
 Definition represents
            {cp : concrete_params}
+           {ap : abstract_state_parameters}
            (abst : @abstract_state paddr_t nat)
            (conc : concrete_state) : Prop :=
   is_valid conc

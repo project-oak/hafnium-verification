@@ -123,7 +123,7 @@ Section Proofs.
     end.
 
   Definition abstract_change_attrs (abst : abstract_state)
-             (a : paddr_t) (e : entity_id) (owned valid : bool) :=
+             (a : paddr_t) (e : entity_id) (s : Stage) (owned valid : bool) :=
     let eq_dec := @entity_id_eq_dec _ Nat.eq_dec in
     {|
       accessible_by :=
@@ -135,13 +135,19 @@ Section Proofs.
                 else remove eq_dec e prev
           else prev);
       owned_by :=
-        (fun a' =>
-           let prev := abst.(owned_by) a' in
-           if paddr_t_eq_dec a a'
-           then if owned
-                then nodup eq_dec (e :: prev)
-                else remove eq_dec e prev
-           else prev)
+        match s with
+          | Stage1 => abst.(owned_by) (* if we're modifying stage-1, the owned_by
+                                         state can't change; stage-1 tables have
+                                         no "owned" bit *)
+          | Stage2 =>
+            (fun a' =>
+               let prev := abst.(owned_by) a' in
+               if paddr_t_eq_dec a a'
+               then if owned
+                    then nodup eq_dec (e :: prev)
+                    else remove eq_dec e prev
+               else prev)
+        end
     |}.
 
   (* indices_from_address starts with the index of the root table in the list of
@@ -179,7 +185,7 @@ Section Proofs.
                  end in
     fold_right
       (fun pa abst =>
-         abstract_change_attrs abst pa e owned valid)
+         abstract_change_attrs abst pa e stage owned valid)
       abst
       (addresses_under_pointer_in_range
          conc.(ptable_deref) ptr root_ptable begin end_ stage).
@@ -197,12 +203,15 @@ Section Proofs.
              (abst : abstract_state) (conc : concrete_state)
              (ptr : ptable_pointer) (attrs : attributes)
              (begin end_ : uintvaddr_t) : abstract_state :=
-    (* N.B. for now, we don't need to update the abstract state with regard to
-       Hafnium, since Hafnium's owned/valid bits never change. However, once we
-       incorporate send/recv buffers, we'll need readable/writable bits as well,
-       and then Hafnium state will need to change. *)
+    let s1_valid := stage1_valid attrs in
     let s2_valid := negb (stage2_mode_flag_set attrs MM_MODE_INVALID) in
     let s2_owned := negb (stage2_mode_flag_set attrs MM_MODE_UNOWNED) in
+
+    (* Hafnium's stage-1 memory doesn't have an "owned" bit, so that value gets
+       ignored; we can pass whatever we want *)
+    let abst :=
+        abstract_reassign_pointer_for_entity
+          abst conc ptr false s1_valid (inr hid) hafnium_ptable begin end_ in
 
     (* update the state with regard to each VM *)
     fold_right
@@ -309,7 +318,13 @@ Section Proofs.
     let new_abst :=
         abstract_reassign_pointer abst conc ptr attrs begin end_ in
     forall e : entity_id,
-      In e (accessible_by new_abst a) <-> In e (accessible_by abst a).
+      In e (accessible_by new_abst a) <->
+      if (in_dec paddr_t_eq_dec a changed_addrs)
+      then
+        if stage1_valid attrs
+        then e = inr hid \/ In e (accessible_by abst a)
+        else e <> inr hid /\ In e (accessible_by abst a) 
+      else In e (accessible_by abst a).
   Admitted. (* TODO *)
 
   (* gives the new [owned_by] value of an address under an abstract state with a
@@ -555,9 +570,7 @@ Section Proofs.
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr hafnium_ptable begin end_ Stage1) ->
     haf_page_owned conc a <-> haf_page_owned (reassign_pointer conc ptr t) a.
-  Proof.
-    cbv [haf_page_owned]; eauto using haf_page_valid_unaffected_address.
-  Qed.
+  Proof. cbv [haf_page_owned]; basics; solver. Qed.
 
   Lemma changed_has_new_attrs
         deref ppool ptr t a level attrs begin end_ idxs root_ptable stage:
@@ -711,12 +724,6 @@ Section Proofs.
                     solve_table_unchanged
              end.
 
-  Definition stage1_valid_under_pointer deref ptr begin end_ : Prop :=
-    forall (a : paddr_t) result,
-      In a (addresses_under_pointer_in_range deref ptr hafnium_ptable begin end_ Stage1) ->
-      page_lookup deref hafnium_ptable Stage1 (pa_addr a) = Some result ->
-      arch_mm_pte_is_valid (fst result) (snd result) = true.
-
   Lemma reassign_pointer_represents_stage1 conc ptr t abst idxs :
     represents abst conc ->
     has_location (ptable_deref conc) (api_page_pool conc) ptr
@@ -730,8 +737,6 @@ Section Proofs.
                              level attrs begin end_ Stage1 ->
       (* new attributes say the entry is valid *)
       stage1_valid attrs = true ->
-      (* old entries in this range are all valid *)
-      stage1_valid_under_pointer (ptable_deref conc) ptr begin end_ ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -746,11 +751,6 @@ Section Proofs.
     { (* stage-1 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
       process_represents;
-        (destruct (in_dec paddr_t_eq_dec
-                         a (addresses_under_pointer_in_range
-                              (ptable_deref conc) ptr hafnium_ptable begin end_
-                              Stage1));
-         [ | rewrite <- haf_page_valid_unaffected_address in *; solver]);
         cbv [haf_page_valid] in *; basics; cbn [ptable_deref] in *.
       { 
         match goal with
@@ -776,19 +776,21 @@ Section Proofs.
           case_eq (page_lookup deref t s a); basics; try solver; [ ]
         end.
         basics. destruct_tuples.
-        match goal with
-          | H : stage1_valid_under_pointer _ _ _ _ |- _ =>
-            specialize (H _ _ ltac:(solver) ltac:(solver))
+        do 2 eexists; split; [solver|].
+        match goal with H :  In _ _ |- _ =>
+                        pose proof H; eapply changed_has_new_attrs in H;
+                          cbv [root_ptable_matches_stage]; try solver; [ ]
         end.
-        do 2 eexists; split; solver. } }
+        basics. destruct_tuples.
+        cbv [stage1_valid] in *.
+        rewrite is_valid_matches_flag. solver. } }
     { (* stage-2 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
       process_represents. }
     { (* stage-1 [owned_by] states match *)
-      process_represents.
-      (* same as [valid] *)
-      1-2:admit. }
-  Admitted.
+      rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
+      process_represents. }
+  Qed.
 
   Local Ltac solve_by_stage2_mode :=
     repeat match goal with
@@ -847,7 +849,6 @@ Section Proofs.
                              level attrs begin end_ stage ->
       level = max_level stage + 1 - length idxs ->
       (stage = Stage1 -> stage1_valid attrs = true) ->
-      (stage = Stage1 -> stage1_valid_under_pointer (ptable_deref conc) ptr begin end_) ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
