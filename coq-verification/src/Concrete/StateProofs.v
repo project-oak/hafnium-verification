@@ -751,39 +751,23 @@ Section Proofs.
     { (* stage-1 [accessible_by] states match *)
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
       process_represents;
-        cbv [haf_page_valid] in *; basics; cbn [ptable_deref] in *.
-      {
-        match goal with
-        | H : root_ptable_wf ?deref _ _
-          |- context [page_lookup ?deref ?t ?s ?a] =>
-          pose proof H; eapply page_lookup_ok in H; eauto; [ ];
-          case_eq (page_lookup deref t s a); basics; try solver; [ ]
-        end.
-        basics. destruct_tuples.
-        do 2 eexists; split; [solver|].
-        match goal with H :  In _ _ |- _ =>
-                        pose proof H; eapply changed_has_new_attrs in H;
-                          cbv [root_ptable_matches_stage]; try solver; [ ]
-        end.
-        basics. destruct_tuples.
-        cbv [stage1_valid] in *.
-        rewrite is_valid_matches_flag. solver. }
-      {
-        match goal with
-        | H : root_ptable_wf ?deref _ _
-          |- context [page_lookup ?deref ?t ?s ?a] =>
-          pose proof H; eapply page_lookup_ok in H; eauto; [ ];
-          case_eq (page_lookup deref t s a); basics; try solver; [ ]
-        end.
-        basics. destruct_tuples.
-        do 2 eexists; split; [solver|].
-        match goal with H :  In _ _ |- _ =>
-                        pose proof H; eapply changed_has_new_attrs in H;
-                          cbv [root_ptable_matches_stage]; try solver; [ ]
-        end.
-        basics. destruct_tuples.
-        cbv [stage1_valid] in *.
-        rewrite is_valid_matches_flag. solver. } }
+        cbv [haf_page_valid] in *; basics; cbn [ptable_deref] in *;
+          match goal with
+          | H : root_ptable_wf ?deref _ _
+            |- context [page_lookup ?deref ?t ?s ?a] =>
+            pose proof H; eapply page_lookup_ok in H; eauto; [ ];
+              case_eq (page_lookup deref t s a); basics; try solver; [ ]
+          end;
+          repeat match goal with
+                 | _ => progress basics
+                 | _ => progress destruct_tuples
+                 | H :  In _ _ |- _ =>
+                   eapply changed_has_new_attrs in H;
+                     cbv [root_ptable_matches_stage]; try solver; [ ]
+                 | _ => solver
+                 | _ => cbv [stage1_valid] in *; rewrite is_valid_matches_flag; solver
+                 | _ => do 2 eexists; split; [solver|]
+                 end. }
     { (* stage-2 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
       process_represents. }
