@@ -378,29 +378,6 @@ Section Proofs.
       In e (owned_by new_abst a) <-> In e (owned_by abst a).
   Admitted. (* TODO *)
 
-  Lemma index_sequences_to_pointer_change_start deref ptr root_ptable stage t ppool :
-    In root_ptable all_root_ptables ->
-    locations_exclusive deref ppool ->
-    index_sequences_to_pointer
-      (fun ptr' : ptable_pointer => if ptable_pointer_eq_dec ptr ptr' then t else deref ptr')
-      ptr root_ptable stage = index_sequences_to_pointer deref ptr root_ptable stage.
-  Admitted.
-
-  (* states that if we change the ptable_deref function but only affect pointers
-     in the stage-1 table, then stage-2 lookups are unaltered *)
-  Lemma page_lookup_proper_stage2 deref1 deref2 root_ptable ppool a:
-    (* all pointers have at most 1 location *)
-    locations_exclusive deref1 ppool ->
-    (* root_ptable is a stage-2 table *)
-    In root_ptable (map vm_ptable vms) ->
-    (* forall pointers, if the pointer is NOT in the stage1 page table, then
-       deref1 is the same as deref2 *)
-    (forall ptr,
-        index_sequences_to_pointer deref1 ptr hafnium_ptable Stage1 = nil ->
-        deref1 ptr = deref2 ptr) ->
-      page_lookup deref1 root_ptable Stage2 a = page_lookup deref2 root_ptable Stage2 a.
-  Admitted. (* TODO *)
-
   Definition vm_page_table_unchanged deref1 deref2 v : Prop :=
     forall ptr,
       index_sequences_to_pointer deref1 ptr (vm_ptable v) Stage2 <> nil
@@ -933,6 +910,7 @@ Section Proofs.
 
   (* attrs_changed_in_range doesn't care if we reassign the pointer we started from *)
   (* TODO : fill in preconditions *)
+  (* TODO : currently unused; remove if not used in mm_map_level proofs *)
   Lemma attrs_changed_in_range_reassign_pointer
         c ptr new_table t level attrs begin end_ idxs stage :
     (* this precondition is so we know c doesn't show up in the new table *)
