@@ -25,6 +25,8 @@ Require Import Hafnium.Concrete.Assumptions.Datatypes.
 Require Import Hafnium.Concrete.Assumptions.Mpool.
 Require Import Hafnium.Concrete.Assumptions.PageTables.
 Require Import Hafnium.Concrete.MM.Datatypes.
+Require Import Hafnium.Util.List.
+Require Import Hafnium.Util.Tactics.
 
 Section PointerLocations.
   Context (ptable_deref : ptable_pointer -> mm_page_table).
@@ -128,4 +130,35 @@ Section PointerLocations.
       forall ptr loc1 loc2,
         has_location ptr loc1 -> has_location ptr loc2 -> loc1 = loc2.
   End with_concrete_params.
+
+  Lemma index_sequences_to_pointer''_root ptr level :
+    0 < level ->
+    In nil (index_sequences_to_pointer'' ptr ptr level).
+  Proof.
+    destruct level; [solver|]; intros.
+    cbn [index_sequences_to_pointer''].
+    break_match; solver.
+  Qed.
+
+  Lemma index_sequences_to_pointer'_nth_default root_list stage :
+    forall i j k,
+      i < length root_list ->
+      k = i + j ->
+      In (k :: nil)
+         (index_sequences_to_pointer'
+            (nth_default_oobe root_list i) j root_list stage).
+  Proof.
+    cbv [nth_default_oobe]. pose proof (max_level_pos stage).
+    induction root_list; destruct i; cbn [length index_sequences_to_pointer'];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress autorewrite with push_nth_default
+             | _ => rewrite Nat.add_0_l
+             | _ => apply in_or_app
+             | _ => left; apply in_map;
+                      solve [auto using index_sequences_to_pointer''_root]
+             | _ => right; apply IHroot_list; solver
+             | _ => solver
+             end.
+  Qed.
 End PointerLocations.

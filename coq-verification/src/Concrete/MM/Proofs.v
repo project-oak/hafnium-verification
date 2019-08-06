@@ -115,12 +115,6 @@ Section Proofs.
   Qed.
   Hint Resolve root_matches_stage_from_flags.
 
-  Lemma max_level_pos stage : 0 < max_level stage.
-  Proof.
-    cbv [max_level]; destruct stage;
-      auto using stage1_max_level_pos, stage2_max_level_pos.
-  Qed.
-
   (* if [begin] is the start of the block at the level above, then we can freely
      use a smaller address for [begin], because [attrs_changed_in_range] ignores
      addresses outside of [table]'s range. *)
@@ -144,39 +138,6 @@ Section Proofs.
     break_match; simplify;
       eauto using correct_number_of_root_tables_stage1,
       correct_number_of_root_tables_stage2.
-  Qed.
-
-  (* TODO : move *)
-  Lemma index_sequences_to_pointer''_root deref ptr level :
-    0 < level ->
-    In nil (index_sequences_to_pointer'' deref ptr ptr level).
-  Proof.
-    destruct level; [solver|]; intros.
-    cbn [index_sequences_to_pointer''].
-    break_match; solver.
-  Qed.
-
-  (* TODO : move *)
-  Lemma index_sequences_to_pointer'_nth_default deref root_list stage :
-    forall i j k,
-      i < length root_list ->
-      k = i + j ->
-      In (k :: nil)
-         (index_sequences_to_pointer'
-            deref (nth_default_oobe root_list i) j root_list stage).
-  Proof.
-    cbv [nth_default_oobe]. pose proof (max_level_pos stage).
-    induction root_list; destruct i; cbn [length index_sequences_to_pointer'];
-      repeat match goal with
-             | _ => progress basics
-             | _ => progress autorewrite with push_nth_default
-             | _ => rewrite Nat.add_0_l
-             | _ => apply in_or_app
-             | _ => left; apply in_map;
-                      solve [auto using index_sequences_to_pointer''_root]
-             | _ => right; apply IHroot_list; solver
-             | _ => solver
-             end.
   Qed.
 
   Lemma has_location_nth_default deref ppool flags root_ptable i :

@@ -95,6 +95,12 @@ Proof.
     auto using stage1_index_of_uintvaddr, stage2_index_of_uintvaddr.
 Qed.
 
+Lemma max_level_pos stage : 0 < max_level stage.
+Proof.
+  cbv [max_level]; destruct stage;
+    auto using stage1_max_level_pos, stage2_max_level_pos.
+Qed.
+
 (* N.B. the [option] here doesn't mean whether the entry is
    valid/present; rather, the lookup should return [Some] for any
    valid input, but the PTE returned might be absent or invalid. *)
