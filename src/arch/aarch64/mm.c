@@ -266,14 +266,22 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
 	 * there are too many, it is quicker to invalidate all TLB entries.
 	 */
 	if ((end - begin) > (MAX_TLBI_OPS * PAGE_SIZE)) {
-		tlbi(alle2);
+		if (VM_TOOLCHAIN == 1) {
+			tlbi(vmalle1is);
+		} else {
+			tlbi(alle2);
+		}
 	} else {
 		begin >>= 12;
 		end >>= 12;
 		/* Invalidate stage-1 TLB, one page from the range at a time. */
 		for (it = begin; it < end;
 		     it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-			tlbi_reg(vae2is, it);
+			if (VM_TOOLCHAIN == 1) {
+				tlbi_reg(vae1is, it);
+			} else {
+				tlbi_reg(vae2is, it);
+			}
 		}
 	}
 

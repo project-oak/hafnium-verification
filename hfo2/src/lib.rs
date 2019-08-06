@@ -23,6 +23,7 @@
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(ptr_wrapping_offset_from)]
 #![feature(slice_from_raw_parts)]
+#![feature(linkage)]
 
 #[macro_use]
 extern crate bitflags;

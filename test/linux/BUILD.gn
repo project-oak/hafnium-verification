@@ -28,6 +28,7 @@ executable("test_binary") {
   deps = [
     "//test/hftest:hftest_linux",
   ]
+  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
   output_name = "test_binary"
 }
 
@@ -84,6 +85,8 @@ source_set("hftest_secondary_vm_socket") {
   sources = [
     "hftest_socket.c",
   ]
+
+  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
 
   deps = [
     "//src:dlog",

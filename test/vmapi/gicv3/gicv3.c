@@ -50,6 +50,11 @@ static void irq(void)
 
 void system_setup()
 {
+	const int mode = MM_MODE_R | MM_MODE_W | MM_MODE_D;
+	hftest_mm_identity_map((void *)GICD_BASE, PAGE_SIZE, mode);
+	hftest_mm_identity_map((void *)GICR_BASE, PAGE_SIZE, mode);
+	hftest_mm_identity_map((void *)SGI_BASE, PAGE_SIZE, mode);
+
 	exception_setup(irq);
 	interrupt_gic_setup();
 }

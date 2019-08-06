@@ -49,12 +49,18 @@ TEST_SERVICE(instruction_abort)
 
 TEST_SERVICE(straddling_instruction_abort)
 {
+	/*
+	 * Get a function pointer which, when branched to, will attempt to
+	 * execute a 4-byte instruction straddling two pages.
+	 */
 	int (*f)(void) = (int (*)(void))(&pages[PAGE_SIZE - 2]);
 
-	/* Give some memory to the primary VM so that it's unmapped. */
+	/* Give second page to the primary VM so that it's unmapped. */
 	ASSERT_EQ(hf_share_memory(HF_PRIMARY_VM_ID,
 				  (hf_ipaddr_t)(&pages[PAGE_SIZE]), PAGE_SIZE,
 				  HF_MEMORY_GIVE),
 		  0);
+
+	/* Branch to instruction whose 2 bytes are now in an unmapped page. */
 	f();
 }

@@ -79,3 +79,9 @@ source_set("console") {
     "//src/arch/aarch64/hftest:hf_call",
   ]
 }
+
+source_set("mm") {
+  sources = [
+    "mm.c",
+  ]
+}

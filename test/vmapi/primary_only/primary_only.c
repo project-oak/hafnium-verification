@@ -117,10 +117,10 @@ TEST(cpus, start)
 
 	/* Start secondary while holding lock. */
 	sl_lock(&lock);
-	EXPECT_EQ(
-		cpu_start(hftest_get_cpu_id(1), other_stack,
-			  sizeof(other_stack), vm_cpu_entry, (uintptr_t)&lock),
-		true);
+	EXPECT_EQ(hftest_cpu_start(hftest_get_cpu_id(1), other_stack,
+				   sizeof(other_stack), vm_cpu_entry,
+				   (uintptr_t)&lock),
+		  true);
 
 	/* Wait for CPU to release the lock. */
 	sl_lock(&lock);

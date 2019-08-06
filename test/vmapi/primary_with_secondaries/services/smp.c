@@ -73,8 +73,8 @@ TEST_SERVICE(smp)
 
 	/* Start second vCPU. */
 	dlog("Secondary starting second vCPU.\n");
-	ASSERT_TRUE(
-		cpu_start(1, stack, sizeof(stack), vm_cpu_entry, ARG_VALUE));
+	ASSERT_TRUE(hftest_cpu_start(1, stack, sizeof(stack), vm_cpu_entry,
+				     ARG_VALUE));
 	dlog("Secondary started second vCPU.\n");
 
 	/* Check that vCPU statuses are as expected. */

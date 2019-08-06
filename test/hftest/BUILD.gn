@@ -40,9 +40,9 @@ source_set("hftest_secondary_vm") {
   sources = [
     "hftest_service.c",
   ]
-  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
 
   deps = [
+    ":mm",
     "//src:dlog",
     "//src:memiter",
     "//src:panic",
@@ -92,6 +92,7 @@ source_set("hftest_standalone") {
 
   deps = [
     ":common",
+    ":mm",
     "//src:dlog",
     "//src:fdt",
     "//src:memiter",
@@ -116,5 +117,24 @@ source_set("common") {
     "//src:memiter",
     "//src:panic",
     "//src:std",
+  ]
+}
+
+source_set("mm") {
+  testonly = true
+
+  public_configs = [ ":hftest_config" ]
+
+  sources = [
+    "hftest_mm.c",
+  ]
+
+  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
+
+  deps = [
+    "//src:layout",
+    "//src:mm",
+    "//src/arch/${plat_arch}:arch",
+    "//src/arch/${plat_arch}/hftest:mm",
   ]
 }

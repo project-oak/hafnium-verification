@@ -350,6 +350,9 @@ template("aarch64_toolchains") {
                              "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+nofp"
+
+    # Add a macro so files can tell whether they are not being built for a VM.
+    extra_defines = " -DVM_TOOLCHAIN=0"
   }
 
   # Toolchain for building test VMs which run under Hafnium.
@@ -369,5 +372,8 @@ template("aarch64_toolchains") {
     # Nonsense values because they are required but shouldn't be used.
     heap_pages = 0
     max_vms = 0
+
+    # Add a macro so files can tell whether they are being built for a VM.
+    extra_defines = " -DVM_TOOLCHAIN=1"
   }
 }

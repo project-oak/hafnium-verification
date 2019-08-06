@@ -149,10 +149,14 @@ bitflags! {
     /// Flags for memory management operations.
     struct Flags: u32 {
         /// Commit
-        const COMMIT = 0b01;
+        const COMMIT = 0b001;
 
         /// Unmap
-        const UNMAP  = 0b10;
+        const UNMAP  = 0b010;
+
+        /// Stage 1
+        /// Note(HfO2): This flag is not used in HfO2; only exists for FFI.
+        const STAGE1 = 0b100;
     }
 }
 
@@ -222,6 +226,13 @@ pub trait Stage {
 
     /// Converts the attributes back to the corresponding mode.
     fn attrs_to_mode(attrs: u64) -> Mode;
+
+    /// Returns the first address which cannot be encoded in page tables given the stage. It is the
+    /// exclusive end of the address space created by the tables.
+    fn ptable_addr_space_end() -> ptable_addr_t {
+        let root_level = Self::max_level() + 1;
+        Self::root_table_count() as usize * addr::entry_size(root_level)
+    }
 }
 
 /// The page table stage for the hypervisor.
@@ -792,6 +803,7 @@ impl Drop for PageTableNode {
 }
 
 /// Page table.
+#[repr(C)]
 pub struct PageTable<S: Stage> {
     root: paddr_t,
     _marker: PhantomData<S>,
@@ -906,7 +918,7 @@ impl<S: Stage> PageTable<S> {
         mpool: &MPool,
     ) -> Result<(), ()> {
         let root_level = S::max_level() + 1;
-        let ptable_end = S::root_table_count() as usize * addr::entry_size(root_level);
+        let ptable_end = S::ptable_addr_space_end();
         let end = cmp::min(addr::round_up_to_page(pa_addr(end)), ptable_end);
         let begin = pa_addr(unsafe { arch_mm_clear_pa(begin) });
 
@@ -1268,6 +1280,24 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 }
 
 #[no_mangle]
+pub extern "C" fn mm_ptable_addr_space_end(flags: u32) -> ptable_addr_t {
+    if Flags::from_bits_truncate(flags).contains(Flags::STAGE1) {
+        Stage1::ptable_addr_space_end()
+    } else {
+        Stage2::ptable_addr_space_end()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_ptable_init(t: *mut PageTable<Stage1>, flags: u32, ppool: *mut MPool) -> bool {
+    let ppool = &*ppool;
+    assert!(Flags::from_bits_truncate(flags).contains(Flags::STAGE1));
+
+    ptr::write(t, ok_or!(PageTable::<Stage1>::new(ppool), return false));
+    true
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
     mut stage1_locked: mm_stage1_locked,
     begin: paddr_t,
@@ -1277,6 +1307,21 @@ pub unsafe extern "C" fn mm_identity_map(
 ) -> *mut usize {
     let mpool = &*mpool;
     stage1_locked
+        .identity_map(begin, end, mode, mpool)
+        .map(|_| pa_addr(begin) as *mut _)
+        .unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_identity_map_nolock(
+    stage1: *mut PageTable<Stage1>,
+    begin: paddr_t,
+    end: paddr_t,
+    mode: Mode,
+    mpool: *const MPool,
+) -> *mut usize {
+    let mpool = &*mpool;
+    (*stage1)
         .identity_map(begin, end, mode, mpool)
         .map(|_| pa_addr(begin) as *mut _)
         .unwrap_or(ptr::null_mut())

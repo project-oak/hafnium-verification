@@ -90,6 +90,20 @@
  */
 #define HFTEST_LOG_INDENT "    "
 
+/** Initializes stage-1 MMU for tests running in a VM. */
+bool hftest_mm_init(void);
+
+/** Adds stage-1 identity mapping for pages covering bytes [base, base+size). */
+void hftest_mm_identity_map(const void *base, size_t size, int mode);
+
+/**
+ * Starts the CPU with the given ID. It will start at the provided entry point
+ * with the provided argument. It is a wrapper around the generic cpu_start()
+ * and takes care of MMU initialization.
+ */
+bool hftest_cpu_start(uintptr_t id, void *stack, size_t stack_size,
+		      void (*entry)(uintptr_t arg), uintptr_t arg);
+
 uintptr_t hftest_get_cpu_id(size_t index);
 
 /* Above this point is the public API. Now include the implementation. */

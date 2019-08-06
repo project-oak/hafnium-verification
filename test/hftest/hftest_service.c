@@ -18,6 +18,7 @@
 #include <stdint.h>
 
 #include "hf/memiter.h"
+#include "hf/mm.h"
 #include "hf/spci.h"
 #include "hf/std.h"
 
@@ -81,6 +82,17 @@ noreturn void kmain(size_t memory_size)
 	struct memiter args;
 	hftest_test_fn service;
 	struct hftest_context *ctx;
+
+	/*
+	 * Initialize the stage-1 MMU and identity-map the entire address space.
+	 */
+	if (!hftest_mm_init()) {
+		HFTEST_LOG_FAILURE();
+		HFTEST_LOG(HFTEST_LOG_INDENT "Memory initialization failed");
+		for (;;) {
+			/* Hang if memory init failed. */
+		}
+	}
 
 	struct spci_message *recv_msg = (struct spci_message *)recv;
 

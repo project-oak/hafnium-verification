@@ -184,6 +184,17 @@ fn update_reserved_ranges(
                 return Err(());
             }
 
+            update.reserved_ranges[update.reserved_ranges_count].begin = before.begin;
+            update.reserved_ranges[update.reserved_ranges_count].end = after.begin;
+            update.reserved_ranges_count += 1;
+        }
+
+        if pa_addr(after.end) < pa_addr(before.end) {
+            if update.reserved_ranges_count >= MAX_MEM_RANGES {
+                dlog!("Too many reserved ranges after loading secondary VMs.\n");
+                return Err(());
+            }
+
             update.reserved_ranges[update.reserved_ranges_count].begin = after.end;
             update.reserved_ranges[update.reserved_ranges_count].end = before.end;
             update.reserved_ranges_count += 1;
