@@ -100,7 +100,7 @@ Class params_valid {cp : concrete_params} :=
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   locations_exclusive s.(ptable_deref) (map vm_ptable vms) hafnium_ptable s.(api_page_pool)
   /\ Forall (root_ptable_wf s.(ptable_deref) Stage2) (map vm_ptable vms)
-  /\ root_ptable_wf s.(ptable_deref) Stage1 hafnium_ptable 
+  /\ root_ptable_wf s.(ptable_deref) Stage1 hafnium_ptable
 .
 
 Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
