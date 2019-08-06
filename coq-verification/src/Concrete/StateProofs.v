@@ -160,8 +160,10 @@ Section Proofs.
   Definition address_matches_indices (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : Prop :=
     firstn (length idxs) (indices_from_address a stage) = idxs.
 
-  Definition address_matches_indices_bool (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : bool :=
-    forallb (fun '(x,y) => x =? y) (combine (indices_from_address a stage) idxs).
+  Definition address_matches_indices_bool
+             (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : bool :=
+    forallb (fun '(x,y) => x =? y) (combine (indices_from_address a stage) idxs)
+            && negb (length idxs =? 0).
 
   Definition addresses_under_pointer_in_range
              (deref : ptable_pointer -> mm_page_table)
@@ -268,6 +270,43 @@ Section Proofs.
     | Stage1 => root_ptable = hafnium_ptable
     | Stage2 => In root_ptable (map vm_ptable vms)
     end.
+
+  Lemma hafnium_ptable_nodup : ~ In hafnium_ptable (map vm_ptable vms).
+  Proof.
+    invert cp_valid; cbv [all_root_ptables] in *.
+    invert_list_properties; solver.
+  Qed.
+
+  Lemma addresses_under_pointer_in_range_pointer_absent
+        deref ppool ptr root_ptable begin end_ stage :
+    (exists idxs,
+        has_location deref ppool ptr (table_loc ppool root_ptable idxs)) ->
+    locations_exclusive deref ppool ->
+    forall root_ptable2,
+      root_ptable <> root_ptable2 ->
+      In root_ptable2 all_root_ptables ->
+      root_ptable_matches_stage root_ptable2 stage ->
+      addresses_under_pointer_in_range
+        deref ptr root_ptable2 begin end_ stage = nil.
+  Proof.
+    cbv [addresses_under_pointer_in_range]; basics.
+    case_eq (index_sequences_to_pointer deref ptr root_ptable2 stage);
+      [|intros idxs2 ? Hidxs2]; basics.
+    { apply filter_none; basics.
+      cbv [address_matches_indices_bool]; cbn [hd length Nat.eqb negb].
+      apply Bool.andb_false_r. }
+    { assert (has_location deref ppool ptr (table_loc ppool root_ptable2 idxs2)).
+      { cbv [all_root_ptables root_ptable_matches_stage] in *.
+        pose proof hafnium_ptable_nodup.
+        invert_list_properties; destruct stage; constructor; try rewrite Hidxs2;
+          solver. }
+      match goal with
+      | Hexcl : context [PointerLocations.locations_exclusive],
+                Hloc1 : _, Hloc2 : _ |- _ =>
+        specialize (Hexcl _ _ _ Hloc1 Hloc2); invert Hexcl
+      end.
+      solver. }
+  Qed.
 
   (* gives the new [accessible_by] value of an address under an abstract state
      with a pointer reassigned, assuming the pointer is in a VM's page table *)
@@ -376,7 +415,20 @@ Section Proofs.
         abstract_reassign_pointer abst conc ptr attrs begin end_ in
     forall e : entity_id,
       In e (owned_by new_abst a) <-> In e (owned_by abst a).
-  Admitted. (* TODO *)
+  Proof.
+    cbv [abstract_reassign_pointer]; basics.
+    apply fold_right_invariant_strong; basics.
+    { cbv [abstract_reassign_pointer_for_entity].
+      match goal with
+      | H : In ?v vms |- _ =>
+        assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
+      end.
+      pose proof hafnium_ptable_nodup.
+      erewrite addresses_under_pointer_in_range_pointer_absent;
+        cbv [all_root_ptables]; solver. }
+    { cbv [abstract_reassign_pointer_for_entity].
+      apply fold_right_invariant; basics; solver. }
+  Qed.
 
   Definition vm_page_table_unchanged deref1 deref2 v : Prop :=
     forall ptr,

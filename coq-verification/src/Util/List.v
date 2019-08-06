@@ -175,6 +175,15 @@ Section FoldRight.
       cbn [fold_right]; eauto.
   Qed.
 
+  Lemma fold_right_invariant_strong (P : B -> Prop) (f : A -> B -> B) b ls :
+    (forall a b, In a ls -> P b -> P (f a b)) ->
+    P b ->
+    P (fold_right f b ls).
+  Proof.
+    generalize dependent b; induction ls; intros;
+      cbn [fold_right]; eauto.
+  Qed.
+
   Lemma fold_right_ext (f g : A -> B -> B) b ls :
     (forall a b, In a ls -> f a b = g a b) ->
     fold_right f b ls = fold_right g b ls.
@@ -197,6 +206,19 @@ Section FoldLeft.
       cbn [fold_left]; eauto.
   Qed.
 End FoldLeft.
+
+(* Proofs about [filter] *)
+Section Filter.
+  Context {A : Type} (f : A -> bool).
+
+  Lemma filter_none ls :
+    (forall x, In x ls -> f x = false) ->
+    filter f ls = nil.
+  Proof.
+    intro Hfalse.
+    induction ls; cbn [filter]; basics; rewrite ?Hfalse; solver.
+  Qed.
+End Filter.
 
 (* Proofs about [firstn] and [skipn] *)
 Section FirstnSkipn.
