@@ -841,6 +841,8 @@ Section Proofs.
     (* useful facts about root_level *)
     pose proof (root_pos root_level flags ltac:(auto)).
     pose proof (root_le_max_level root_level flags ltac:(auto)).
+    assert (root_level - 1 = max_level (stage_from_flags flags))
+      by (cbv [is_root max_level mm_max_level stage_from_flags] in *; repeat break_match; solver).
 
     (* unfold [mm_map_root] to begin the real work *)
     cbv [mm_map_root] in *; simplify.
@@ -919,17 +921,12 @@ Section Proofs.
         cbv [table_index_expression] in *; simplify; [ ].
         apply represents_valid_concrete.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
-        eapply reassign_pointer_represents; eauto; [ | | | ].
+        eapply reassign_pointer_represents; eauto; [ | | ].
         { apply has_location_nth_default with (flags:=flags); eauto. }
         { apply mm_map_level_reassign_pointer; solver. }
-        {
-          cbn [length]. rewrite Nat.add_sub.
-          replace (root_level - 1) with (max_level (stage_from_flags flags))
-            by (cbv [is_root max_level mm_max_level stage_from_flags] in *; repeat break_match; solver).
-          eapply mm_map_level_table_attrs; solver. }
-        { (* need to figure out how (and if) to deal with the "don't call me on invalid Hafnium memory" precondition *)
-          eapply H3.
-        { eapply mm_map_level_addresses_not_dropped; solver. } }
+        { cbn [length]. rewrite Nat.add_sub.
+          replace (root_level - 1) with (max_level (stage_from_flags flags)) by solver.
+          eapply mm_map_level_table_attrs; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -967,8 +964,7 @@ Section Proofs.
 
         eapply reassign_pointer_represents with (level := root_level - 1);
           try apply has_location_nth_default with (flags:=flags);
-          try eapply mm_map_level_addresses_not_dropped;
-          try apply mm_map_level_locations_exclusive; try solver; [ ].
+          try apply mm_map_level_reassign_pointer; cbn [length]; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
           destruct H; [ subst; eapply mm_map_level_table_attrs; solver | ]
