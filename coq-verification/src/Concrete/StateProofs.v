@@ -323,7 +323,7 @@ Section Proofs.
       then
         if stage1_valid attrs
         then e = inr hid \/ In e (accessible_by abst a)
-        else e <> inr hid /\ In e (accessible_by abst a) 
+        else e <> inr hid /\ In e (accessible_by abst a)
       else In e (accessible_by abst a).
   Admitted. (* TODO *)
 
@@ -752,7 +752,7 @@ Section Proofs.
       rewrite accessible_by_abstract_reassign_pointer_stage1 by eauto.
       process_represents;
         cbv [haf_page_valid] in *; basics; cbn [ptable_deref] in *.
-      { 
+      {
         match goal with
         | H : root_ptable_wf ?deref _ _
           |- context [page_lookup ?deref ?t ?s ?a] =>
@@ -768,7 +768,7 @@ Section Proofs.
         basics. destruct_tuples.
         cbv [stage1_valid] in *.
         rewrite is_valid_matches_flag. solver. }
-      { 
+      {
         match goal with
         | H : root_ptable_wf ?deref _ _
           |- context [page_lookup ?deref ?t ?s ?a] =>

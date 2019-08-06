@@ -51,7 +51,7 @@ Inductive page_table_wf (deref : ptable_pointer -> mm_page_table) (s : Stage)
                 page_table_wf deref s next_table level) entries ->
       page_table_wf deref s {| entries := entries |} (S level)
 .
- 
+
 Definition root_ptable_wf deref (s : Stage) (root_ptable : mm_ptable) : Prop :=
   let root_tables := ptr_from_va (va_from_pa (root root_ptable)) in
   (length root_tables = root_table_count s
