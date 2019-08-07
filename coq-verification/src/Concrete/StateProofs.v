@@ -277,6 +277,50 @@ Section Proofs.
     invert_list_properties; solver.
   Qed.
 
+  (* TODO : move *)
+  Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
+  Proof.
+    repeat match goal with
+           | _ => progress subst
+           | x : vm |- _ => destruct x
+           | x : mm_ptable |- _ => destruct x
+           | _ => right; congruence
+           | _ => left; congruence
+           | x : nat, y : nat |- _ => destruct (Nat.eq_dec x y)
+           | x : paddr_t, y : paddr_t |- _ => destruct (paddr_t_eq_dec x y)
+           end.
+  Defined.
+
+  Local Ltac destruct_vm_eq :=
+    match goal with
+    | x : vm, y : vm |- _ =>
+      progress match goal with
+               | H : x <> y |- _ => idtac
+               | H : y <> x |- _ => idtac
+               | _ => destruct (vm_eq_dec x y); basics
+               end
+    end.
+
+  Local Ltac pose_in_vm_ptable_map :=
+    repeat match goal with
+           | H : In ?v vms |- _ =>
+             progress match goal with
+                      | H : In (vm_ptable v) (map vm_ptable vms) |- _ => idtac
+                      | _ => assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
+                      end
+           end.
+
+  Lemma vm_ptable_nodup v1 v2 :
+    In v1 vms -> In v2 vms -> v1 <> v2 -> vm_ptable v1 <> vm_ptable v2.
+  Proof.
+    invert cp_valid; cbv [all_root_ptables] in *; basics.
+    pose_in_vm_ptable_map; invert_list_properties.
+    eapply NoDup_map_neq; eauto.
+  Qed.
+
+  Lemma vm_ptable_in_all v : In v vms -> In (vm_ptable v) all_root_ptables.
+  Proof. cbv [all_root_ptables]; auto using in_map. Qed.
+
   Lemma addresses_under_pointer_in_range_pointer_absent
         deref ppool ptr root_ptable begin end_ stage :
     (exists idxs,
@@ -308,6 +352,116 @@ Section Proofs.
       solver. }
   Qed.
 
+  Lemma abstract_reassign_pointer_for_hafnium_noop
+        abst conc ptr owned valid begin end_ v ppool :
+    In v vms ->
+    (exists idxs,
+        has_location
+          (ptable_deref conc) ppool ptr
+          (table_loc ppool (vm_ptable v) idxs)) ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    abstract_reassign_pointer_for_entity
+      abst conc ptr owned valid (inr hid) hafnium_ptable begin end_ = abst.
+  Proof.
+    cbv [abstract_reassign_pointer_for_entity]; basics.
+    match goal with
+    | H : In ?v vms |- _ =>
+      assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
+    end.
+    pose proof hafnium_ptable_nodup.
+    erewrite addresses_under_pointer_in_range_pointer_absent;
+      cbv [all_root_ptables]; solver.
+  Qed.
+
+  Lemma abstract_reassign_pointer_for_vm_noop
+        abst conc ptr owned valid begin end_ v ppool :
+    In v vms ->
+    (exists idxs,
+        has_location
+          (ptable_deref conc) ppool ptr
+          (table_loc ppool hafnium_ptable idxs)) ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    abstract_reassign_pointer_for_entity
+      abst conc ptr owned valid (inl (vm_id v)) (vm_ptable v) begin end_ = abst.
+  Proof.
+    cbv [abstract_reassign_pointer_for_entity]; basics.
+    match goal with
+    | H : In ?v vms |- _ =>
+      assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
+    end.
+    pose proof hafnium_ptable_nodup.
+    erewrite addresses_under_pointer_in_range_pointer_absent;
+      cbv [all_root_ptables]; solver.
+  Qed.
+
+  Lemma accessible_by_abstract_reassign_pointer_for_entity
+        owned valid eid stage addrs :
+    stage = (match eid with
+             | inl _ => Stage2
+             | inr _ => Stage1
+             end) ->
+    forall abst a e,
+      In e
+         (accessible_by
+            (fold_right
+               (fun (pa : paddr_t) (abst : abstract_state) =>
+                  abstract_change_attrs abst pa eid stage owned valid)
+               abst addrs) a) <->
+          (if in_dec paddr_t_eq_dec a addrs
+           then
+             if valid
+             then e = eid \/ In e (accessible_by abst a)
+             else e <> eid /\ In e (accessible_by abst a)
+           else In e (accessible_by abst a)).
+  Proof.
+    induction addrs; basics; destruct eid; cbn [fold_right];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress cbn [accessible_by abstract_change_attrs]
+             | _ => progress invert_list_properties
+             | _ => rewrite IHaddrs
+             | _ => rewrite nodup_In
+             | _ => rewrite in_remove_iff
+             | _ => rewrite in_cons_iff
+             | H : ~ In _ (cons _ _) |- _ => rewrite in_cons_iff in H
+             | _ => break_match
+             | _ => solver
+             | |- _ <-> _ => split
+             end.
+  Qed.
+
+  Lemma owned_by_abstract_reassign_pointer_for_vm owned valid v addrs :
+    forall abst a e,
+      In e
+         (owned_by
+            (fold_right
+               (fun (pa : paddr_t) (abst : abstract_state) =>
+                  abstract_change_attrs
+                    abst pa (inl (vm_id v)) Stage2 owned valid)
+               abst addrs) a) <->
+          (if in_dec paddr_t_eq_dec a addrs
+           then
+             if owned
+             then e = inl (vm_id v) \/ In e (owned_by abst a)
+             else e <> inl (vm_id v) /\ In e (owned_by abst a)
+           else In e (owned_by abst a)).
+  Proof.
+    induction addrs; basics; cbn [fold_right];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress cbn [owned_by abstract_change_attrs]
+             | _ => progress invert_list_properties
+             | _ => rewrite IHaddrs
+             | _ => rewrite nodup_In
+             | _ => rewrite in_remove_iff
+             | _ => rewrite in_cons_iff
+             | H : ~ In _ (cons _ _) |- _ => rewrite in_cons_iff in H
+             | _ => break_match
+             | _ => solver
+             | |- _ <-> _ => split
+             end.
+  Qed.
+
   (* gives the new [accessible_by] value of an address under an abstract state
      with a pointer reassigned, assuming the pointer is in a VM's page table *)
   Lemma accessible_by_abstract_reassign_pointer_stage2
@@ -336,7 +490,19 @@ Section Proofs.
         then e <> inl (vm_id v) /\ In e (accessible_by abst a)
         else e = inl (vm_id v) \/ In e (accessible_by abst a)
       else In e (accessible_by abst a).
-  Admitted. (* TODO *)
+  Proof.
+    cbv [abstract_reassign_pointer]; basics.
+    erewrite abstract_reassign_pointer_for_hafnium_noop by solver.
+    erewrite fold_right_single; eauto using NoDup_map_inv, no_duplicate_ids; [ | ].
+    { cbv [ abstract_reassign_pointer_for_entity ].
+      rewrite accessible_by_abstract_reassign_pointer_for_entity by solver.
+      repeat break_match; repeat inversion_bool; solver. }
+    { basics.
+      cbv [abstract_reassign_pointer_for_entity].
+      erewrite addresses_under_pointer_in_range_pointer_absent;
+        cbv [root_ptable_matches_stage];
+        eauto using vm_ptable_nodup, vm_ptable_in_all, in_map. }
+  Qed.
 
   (* gives the new [accessible_by] value of an address under an abstract state
      with a pointer reassigned, assuming the pointer is in hafnium's table *)
@@ -364,12 +530,19 @@ Section Proofs.
         then e = inr hid \/ In e (accessible_by abst a)
         else e <> inr hid /\ In e (accessible_by abst a)
       else In e (accessible_by abst a).
-  Admitted. (* TODO *)
+  Proof.
+    cbv [abstract_reassign_pointer].
+    apply fold_right_invariant_strong; basics.
+    { erewrite abstract_reassign_pointer_for_vm_noop; solver. }
+    { cbv [ abstract_reassign_pointer_for_entity ].
+      rewrite accessible_by_abstract_reassign_pointer_for_entity by solver.
+      repeat break_match; repeat inversion_bool; solver. }
+  Qed.
 
   (* gives the new [owned_by] value of an address under an abstract state with a
      pointer reassigned, assuming the pointer is in a VM's page table *)
   Lemma owned_by_abstract_reassign_pointer_stage2
-        abst conc ptr attrs begin end_ (a : paddr_t) v ppool :
+        abst conc ptr attrs begin end_ v (a : paddr_t) ppool :
     (* v is in the vms list *)
     In v vms ->
     (* ptr is located under v's root ptable *)
@@ -394,7 +567,19 @@ Section Proofs.
         then e <> inl (vm_id v) /\ In e (owned_by abst a)
         else e = inl (vm_id v) \/ In e (owned_by abst a)
       else In e (owned_by abst a).
-  Admitted. (* TODO *)
+  Proof.
+    cbv [abstract_reassign_pointer]; basics.
+    erewrite abstract_reassign_pointer_for_hafnium_noop by solver.
+    erewrite fold_right_single; eauto using NoDup_map_inv, no_duplicate_ids; [ | ].
+    { cbv [ abstract_reassign_pointer_for_entity ].
+      rewrite owned_by_abstract_reassign_pointer_for_vm.
+      repeat break_match; repeat inversion_bool; solver. }
+    { basics.
+      cbv [abstract_reassign_pointer_for_entity].
+      erewrite addresses_under_pointer_in_range_pointer_absent;
+        cbv [root_ptable_matches_stage];
+        eauto using vm_ptable_nodup, vm_ptable_in_all, in_map. }
+  Qed.
 
   (* gives the new [owned_by] value of an address under an abstract state with a
      pointer reassigned, assuming the pointer is in hafnium's table *)
@@ -418,14 +603,8 @@ Section Proofs.
   Proof.
     cbv [abstract_reassign_pointer]; basics.
     apply fold_right_invariant_strong; basics.
-    { cbv [abstract_reassign_pointer_for_entity].
-      match goal with
-      | H : In ?v vms |- _ =>
-        assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
-      end.
-      pose proof hafnium_ptable_nodup.
-      erewrite addresses_under_pointer_in_range_pointer_absent;
-        cbv [all_root_ptables]; solver. }
+    { erewrite abstract_reassign_pointer_for_vm_noop by solver.
+      solver. }
     { cbv [abstract_reassign_pointer_for_entity].
       apply fold_right_invariant; basics; solver. }
   Qed.
@@ -670,30 +849,6 @@ Section Proofs.
     ~ (@eq entity_id (inl vid) (inl (vm_id v1))).
   Admitted. (* TODO *)
   Hint Resolve vm_find_unique_entity.
-
-  (* TODO : move *)
-  Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
-  Proof.
-    repeat match goal with
-           | _ => progress subst
-           | x : vm |- _ => destruct x
-           | x : mm_ptable |- _ => destruct x
-           | _ => right; congruence
-           | _ => left; congruence
-           | x : nat, y : nat |- _ => destruct (Nat.eq_dec x y)
-           | x : paddr_t, y : paddr_t |- _ => destruct (paddr_t_eq_dec x y)
-           end.
-  Defined.
-
-  Local Ltac destruct_vm_eq :=
-    match goal with
-    | x : vm, y : vm |- _ =>
-      progress match goal with
-               | H : x <> y |- _ => idtac
-               | H : y <> x |- _ => idtac
-               | _ => destruct (vm_eq_dec x y); basics
-               end
-    end.
 
   Local Ltac solve_table_unchanged_step :=
     first [ eapply vm_table_unchanged_stage2; solver
