@@ -40,4 +40,5 @@ RUN 	apt-get update \
 		python \
 		python-git                     `# for Linux checkpatch` \
 		python-ply                     `# for Linux checkpatch` \
+		strace                         `# for strace_open.sh` \
 	&& rm -rf /var/lib/apt/lists/*

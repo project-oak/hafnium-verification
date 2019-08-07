@@ -42,14 +42,30 @@ IID_FILE="${TMP_DIR}/imgid.txt"
 	"${SCRIPT_DIR}/docker"
 IMAGE_ID="$(cat ${IID_FILE})"
 
-# Check if script was invoked with '-i' as first argument. If so, run
-# container in interactive mode.
+# Parse command line arguments
 INTERACTIVE=false
-if [ "${1:-}" == "-i" ]
-then
-	INTERACTIVE=true
-	shift
-fi
+ALLOW_PTRACE=false
+while true
+do
+	case "${1:-}" in
+	-i)
+		INTERACTIVE=true
+		shift
+		;;
+	-p)
+		ALLOW_PTRACE=true
+		shift
+		;;
+	-*)
+		echo "ERROR: Unknown command line flag: $1" 1>&2
+		echo "Usage: $0 [-i] [-p] <command>"
+		exit 1
+		;;
+	*)
+		break
+		;;
+	esac
+done
 
 ARGS=()
 # Run with a pseduo-TTY for nicer logging.
@@ -58,6 +74,12 @@ ARGS+=(-t)
 if [ "${INTERACTIVE}" == "true" ]
 then
 	ARGS+=(-i)
+fi
+# Allow ptrace() syscall if invoked with '-p'.
+if [ "${ALLOW_PTRACE}" == "true" ]
+then
+	echo "WARNING: Docker seccomp profile is disabled!" 1>&2
+	ARGS+=(--cap-add=SYS_PTRACE --security-opt seccomp=unconfined)
 fi
 # Set environment variable informing the build that we are running inside
 # a container.
