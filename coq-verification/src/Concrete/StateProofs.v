@@ -321,6 +321,25 @@ Section Proofs.
   Lemma vm_ptable_in_all v : In v vms -> In (vm_ptable v) all_root_ptables.
   Proof. cbv [all_root_ptables]; auto using in_map. Qed.
 
+  Lemma index_sequences_has_location_stage2 deref ppool ptr v :
+    In v vms ->
+    index_sequences_to_pointer deref ptr (vm_ptable v) Stage2 <> nil ->
+    exists idxs,
+      has_location deref ppool ptr (table_loc ppool (vm_ptable v) idxs).
+  Proof.
+    basics.
+    match goal with H : ?ls <> nil |- _ =>
+                    case_eq ls; [solver | intros idxs ? Hidxs] end.
+    exists idxs; constructor; try rewrite Hidxs; eauto using in_map.
+  Qed.
+
+  Local Ltac two_locations_contradiction :=
+    match goal with
+    | Hexcl : context [PointerLocations.locations_exclusive],
+              Hloc1 : _, Hloc2 : _ |- _ =>
+      specialize (Hexcl _ _ _ Hloc1 Hloc2); invert Hexcl
+    end.
+
   Lemma addresses_under_pointer_in_range_pointer_absent
         deref ppool ptr root_ptable begin end_ stage :
     (exists idxs,
@@ -344,11 +363,7 @@ Section Proofs.
         pose proof hafnium_ptable_nodup.
         invert_list_properties; destruct stage; constructor; try rewrite Hidxs2;
           solver. }
-      match goal with
-      | Hexcl : context [PointerLocations.locations_exclusive],
-                Hloc1 : _, Hloc2 : _ |- _ =>
-        specialize (Hexcl _ _ _ Hloc1 Hloc2); invert Hexcl
-      end.
+      two_locations_contradiction.
       solver. }
   Qed.
 
@@ -637,13 +652,91 @@ Section Proofs.
       symmetry; solver.
   Qed.
 
+  (* TODO : move *)
+  Lemma hafnium_neq_vm_ptable v : In v vms -> hafnium_ptable <> vm_ptable v.
+  Proof.
+    pose proof hafnium_ptable_nodup.
+    basics; pose_in_vm_ptable_map.
+    intro; solver.
+  Qed.
+
+  Lemma index_sequences_update_deref'' deref ptr t level :
+    forall root_ptr idxs,
+      In idxs (index_sequences_to_pointer'' deref ptr root_ptr level) ->
+      In idxs (index_sequences_to_pointer''
+                 (update_deref deref ptr t) ptr root_ptr level).
+  Proof.
+    cbv [update_deref]; induction level; cbn [index_sequences_to_pointer'']; [ solver | basics ].
+    repeat break_match; basics; try solver; [ ].
+    rewrite in_flat_map in *.
+    basics. eexists; split; [eassumption|].
+    repeat break_match; basics; try solver; [ ].
+    rewrite in_map_iff in *. basics.
+    eexists; eauto.
+  Qed.
+
+  Lemma index_sequences_update_deref' deref ptr t stage :
+    forall root_ptrs i idxs,
+      In idxs (index_sequences_to_pointer' deref ptr i root_ptrs stage) ->
+      In idxs (index_sequences_to_pointer'
+                 (update_deref deref ptr t) ptr i root_ptrs stage).
+  Proof.
+    induction root_ptrs; cbn [index_sequences_to_pointer']; [ solver | basics ].
+    repeat match goal with
+           | _ => progress basics
+           | _ => rewrite in_app_iff in *
+           | _ => rewrite in_map_iff in *
+           | _ => rewrite in_cons_iff in *
+           | _ => solver
+           | _ => left; eexists; split;
+                    solve [eauto using index_sequences_update_deref'']
+           end.
+  Qed.
+
+  Lemma index_sequences_update_deref deref ptr t root_ptable idxs stage :
+    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) ->
+    In idxs (index_sequences_to_pointer
+               (update_deref deref ptr t) ptr root_ptable stage).
+  Proof.
+    cbv [index_sequences_to_pointer]; eauto using index_sequences_update_deref'.
+  Qed.
+
+  (* TODO : move *)
+  Lemma has_location_update_deref deref ppool ptr t root_ptable idxs :
+    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
+    has_location (update_deref deref ptr t) ppool ptr (table_loc ppool root_ptable idxs).
+  Proof.
+    inversion 1; basics; constructor; auto using index_sequences_update_deref.
+  Qed.
+
   (* Modifying the stage-1 table doesn't change the VM page tables *)
   Lemma vm_table_unchanged_stage1 deref ptr idxs t ppool :
     has_location deref ppool ptr (table_loc ppool hafnium_ptable idxs) ->
     locations_exclusive deref ppool ->
+    locations_exclusive (update_deref deref ptr t) ppool ->
     forall v,
+      In v vms ->
       vm_page_table_unchanged deref (update_deref deref ptr t) v.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [vm_page_table_unchanged update_deref]; inversion 1; basics;
+      break_match; basics; try solver;
+        match goal with
+        | H : _ <> nil |- _ =>
+          apply index_sequences_has_location_stage2 with (ppool:=ppool) in H;
+            [ basics | solver .. ]
+        end;
+        match goal with
+        | H : context [has_location deref] |- _ =>
+          pose proof H;
+            apply has_location_update_deref with (t:=t) in H
+        end;
+        two_locations_contradiction;
+        match goal with
+        | H : _ |- _ => apply hafnium_neq_vm_ptable in H; solver
+        | H : _ |- _ =>
+          apply eq_sym in H; apply hafnium_neq_vm_ptable in H; solver
+        end.
+  Qed.
 
   (* Modifying the stage-2 tables doesn't change hafnium's table *)
   Lemma hafnium_table_unchanged_stage2 deref ptr idxs t ppool root_ptable :
