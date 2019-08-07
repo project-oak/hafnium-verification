@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, MaybeUninit};
+use core::mem;
 use core::ops::Deref;
 use core::ptr;
 use core::sync::atomic::Ordering;
@@ -507,10 +507,7 @@ impl Hypervisor {
         } else {
             // Buffer holding the internal copy of the shared memory regions.
             // TODO: Buffer is temporarily in the stack.
-            let mut message_buffer: [u8; mem::size_of::<SpciArchitectedMessageHeader>()
-                + mem::size_of::<SpciMemoryRegionConstituent>()
-                + mem::size_of::<SpciMemoryRegion>()] =
-                unsafe { MaybeUninit::uninit().assume_init() };
+            let message_buffer = &mut unsafe { cpu_get_buffer((*current.get_inner().cpu).id) };
 
             let architected_header = from_msg.get_architected_message_header();
 
