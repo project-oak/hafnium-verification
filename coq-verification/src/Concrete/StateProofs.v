@@ -333,6 +333,17 @@ Section Proofs.
     exists idxs; constructor; try rewrite Hidxs; eauto using in_map.
   Qed.
 
+  Lemma index_sequences_has_location_stage1 deref ppool ptr :
+    index_sequences_to_pointer deref ptr hafnium_ptable Stage1 <> nil ->
+    exists idxs,
+      has_location deref ppool ptr (table_loc ppool hafnium_ptable idxs).
+  Proof.
+    basics.
+    match goal with H : ?ls <> nil |- _ =>
+                    case_eq ls; [solver | intros idxs ? Hidxs] end.
+    exists idxs; constructor; try rewrite Hidxs; eauto using in_map.
+  Qed.
+
   Local Ltac two_locations_contradiction :=
     match goal with
     | Hexcl : context [PointerLocations.locations_exclusive],
@@ -740,19 +751,55 @@ Section Proofs.
 
   (* Modifying the stage-2 tables doesn't change hafnium's table *)
   Lemma hafnium_table_unchanged_stage2 deref ptr idxs t ppool root_ptable :
-    In root_ptable (map vm_ptable vms) ->
     has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
+    In root_ptable (map vm_ptable vms) ->
     locations_exclusive deref ppool ->
+    locations_exclusive (update_deref deref ptr t) ppool ->
     hafnium_page_table_unchanged deref (update_deref deref ptr t).
-  Admitted. (* TODO *)
+  Proof.
+    pose proof hafnium_ptable_nodup.
+    cbv [hafnium_page_table_unchanged update_deref]; inversion 1; basics;
+      break_match; basics; try solver;
+        match goal with
+        | H : _ <> nil |- _ =>
+          apply index_sequences_has_location_stage1 with (ppool:=ppool) in H;
+            [ basics | solver .. ]
+        end;
+        match goal with
+        | H : context [has_location deref] |- _ =>
+          pose proof H;
+            apply has_location_update_deref with (t:=t) in H
+        end;
+        two_locations_contradiction; solver.
+  Qed.
 
   (* if the changed pointer is in a different VM's page table, then other VMs' page tables are unchanged *)
   Lemma vm_table_unchanged_stage2 v1 v2 deref ptr t ppool idxs :
     has_location deref ppool ptr (table_loc ppool (vm_ptable v1) idxs) ->
     locations_exclusive deref ppool ->
+    locations_exclusive (update_deref deref ptr t) ppool ->
+    In v1 vms ->
+    In v2 vms ->
     v1 <> v2 ->
     vm_page_table_unchanged deref (update_deref deref ptr t) v2.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [vm_page_table_unchanged update_deref]; inversion 1; basics;
+      break_match; basics; try solver;
+        match goal with
+        | H : _ <> nil |- _ =>
+          apply index_sequences_has_location_stage2 with (ppool:=ppool) in H;
+            [ basics | solver .. ]
+        end;
+        match goal with
+        | H : context [has_location deref] |- _ =>
+          pose proof H;
+            apply has_location_update_deref with (t:=t) in H
+        end;
+        two_locations_contradiction;
+        match goal with
+        | H : _ |- _ => apply vm_ptable_nodup in H; solver
+        end.
+  Qed.
 
   (* If hafnium's table is unchanged, then haf_page_valid is the same for all
      addresses *)
