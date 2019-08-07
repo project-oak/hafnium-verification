@@ -48,6 +48,13 @@ Hint Rewrite @seq_length @repeat_length @rev_length @map_length @firstn_length
      @app_length @split_length_l @prod_length @split_length_r  @combine_length
   : push_length.
 
+(* Proofs about [In] *)
+Section In.
+  Context {A : Type}.
+
+  Lemma in_cons_iff (x y : A) ls : In x (y :: ls) <-> x = y \/ In x ls.
+  Proof. split; basics; invert_list_properties; solver. Qed.
+End In.
 
 (* Proofs about [seq] *)
 Section Seq.
@@ -94,6 +101,20 @@ Section Remove.
              | _ => progress break_match
              | _ => progress invert_list_properties
              | _ => solver
+             end.
+  Qed.
+
+  Lemma in_remove_iff x y ls : In y (remove eq_dec x ls) <-> (x <> y /\ In y ls).
+  Proof.
+    induction ls; cbn [remove];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress break_match
+             | _ => progress invert_list_properties
+             | _ => rewrite IHls
+             | _ => rewrite in_cons_iff
+             | _ => solver
+             | |- _ <-> _ => split
              end.
   Qed.
 
@@ -182,6 +203,28 @@ Section FoldRight.
   Proof.
     generalize dependent b; induction ls; intros;
       cbn [fold_right]; eauto.
+  Qed.
+
+  Lemma fold_right_single (f : A -> B -> B) b ls x :
+    NoDup ls ->
+    In x ls ->
+    (forall y b, In y ls -> y <> x -> f y b = b) ->
+    fold_right f b ls = f x b.
+  Proof.
+    induction 1; basics; invert_list_properties; cbn [fold_right].
+    { f_equal.
+      apply fold_right_invariant_strong; [|solver].
+      repeat match goal with
+             | _ => progress basics
+             | H : _ |- _ => apply H; solver
+             | _ => solver
+             end. }
+    { rewrite IHNoDup; try solver.
+      repeat match goal with
+             | _ => progress basics
+             | H : _ |- _ => apply H; solver
+             | _ => solver
+             end. }
   Qed.
 
   Lemma fold_right_ext (f g : A -> B -> B) b ls :
@@ -328,6 +371,25 @@ Section SetNth.
              end.
   Qed.
 End SetNth.
+
+(* Proofs about [NoDup] *)
+Section NoDup.
+
+  Lemma NoDup_map_neq {A B} (f : A -> B) ls :
+    NoDup (map f ls) ->
+    forall x y,
+      In x ls -> In y ls -> x <> y -> f x <> f y.
+  Proof.
+    induction ls; cbn [map];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress invert_list_properties
+             | _ => solver
+             | H : In ?a ?ls |- _ =>
+               assert (In (f a) (map f ls)) by auto using in_map
+             end.
+  Qed.
+End NoDup.
 
 (* Proofs about "list qualifiers" like [Forall] and [Exists] *)
 Section ListQualifiers.
