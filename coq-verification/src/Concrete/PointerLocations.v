@@ -162,4 +162,135 @@ Section PointerLocations.
              | _ => solver
              end.
   Qed.
+
+  Lemma nth_error_index_sequences_root' root_ptrs stage ptr :
+    forall i root_index,
+      nth_error root_ptrs i = Some ptr ->
+      In (cons (root_index + i) nil)
+         (index_sequences_to_pointer' ptr root_index root_ptrs stage).
+  Proof.
+    induction root_ptrs; [ intros *; rewrite nth_error_nil; solver | ].
+    destruct i; cbn [nth_error index_sequences_to_pointer']; basics.
+    { apply in_or_app; left. rewrite Nat.add_0_r. apply in_map.
+      apply index_sequences_to_pointer''_root; solver. }
+    { apply in_or_app; right. rewrite <-Nat.add_succ_comm.
+      solver. }
+  Qed.
+
+  Lemma nth_error_index_sequences_root root_ptable i stage ptr :
+    nth_error (ptr_from_va (va_from_pa (root root_ptable))) i = Some ptr ->
+    In (cons i nil) (index_sequences_to_pointer ptr root_ptable stage).
+  Proof.
+    cbv [index_sequences_to_pointer]; intro Hnth.
+    eapply nth_error_index_sequences_root' with (root_index:=0) in Hnth.
+    rewrite Nat.add_0_l in Hnth. solver.
+  Qed.
+
+  Lemma index_sequences_not_nil' ptr root_ptrs stage :
+    Exists (fun root_ptr =>
+              index_sequences_to_pointer''
+                ptr root_ptr (max_level stage + 1) <> nil)
+        root_ptrs ->
+    forall root_index,
+      index_sequences_to_pointer' ptr root_index root_ptrs stage <> nil.
+  Proof.
+    induction 1; cbn [index_sequences_to_pointer'];
+      eauto using app_not_nil_l, app_not_nil_r, map_not_nil.
+  Qed.
+
+  Lemma index_sequences_not_nil ptr root_ptable stage :
+    Exists (fun root_ptr =>
+              index_sequences_to_pointer''
+                ptr root_ptr (max_level stage + 1) <> nil)
+        (ptr_from_va (va_from_pa (root root_ptable))) ->
+    index_sequences_to_pointer ptr root_ptable stage <> nil.
+  Proof.
+    cbv [index_sequences_to_pointer]. basics.
+    apply index_sequences_not_nil'; eauto.
+  Qed.
+
+  Lemma get_entry_index_sequences level :
+    forall i root_ptr e,
+      0 < level ->
+      get_entry (ptable_deref root_ptr) i = Some e ->
+      arch_mm_pte_is_table e level = true ->
+      index_sequences_to_pointer''
+        (ptable_pointer_from_address (arch_mm_table_from_pte e level))
+        root_ptr (S level) <> nil.
+  Proof.
+    basics; cbn [index_sequences_to_pointer''];
+      match goal with
+      | H : get_entry _ _ = Some _ |- _ =>
+        pose proof H; cbv [get_entry] in H; apply nth_error_Some_range in H
+      end;
+      repeat match goal with
+             | _ => progress basics
+             | H : get_entry _ _ = Some _ |- _ => rewrite H
+             | _ => break_match
+             | _ => apply flat_map_not_nil with (a:=i)
+             | _ => apply in_seq; solver
+             | _ => solver
+             | _ => solve [eauto using map_not_nil, In_not_nil,
+                           index_sequences_to_pointer''_root]
+             end.
+  Qed.
+
+  Lemma page_lookup'_proper deref2 level stage :
+    forall root_ptr,
+      (forall ptr,
+          index_sequences_to_pointer'' ptr root_ptr level <> nil ->
+          ptable_deref ptr = deref2 ptr) ->
+      forall a,
+        page_lookup' ptable_deref a (ptable_deref root_ptr) level stage
+        = page_lookup' deref2 a (ptable_deref root_ptr) level stage.
+  Proof.
+    induction level; cbn [page_lookup'];
+      [ | destruct (Nat.eq_dec level 0); [ basics; reflexivity | ] ];
+      repeat match goal with
+             | _ => progress basics
+             | _ => break_match
+             | H : _ |- _ =>
+               rewrite <-H; [ | eapply get_entry_index_sequences; solver ]
+             | H : context [ptable_deref _ = deref2 _] |- _ => apply H
+             | _ => apply IHlevel
+             | _ => solver
+             end.
+    cbn [index_sequences_to_pointer''].
+    break_match; [ solver | ].
+    cbv [get_entry] in *.
+    match goal with H : _ |- _ =>
+                    pose proof H;
+                      apply nth_error_Some_range in H
+    end.
+    match goal with H : context [get_index ?s ?l ?addr] |- _ =>
+                    eapply flat_map_not_nil with (a0:=get_index s l addr);
+                      [ apply in_seq; solver | ]
+    end.
+    repeat break_match; try solver; [ ].
+    apply map_not_nil; solver.
+  Qed.
+
+  Lemma page_lookup_proper deref2 root_ptable stage :
+    (forall ptr,
+        index_sequences_to_pointer ptr root_ptable stage <> nil ->
+        ptable_deref ptr = deref2 ptr) ->
+    forall a,
+      page_lookup ptable_deref root_ptable stage a = page_lookup deref2 root_ptable stage a.
+  Proof.
+    cbv [page_lookup];
+      repeat match goal with
+             | _ => progress basics
+             | H : _ = Some _ |- _ =>
+               pose proof (nth_error_In _ _ H);
+                 eapply nth_error_index_sequences_root in H;
+                 [ | solver .. ]
+             | H : context [ptable_deref _ = deref2 _] |- _ => rewrite <-H by solver
+             | H : context [ptable_deref _ = deref2 _] |- _ =>
+               apply H; apply index_sequences_not_nil
+             | _ => apply page_lookup'_proper
+             | _ => rewrite Exists_exists
+             | _ => break_match
+             | _ => solver
+             end.
+  Qed.
 End PointerLocations.
