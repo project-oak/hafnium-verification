@@ -103,6 +103,110 @@ Section Proofs.
            end.
   Qed.
 
+  Lemma hafnium_ptable_nodup : ~ In hafnium_ptable (map vm_ptable vms).
+  Proof.
+    invert cp_valid; cbv [all_root_ptables] in *.
+    invert_list_properties; solver.
+  Qed.
+
+  Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
+  Proof.
+    repeat match goal with
+           | _ => progress subst
+           | x : vm |- _ => destruct x
+           | x : mm_ptable |- _ => destruct x
+           | _ => right; congruence
+           | _ => left; congruence
+           | x : nat, y : nat |- _ => destruct (Nat.eq_dec x y)
+           | x : paddr_t, y : paddr_t |- _ => destruct (paddr_t_eq_dec x y)
+           end.
+  Defined.
+
+  Local Ltac destruct_vm_eq :=
+    match goal with
+    | x : vm, y : vm |- _ =>
+      progress match goal with
+               | H : x <> y |- _ => idtac
+               | H : y <> x |- _ => idtac
+               | _ => destruct (vm_eq_dec x y); basics
+               end
+    end.
+
+  Local Ltac pose_in_vm_ptable_map :=
+    repeat match goal with
+           | H : In ?v vms |- _ =>
+             progress match goal with
+                      | H : In (vm_ptable v) (map vm_ptable vms) |- _ => idtac
+                      | _ => assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
+                      end
+           end.
+
+  Lemma vm_ptable_nodup v1 v2 :
+    In v1 vms -> In v2 vms -> v1 <> v2 -> vm_ptable v1 <> vm_ptable v2.
+  Proof.
+    invert cp_valid; cbv [all_root_ptables] in *; basics.
+    pose_in_vm_ptable_map; invert_list_properties.
+    eapply NoDup_map_neq; eauto.
+  Qed.
+
+  Lemma vm_ptable_in_all v : In v vms -> In (vm_ptable v) all_root_ptables.
+  Proof. cbv [all_root_ptables]; auto using in_map. Qed.
+
+  Lemma hafnium_neq_vm_ptable v : In v vms -> hafnium_ptable <> vm_ptable v.
+  Proof.
+    pose proof hafnium_ptable_nodup.
+    basics; pose_in_vm_ptable_map.
+    intro; solver.
+  Qed.
+
+  Lemma index_sequences_update_deref'' deref ptr t level :
+    forall root_ptr idxs,
+      In idxs (index_sequences_to_pointer'' deref ptr root_ptr level) ->
+      In idxs (index_sequences_to_pointer''
+                 (update_deref deref ptr t) ptr root_ptr level).
+  Proof.
+    cbv [update_deref]; induction level; cbn [index_sequences_to_pointer'']; [ solver | basics ].
+    repeat break_match; basics; try solver; [ ].
+    rewrite in_flat_map in *.
+    basics. eexists; split; [eassumption|].
+    repeat break_match; basics; try solver; [ ].
+    rewrite in_map_iff in *. basics.
+    eexists; eauto.
+  Qed.
+
+  Lemma index_sequences_update_deref' deref ptr t stage :
+    forall root_ptrs i idxs,
+      In idxs (index_sequences_to_pointer' deref ptr i root_ptrs stage) ->
+      In idxs (index_sequences_to_pointer'
+                 (update_deref deref ptr t) ptr i root_ptrs stage).
+  Proof.
+    induction root_ptrs; cbn [index_sequences_to_pointer']; [ solver | basics ].
+    repeat match goal with
+           | _ => progress basics
+           | _ => rewrite in_app_iff in *
+           | _ => rewrite in_map_iff in *
+           | _ => rewrite in_cons_iff in *
+           | _ => solver
+           | _ => left; eexists; split;
+                    solve [eauto using index_sequences_update_deref'']
+           end.
+  Qed.
+
+  Lemma index_sequences_update_deref deref ptr t root_ptable idxs stage :
+    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) ->
+    In idxs (index_sequences_to_pointer
+               (update_deref deref ptr t) ptr root_ptable stage).
+  Proof.
+    cbv [index_sequences_to_pointer]; eauto using index_sequences_update_deref'.
+  Qed.
+
+  Lemma has_location_update_deref deref ppool ptr t root_ptable idxs :
+    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
+    has_location (update_deref deref ptr t) ppool ptr (table_loc ppool root_ptable idxs).
+  Proof.
+    inversion 1; basics; constructor; auto using index_sequences_update_deref.
+  Qed.
+
   Fixpoint pointer_in_table
              (deref : ptable_pointer -> mm_page_table) (ptr : ptable_pointer)
              (t : mm_page_table) (level : nat) : Prop :=
@@ -270,56 +374,6 @@ Section Proofs.
     | Stage1 => root_ptable = hafnium_ptable
     | Stage2 => In root_ptable (map vm_ptable vms)
     end.
-
-  Lemma hafnium_ptable_nodup : ~ In hafnium_ptable (map vm_ptable vms).
-  Proof.
-    invert cp_valid; cbv [all_root_ptables] in *.
-    invert_list_properties; solver.
-  Qed.
-
-  (* TODO : move *)
-  Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
-  Proof.
-    repeat match goal with
-           | _ => progress subst
-           | x : vm |- _ => destruct x
-           | x : mm_ptable |- _ => destruct x
-           | _ => right; congruence
-           | _ => left; congruence
-           | x : nat, y : nat |- _ => destruct (Nat.eq_dec x y)
-           | x : paddr_t, y : paddr_t |- _ => destruct (paddr_t_eq_dec x y)
-           end.
-  Defined.
-
-  Local Ltac destruct_vm_eq :=
-    match goal with
-    | x : vm, y : vm |- _ =>
-      progress match goal with
-               | H : x <> y |- _ => idtac
-               | H : y <> x |- _ => idtac
-               | _ => destruct (vm_eq_dec x y); basics
-               end
-    end.
-
-  Local Ltac pose_in_vm_ptable_map :=
-    repeat match goal with
-           | H : In ?v vms |- _ =>
-             progress match goal with
-                      | H : In (vm_ptable v) (map vm_ptable vms) |- _ => idtac
-                      | _ => assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
-                      end
-           end.
-
-  Lemma vm_ptable_nodup v1 v2 :
-    In v1 vms -> In v2 vms -> v1 <> v2 -> vm_ptable v1 <> vm_ptable v2.
-  Proof.
-    invert cp_valid; cbv [all_root_ptables] in *; basics.
-    pose_in_vm_ptable_map; invert_list_properties.
-    eapply NoDup_map_neq; eauto.
-  Qed.
-
-  Lemma vm_ptable_in_all v : In v vms -> In (vm_ptable v) all_root_ptables.
-  Proof. cbv [all_root_ptables]; auto using in_map. Qed.
 
   Lemma index_sequences_has_location_stage2 deref ppool ptr v :
     In v vms ->
@@ -663,63 +717,6 @@ Section Proofs.
       symmetry; solver.
   Qed.
 
-  (* TODO : move *)
-  Lemma hafnium_neq_vm_ptable v : In v vms -> hafnium_ptable <> vm_ptable v.
-  Proof.
-    pose proof hafnium_ptable_nodup.
-    basics; pose_in_vm_ptable_map.
-    intro; solver.
-  Qed.
-
-  Lemma index_sequences_update_deref'' deref ptr t level :
-    forall root_ptr idxs,
-      In idxs (index_sequences_to_pointer'' deref ptr root_ptr level) ->
-      In idxs (index_sequences_to_pointer''
-                 (update_deref deref ptr t) ptr root_ptr level).
-  Proof.
-    cbv [update_deref]; induction level; cbn [index_sequences_to_pointer'']; [ solver | basics ].
-    repeat break_match; basics; try solver; [ ].
-    rewrite in_flat_map in *.
-    basics. eexists; split; [eassumption|].
-    repeat break_match; basics; try solver; [ ].
-    rewrite in_map_iff in *. basics.
-    eexists; eauto.
-  Qed.
-
-  Lemma index_sequences_update_deref' deref ptr t stage :
-    forall root_ptrs i idxs,
-      In idxs (index_sequences_to_pointer' deref ptr i root_ptrs stage) ->
-      In idxs (index_sequences_to_pointer'
-                 (update_deref deref ptr t) ptr i root_ptrs stage).
-  Proof.
-    induction root_ptrs; cbn [index_sequences_to_pointer']; [ solver | basics ].
-    repeat match goal with
-           | _ => progress basics
-           | _ => rewrite in_app_iff in *
-           | _ => rewrite in_map_iff in *
-           | _ => rewrite in_cons_iff in *
-           | _ => solver
-           | _ => left; eexists; split;
-                    solve [eauto using index_sequences_update_deref'']
-           end.
-  Qed.
-
-  Lemma index_sequences_update_deref deref ptr t root_ptable idxs stage :
-    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) ->
-    In idxs (index_sequences_to_pointer
-               (update_deref deref ptr t) ptr root_ptable stage).
-  Proof.
-    cbv [index_sequences_to_pointer]; eauto using index_sequences_update_deref'.
-  Qed.
-
-  (* TODO : move *)
-  Lemma has_location_update_deref deref ppool ptr t root_ptable idxs :
-    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
-    has_location (update_deref deref ptr t) ppool ptr (table_loc ppool root_ptable idxs).
-  Proof.
-    inversion 1; basics; constructor; auto using index_sequences_update_deref.
-  Qed.
-
   (* Modifying the stage-1 table doesn't change the VM page tables *)
   Lemma vm_table_unchanged_stage1 deref ptr idxs t ppool :
     has_location deref ppool ptr (table_loc ppool hafnium_ptable idxs) ->
@@ -799,176 +796,6 @@ Section Proofs.
         match goal with
         | H : _ |- _ => apply vm_ptable_nodup in H; solver
         end.
-  Qed.
-
-  (* TODO : move *)
-  Lemma In_not_nil {A} (x : A) ls : In x ls -> ls <> nil.
-  Proof. destruct ls; basics; solver. Qed.
-  Hint Resolve @In_not_nil.
-
-  (* TODO : move *)
-  Lemma nth_error_nil {A} i : @nth_error A nil i = None.
-  Proof. destruct i; basics; solver. Qed.
-
-  (* TODO : move *)
-  Lemma nth_error_index_sequences_root' deref root_ptrs stage ptr :
-    forall i root_index,
-      nth_error root_ptrs i = Some ptr ->
-      In (cons (root_index + i) nil)
-         (index_sequences_to_pointer' deref ptr root_index root_ptrs stage).
-  Proof.
-    induction root_ptrs; [ intros *; rewrite nth_error_nil; solver | ].
-    destruct i; cbn [nth_error index_sequences_to_pointer']; basics.
-    { apply in_or_app; left. rewrite Nat.add_0_r. apply in_map.
-      apply index_sequences_to_pointer''_root; solver. }
-    { apply in_or_app; right. rewrite <-Nat.add_succ_comm.
-      solver. }
-  Qed.
-
-  (* TODO : move *)
-  Lemma nth_error_index_sequences_root deref root_ptable i stage ptr :
-    nth_error (ptr_from_va (va_from_pa (root root_ptable))) i = Some ptr ->
-    In (cons i nil) (index_sequences_to_pointer deref ptr root_ptable stage).
-  Proof.
-    cbv [index_sequences_to_pointer]; intro Hnth.
-    eapply nth_error_index_sequences_root' with (root_index:=0) in Hnth.
-    rewrite Nat.add_0_l in Hnth. solver.
-  Qed.
-
-  (* TODO : move *)
-  Lemma flat_map_not_nil {A B} (f : A -> list B) ls a :
-    In a ls -> f a <> nil -> flat_map f ls <> nil.
-  Admitted. (* TODO *)
-
-  (* TODO : move *)
-  Lemma map_not_nil {A B} (f : A -> B) ls : ls <> nil -> map f ls <> nil.
-  Proof.  destruct ls; cbn [map]; solver. Qed.
-
-  (* TODO : move *)
-  Lemma app_not_nil_l {A} (l1 l2 : list A) : l1 <> nil -> l1 ++ l2 <> nil.
-  Proof.  destruct l1; cbn [app]; solver. Qed.
-
-  (* TODO : move *)
-  Lemma app_not_nil_r {A} (l1 l2 : list A) : l2 <> nil -> l1 ++ l2 <> nil.
-  Proof.  destruct l1; cbn [app]; solver. Qed.
-
-
-  (* TODO : move *)
-  Lemma index_sequences_not_nil' deref ptr root_ptrs stage :
-    Exists (fun root_ptr =>
-              index_sequences_to_pointer''
-                deref ptr root_ptr (max_level stage + 1) <> nil)
-        root_ptrs ->
-    forall root_index,
-      index_sequences_to_pointer' deref ptr root_index root_ptrs stage <> nil.
-  Proof.
-    induction 1; cbn [index_sequences_to_pointer'];
-      eauto using app_not_nil_l, app_not_nil_r, map_not_nil.
-  Qed.
-
-  (* TODO : move *)
-  Lemma index_sequences_not_nil deref ptr root_ptable stage :
-    Exists (fun root_ptr =>
-              index_sequences_to_pointer''
-                deref ptr root_ptr (max_level stage + 1) <> nil)
-        (ptr_from_va (va_from_pa (root root_ptable))) ->
-    index_sequences_to_pointer deref ptr root_ptable stage <> nil.
-  Proof.
-    cbv [index_sequences_to_pointer]. basics.
-    apply index_sequences_not_nil'; eauto.
-  Qed.
-
-  (* TODO : move *)
-  Lemma nth_error_Some_range {A} (x : A) ls i :
-    nth_error ls i = Some x -> i < length ls.
-  Admitted. (* TODO *)
-
-  Lemma get_entry_index_sequences deref level :
-    forall i root_ptr e,
-      0 < level ->
-      get_entry (deref root_ptr) i = Some e ->
-      arch_mm_pte_is_table e level = true ->
-      index_sequences_to_pointer''
-            deref (ptable_pointer_from_address (arch_mm_table_from_pte e level)) root_ptr (S level) <> nil.
-  Proof.
-    basics; cbn [index_sequences_to_pointer''];
-      match goal with
-      | H : get_entry _ _ = Some _ |- _ =>
-        pose proof H; cbv [get_entry] in H; apply nth_error_Some_range in H
-      end;
-      repeat match goal with
-             | _ => progress basics
-             | H : get_entry _ _ = Some _ |- _ => rewrite H
-             | _ => break_match
-             | _ => apply flat_map_not_nil with (a:=i)
-             | _ => apply in_seq; solver
-             | _ => solver
-             | _ => solve [eauto using map_not_nil, In_not_nil,
-                           index_sequences_to_pointer''_root]
-             end.
-  Qed.
-
-  (* TODO : move *)
-  Lemma page_lookup'_proper deref1 deref2 level stage :
-    forall root_ptr,
-      (forall ptr,
-          index_sequences_to_pointer'' deref1 ptr root_ptr level <> nil ->
-          deref1 ptr = deref2 ptr) ->
-      forall a,
-        page_lookup' deref1 a (deref1 root_ptr) level stage
-        = page_lookup' deref2 a (deref1 root_ptr) level stage.
-  Proof.
-    induction level; cbn [page_lookup'];
-      repeat match goal with
-             | _ => progress basics
-             | _ => break_match
-             | _ => solver
-             end.
-    destruct (Nat.eq_dec level 0); [ basics; reflexivity | ].
-    rewrite <-H; [ | eapply get_entry_index_sequences; solver ].
-    apply IHlevel.
-    basics.
-    apply H.
-    cbn [index_sequences_to_pointer''].
-    break_match; [ solver | ].
-    cbv [get_entry] in *.
-    match goal with H : _ |- _ =>
-                    pose proof H;
-                      apply nth_error_Some_range in H
-    end.
-    match goal with H : context [get_index ?s ?l ?addr] |- _ =>
-                    eapply flat_map_not_nil with (a0:=get_index s l addr);
-                      [ apply in_seq; solver | ]
-    end.
-    repeat break_match; try solver; [ ].
-    eauto using map_not_nil.
-    intro Hfalse. apply map_eq_nil in Hfalse. solver.
-  Qed.
-
-  (* TODO : move *)
-  Lemma page_lookup_proper deref1 deref2 root_ptable stage :
-    root_ptable_matches_stage root_ptable stage ->
-    (forall ptr,
-        index_sequences_to_pointer deref1 ptr root_ptable stage <> nil ->
-        deref1 ptr = deref2 ptr) ->
-    forall a,
-      page_lookup deref1 root_ptable stage a = page_lookup deref2 root_ptable stage a.
-  Proof.
-    cbv [page_lookup];
-      repeat match goal with
-             | _ => progress basics
-             | H : _ = Some _ |- _ =>
-               pose proof (nth_error_In _ _ H);
-               eapply nth_error_index_sequences_root with (deref:=deref1) in H;
-                 [ | solver .. ]
-             | H : context [deref1 _ = deref2 _] |- _ => rewrite <-H by solver
-             | H : context [deref1 _ = deref2 _] |- _ =>
-               apply H; apply index_sequences_not_nil
-             | _ => apply page_lookup'_proper
-             | _ => rewrite Exists_exists
-             | _ => break_match
-             | _ => solver
-             end.
   Qed.
 
   (* If hafnium's table is unchanged, then haf_page_valid is the same for all

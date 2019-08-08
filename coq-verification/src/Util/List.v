@@ -54,7 +54,22 @@ Section In.
 
   Lemma in_cons_iff (x y : A) ls : In x (y :: ls) <-> x = y \/ In x ls.
   Proof. split; basics; invert_list_properties; solver. Qed.
+
+  Lemma In_not_nil (x : A) ls : In x ls -> ls <> nil.
+  Proof. destruct ls; basics; solver. Qed.
 End In.
+Hint Resolve @In_not_nil.
+
+(* Proofs about [app] *)
+Section App.
+  Context {A : Type}.
+
+  Lemma app_not_nil_l (l1 l2 : list A) : l1 <> nil -> l1 ++ l2 <> nil.
+  Proof.  destruct l1; cbn [app]; solver. Qed.
+
+  Lemma app_not_nil_r (l1 l2 : list A) : l2 <> nil -> l1 ++ l2 <> nil.
+  Proof.  destruct l1; cbn [app]; solver. Qed.
+End App.
 
 (* Proofs about [seq] *)
 Section Seq.
@@ -146,6 +161,18 @@ Section Remove.
              end.
   Qed.
 End Remove.
+
+(* Proofs about [nth_error] *)
+Section NthError.
+  Context {A : Type}.
+
+  Lemma nth_error_nil i : @nth_error A nil i = None.
+  Proof. destruct i; basics; solver. Qed.
+
+  Lemma nth_error_Some_range (x : A) ls i :
+    nth_error ls i = Some x -> i < length ls.
+  Admitted. (* TODO *)
+End NthError.
 
 Section NthDefault.
   Context {A} (d : A).
@@ -337,6 +364,18 @@ Hint Rewrite @firstn_O @firstn_nil @firstn_cons : push_firstn.
 Hint Rewrite @skipn_nil @skipn_cons : push_skipn.
 Hint Rewrite @skipn_all using lia : push_skipn.
 Hint Rewrite @skipn_length : push_length.
+
+(* Proofs about [map] and [flat_map] *)
+Section Map.
+  Context {A B : Type}.
+
+  Lemma map_not_nil (f : A -> B) ls : ls <> nil -> map f ls <> nil.
+  Proof.  destruct ls; cbn [map]; solver. Qed.
+
+  Lemma flat_map_not_nil (f : A -> list B) ls a :
+    In a ls -> f a <> nil -> flat_map f ls <> nil.
+  Admitted. (* TODO *)
+End Map.
 
 (* Proofs about setting the nth element of a list. *)
 Section SetNth.
