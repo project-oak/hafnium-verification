@@ -171,7 +171,7 @@ Section NthError.
 
   Lemma nth_error_Some_range (x : A) ls i :
     nth_error ls i = Some x -> i < length ls.
-  Admitted. (* TODO *)
+  Proof. intros; apply nth_error_Some; solver. Qed.
 End NthError.
 
 Section NthDefault.
@@ -374,7 +374,11 @@ Section Map.
 
   Lemma flat_map_not_nil (f : A -> list B) ls a :
     In a ls -> f a <> nil -> flat_map f ls <> nil.
-  Admitted. (* TODO *)
+  Proof.
+    induction ls; basics; [ solver | ]. cbn [flat_map].
+    invert_list_properties;
+      eauto using app_not_nil_l, app_not_nil_r.
+  Qed.
 End Map.
 
 (* Proofs about setting the nth element of a list. *)
