@@ -34,6 +34,8 @@ Section PointerLocations.
   (* We haven't formalized anywhere that pointers don't repeat, so we return a
      list of all locations where the provided pointer exists even though we
      expect there is only one. *)
+  (* N.B. level is the level above the one we're looking at (this is so 0 can be
+     the base case) *)
   Fixpoint index_sequences_to_pointer''
            (ptr : ptable_pointer) (root : ptable_pointer) (level : nat)
     : list (list nat) :=
@@ -48,11 +50,11 @@ Section PointerLocations.
           (fun index =>
              match get_entry ptable index with
              | Some pte =>
-               if arch_mm_pte_is_table pte level
+               if arch_mm_pte_is_table pte level'
                then
                  let next_root :=
                      ptable_pointer_from_address
-                       (arch_mm_table_from_pte pte level) in
+                       (arch_mm_table_from_pte pte level') in
                  map
                    (cons index)
                    (index_sequences_to_pointer'' ptr next_root level')
@@ -68,7 +70,7 @@ Section PointerLocations.
     | nil => nil
     | cons root_ptr root_ptrs' =>
       (map (cons root_index)
-           (index_sequences_to_pointer'' ptr root_ptr (max_level stage)))
+           (index_sequences_to_pointer'' ptr root_ptr (max_level stage + 1)))
         ++ index_sequences_to_pointer' ptr (S root_index) root_ptrs' stage
     end.
   Definition index_sequences_to_pointer
@@ -155,8 +157,7 @@ Section PointerLocations.
              | _ => progress autorewrite with push_nth_default
              | _ => rewrite Nat.add_0_l
              | _ => apply in_or_app
-             | _ => left; apply in_map;
-                      solve [auto using index_sequences_to_pointer''_root]
+             | _ => left; apply in_map, index_sequences_to_pointer''_root; solver
              | _ => right; apply IHroot_list; solver
              | _ => solver
              end.

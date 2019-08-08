@@ -801,13 +801,189 @@ Section Proofs.
         end.
   Qed.
 
+  (* TODO : move *)
+  Lemma In_not_nil {A} (x : A) ls : In x ls -> ls <> nil.
+  Proof. destruct ls; basics; solver. Qed.
+  Hint Resolve @In_not_nil.
+
+  (* TODO : move *)
+  Lemma nth_error_nil {A} i : @nth_error A nil i = None.
+  Proof. destruct i; basics; solver. Qed.
+
+  (* TODO : move *)
+  Lemma nth_error_index_sequences_root' deref root_ptrs stage ptr :
+    forall i root_index,
+      nth_error root_ptrs i = Some ptr ->
+      In (cons (root_index + i) nil)
+         (index_sequences_to_pointer' deref ptr root_index root_ptrs stage).
+  Proof.
+    induction root_ptrs; [ intros *; rewrite nth_error_nil; solver | ].
+    destruct i; cbn [nth_error index_sequences_to_pointer']; basics.
+    { apply in_or_app; left. rewrite Nat.add_0_r. apply in_map.
+      apply index_sequences_to_pointer''_root; solver. }
+    { apply in_or_app; right. rewrite <-Nat.add_succ_comm.
+      solver. }
+  Qed.
+
+  (* TODO : move *)
+  Lemma nth_error_index_sequences_root deref root_ptable i stage ptr :
+    nth_error (ptr_from_va (va_from_pa (root root_ptable))) i = Some ptr ->
+    In (cons i nil) (index_sequences_to_pointer deref ptr root_ptable stage).
+  Proof.
+    cbv [index_sequences_to_pointer]; intro Hnth.
+    eapply nth_error_index_sequences_root' with (root_index:=0) in Hnth.
+    rewrite Nat.add_0_l in Hnth. solver.
+  Qed.
+
+  (* TODO : move *)
+  Lemma flat_map_not_nil {A B} (f : A -> list B) ls a :
+    In a ls -> f a <> nil -> flat_map f ls <> nil.
+  Admitted. (* TODO *)
+
+  (* TODO : move *)
+  Lemma map_not_nil {A B} (f : A -> B) ls : ls <> nil -> map f ls <> nil.
+  Proof.  destruct ls; cbn [map]; solver. Qed.
+
+  (* TODO : move *)
+  Lemma app_not_nil_l {A} (l1 l2 : list A) : l1 <> nil -> l1 ++ l2 <> nil.
+  Proof.  destruct l1; cbn [app]; solver. Qed.
+
+  (* TODO : move *)
+  Lemma app_not_nil_r {A} (l1 l2 : list A) : l2 <> nil -> l1 ++ l2 <> nil.
+  Proof.  destruct l1; cbn [app]; solver. Qed.
+
+
+  (* TODO : move *)
+  Lemma index_sequences_not_nil' deref ptr root_ptrs stage :
+    Exists (fun root_ptr =>
+              index_sequences_to_pointer''
+                deref ptr root_ptr (max_level stage + 1) <> nil)
+        root_ptrs ->
+    forall root_index,
+      index_sequences_to_pointer' deref ptr root_index root_ptrs stage <> nil.
+  Proof.
+    induction 1; cbn [index_sequences_to_pointer'];
+      eauto using app_not_nil_l, app_not_nil_r, map_not_nil.
+  Qed.
+
+  (* TODO : move *)
+  Lemma index_sequences_not_nil deref ptr root_ptable stage :
+    Exists (fun root_ptr =>
+              index_sequences_to_pointer''
+                deref ptr root_ptr (max_level stage + 1) <> nil)
+        (ptr_from_va (va_from_pa (root root_ptable))) ->
+    index_sequences_to_pointer deref ptr root_ptable stage <> nil.
+  Proof.
+    cbv [index_sequences_to_pointer]. basics.
+    apply index_sequences_not_nil'; eauto.
+  Qed.
+
+  (* TODO : move *)
+  Lemma nth_error_Some_range {A} (x : A) ls i :
+    nth_error ls i = Some x -> i < length ls.
+  Admitted. (* TODO *)
+
+  Lemma get_entry_index_sequences deref level :
+    forall i root_ptr e,
+      0 < level ->
+      get_entry (deref root_ptr) i = Some e ->
+      arch_mm_pte_is_table e level = true ->
+      index_sequences_to_pointer''
+            deref (ptable_pointer_from_address (arch_mm_table_from_pte e level)) root_ptr (S level) <> nil.
+  Proof.
+    basics; cbn [index_sequences_to_pointer''];
+      match goal with
+      | H : get_entry _ _ = Some _ |- _ =>
+        pose proof H; cbv [get_entry] in H; apply nth_error_Some_range in H
+      end;
+      repeat match goal with
+             | _ => progress basics
+             | H : get_entry _ _ = Some _ |- _ => rewrite H
+             | _ => break_match
+             | _ => apply flat_map_not_nil with (a:=i)
+             | _ => apply in_seq; solver
+             | _ => solver
+             | _ => solve [eauto using map_not_nil, In_not_nil,
+                           index_sequences_to_pointer''_root]
+             end.
+  Qed.
+
+  (* TODO : move *)
+  Lemma page_lookup'_proper deref1 deref2 level stage :
+    forall root_ptr,
+      (forall ptr,
+          index_sequences_to_pointer'' deref1 ptr root_ptr level <> nil ->
+          deref1 ptr = deref2 ptr) ->
+      forall a,
+        page_lookup' deref1 a (deref1 root_ptr) level stage
+        = page_lookup' deref2 a (deref1 root_ptr) level stage.
+  Proof.
+    induction level; cbn [page_lookup'];
+      repeat match goal with
+             | _ => progress basics
+             | _ => break_match
+             | _ => solver
+             end.
+    destruct (Nat.eq_dec level 0); [ basics; reflexivity | ].
+    rewrite <-H; [ | eapply get_entry_index_sequences; solver ].
+    apply IHlevel.
+    basics.
+    apply H.
+    cbn [index_sequences_to_pointer''].
+    break_match; [ solver | ].
+    cbv [get_entry] in *.
+    match goal with H : _ |- _ =>
+                    pose proof H;
+                      apply nth_error_Some_range in H
+    end.
+    match goal with H : context [get_index ?s ?l ?addr] |- _ =>
+                    eapply flat_map_not_nil with (a0:=get_index s l addr);
+                      [ apply in_seq; solver | ]
+    end.
+    repeat break_match; try solver; [ ].
+    eauto using map_not_nil.
+    intro Hfalse. apply map_eq_nil in Hfalse. solver.
+  Qed.
+
+  (* TODO : move *)
+  Lemma page_lookup_proper deref1 deref2 root_ptable stage :
+    root_ptable_matches_stage root_ptable stage ->
+    (forall ptr,
+        index_sequences_to_pointer deref1 ptr root_ptable stage <> nil ->
+        deref1 ptr = deref2 ptr) ->
+    forall a,
+      page_lookup deref1 root_ptable stage a = page_lookup deref2 root_ptable stage a.
+  Proof.
+    cbv [page_lookup];
+      repeat match goal with
+             | _ => progress basics
+             | H : _ = Some _ |- _ =>
+               pose proof (nth_error_In _ _ H);
+               eapply nth_error_index_sequences_root with (deref:=deref1) in H;
+                 [ | solver .. ]
+             | H : context [deref1 _ = deref2 _] |- _ => rewrite <-H by solver
+             | H : context [deref1 _ = deref2 _] |- _ =>
+               apply H; apply index_sequences_not_nil
+             | _ => apply page_lookup'_proper
+             | _ => rewrite Exists_exists
+             | _ => break_match
+             | _ => solver
+             end.
+  Qed.
+
   (* If hafnium's table is unchanged, then haf_page_valid is the same for all
      addresses *)
   Lemma haf_page_valid_proper conc conc' a:
     hafnium_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) ->
     haf_page_valid conc a ->
     haf_page_valid conc' a.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [haf_page_valid hafnium_page_table_unchanged].
+    basics. do 2 eexists; split; [|solver].
+    erewrite page_lookup_proper; [ eassumption | basics .. ];
+      cbn [root_ptable_matches_stage]; try solver; [ ].
+    match goal with H : _ |- _ => rewrite H; solver end.
+  Qed.
 
   (* If hafnium's table is unchanged, then haf_page_owned is the same for all
      addresses *)
@@ -819,14 +995,23 @@ Section Proofs.
 
   Lemma stage2_mode_has_value_proper conc conc' v a flag flag_value :
     vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v ->
+    In v vms ->
     stage2_mode_has_value conc v a flag flag_value->
     stage2_mode_has_value conc' v a flag flag_value.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [stage2_mode_has_value vm_page_table_unchanged].
+    basics; do 2 eexists; split; [|solver].
+    pose_in_vm_ptable_map.
+    erewrite page_lookup_proper; [ eassumption | basics .. ];
+      cbn [root_ptable_matches_stage]; try solver; [ ].
+    match goal with H : _ |- _ => rewrite H; solver end.
+  Qed.
 
   (* If a VM's page tables are unchanged, then vm_page_valid is the same for all
      addresses *)
   Lemma vm_page_valid_proper conc conc' v a:
     vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v ->
+    In v vms ->
     vm_page_valid conc v a ->
     vm_page_valid conc' v a.
   Proof.
@@ -837,6 +1022,7 @@ Section Proofs.
      addresses *)
   Lemma vm_page_owned_proper conc conc' v a:
     vm_page_table_unchanged conc.(ptable_deref) conc'.(ptable_deref) v  ->
+    In v vms ->
     vm_page_owned conc v a ->
     vm_page_owned conc' v a.
   Proof.
@@ -990,6 +1176,10 @@ Section Proofs.
   Admitted. (* TODO *)
   Hint Resolve vm_find_unique_entity.
 
+  Lemma vm_find_In vid v : vm_find vid = Some v -> In v vms.
+  Admitted. (* TODO *)
+  Hint Resolve vm_find_In.
+
   Local Ltac solve_table_unchanged_step :=
     first [ eapply vm_table_unchanged_stage2; solver
           | eapply vm_table_unchanged_stage1; solver
@@ -1008,7 +1198,6 @@ Section Proofs.
           | eapply haf_page_valid_unaffected_address with (conc:=conc)
           | eapply haf_page_owned_unaffected_address with (conc:=conc) ];
     solver.
-
 
   (* simplify [reassign_pointer_represents] subgoals *)
   Local Ltac process_represents :=
@@ -1038,13 +1227,13 @@ Section Proofs.
              | |- exists _, _ /\ _ => eexists; split; eauto using vm_find_Some; [ ]
              | |- exists _, _ /\ _ => eexists; split; try eassumption; [ ]
              | _ => solver
-             | _ => eapply vm_page_valid_proper; [|eassumption];
+             | _ => eapply vm_page_valid_proper; [|solver .. ];
                     solve_table_unchanged
-             | _ => eapply vm_page_owned_proper; [|eassumption];
+             | _ => eapply vm_page_owned_proper; [|solver .. ];
                     solve_table_unchanged
-             | _ => eapply haf_page_valid_proper; [|eassumption];
+             | _ => eapply haf_page_valid_proper; [|solver .. ];
                     solve_table_unchanged
-             | _ => eapply haf_page_owned_proper; [|eassumption];
+             | _ => eapply haf_page_owned_proper; [|solver ..];
                     solve_table_unchanged
              end.
 
