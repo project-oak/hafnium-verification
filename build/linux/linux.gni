@@ -28,6 +28,29 @@ template("source_dir") {
   }
 }
 
+template("source_dir_copy") {
+  source_dir_target = "${target_name}__source_dir"
+
+  source_dir(source_dir_target) {
+    path = invoker.path
+  }
+
+  action("${target_name}") {
+    script = "//build/linux/copy_dirs.py"
+    outputs = [
+      "$target_out_dir/${target_name}.script.stamp",
+    ]
+    args = [
+      rebase_path(invoker.path),
+      rebase_path(target_out_dir),
+      rebase_path(outputs[0]),
+    ]
+    deps = [
+      ":${source_dir_target}",
+    ]
+  }
+}
+
 template("linux_kernel") {
   source_target = "${target_name}__source"
   defconfig_target = "${target_name}__defconfig"
@@ -109,15 +132,11 @@ template("linux_kernel_module") {
   # Out-of-tree modules cannot be built outside of their directory.
   # So as to avoid parallel builds under different toolchains clashing,
   # work around by copying source files to `target_out_dir`.
-  copy("${target_name}__copy_source") {
-    forward_variables_from(invoker,
-                           [
-                             "sources",
-                             "testonly",
-                           ])
-    outputs = [
-      "${target_out_dir}/{{source_file_part}}",
-    ]
+
+  source_target = "${target_name}__source"
+
+  source_dir_copy(source_target) {
+    path = invoker.module_dir
   }
 
   action(target_name) {
@@ -127,7 +146,7 @@ template("linux_kernel_module") {
       "--directory",
       rebase_path(target_out_dir),
       "HAFNIUM_PATH=" + rebase_path("//"),
-      "KERNEL_PATH=" + rebase_path(invoker.kernel_src_dir),
+      "KERNEL_PATH=" + rebase_path(invoker.kernel_dir),
       "O=" +
           rebase_path(get_label_info(invoker.kernel_target, "target_out_dir")),
       "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
@@ -138,7 +157,7 @@ template("linux_kernel_module") {
       "${target_out_dir}/${invoker.module_name}.ko",
     ]
     deps = [
-      ":${target_name}__copy_source",
+      ":${source_target}",
       "${invoker.kernel_target}__defconfig",
     ]
   }
