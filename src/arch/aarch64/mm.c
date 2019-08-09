@@ -253,13 +253,19 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
 	begin >>= 12;
 	end >>= 12;
 
+	/* Sync with page table updates. */
 	dsb(ishst);
 
+	/* Invalidate stage-1 TLB, one page from the range at a time. */
 	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
 		tlbi_reg(vae2is, it);
 	}
 
+	/* Sync data accesses with TLB invalidation completion. */
 	dsb(ish);
+
+	/* Sync instruction fetches with TLB invalidation completion. */
+	isb();
 }
 
 /**
@@ -277,15 +283,36 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 	begin >>= 12;
 	end >>= 12;
 
+	/* Sync with page table updates. */
 	dsb(ishst);
 
+	/*
+	 * Invalidate stage-2 TLB, one page from the range at a time.
+	 * Note that this has no effect if the CPU has a TLB with combined
+	 * stage-1/stage-2 translation.
+	 */
 	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
 		tlbi_reg(ipas2e1, it);
 	}
 
+	/*
+	 * Ensure completion of stage-2 invalidation in case a page table walk
+	 * on another CPU refilled the TLB with a complete stage-1 + stage-2
+	 * walk based on the old stage-2 mapping.
+	 */
 	dsb(ish);
+
+	/*
+	 * Invalidate all stage-1 TLB entries. If the CPU has a combined TLB for
+	 * stage-1 and stage-2, this will invalidate stage-2 as well.
+	 */
 	tlbi(vmalle1is);
+
+	/* Sync data accesses with TLB invalidation completion. */
 	dsb(ish);
+
+	/* Sync instruction fetches with TLB invalidation completion. */
+	isb();
 }
 
 /**
