@@ -19,7 +19,6 @@ config("config") {
 # Implementation of the arch interface for aarch64.
 source_set("arch") {
   sources = [
-    "barriers.c",
     "cpu.c",
     "mm.c",
     "timer.c",

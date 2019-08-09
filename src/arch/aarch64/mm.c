@@ -16,6 +16,7 @@
 
 #include "hf/mm.h"
 
+#include "hf/arch/barriers.h"
 #include "hf/arch/cpu.h"
 
 #include "hf/dlog.h"
@@ -88,6 +89,15 @@
 #define STAGE2_ACCESS_WRITE UINT64_C(2)
 
 /* clang-format on */
+
+#define tlbi(op)                               \
+	do {                                   \
+		__asm__ volatile("tlbi " #op); \
+	} while (0)
+#define tlbi_reg(op, reg)                                              \
+	do {                                                           \
+		__asm__ __volatile__("tlbi " #op ", %0" : : "r"(reg)); \
+	} while (0)
 
 /** Mask for the address bits of the pte. */
 #define PTE_ADDR_MASK \
@@ -243,13 +253,13 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
 	begin >>= 12;
 	end >>= 12;
 
-	__asm__ volatile("dsb ishst");
+	dsb(ishst);
 
 	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-		__asm__("tlbi vae2is, %0" : : "r"(it));
+		tlbi_reg(vae2is, it);
 	}
 
-	__asm__ volatile("dsb ish");
+	dsb(ish);
 }
 
 /**
@@ -267,16 +277,15 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 	begin >>= 12;
 	end >>= 12;
 
-	__asm__ volatile("dsb ishst");
+	dsb(ishst);
 
 	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-		__asm__("tlbi ipas2e1, %0" : : "r"(it));
+		tlbi_reg(ipas2e1, it);
 	}
 
-	__asm__ volatile(
-		"dsb ish\n"
-		"tlbi vmalle1is\n"
-		"dsb ish\n");
+	dsb(ish);
+	tlbi(vmalle1is);
+	dsb(ish);
 }
 
 /**
@@ -294,8 +303,7 @@ void arch_mm_write_back_dcache(void *base, size_t size)
 		__asm__ volatile("dc cvac, %0" : : "r"(line_begin));
 		line_begin += line_size;
 	}
-
-	__asm__ volatile("dsb sy");
+	dsb(sy);
 }
 
 uint64_t arch_mm_mode_to_stage1_attrs(int mode)
@@ -555,10 +563,10 @@ bool arch_mm_init(paddr_t table, bool first)
 	    (3 << 28) | /* RES1 bits. */
 	    0;
 
-	__asm__ volatile("dsb sy");
-	__asm__ volatile("isb");
+	dsb(sy);
+	isb();
 	write_msr(sctlr_el2, v);
-	__asm__ volatile("isb");
+	isb();
 
 	return true;
 }
