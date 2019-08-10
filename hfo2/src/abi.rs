@@ -29,9 +29,9 @@ pub enum HfVCpuRunReturn {
 
     /// The vCPU is blocked waiting for an interrupt. The scheduler MUST take
     /// it off the run queue and not call `hf_vcpu_run` on the vCPU until it
-    /// has injected an interrupt, received `HfVCpuRunReturn::WakeUp` for it 
+    /// has injected an interrupt, received `HfVCpuRunReturn::WakeUp` for it
     /// from another vCPU or the timeout provided in `ns` is not
-    ///  `HF_SLEEP_INDEFINITE` and the specified duration has expired.
+    /// `HF_SLEEP_INDEFINITE` and the specified duration has expired.
     WaitForInterrupt { ns: u64 },
 
     /// The vCPU is blocked waiting for a message. The scheduler MUST take it
@@ -47,7 +47,10 @@ pub enum HfVCpuRunReturn {
     /// the vCPU in question up if it is blocked, or preempt and re-run it if
     /// it is already running somewhere. This gives Hafnium a chance to update
     /// any CPU state which might have changed.
-    WakeUp { vm_id: spci_vm_id_t, vcpu: spci_vcpu_index_t },
+    WakeUp {
+        vm_id: spci_vm_id_t,
+        vcpu: spci_vcpu_index_t,
+    },
 
     /// A message has been sent by the vCPU. The scheduler MUST run a vCPU from
     /// the recipient VM and priority SHOULD be given to those vCPUs that are
@@ -90,8 +93,7 @@ pub unsafe extern "C" fn hf_vcpu_run_return_encode(res: HfVCpuRunReturn) -> u64 
         Yield => 1,
         WaitForInterrupt { ns } => 2 | (ns << 8),
         WaitForMessage { ns } => 3 | (ns << 8),
-        WakeUp { vm_id, vcpu } =>
-            4 | ((vm_id as u64) << 32) | ((vcpu as u64) << 16),
+        WakeUp { vm_id, vcpu } => 4 | ((vm_id as u64) << 32) | ((vcpu as u64) << 16),
         Message { vm_id } => 5 | ((vm_id as u64) << 8),
         NotifyWaiters => 6,
         Aborted => 7,

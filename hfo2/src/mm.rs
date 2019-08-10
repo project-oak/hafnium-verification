@@ -35,12 +35,12 @@ use core::sync::atomic::{fence, AtomicBool, Ordering};
 use reduce::Reduce;
 
 use crate::addr::*;
+use crate::arch::*;
 use crate::mpool::MPool;
 use crate::page::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
-use crate::arch::*;
 
 extern "C" {
     fn arch_mm_absent_pte(level: u8) -> pte_t;
@@ -312,7 +312,10 @@ impl PageTableEntry {
     ///
     /// `page` should be a proper page table.
     unsafe fn table(level: u8, page: Page) -> Self {
-        Self::from_raw(arch_mm_table_pte(level, pa_init(page.into_raw() as uintpaddr_t)))
+        Self::from_raw(arch_mm_table_pte(
+            level,
+            pa_init(page.into_raw() as uintpaddr_t),
+        ))
     }
 
     fn is_present(&self, level: u8) -> bool {
@@ -421,7 +424,12 @@ impl PageTableEntry {
     /// is, if it does not yet point to another table.
     ///
     /// Returns a pointer to the table the entry now points to.
-    fn populate_table<S: Stage>(&mut self, begin: ptable_addr_t, level: u8, mpool: &MPool) -> Option<()> {
+    fn populate_table<S: Stage>(
+        &mut self,
+        begin: ptable_addr_t,
+        level: u8,
+        mpool: &MPool,
+    ) -> Option<()> {
         // Just return if it's already populated.
         if self.is_table(level) {
             return Some(());
@@ -445,7 +453,11 @@ impl PageTableEntry {
                 unsafe {
                     ptr::write(
                         pte,
-                        Self::block(level_below, pa_init(self.inner as usize + i * entry_size), attrs),
+                        Self::block(
+                            level_below,
+                            pa_init(self.inner as usize + i * entry_size),
+                            attrs,
+                        ),
                     );
                 }
             }
@@ -684,7 +696,12 @@ impl RawPageTable {
     /// The value returned in `attrs` is only valid if the function returns true.
     ///
     /// Returns true if the whole range has the same attributes and false otherwise.
-    pub fn get_attrs_level(&self, begin: ptable_addr_t, end: ptable_addr_t, level: u8) -> Option<u64> {
+    pub fn get_attrs_level(
+        &self,
+        begin: ptable_addr_t,
+        end: ptable_addr_t,
+        level: u8,
+    ) -> Option<u64> {
         let ptes = self[addr::index(begin, level)..].iter();
         let begins = BlockIter::new(
             begin,
@@ -1103,9 +1120,7 @@ pub unsafe extern "C" fn mm_vm_get_mode(
     mode: *mut Mode,
 ) -> bool {
     let t = &mut *t;
-    t.get_mode(begin, end)
-        .map(|m| *mode = m)
-        .is_some()
+    t.get_mode(begin, end).map(|m| *mode = m).is_some()
 }
 
 #[no_mangle]
@@ -1131,9 +1146,7 @@ pub unsafe extern "C" fn mm_unmap(
     mpool: *const MPool,
 ) -> bool {
     let mpool = &*mpool;
-    stage1_locked
-        .unmap(begin, end, mpool)
-        .is_some()
+    stage1_locked.unmap(begin, end, mpool).is_some()
 }
 
 #[no_mangle]
