@@ -43,16 +43,19 @@ pub type spci_vcpu_index_t = u16;
 /// it a different name to make the different semantics clear.
 pub type spci_vcpu_count_t = spci_vcpu_index_t;
 
+/// The ID of a interrupt. (TODO: Is it better to be `spci_intid_t`?)
+pub type intid_t = u32;
+
 pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 
 /// The number of virtual interrupt IDs which are supported.
-pub const HF_NUM_INTIDS: usize = 64;
+pub const HF_NUM_INTIDS: intid_t = 64;
 
 /// Interrupt ID returned when there is no interrupt pending.
-pub const HF_INVALID_INTID: u32 = 0xffffffff;
+pub const HF_INVALID_INTID: intid_t = 0xffffffff;
 
 /// The virtual interrupt ID used for the virtual timer.
-pub const HF_VIRTUAL_TIMER_INTID: u32 = 3;
+pub const HF_VIRTUAL_TIMER_INTID: intid_t = 3;
 
 // These constants are originally from build scripts. Fortunately most
 // testing environments have same conditions (MAX_CPUS=8, MAX_VMS=16.) And

@@ -88,10 +88,10 @@ pub enum VCpuStatus {
 #[repr(C)]
 pub struct Interrupts {
     /// Bitfield keeping track of which interrupts are enabled.
-    pub enabled: [u32; HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS],
+    pub enabled: [u32; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
 
     /// Bitfield keeping track of which interrupts are pending.
-    pub pending: [u32; HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS],
+    pub pending: [u32; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
 
     /// The number of interrupts which are currently both enabled and pending. i.e. the number of
     /// bits set in enabled & pending.
