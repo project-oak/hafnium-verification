@@ -267,11 +267,11 @@ unsafe fn api_fetch_waiter(locked_vm: VmLocked) -> *mut WaitEntry {
 /// implemented as copy-paste in Rust.
 unsafe fn internal_interrupt_inject(
     target_vcpu: *mut VCpu,
-    intid: u32,
+    intid: intid_t,
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> i64 {
-    let intid_index = intid / INTERRUPT_REGISTER_BITS as u32;
+    let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
     let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
     let mut ret: i64 = 0;
 
@@ -283,14 +283,14 @@ unsafe fn internal_interrupt_inject(
     //
     // If you change this logic make sure to update the need_vm_lock logic
     // above to match.
-    if (*target_vcpu).interrupts.enabled[intid_index as usize]
-        & !(*target_vcpu).interrupts.pending[intid_index as usize]
+    if (*target_vcpu).interrupts.enabled[intid_index]
+        & !(*target_vcpu).interrupts.pending[intid_index]
         & intid_mask
         == 0
     {
         // goto out;
         // Either way, make it pending.
-        (*target_vcpu).interrupts.pending[intid_index as usize] |= intid_mask;
+        (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
         sl_unlock(&(*target_vcpu).lock);
         return ret;
     }
@@ -303,7 +303,7 @@ unsafe fn internal_interrupt_inject(
     if (*target_vcpu).interrupts.enabled_and_pending_count != 1 {
         // goto out;
         // Either way, make it pending.
-        (*target_vcpu).interrupts.pending[intid_index as usize] |= intid_mask;
+        (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
         sl_unlock(&(*target_vcpu).lock);
         return ret;
     }
@@ -318,7 +318,7 @@ unsafe fn internal_interrupt_inject(
 
     // out:
     // Either way, make it pending.
-    (*target_vcpu).interrupts.pending[intid_index as usize] |= intid_mask;
+    (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
     sl_unlock(&(*target_vcpu).lock);
     return ret;
 }
@@ -1277,11 +1277,11 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut V
 ///
 /// Returns 0 on success, or -1 if the intid is invalid.
 #[no_mangle]
-pub unsafe extern "C" fn api_interrupt_enable(intid: u32, enable: bool, current: *mut VCpu) -> i64 {
-    let intid_index = (intid as usize) / INTERRUPT_REGISTER_BITS;
+pub unsafe extern "C" fn api_interrupt_enable(intid: intid_t, enable: bool, current: *mut VCpu) -> i64 {
+    let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
     let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
 
-    if intid as usize >= HF_NUM_INTIDS {
+    if intid >= HF_NUM_INTIDS {
         return -1;
     }
 
@@ -1316,13 +1316,13 @@ pub unsafe extern "C" fn api_interrupt_enable(intid: u32, enable: bool, current:
 /// acknowledges it (i.e. marks it as no longer pending). Returns
 /// HF_INVALID_INTID if there are no pending interrupts.
 #[no_mangle]
-pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> u32 {
+pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> intid_t {
     let mut first_interrupt = HF_INVALID_INTID;
 
     // Find the first enabled pending interrupt ID, returns it, and
     // deactive it.
     sl_lock(&(*current).lock);
-    for i in 0..(HF_NUM_INTIDS / INTERRUPT_REGISTER_BITS) {
+    for i in 0..(HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS) {
         let enabled_and_pending =
             (*current).interrupts.enabled[i] & (*current).interrupts.pending[i];
         if enabled_and_pending != 0 {
@@ -1366,13 +1366,13 @@ unsafe fn is_injection_allowed(target_vm_id: spci_vm_id_t, current: *const VCpu)
 pub unsafe extern "C" fn api_interrupt_inject(
     target_vm_id: spci_vm_id_t,
     target_vcpu_idx: spci_vcpu_index_t,
-    intid: u32,
+    intid: intid_t,
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> i64 {
     let target_vm = vm_find(target_vm_id);
 
-    if intid as usize >= HF_NUM_INTIDS {
+    if intid >= HF_NUM_INTIDS {
         return -1;
     }
 
