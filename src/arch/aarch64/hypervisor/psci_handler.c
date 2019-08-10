@@ -282,7 +282,7 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		cpu_id_t target_affinity = arg0;
 		uint32_t lowest_affinity_level = arg1;
 		struct vm *vm = vcpu->vm;
-		struct vcpu_locked target_vcpu;
+		struct vcpu_execution_locked target_vcpu;
 		spci_vcpu_index_t target_vcpu_index =
 			vcpu_id_to_index(target_affinity);
 
