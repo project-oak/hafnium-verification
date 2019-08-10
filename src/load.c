@@ -87,7 +87,7 @@ bool load_primary(struct mm_stage1_locked stage1_locked,
 
 	{
 		struct vm *vm;
-		struct vcpu_locked vcpu_locked;
+		struct vcpu_execution_locked vcpu_execution_locked;
 
 		if (!vm_init(MAX_CPUS, ppool, &vm)) {
 			dlog("Unable to initialise primary vm\n");
@@ -114,9 +114,9 @@ bool load_primary(struct mm_stage1_locked stage1_locked,
 			return false;
 		}
 
-		vcpu_locked = vcpu_lock(vm_get_vcpu(vm, 0));
-		vcpu_on(vcpu_locked, ipa_from_pa(primary_begin), kernel_arg);
-		vcpu_unlock(&vcpu_locked);
+		vcpu_execution_locked = vcpu_lock(vm_get_vcpu(vm, 0));
+		vcpu_on(vcpu_execution_locked, ipa_from_pa(primary_begin), kernel_arg);
+		vcpu_unlock(&vcpu_execution_locked);
 	}
 
 	return true;
