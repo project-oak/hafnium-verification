@@ -36,7 +36,7 @@ use crate::vm::*;
 // To eliminate the risk of deadlocks, we define a partial order for the acquisition of locks held
 // concurrently by the same physical CPU. Our current ordering requirements are as follows:
 //
-// vm::lock -> vcpu::lock -> mm_stage1_lock -> dlog sl
+// vcpu::execution_lock -> vm::lock -> vcpu::interrupts_lock -> mm_stage1_lock -> dlog sl
 //
 // Locks of the same kind require the lock of lowest address to be locked first, see
 // `sl_lock_both()`.
@@ -89,9 +89,7 @@ unsafe fn api_switch_to_primary(
     arch_regs_set_retval(&mut (*next).regs, primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
-    sl_lock(&(*current).lock);
     (*current).state = secondary_state;
-    sl_unlock(&(*current).lock);
 
     next
 }
@@ -226,9 +224,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
 /// and can therefore be used by other pcpus.
 #[no_mangle]
 pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
-    sl_lock(&(*vcpu).lock);
-    (*vcpu).regs_available = true;
-    sl_unlock(&(*vcpu).lock);
+    sl_unlock(&(*vcpu).execution_lock);
 }
 
 /// Retrieves the next waiter and removes it from the wait list if the VM's
@@ -272,7 +268,7 @@ unsafe fn internal_interrupt_inject(
     let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
     let mut ret: i64 = 0;
 
-    sl_lock(&(*target_vcpu).lock);
+    sl_lock(&(*target_vcpu).interrupts_lock);
 
     // We only need to change state and (maybe) trigger a virtual IRQ if it
     // is enabled and was not previously pending. Otherwise we can skip
@@ -288,7 +284,7 @@ unsafe fn internal_interrupt_inject(
         // goto out;
         // Either way, make it pending.
         (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
-        sl_unlock(&(*target_vcpu).lock);
+        sl_unlock(&(*target_vcpu).interrupts_lock);
         return ret;
     }
 
@@ -301,7 +297,7 @@ unsafe fn internal_interrupt_inject(
         // goto out;
         // Either way, make it pending.
         (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
-        sl_unlock(&(*target_vcpu).lock);
+        sl_unlock(&(*target_vcpu).interrupts_lock);
         return ret;
     }
 
@@ -316,12 +312,18 @@ unsafe fn internal_interrupt_inject(
     // out:
     // Either way, make it pending.
     (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
-    sl_unlock(&(*target_vcpu).lock);
+    sl_unlock(&(*target_vcpu).interrupts_lock);
     return ret;
 }
 
 /// Prepares the vcpu to run by updating its state and fetching whether a return
 /// value needs to be forced onto the vCPU.
+///
+/// Returns:
+///  - false if it fails to prepare `vcpu` to run.
+///  - - true if it succeeds to prepare `vcpu` to run. In this case,
+///    `vcpu.execution_lock` has acquired.
+///
 /// TODO: Porting this function into Rust impacted test performance badly.
 /// In order to pass all test suites,
 ///  - currently, enlong the time limits in test/hftest/hftest.py and
@@ -333,7 +335,6 @@ unsafe fn api_vcpu_prepare_run(
     vcpu: *mut VCpu,
     run_ret: *mut HfVCpuRunReturn,
 ) -> bool {
-    let mut need_vm_lock;
     let ret;
 
     // Wait until the registers become available. All locks must be released
@@ -345,42 +346,20 @@ unsafe fn api_vcpu_prepare_run(
     // when it is going to be needed. This ensures there are no inter-vCPU
     // dependencies in the common run case meaning the sensitive context
     // switch performance is consistent.
-    loop {
-        sl_lock(&(*vcpu).lock);
+    if !sl_try_lock(&(*vcpu).execution_lock) {
+        // vCPU is running or prepared to run on another pCPU.
+        //
+        // It's ok not to return the sleep duration here because the other
+        // physical CPU that is currently running this vCPU will return the
+        // sleep duration if needed. The default return value is
+        // HfVCpuRunReturn::WaitForInterrupt, so no need to set it explicitly.
+        return false;
+    }
 
-        // The VM needs to be locked to deliver mailbox messages.
-        need_vm_lock = (*vcpu).state == VCpuStatus::BlockedMailbox;
-        if need_vm_lock {
-            sl_unlock(&(*vcpu).lock);
-            sl_lock(&(*(*vcpu).vm).lock);
-            sl_lock(&(*vcpu).lock);
-        }
-
-        if (*vcpu).regs_available {
-            break;
-        }
-
-        if (*vcpu).state == VCpuStatus::Running {
-            // vCPU is running on another pCPU.
-            //
-            // It's ok not to return the sleep duration here because the other
-            // physical CPU that is currently running this  vCPU will return
-            // the sleep duration if needed. The default return value is
-            // HF_VCPU_RUN_WAIT_FOR_INTERRUPT, so no need to set it explicitly.
-            ret = false;
-            // goto out;
-            sl_unlock(&(*vcpu).lock);
-            if need_vm_lock {
-                sl_unlock(&(*(*vcpu).vm).lock);
-            }
-
-            return ret;
-        }
-
-        sl_unlock(&(*vcpu).lock);
-        if need_vm_lock {
-            sl_unlock(&(*(*vcpu).vm).lock);
-        }
+    // The VM needs to be locked to deliver mailbox messages.
+    let need_vm_lock = (*vcpu).state == VCpuStatus::BlockedMailbox;
+    if need_vm_lock {
+        sl_lock(&(*(*vcpu).vm).lock);
     }
 
     if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
@@ -394,23 +373,29 @@ unsafe fn api_vcpu_prepare_run(
         }
         ret = false;
         // goto out;
-        sl_unlock(&(*vcpu).lock);
         if need_vm_lock {
             sl_unlock(&(*(*vcpu).vm).lock);
+        }
+
+        if !ret {
+            sl_unlock(&(*vcpu).execution_lock);
         }
 
         return ret;
     }
 
     match (*vcpu).state {
-        VCpuStatus::Running | VCpuStatus::Off | VCpuStatus::Aborted => {
+        VCpuStatus::Off | VCpuStatus::Aborted => {
             ret = false;
             // goto out;
-            sl_unlock(&(*vcpu).lock);
             if need_vm_lock {
                 sl_unlock(&(*(*vcpu).vm).lock);
             }
 
+            if !ret {
+                sl_unlock(&(*vcpu).execution_lock);
+            }
+            
             return ret;
         }
 
@@ -452,9 +437,12 @@ unsafe fn api_vcpu_prepare_run(
 
             ret = false;
             // goto out;
-            sl_unlock(&(*vcpu).lock);
             if need_vm_lock {
                 sl_unlock(&(*(*vcpu).vm).lock);
+            }
+
+            if !ret {
+                sl_unlock(&(*vcpu).execution_lock);
             }
 
             return ret;
@@ -467,19 +455,16 @@ unsafe fn api_vcpu_prepare_run(
 
     // It has been decided that the vCPU should be run.
     (*vcpu).cpu = (*current).cpu;
-    (*vcpu).state = VCpuStatus::Running;
-
-    // Mark the registers as unavailable now that we're about to reflect them
-    // onto the real registers. This will also prevent another physical CPU
-    // from trying to read these registers.
-    (*vcpu).regs_available = false;
 
     ret = true;
 
     // out:
-    sl_unlock(&(*vcpu).lock);
     if need_vm_lock {
         sl_unlock(&(*(*vcpu).vm).lock);
+    }
+
+    if !ret {
+        sl_unlock(&(*vcpu).execution_lock);
     }
 
     return ret;
@@ -1288,7 +1273,7 @@ pub unsafe extern "C" fn api_interrupt_enable(
         return -1;
     }
 
-    sl_lock(&(*current).lock);
+    sl_lock(&(*current).interrupts_lock);
     if enable {
         // If it is pending and was not enabled before, increment the count.
         if ((*current).interrupts.pending[intid_index]
@@ -1311,7 +1296,7 @@ pub unsafe extern "C" fn api_interrupt_enable(
         (*current).interrupts.enabled[intid_index] &= !intid_mask;
     }
 
-    sl_unlock(&(*current).lock);
+    sl_unlock(&(*current).interrupts_lock);
     0
 }
 
@@ -1324,7 +1309,7 @@ pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> intid_t {
 
     // Find the first enabled pending interrupt ID, returns it, and
     // deactive it.
-    sl_lock(&(*current).lock);
+    sl_lock(&(*current).interrupts_lock);
     for i in 0..(HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS) {
         let enabled_and_pending =
             (*current).interrupts.enabled[i] & (*current).interrupts.pending[i];
@@ -1339,7 +1324,7 @@ pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> intid_t {
         }
     }
 
-    sl_unlock(&(*current).lock);
+    sl_unlock(&(*current).interrupts_lock);
     first_interrupt
 }
 
