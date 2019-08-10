@@ -72,9 +72,6 @@ pub enum VCpuStatus {
     /// The vcpu is ready to be run.
     Ready,
 
-    /// The vcpu is currently running.
-    Running,
-
     /// The vcpu is waiting for a message.
     BlockedMailbox,
 
@@ -108,7 +105,13 @@ pub struct VCpuFaultInfo {
 
 #[repr(C)]
 pub struct VCpu {
-    pub lock: RawSpinLock,
+    /// Protects accesses to vCPU's state and architecture registers. If a
+    /// vCPU is running, its execution lock is logically held by the
+    /// running pCPU.
+    pub execution_lock: RawSpinLock,
+
+    /// Protects accesses to vCPU's interrupts.
+    pub interrupts_lock: RawSpinLock,
 
     /// The state is only changed in the context of the vCPU being run. This ensures the scheduler
     /// can easily keep track of the vCPU state as transitions are indicated by the return code from
@@ -119,17 +122,12 @@ pub struct VCpu {
     pub vm: *mut Vm,
     pub regs: ArchRegs,
     pub interrupts: Interrupts,
-
-    /// Determine whether the 'regs' field is available for use. This is set
-    /// to false when a vCPU is about to run on a physical CPU, and is set
-    /// back to true when it is descheduled.
-    pub regs_available: bool,
 }
 
 /// Encapsulates a vCPU whose lock is held.
 #[repr(C)]
 #[derive(Copy, Clone)]
-pub struct VCpuLocked {
+pub struct VCpuExecutionLocked {
     vcpu: *mut VCpu,
 }
 
@@ -241,10 +239,10 @@ pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) ->
     if !prev {
         let vm = vm_find(HF_PRIMARY_VM_ID);
         let vcpu = vm_get_vcpu(vm, cpu_index(c) as u16);
-        let mut vcpu_locked = vcpu_lock(vcpu);
+        let mut vcpu_execution_locked = vcpu_lock(vcpu);
 
-        vcpu_on(vcpu_locked, entry, arg);
-        vcpu_unlock(&mut vcpu_locked);
+        vcpu_on(vcpu_execution_locked, entry, arg);
+        vcpu_unlock(&mut vcpu_execution_locked);
     }
 
     prev
@@ -272,33 +270,34 @@ pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
 
 /// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuLocked {
-    sl_lock(&(*vcpu).lock);
+pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
+    sl_lock(&(*vcpu).execution_lock);
 
-    VCpuLocked { vcpu }
+    VCpuExecutionLocked { vcpu }
 }
 
 /// Unlocks a vCPU previously locked with vcpu_lock, and updates `locked` to
 /// reflect the fact that the vCPU is no longer locked.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuLocked) {
-    sl_unlock(&(*(*locked).vcpu).lock);
+pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
+    sl_unlock(&(*(*locked).vcpu).execution_lock);
     (*locked).vcpu = ptr::null_mut();
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
     memset_s(vcpu as _, mem::size_of::<VCpu>(), 0, mem::size_of::<VCpu>());
-    sl_init(&mut (*vcpu).lock);
-    (*vcpu).regs_available = true;
+    sl_init(&mut (*vcpu).execution_lock);
+    sl_init(&mut (*vcpu).interrupts_lock);
     (*vcpu).vm = vm;
     (*vcpu).state = VCpuStatus::Off;
 }
 
 /// Initialise the registers for the given vCPU and set the state to
-/// VCPU_STATE_READY. The caller must hold the vCPU lock while calling this.
+/// VCpuStatus::Ready. The caller must hold the vCPU execution lock while
+/// calling this.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_on(vcpu: VCpuLocked, entry: ipaddr_t, arg: uintreg_t) {
+pub unsafe extern "C" fn vcpu_on(vcpu: VCpuExecutionLocked, entry: ipaddr_t, arg: uintreg_t) {
     arch_regs_set_pc_arg(&mut (*vcpu.vcpu).regs, entry, arg);
     (*vcpu.vcpu).state = VCpuStatus::Ready;
 }
@@ -315,7 +314,7 @@ pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
 /// turning vCPUs on and off. Note that aborted still counts as on in this
 /// context.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuLocked) -> bool {
+pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
     match (*vcpu.vcpu).state {
         VCpuStatus::Off => true,
         _ =>
@@ -340,14 +339,14 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
     entry: ipaddr_t,
     arg: uintreg_t,
 ) -> bool {
-    let mut vcpu_locked;
+    let mut vcpu_execution_locked;
     let vm = (*vcpu).vm;
     let vcpu_was_off;
 
     assert!((*vm).id != HF_PRIMARY_VM_ID);
 
-    vcpu_locked = vcpu_lock(vcpu);
-    vcpu_was_off = vcpu_is_off(vcpu_locked);
+    vcpu_execution_locked = vcpu_lock(vcpu);
+    vcpu_was_off = vcpu_is_off(vcpu_execution_locked);
     if vcpu_was_off {
         // Set vCPU registers to a clean state ready for boot. As this
         // is a secondary which can migrate between pCPUs, the ID of the
@@ -360,10 +359,10 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
             vcpu_index(vcpu) as cpu_id_t,
             (*vm).ptable.root,
         );
-        vcpu_on(vcpu_locked, entry, arg);
+        vcpu_on(vcpu_execution_locked, entry, arg);
     }
 
-    vcpu_unlock(&mut vcpu_locked);
+    vcpu_unlock(&mut vcpu_execution_locked);
     vcpu_was_off
 }
 
