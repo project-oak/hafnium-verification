@@ -70,8 +70,7 @@ unsafe fn api_switch_to_primary(
     // If the secondary is blocked but has a timer running, sleep until the
     // timer fires rather than indefinitely.
     match &mut primary_ret {
-        HfVCpuRunReturn::WaitForInterrupt { ns }
-        | HfVCpuRunReturn::WaitForMessage { ns } => {
+        HfVCpuRunReturn::WaitForInterrupt { ns } | HfVCpuRunReturn::WaitForMessage { ns } => {
             *ns = if arch_timer_enabled_current() {
                 arch_timer_remaining_ns_current()
             } else {
@@ -498,7 +497,9 @@ pub unsafe extern "C" fn api_vcpu_run(
 ) -> u64 {
     let vm;
     let vcpu;
-    let mut ret = HfVCpuRunReturn::WaitForInterrupt { ns: HF_SLEEP_INDEFINITE };
+    let mut ret = HfVCpuRunReturn::WaitForInterrupt {
+        ns: HF_SLEEP_INDEFINITE,
+    };
 
     // Only the primary VM can switch vcpus.
     if (*(*current).vm).id != HF_PRIMARY_VM_ID {
@@ -1009,7 +1010,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         let architected_header = spci_get_architected_message_header((*from).mailbox.send);
 
         if from_msg_replica.length as usize > message_buffer.len() {
-            ret =SpciReturn::InvalidParameters;
+            ret = SpciReturn::InvalidParameters;
             // goto out;
             vm_unlock(&mut vm_from_to_lock.vm1);
             vm_unlock(&mut vm_from_to_lock.vm2);
@@ -1067,7 +1068,6 @@ pub unsafe extern "C" fn api_spci_msg_send(
         );
         *to_msg = from_msg_replica;
     }
-
 
     let primary_ret = HfVCpuRunReturn::Message { vm_id: (*to).id };
     ret = SpciReturn::Success;
@@ -1156,6 +1156,8 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     // Switch back to primary vm to block.
     {
         let run_return = HfVCpuRunReturn::WaitForMessage {
+            // TODO: `api_switch_to_primary` always initialize this variable,
+            // but it would be better if we don't use `mem::uninitialized()`.
             ns: mem::uninitialized(),
         };
 
@@ -1277,7 +1279,11 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut V
 ///
 /// Returns 0 on success, or -1 if the intid is invalid.
 #[no_mangle]
-pub unsafe extern "C" fn api_interrupt_enable(intid: intid_t, enable: bool, current: *mut VCpu) -> i64 {
+pub unsafe extern "C" fn api_interrupt_enable(
+    intid: intid_t,
+    enable: bool,
+    current: *mut VCpu,
+) -> i64 {
     let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
     let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
 
@@ -1620,15 +1626,12 @@ pub unsafe extern "C" fn api_share_memory(
     let (from_mode, to_mode) = match share {
         HfShare::Give => (
             (Mode::INVALID | Mode::UNOWNED),
-            (Mode::R | Mode::W | Mode::X)
+            (Mode::R | Mode::W | Mode::X),
         ),
-        HfShare::Lend => (
-            Mode::INVALID,
-            (Mode::R | Mode::W | Mode::X | Mode::UNOWNED)
-        ),
+        HfShare::Lend => (Mode::INVALID, (Mode::R | Mode::W | Mode::X | Mode::UNOWNED)),
         HfShare::Share => (
             (Mode::R | Mode::W | Mode::X | Mode::SHARED),
-            (Mode::R | Mode::W | Mode::X | Mode::UNOWNED | Mode::SHARED)
+            (Mode::R | Mode::W | Mode::X | Mode::UNOWNED | Mode::SHARED),
         ),
     };
 

@@ -18,9 +18,9 @@ use core::marker::PhantomData;
 use core::mem;
 
 use crate::addr::*;
+use crate::mm::*;
 use crate::types::*;
 use crate::vm::*;
-use crate::mm::*;
 
 pub const SPCI_VERSION_MAJOR: i32 = 0x0;
 pub const SPCI_VERSION_MINOR: i32 = 0x9;
