@@ -109,9 +109,8 @@ pub unsafe extern "C" fn api_preempt(current: *mut VCpu) -> *mut VCpu {
 #[no_mangle]
 pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *mut VCpu {
     let ret = HfVCpuRunReturn::WaitForInterrupt {
-        // TODO: `api_switch_to_primary` always initialize this variable,
-        // but it would be better if we don't use `mem::uninitialized()`.
-        ns: mem::uninitialized(),
+        // `api_switch_to_primary` always initializes this variable.
+        ns: HF_SLEEP_INDEFINITE,
     };
 
     api_switch_to_primary(current, ret, VCpuStatus::BlockedInterrupt)
@@ -121,9 +120,8 @@ pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *mut VCpu
 #[no_mangle]
 pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
     let ret = HfVCpuRunReturn::WaitForInterrupt {
-        // TODO: `api_switch_to_primary` always initialize this variable,
-        // but it would be better if we don't use `mem::uninitialized()`.
-        ns: mem::uninitialized(),
+        // `api_switch_to_primary` always initializes this variable.
+        ns: HF_SLEEP_INDEFINITE,
     };
 
     // Disable the timer, so the scheduler doesn't get told to call back
@@ -1156,9 +1154,8 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     // Switch back to primary vm to block.
     {
         let run_return = HfVCpuRunReturn::WaitForMessage {
-            // TODO: `api_switch_to_primary` always initialize this variable,
-            // but it would be better if we don't use `mem::uninitialized()`.
-            ns: mem::uninitialized(),
+            // `api_switch_to_primary` always initializes this variable.
+            ns: HF_SLEEP_INDEFINITE,
         };
 
         *next = api_switch_to_primary(current, run_return, VCpuStatus::BlockedMailbox);
