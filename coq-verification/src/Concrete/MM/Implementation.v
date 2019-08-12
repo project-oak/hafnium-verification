@@ -18,6 +18,7 @@ Require Import Coq.NArith.BinNat.
 Require Import Coq.Lists.List.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
+Require Import Hafnium.Concrete.Parameters.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Util.Loops.
 Require Import Hafnium.Concrete.Assumptions.Addr.

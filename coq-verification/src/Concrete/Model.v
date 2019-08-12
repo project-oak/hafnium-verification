@@ -17,6 +17,7 @@
 Require Import Coq.Lists.List.
 Require Import Coq.Arith.PeanoNat.
 Require Import Hafnium.AbstractModel.
+Require Import Hafnium.Concrete.Parameters.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Util.Tactics.

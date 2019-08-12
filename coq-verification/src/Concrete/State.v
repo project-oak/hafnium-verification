@@ -21,6 +21,7 @@ Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.PageTablesWf.
+Require Import Hafnium.Concrete.Parameters.
 Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Concrete.Assumptions.Addr.
 Require Import Hafnium.Concrete.Assumptions.ArchMM.
@@ -32,27 +33,6 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 
 (*** This file defines the state type for the concrete model and relates it to
      the abstract state. ***)
-
-Record vm :=
-  {
-    vm_ptable : mm_ptable;
-    vm_id : nat;
-  }.
-
-(* N.B. there can be multiple page tables at the root level *)
-Definition vm_root_tables (v : vm) : list ptable_pointer :=
-  ptr_from_va (va_from_pa v.(vm_ptable).(root)).
-
-(* starting parameters -- don't change *)
-Class concrete_params :=
-  {
-    vms : list vm;
-    hafnium_ptable : mm_ptable;
-  }.
-
-(* N.B. there can be multiple page tables at the root level *)
-Definition hafnium_root_tables {cp : concrete_params} : list ptable_pointer :=
-  ptr_from_va (va_from_pa hafnium_ptable.(root)).
 
 Record concrete_state :=
   {
@@ -77,28 +57,8 @@ Definition reassign_pointer
     api_page_pool := s.(api_page_pool);
   |}.
 
-Definition all_root_ptables {cp : concrete_params} : list mm_ptable :=
-  hafnium_ptable :: map vm_ptable vms.
-
-Definition all_root_ptable_pointers {cp : concrete_params}
-  : list ptable_pointer := hafnium_root_tables ++ flat_map vm_root_tables vms.
-
-Class params_valid {cp : concrete_params} :=
-  {
-    correct_number_of_root_tables_stage1 :
-      length (ptr_from_va (va_from_pa (hafnium_ptable.(root))))
-      = arch_mm_stage1_root_table_count;
-    correct_number_of_root_tables_stage2 :
-      forall t,
-        In t (map vm_ptable vms) ->
-        length (ptr_from_va (va_from_pa t.(root)))
-        = arch_mm_stage2_root_table_count;
-    no_duplicate_ptables : NoDup all_root_ptables;
-    no_duplicate_ids : NoDup (map vm_id vms)
-  }.
-
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
-  locations_exclusive s.(ptable_deref) (map vm_ptable vms) hafnium_ptable s.(api_page_pool)
+  locations_exclusive s.(ptable_deref) s.(api_page_pool)
   /\ Forall (root_ptable_wf s.(ptable_deref) Stage2) (map vm_ptable vms)
   /\ root_ptable_wf s.(ptable_deref) Stage1 hafnium_ptable
 .
@@ -109,12 +69,10 @@ Definition vm_find {cp : concrete_params} (vid : nat) : option vm :=
 Definition stage2_mode_has_value
            (s : concrete_state) (v : vm) (a : paddr_t)
            (mode_flag : N) (expected_value : bool) : Prop :=
-  exists (e : pte_t) (lvl : nat),
-    page_lookup s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) = Some (e, lvl)
-    /\ let attrs := arch_mm_pte_attrs e lvl in
-       let mode := arch_mm_stage2_attrs_to_mode attrs in
-       let flag_set := ((mode & mode_flag) != 0)%N in
-       flag_set = expected_value.
+  let attrs := page_attrs s.(ptable_deref) (vm_ptable v) Stage2 a.(pa_addr) in
+  let mode := arch_mm_stage2_attrs_to_mode attrs in
+  let flag_set := ((mode & mode_flag) != 0)%N in
+  flag_set = expected_value.
 
 Definition vm_page_valid {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=

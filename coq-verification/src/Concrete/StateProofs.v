@@ -18,6 +18,7 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.NArith.BinNat.
 Require Import Coq.Lists.List.
 Require Import Hafnium.AbstractModel.
+Require Import Hafnium.Concrete.Parameters.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
@@ -39,11 +40,6 @@ Require Import Hafnium.Concrete.MM.Datatypes.
 Section Proofs.
   Context {ap : @abstract_state_parameters paddr_t nat}
           {cp : concrete_params} {cp_valid : params_valid}.
-
-  Local Notation has_location deref :=
-   (has_location deref (map vm_ptable vms) hafnium_ptable).
-  Local Notation locations_exclusive deref :=
-   (locations_exclusive deref (map vm_ptable vms) hafnium_ptable).
 
   (* if two concrete states are equivalent and an abstract state represents one
      of them, then it also represents the other. *)
@@ -201,8 +197,8 @@ Section Proofs.
   Qed.
 
   Lemma has_location_update_deref deref ppool ptr t root_ptable idxs :
-    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
-    has_location (update_deref deref ptr t) ppool ptr (table_loc ppool root_ptable idxs).
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    has_location (update_deref deref ptr t) ptr (table_loc ppool root_ptable idxs).
   Proof.
     inversion 1; basics; constructor; auto using index_sequences_update_deref.
   Qed.
@@ -260,9 +256,6 @@ Section Proofs.
      [max_level + 2], because it's [0..(max_level + 1)] *inclusive*. *)
   Definition indices_from_address (a : uintpaddr_t) (stage : Stage) : list nat :=
     map (fun lvl => get_index stage lvl a) (rev (seq 0 (S (S (max_level stage))))).
-
-  Definition address_matches_indices (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : Prop :=
-    firstn (length idxs) (indices_from_address a stage) = idxs.
 
   Definition address_matches_indices_bool
              (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : bool :=
@@ -328,33 +321,33 @@ Section Proofs.
       abst
       vms.
 
+  (* N.B. level is the level above the table *)
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
              (table_loc : list nat)
              (t : mm_page_table) (level : nat) (attrs : attributes)
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
-    forall (a : uintvaddr_t) (pte : pte_t) (lvl : nat),
-      address_matches_indices (pa_from_va (va_init a)).(pa_addr) table_loc stage ->
+    forall (a : uintvaddr_t),
+      address_matches_indices stage (pa_from_va (va_init a)).(pa_addr) table_loc ->
       (begin <= a < end_)%N ->
-      level <= max_level stage ->
-      page_lookup' ptable_deref a t (S level) stage = Some (pte, lvl) ->
-      arch_mm_pte_attrs pte lvl = attrs.
+      level = level_from_indices stage table_loc ->
+      page_attrs' ptable_deref a t level stage = attrs.
 
+  (* N.B. level is the level above the table *)
   Definition attrs_outside_range_unchanged
              (deref : ptable_pointer -> mm_page_table)
              (table_loc : list nat)
              (t_orig t : mm_page_table) (level : nat) (attrs : attributes)
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
-    forall (a_v : uintvaddr_t) (pte_orig : pte_t) (lvl_orig : nat),
+    forall (a_v : uintvaddr_t),
       (a_v < begin \/ end_ <= a_v)%N ->
       let a : uintpaddr_t := pa_addr (pa_from_va (va_init a_v)) in
-      address_matches_indices a table_loc stage ->
-      level <= max_level stage ->
-      page_lookup' deref a t_orig (S level) stage = Some (pte_orig, lvl_orig) ->
-      (exists pte lvl,
-          page_lookup' deref a t (S level) stage = Some (pte, lvl)
-          /\ arch_mm_pte_attrs pte lvl = arch_mm_pte_attrs pte_orig lvl_orig).
+      address_matches_indices stage a table_loc ->
+      level = level_from_indices stage table_loc ->
+      page_attrs' deref a t_orig level stage
+      = page_attrs' deref a t level stage.
 
+  (* N.B. level is the level above the table *)
   Definition attrs_changed_in_range
              (ptable_deref : ptable_pointer -> mm_page_table)
              (table_loc : list nat)
@@ -366,20 +359,14 @@ Section Proofs.
 
   Definition has_location_in_state conc ptr idxs : Prop :=
     exists root_ptable,
-      has_location (ptable_deref conc) (api_page_pool conc) ptr
+      has_location (ptable_deref conc) ptr
                    (table_loc conc.(api_page_pool) root_ptable idxs).
-
-  Definition root_ptable_matches_stage root_ptable stage : Prop :=
-    match stage with
-    | Stage1 => root_ptable = hafnium_ptable
-    | Stage2 => In root_ptable (map vm_ptable vms)
-    end.
 
   Lemma index_sequences_has_location_stage2 deref ppool ptr v :
     In v vms ->
     index_sequences_to_pointer deref ptr (vm_ptable v) Stage2 <> nil ->
     exists idxs,
-      has_location deref ppool ptr (table_loc ppool (vm_ptable v) idxs).
+      has_location deref ptr (table_loc ppool (vm_ptable v) idxs).
   Proof.
     basics.
     match goal with H : ?ls <> nil |- _ =>
@@ -390,7 +377,7 @@ Section Proofs.
   Lemma index_sequences_has_location_stage1 deref ppool ptr :
     index_sequences_to_pointer deref ptr hafnium_ptable Stage1 <> nil ->
     exists idxs,
-      has_location deref ppool ptr (table_loc ppool hafnium_ptable idxs).
+      has_location deref ptr (table_loc ppool hafnium_ptable idxs).
   Proof.
     basics.
     match goal with H : ?ls <> nil |- _ =>
@@ -408,7 +395,7 @@ Section Proofs.
   Lemma addresses_under_pointer_in_range_pointer_absent
         deref ppool ptr root_ptable begin end_ stage :
     (exists idxs,
-        has_location deref ppool ptr (table_loc ppool root_ptable idxs)) ->
+        has_location deref ptr (table_loc ppool root_ptable idxs)) ->
     locations_exclusive deref ppool ->
     forall root_ptable2,
       root_ptable <> root_ptable2 ->
@@ -423,7 +410,7 @@ Section Proofs.
     { apply filter_none; basics.
       cbv [address_matches_indices_bool]; cbn [hd length Nat.eqb negb].
       apply Bool.andb_false_r. }
-    { assert (has_location deref ppool ptr (table_loc ppool root_ptable2 idxs2)).
+    { assert (has_location deref ptr (table_loc ppool root_ptable2 idxs2)).
       { cbv [all_root_ptables root_ptable_matches_stage] in *.
         pose proof hafnium_ptable_nodup.
         invert_list_properties; destruct stage; constructor; try rewrite Hidxs2;
@@ -437,7 +424,7 @@ Section Proofs.
     In v vms ->
     (exists idxs,
         has_location
-          (ptable_deref conc) ppool ptr
+          (ptable_deref conc) ptr
           (table_loc ppool (vm_ptable v) idxs)) ->
     locations_exclusive (ptable_deref conc) ppool ->
     abstract_reassign_pointer_for_entity
@@ -458,7 +445,7 @@ Section Proofs.
     In v vms ->
     (exists idxs,
         has_location
-          (ptable_deref conc) ppool ptr
+          (ptable_deref conc) ptr
           (table_loc ppool hafnium_ptable idxs)) ->
     locations_exclusive (ptable_deref conc) ppool ->
     abstract_reassign_pointer_for_entity
@@ -551,7 +538,7 @@ Section Proofs.
     (* ptr is located under v's root ptable *)
     (exists idxs,
         has_location
-          (ptable_deref conc) ppool ptr
+          (ptable_deref conc) ptr
           (table_loc ppool (vm_ptable v) idxs)) ->
     (* ptr is not located anywhere else *)
     locations_exclusive conc.(ptable_deref) ppool ->
@@ -591,7 +578,7 @@ Section Proofs.
     (* ptr is located under hafnium's root ptable *)
     (exists idxs,
         has_location
-          (ptable_deref conc) ppool ptr
+          (ptable_deref conc) ptr
           (table_loc ppool hafnium_ptable idxs)) ->
     (* ptr is not located anywhere else *)
     locations_exclusive conc.(ptable_deref) ppool ->
@@ -628,7 +615,7 @@ Section Proofs.
     (* ptr is located under v's root ptable *)
     (exists idxs,
         has_location
-          (ptable_deref conc) ppool ptr
+          (ptable_deref conc) ptr
           (table_loc ppool (vm_ptable v) idxs)) ->
     (* ptr is not located anywhere else *)
     locations_exclusive conc.(ptable_deref) ppool ->
@@ -667,7 +654,7 @@ Section Proofs.
         abst conc ptr attrs begin end_ (a : paddr_t) ppool :
     (* ptr is located under hafnium's root ptable *)
     (exists idxs,
-        has_location (ptable_deref conc) ppool ptr
+        has_location (ptable_deref conc) ptr
           (table_loc ppool hafnium_ptable idxs)) ->
     (* ptr is not located anywhere else *)
     locations_exclusive conc.(ptable_deref) ppool ->
@@ -719,7 +706,7 @@ Section Proofs.
 
   (* Modifying the stage-1 table doesn't change the VM page tables *)
   Lemma vm_table_unchanged_stage1 deref ptr idxs t ppool :
-    has_location deref ppool ptr (table_loc ppool hafnium_ptable idxs) ->
+    has_location deref ptr (table_loc ppool hafnium_ptable idxs) ->
     locations_exclusive deref ppool ->
     locations_exclusive (update_deref deref ptr t) ppool ->
     forall v,
@@ -748,7 +735,7 @@ Section Proofs.
 
   (* Modifying the stage-2 tables doesn't change hafnium's table *)
   Lemma hafnium_table_unchanged_stage2 deref ptr idxs t ppool root_ptable :
-    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
     In root_ptable (map vm_ptable vms) ->
     locations_exclusive deref ppool ->
     locations_exclusive (update_deref deref ptr t) ppool ->
@@ -772,7 +759,7 @@ Section Proofs.
 
   (* if the changed pointer is in a different VM's page table, then other VMs' page tables are unchanged *)
   Lemma vm_table_unchanged_stage2 v1 v2 deref ptr t ppool idxs :
-    has_location deref ppool ptr (table_loc ppool (vm_ptable v1) idxs) ->
+    has_location deref ptr (table_loc ppool (vm_ptable v1) idxs) ->
     locations_exclusive deref ppool ->
     locations_exclusive (update_deref deref ptr t) ppool ->
     In v1 vms ->
@@ -826,11 +813,10 @@ Section Proofs.
     stage2_mode_has_value conc v a flag flag_value->
     stage2_mode_has_value conc' v a flag flag_value.
   Proof.
-    cbv [stage2_mode_has_value vm_page_table_unchanged].
-    basics; do 2 eexists; split; [|solver].
+    cbv [stage2_mode_has_value vm_page_table_unchanged page_attrs].
+    basics.
     pose_in_vm_ptable_map.
-    erewrite page_lookup_proper; [ eassumption | basics .. ];
-      cbn [root_ptable_matches_stage]; try solver; [ ].
+    erewrite page_lookup_proper; [ solver | basics .. ].
     match goal with H : _ |- _ => rewrite H; solver end.
   Qed.
 
@@ -856,33 +842,76 @@ Section Proofs.
     cbv [vm_page_owned]; eauto using stage2_mode_has_value_proper.
   Qed.
 
+  (* TODO: remove if unused *)
+  Lemma page_lookup_update_deref deref root_ptable idxs ppool stage a ptr t :
+    root_ptable_matches_stage root_ptable stage ->
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    page_lookup (update_deref deref ptr t) root_ptable stage a
+    = if address_matches_indices_dec stage a idxs
+      then page_lookup' deref a t (level_from_indices stage idxs) stage
+      else page_lookup deref root_ptable stage a.
+  Admitted.
+
+  (* TODO : move *)
+  Lemma page_attrs_outside_range
+        deref ppool root_ptable stage idxs ptr t level attrs begin end_ a :
+    root_ptable_matches_stage root_ptable stage ->
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    attrs_outside_range_unchanged deref idxs (deref ptr) t level attrs begin end_ stage ->
+    ~ In a (addresses_under_pointer_in_range deref ptr root_ptable begin end_ stage) ->
+    level = level_from_indices stage idxs ->
+    page_attrs (update_deref deref ptr t) root_ptable stage (pa_addr a)
+    = page_attrs deref root_ptable stage (pa_addr a).
+  Proof.
+    basics. cbv [page_attrs]; erewrite page_lookup_update_deref by eauto.
+    break_match; [ | solver ].
+    cbv [attrs_outside_range_unchanged page_attrs'] in *.
+    erewrite page_table_lookup_equiv by eauto using has_location_table_lookup.
+    assert (exists a_v, pa_from_va (va_init a_v) = a) as Hav by admit.
+    destruct Hav as [a_v ?].
+    match goal with H : _ |- _ => specialize (H a_v); basics; rewrite H end;
+      try solver; [ ].
+  (* here, we can show that since address_matches_indices but the address isn't in
+     addresses_under_pointer_in_range, the address must be out of range *)
+  Admitted.
+
   (* If an address isn't in the range that changed, then stage2_mode_has_value
      is unchanged. *)
   Lemma stage2_mode_has_value_unaffected_address
         flag flag_value conc ptr ppool v a begin end_ attrs idxs level t :
     (* ptr exists in v's page table *)
     has_location
-      (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+      (ptable_deref conc) ptr (table_loc ppool (vm_ptable v) idxs) ->
     (* attributes of the new table match the old, except in the range specified *)
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
     (* a is not one of the addresses that changed *)
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
+    In v vms ->
+    level = level_from_indices Stage2 idxs ->
     stage2_mode_has_value conc v a flag flag_value
     <-> stage2_mode_has_value (reassign_pointer conc ptr t) v a flag flag_value.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [attrs_changed_in_range stage2_mode_has_value];
+      cbn [reassign_pointer ptable_deref]; basics.
+    pose_in_vm_ptable_map.
+    erewrite page_attrs_outside_range by (cbn [root_ptable_matches_stage]; solver).
+    solver.
+  Qed.
 
   (* If an address isn't in the range that changed, then vm_page_valid remains
      true (specialized version of stage2_mode_has_value_unaffected_address) *)
   Lemma vm_page_valid_unaffected_address
         conc ptr ppool v a begin end_ attrs idxs level t :
     has_location
-      (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+      (ptable_deref conc) ptr (table_loc ppool (vm_ptable v) idxs) ->
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
+    In v vms ->
+    level = level_from_indices Stage2 idxs ->
     vm_page_valid conc v a <-> vm_page_valid (reassign_pointer conc ptr t) v a.
   Proof.
     cbv [vm_page_valid]; eauto using stage2_mode_has_value_unaffected_address.
@@ -893,11 +922,13 @@ Section Proofs.
   Lemma vm_page_owned_unaffected_address
         conc ptr ppool v a begin end_ attrs idxs level t :
     has_location
-      (ptable_deref conc) ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+      (ptable_deref conc) ptr (table_loc ppool (vm_ptable v) idxs) ->
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr (vm_ptable v) begin end_ Stage2) ->
+    In v vms ->
+    level = level_from_indices Stage2 idxs ->
     vm_page_owned conc v a <-> vm_page_owned (reassign_pointer conc ptr t) v a.
   Proof.
     cbv [vm_page_owned]; eauto using stage2_mode_has_value_unaffected_address.
@@ -908,7 +939,7 @@ Section Proofs.
         conc ptr ppool a begin end_ attrs idxs level t :
     (* ptr exists in v's page table *)
     has_location
-      (ptable_deref conc) ppool ptr (table_loc ppool hafnium_ptable idxs) ->
+      (ptable_deref conc) ptr (table_loc ppool hafnium_ptable idxs) ->
     (* attributes of the new table match the old, except in the range specified *)
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage1 ->
@@ -923,7 +954,7 @@ Section Proofs.
         conc ptr ppool a begin end_ attrs idxs level t :
     (* ptr exists in v's page table *)
     has_location
-      (ptable_deref conc) ppool ptr (table_loc ppool hafnium_ptable idxs) ->
+      (ptable_deref conc) ptr (table_loc ppool hafnium_ptable idxs) ->
     (* attributes of the new table match the old, except in the range specified *)
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage1 ->
@@ -935,10 +966,10 @@ Section Proofs.
 
   Lemma changed_has_new_attrs
         deref ppool ptr t a level attrs begin end_ idxs root_ptable stage:
-    has_location deref ppool ptr (table_loc ppool root_ptable idxs) ->
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
     address_wf (pa_addr a) stage ->
     root_ptable_wf (update_deref deref ptr t) stage root_ptable ->
-    level = max_level stage + 1 - length idxs ->
+    level = level_from_indices stage idxs ->
     root_ptable_matches_stage root_ptable stage ->
     attrs_changed_in_range
       deref idxs (deref ptr) t level attrs begin end_ stage ->
@@ -953,10 +984,10 @@ Section Proofs.
   Lemma changed_has_new_attrs_stage2
         conc ppool ptr v t a level attrs begin end_ idxs :
     let deref := conc.(ptable_deref) in
-    has_location deref ppool ptr (table_loc ppool (vm_ptable v) idxs) ->
+    has_location deref ptr (table_loc ppool (vm_ptable v) idxs) ->
     address_wf (pa_addr a) Stage2 ->
     root_ptable_wf (update_deref deref ptr t) Stage2 (vm_ptable v) ->
-    level = max_level Stage2 + 1 - length idxs ->
+    level = level_from_indices Stage2 idxs ->
     In (vm_ptable v) (map vm_ptable vms) ->
     attrs_changed_in_range
       deref idxs (deref ptr) t level attrs begin end_ Stage2 ->
@@ -966,7 +997,7 @@ Section Proofs.
       stage2_mode_flag_set attrs flag = value ->
       stage2_mode_has_value (reassign_pointer conc ptr t) v a flag value.
   Proof.
-    cbv [stage2_mode_flag_set stage2_mode_has_value]; basics.
+    cbv [stage2_mode_flag_set stage2_mode_has_value page_attrs]; basics.
     basics.
     match goal with
     | H : root_ptable_wf _ _ _ |- _ =>
@@ -977,7 +1008,6 @@ Section Proofs.
       case_eq (page_lookup deref t s a); basics; try solver; [ ]
     end.
     destruct_tuples.
-    do 2 eexists; split; [reflexivity|].
     match goal with H :  _ |- _ =>
                     pose proof H; eapply changed_has_new_attrs in H;
                       cbv [root_ptable_matches_stage]; try solver; [ ]
@@ -1066,10 +1096,10 @@ Section Proofs.
 
   Lemma reassign_pointer_represents_stage1 conc ptr t abst idxs :
     represents abst conc ->
-    has_location (ptable_deref conc) (api_page_pool conc) ptr
+    has_location (ptable_deref conc) ptr
                  (table_loc (api_page_pool conc) hafnium_ptable idxs) ->
     let conc' := conc.(reassign_pointer) ptr t in
-    let level := (max_level Stage1 + 1) - length idxs in
+    let level := level_from_indices Stage1 idxs in
     is_valid conc ->
     is_valid conc' ->
     forall attrs begin end_,
@@ -1125,7 +1155,7 @@ Section Proofs.
   Lemma reassign_pointer_represents_stage2 conc ptr t abst idxs v :
     represents abst conc ->
     In v vms ->
-    has_location (ptable_deref conc) (api_page_pool conc) ptr
+    has_location (ptable_deref conc) ptr
                  (table_loc (api_page_pool conc) (vm_ptable v) idxs) ->
     let conc' := conc.(reassign_pointer) ptr t in
     is_valid conc ->
@@ -1133,7 +1163,7 @@ Section Proofs.
     forall attrs level begin end_,
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ Stage2 ->
-      level = max_level Stage2 + 1 - length idxs ->
+      level = level_from_indices Stage2 idxs ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.
@@ -1160,7 +1190,7 @@ Section Proofs.
 
   Lemma reassign_pointer_represents conc ptr t abst idxs root_ptable stage :
     represents abst conc ->
-    has_location (ptable_deref conc) (api_page_pool conc) ptr
+    has_location (ptable_deref conc) ptr
                  (table_loc (api_page_pool conc) root_ptable idxs) ->
     root_ptable_matches_stage root_ptable stage ->
     let conc' := conc.(reassign_pointer) ptr t in
@@ -1169,7 +1199,7 @@ Section Proofs.
     forall attrs level begin end_,
       attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                              level attrs begin end_ stage ->
-      level = max_level stage + 1 - length idxs ->
+      level = level_from_indices stage idxs ->
       represents (abstract_reassign_pointer
                     abst conc ptr attrs begin end_)
                  conc'.

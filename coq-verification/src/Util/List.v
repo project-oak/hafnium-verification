@@ -70,6 +70,7 @@ Section App.
   Lemma app_not_nil_r (l1 l2 : list A) : l2 <> nil -> l1 ++ l2 <> nil.
   Proof.  destruct l1; cbn [app]; solver. Qed.
 End App.
+Hint Rewrite @app_nil_l @app_nil_r : push_app.
 
 (* Proofs about [seq] *)
 Section Seq.

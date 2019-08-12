@@ -140,3 +140,23 @@ Definition page_lookup
   | Some table_ptr =>
     page_lookup' ptable_deref a (ptable_deref table_ptr) (max_level s + 1) s
   end.
+
+(* This dummy value is left as an axiom so we can't rely on its properties *)
+Axiom dummy_attributes : attributes.
+
+Definition page_attrs'
+           (ptable_deref : ptable_pointer -> mm_page_table)
+           (a : uintpaddr_t) (table : mm_page_table)
+           (level_above : nat) (s : Stage) : attributes :=
+  match page_lookup' ptable_deref a table level_above s with
+  | Some (pte, level) => arch_mm_pte_attrs pte level
+  | None => dummy_attributes
+  end.
+Definition page_attrs
+           (ptable_deref : ptable_pointer -> mm_page_table)
+           (root_ptable : mm_ptable) (s : Stage)
+           (a : uintpaddr_t) : attributes :=
+  match page_lookup ptable_deref root_ptable s a with
+  | Some (pte, level) => arch_mm_pte_attrs pte level
+  | None => dummy_attributes
+  end.

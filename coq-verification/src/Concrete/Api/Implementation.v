@@ -16,6 +16,7 @@
 
 Require Import Coq.Arith.PeanoNat.
 Require Import Coq.NArith.BinNat.
+Require Import Hafnium.Concrete.Parameters.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
