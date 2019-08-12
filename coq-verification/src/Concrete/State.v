@@ -80,9 +80,8 @@ Definition vm_page_valid {cp : concrete_params}
 
 Definition haf_page_valid
            {cp : concrete_params} (s : concrete_state) (a : paddr_t) : Prop :=
-  exists (e : pte_t) (lvl : nat),
-    page_lookup s.(ptable_deref) hafnium_ptable Stage1 a.(pa_addr) = Some (e, lvl)
-    /\ arch_mm_pte_is_valid e lvl = true.
+  let attrs := page_attrs s.(ptable_deref) hafnium_ptable Stage1 a.(pa_addr) in
+  (N.land attrs PTE_VALID <> 0)%N.
 
 Definition vm_page_owned {cp : concrete_params}
            (s : concrete_state) (v : vm) (a : paddr_t) : Prop :=
