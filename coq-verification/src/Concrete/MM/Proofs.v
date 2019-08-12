@@ -23,6 +23,7 @@ Require Import Hafnium.AbstractModel.
 Require Import Hafnium.Concrete.Datatypes.
 Require Import Hafnium.Concrete.Notations.
 Require Import Hafnium.Concrete.PageTablesWf.
+Require Import Hafnium.Concrete.Parameters.
 Require Import Hafnium.Concrete.PointerLocations.
 Require Import Hafnium.Concrete.State.
 Require Import Hafnium.Concrete.StateProofs.
@@ -121,11 +122,11 @@ Section Proofs.
   Lemma attrs_changed_in_range_block_start
         ptable_deref old_table table level attrs begin end_ idxs stage :
     is_start_of_block begin (mm_entry_size level) ->
-    address_matches_indices (uintvaddr_to_uintpaddr begin) idxs stage ->
+    address_matches_indices stage (uintvaddr_to_uintpaddr begin) idxs ->
     forall begin',
       (begin' <= begin)%N ->
-      attrs_changed_in_range ptable_deref idxs old_table table (level - 1) attrs begin end_ stage ->
-      attrs_changed_in_range ptable_deref idxs old_table table (level - 1) attrs begin' end_ stage.
+      attrs_changed_in_range ptable_deref idxs old_table table level attrs begin end_ stage ->
+      attrs_changed_in_range ptable_deref idxs old_table table level attrs begin' end_ stage.
   Admitted.
 
   (*** Proofs about [mm_page_table_from_pa] ***)
@@ -143,7 +144,7 @@ Section Proofs.
   Lemma has_location_nth_default deref ppool flags root_ptable i :
     i < length (mm_page_table_from_pa (root root_ptable)) ->
     ptable_is_root root_ptable flags ->
-    has_location deref (map vm_ptable vms) hafnium_ptable ppool
+    has_location deref
                  (nth_default_oobe (mm_page_table_from_pa (root root_ptable)) i)
                  (table_loc ppool root_ptable (cons i nil)).
   Proof.
@@ -459,17 +460,16 @@ Section Proofs.
   Lemma address_matches_indices_root root_level a flags :
     is_root root_level flags ->
     address_matches_indices
-      (uintvaddr_to_uintpaddr a) (mm_index a root_level :: nil) (stage_from_flags flags).
+      (stage_from_flags flags) (uintvaddr_to_uintpaddr a) (mm_index a root_level :: nil).
   Proof.
     intro H. cbv [is_root] in H; rewrite H; intros.
-    cbv [address_matches_indices indices_from_address].
-    rewrite seq_snoc, rev_unit, Nat.add_0_l.
-    cbn [length firstn map].
+    cbv [address_matches_indices]; autorewrite with push_length; intro i.
+    destruct i; [basics|solver].
+    autorewrite with push_nth_default.
     rewrite index_of_uintvaddr by solver.
+    rewrite Nat.sub_0_r, mm_max_level_eq.
     cbv [mm_index]. autorewrite with bits2arith nsimplify.
-    rewrite mm_max_level_eq.
-    apply f_equal2; try solver; [ ].
-    repeat (f_equal; try solver).
+    reflexivity.
   Qed.
   Hint Resolve address_matches_indices_root.
 
@@ -557,7 +557,7 @@ Section Proofs.
     conc.(ptable_deref) ptr = table ->
     has_location_in_state conc ptr idxs ->
     level <= max_level (stage_from_flags flags) ->
-    attrs_changed_in_range (ptable_deref conc) idxs table new_table level attrs
+    attrs_changed_in_range (ptable_deref conc) idxs table new_table (S level) attrs
                            begin end_ (stage_from_flags flags).
   Admitted.
 
@@ -575,7 +575,7 @@ Section Proofs.
     conc.(ptable_deref) ptr = table ->
     locations_exclusive
       (ptable_deref (reassign_pointer conc ptr new_table))
-      (map vm_ptable vms) hafnium_ptable conc.(api_page_pool).
+      conc.(api_page_pool).
   Admitted. (* TODO *)
 
   (* TODO : need preconditions *)
@@ -883,7 +883,9 @@ Section Proofs.
         eapply reassign_pointer_represents; eauto; [ | | ].
         { apply has_location_nth_default with (flags:=flags); eauto. }
         { apply mm_map_level_reassign_pointer; solver. }
-        { cbn [length]. rewrite Nat.add_sub.
+        { cbv [level_from_indices]. cbv [length].
+          match goal with |- context [?x + 2 - 1] =>
+                          replace (x + 2 - 1) with (S x) by solver end.
           replace (root_level - 1) with (max_level (stage_from_flags flags)) by solver.
           eapply mm_map_level_table_attrs; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
@@ -921,14 +923,16 @@ Section Proofs.
                      end
         end.
 
-        eapply reassign_pointer_represents with (level := root_level - 1);
+        eapply reassign_pointer_represents with (level := S (root_level - 1));
           try apply has_location_nth_default with (flags:=flags);
-          try apply mm_map_level_reassign_pointer; cbn [length]; try solver; [ ].
+          try apply mm_map_level_reassign_pointer;
+          cbv [level_from_indices]; cbn [length]; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
           destruct H; [ subst; eapply mm_map_level_table_attrs; solver | ]
         end.
-        eapply attrs_changed_in_range_block_start; try solver; [ ].
+        eapply attrs_changed_in_range_block_start;
+          try (replace (S (root_level - 1)) with root_level by lia; solver); [ ].
         eapply mm_map_level_table_attrs; solver. } }
 
     { (* Subgoal 2 : invariant holds at start *)
