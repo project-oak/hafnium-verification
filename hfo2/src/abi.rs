@@ -83,19 +83,20 @@ pub enum HfShare {
     Share,
 }
 
-/// Encode an HfVCpuRunReturn struct in the 64-bit packing ABI.
-#[inline]
-pub unsafe extern "C" fn hf_vcpu_run_return_encode(res: HfVCpuRunReturn) -> u64 {
-    use HfVCpuRunReturn::*;
+impl HfVCpuRunReturn {
+    /// Encode an HfVCpuRunReturn struct in the 64-bit packing ABI.
+    pub fn into_raw(self) -> u64 {
+        use HfVCpuRunReturn::*;
 
-    match res {
-        Preempted => 0,
-        Yield => 1,
-        WaitForInterrupt { ns } => 2 | (ns << 8),
-        WaitForMessage { ns } => 3 | (ns << 8),
-        WakeUp { vm_id, vcpu } => 4 | ((vm_id as u64) << 32) | ((vcpu as u64) << 16),
-        Message { vm_id } => 5 | ((vm_id as u64) << 8),
-        NotifyWaiters => 6,
-        Aborted => 7,
+        match self {
+            Preempted => 0,
+            Yield => 1,
+            WaitForInterrupt { ns } => 2 | (ns << 8),
+            WaitForMessage { ns } => 3 | (ns << 8),
+            WakeUp { vm_id, vcpu } => 4 | ((vm_id as u64) << 32) | ((vcpu as u64) << 16),
+            Message { vm_id } => 5 | ((vm_id as u64) << 8),
+            NotifyWaiters => 6,
+            Aborted => 7,
+        }
     }
 }

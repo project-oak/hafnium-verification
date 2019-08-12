@@ -86,7 +86,7 @@ unsafe fn api_switch_to_primary(
     }
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
-    arch_regs_set_retval(&mut (*next).regs, hf_vcpu_run_return_encode(primary_ret));
+    arch_regs_set_retval(&mut (*next).regs, primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
     sl_lock(&(*current).lock);
@@ -501,29 +501,29 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // Only the primary VM can switch vcpus.
     if (*(*current).vm).id != HF_PRIMARY_VM_ID {
-        return hf_vcpu_run_return_encode(ret);
+        return ret.into_raw();
     }
 
     // Only the secondary VM vcpus can be run.
     if vm_id == HF_PRIMARY_VM_ID {
-        return hf_vcpu_run_return_encode(ret);
+        return ret.into_raw();
     }
 
     // The requested VM must exist.
     vm = vm_find(vm_id);
     if vm == ptr::null_mut() {
-        return hf_vcpu_run_return_encode(ret);
+        return ret.into_raw();
     }
 
     // The requested vcpu must exist.
     if vcpu_idx >= (*vm).vcpu_count {
-        return hf_vcpu_run_return_encode(ret);
+        return ret.into_raw();
     }
 
     // Update state if allowed.
     vcpu = vm_get_vcpu(vm, vcpu_idx);
     if !api_vcpu_prepare_run(current, vcpu, &mut ret) {
-        return hf_vcpu_run_return_encode(ret);
+        return ret.into_raw();
     }
 
     // Inject timer interrupt if timer has expired. It's safe to access
@@ -548,7 +548,7 @@ pub unsafe extern "C" fn api_vcpu_run(
     // when the switch back to the primary occurs.
     ret = HfVCpuRunReturn::Preempted;
 
-    return hf_vcpu_run_return_encode(ret);
+    return ret.into_raw();
 }
 
 /// Check that the mode indicates memory that is vaid, owned and exclusive.
