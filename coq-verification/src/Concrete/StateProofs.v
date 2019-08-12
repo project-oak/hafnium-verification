@@ -792,8 +792,8 @@ Section Proofs.
     haf_page_valid conc a ->
     haf_page_valid conc' a.
   Proof.
-    cbv [haf_page_valid hafnium_page_table_unchanged].
-    basics. do 2 eexists; split; [|solver].
+    cbv [haf_page_valid hafnium_page_table_unchanged page_attrs].
+    basics.
     erewrite page_lookup_proper; [ eassumption | basics .. ];
       cbn [root_ptable_matches_stage]; try solver; [ ].
     match goal with H : _ |- _ => rewrite H; solver end.
@@ -946,8 +946,14 @@ Section Proofs.
     (* a is not one of the addresses that changed *)
     ~ In a (addresses_under_pointer_in_range
               conc.(ptable_deref) ptr hafnium_ptable begin end_ Stage1) ->
+    level = level_from_indices Stage1 idxs ->
     haf_page_valid conc a <-> haf_page_valid (reassign_pointer conc ptr t) a.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [attrs_changed_in_range haf_page_valid];
+      cbn [reassign_pointer ptable_deref]; basics.
+    erewrite page_attrs_outside_range by (cbn [root_ptable_matches_stage]; solver).
+    solver.
+  Qed.
 
   (* If an address isn't in the range that changed, then haf_page_owned remains true *)
   Lemma haf_page_owned_unaffected_address
@@ -975,10 +981,8 @@ Section Proofs.
       deref idxs (deref ptr) t level attrs begin end_ stage ->
     In a (addresses_under_pointer_in_range
             deref ptr root_ptable begin end_ stage) ->
-    forall result,
-      page_lookup
-        (update_deref deref ptr t) root_ptable stage (pa_addr a) = Some result ->
-      arch_mm_pte_attrs (fst result) (snd result) = attrs.
+    page_attrs
+      (update_deref deref ptr t) root_ptable stage (pa_addr a) = attrs.
   Admitted. (* TODO *)
 
   Lemma changed_has_new_attrs_stage2
@@ -997,23 +1001,9 @@ Section Proofs.
       stage2_mode_flag_set attrs flag = value ->
       stage2_mode_has_value (reassign_pointer conc ptr t) v a flag value.
   Proof.
-    cbv [stage2_mode_flag_set stage2_mode_has_value page_attrs]; basics.
-    basics.
-    match goal with
-    | H : root_ptable_wf _ _ _ |- _ =>
-      pose proof H; eapply page_lookup_ok in H; eauto; [ ]
-    end.
-    match goal with
-      |- context [page_lookup ?deref ?t ?s ?a] =>
-      case_eq (page_lookup deref t s a); basics; try solver; [ ]
-    end.
-    destruct_tuples.
-    match goal with H :  _ |- _ =>
-                    pose proof H; eapply changed_has_new_attrs in H;
-                      cbv [root_ptable_matches_stage]; try solver; [ ]
-    end.
-    destruct_tuples.
-    solver.
+    cbv [stage2_mode_flag_set stage2_mode_has_value]; basics.
+    cbn [reassign_pointer ptable_deref].
+    erewrite changed_has_new_attrs; solver.
   Qed.
 
   (* TODO : move *)
@@ -1129,12 +1119,10 @@ Section Proofs.
           repeat match goal with
                  | _ => progress basics
                  | _ => progress destruct_tuples
-                 | H :  In _ _ |- _ =>
-                   eapply changed_has_new_attrs in H;
-                     cbv [root_ptable_matches_stage]; try solver; [ ]
+                 | _ => progress cbn [ptable_deref reassign_pointer] in *
+                 | _ => erewrite changed_has_new_attrs in * by solver
                  | _ => solver
-                 | _ => cbv [stage1_valid] in *; rewrite is_valid_matches_flag in *; solver
-                 | _ => do 2 eexists; split; [solver|]
+                 | _ => cbv [stage1_valid] in *; repeat inversion_bool; solver
                  end. }
     { (* stage-2 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
