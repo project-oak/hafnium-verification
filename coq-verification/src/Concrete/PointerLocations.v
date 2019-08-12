@@ -163,6 +163,7 @@ Section PointerLocations.
              end.
   Qed.
 
+  (* Helper lemma for [nth_error_index_sequences_root] *)
   Lemma nth_error_index_sequences_root' root_ptrs stage ptr :
     forall i root_index,
       nth_error root_ptrs i = Some ptr ->
@@ -177,6 +178,9 @@ Section PointerLocations.
       solver. }
   Qed.
 
+  (* If you're searching for the index sequences leading to [ptr], and [ptr] is
+     a pointer to the root page table at index [i] in the root table list, then
+     the resulting index sequences will include (cons i nil).*)
   Lemma nth_error_index_sequences_root root_ptable i stage ptr :
     nth_error (ptr_from_va (va_from_pa (root root_ptable))) i = Some ptr ->
     In (cons i nil) (index_sequences_to_pointer ptr root_ptable stage).
