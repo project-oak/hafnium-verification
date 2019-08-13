@@ -57,6 +57,9 @@ Section In.
 
   Lemma In_not_nil (x : A) ls : In x ls -> ls <> nil.
   Proof. destruct ls; basics; solver. Qed.
+
+  Lemma hd_in (d : A) ls : ls <> nil -> In (hd d ls) ls.
+  Proof. destruct ls; solver. Qed.
 End In.
 Hint Resolve @In_not_nil.
 
@@ -162,6 +165,48 @@ Section Remove.
              end.
   Qed.
 End Remove.
+
+(* Proofs about [nth] *)
+Section Nth.
+  Context {A : Type}.
+
+  Lemma nth_nil (d : A) n : nth n nil d = d.
+  Proof. destruct n; solver. Qed.
+
+  Lemma nth_cons (d : A) x l : nth 0 (x :: l) d = x.
+  Proof. solver. Qed.
+
+  Lemma nth_eq_iff l1 l2 (eq_dec : forall x y : A, {x = y} + {x <> y}) :
+    (exists d1 d2 : A, d1 <> d2) -> (* type A must have two distinct members *)
+    (forall n (d : A),
+        nth n l1 d = nth n l2 d) <-> l1 = l2.
+  Proof.
+    generalize dependent l2.
+    induction l1; destruct l2; split; basics;
+      try match goal with H : _ |- _ =>
+                          pose proof H;
+                            specialize (H 0) end;
+      rewrite ?nth_nil, ?nth_cons in *;
+      try (cbn [nth] in *; try destruct n; solver); [ ].
+    match goal with
+    | |- cons ?x _ = cons ?y _ =>
+      destruct (eq_dec x y); basics
+    end; [ | cbn [nth] in *; solver ].
+    f_equal. apply IHl1; [ solver |].
+    intros n d.
+    match goal with H : _ |- _ => specialize (H (S n) d) end.
+    cbn [nth] in *; solver.
+  Qed.
+
+  Lemma nth_firstn (d : A) :
+    forall n l i,
+      n < i ->
+      nth n (firstn i l) d = nth n l d.
+  Proof.
+    induction n; destruct l; destruct i; cbn; try solver; [ ].
+    basics. apply IHn; solver.
+  Qed.
+End Nth.
 
 (* Proofs about [nth_error] *)
 Section NthError.
@@ -380,6 +425,10 @@ Section Map.
     invert_list_properties;
       eauto using app_not_nil_l, app_not_nil_r.
   Qed.
+
+  Lemma map_firstn (f : A -> B) ls :
+    forall n, map f (firstn n ls) = firstn n (map f ls).
+  Proof. induction ls; destruct n; cbn; solver. Qed.
 End Map.
 
 (* Proofs about setting the nth element of a list. *)

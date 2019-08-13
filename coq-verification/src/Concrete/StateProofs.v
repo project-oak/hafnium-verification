@@ -104,6 +104,7 @@ Section Proofs.
     invert cp_valid; cbv [all_root_ptables] in *.
     invert_list_properties; solver.
   Qed.
+  Hint Resolve hafnium_ptable_nodup.
 
   Definition vm_eq_dec (v1 v2 : vm) : {v1 = v2} + {v1 <> v2}.
   Proof.
@@ -323,7 +324,7 @@ Section Proofs.
 
   Definition address_matches_indices_bool
              (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : bool :=
-    forallb (fun i => get_index stage (max_level stage + 1 - i) a =? nth_default 0 idxs i)
+    forallb (fun i => get_index stage (max_level stage + 1 - i) a =? nth i idxs 0)
             (seq 0 (length idxs)).
 
   Definition addresses_under_pointer_in_range
@@ -820,7 +821,7 @@ Section Proofs.
           pose proof H;
             apply has_location_update_deref with (t:=t) in H
         end;
-        two_locations_contradiction; solver.
+        two_locations_contradiction; try solver.
   Qed.
 
   (* if the changed pointer is in a different VM's page table, then other VMs' page tables are unchanged *)
@@ -918,52 +919,10 @@ Section Proofs.
       else page_lookup deref root_ptable stage a.
   Admitted.
 
-  (* TODO : move to List *)
-  Lemma hd_in {A} (d : A) ls : ls <> nil -> In (hd d ls) ls.
-  Proof. destruct ls; solver. Qed.
-
-  (* TODO : move *)
-  Lemma index_sequences_has_location deref ppool root_ptable idxs ptr stage :
-    root_ptable_matches_stage root_ptable stage ->
-    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) ->
-    has_location deref ptr (table_loc ppool root_ptable idxs).
-  Proof.
-    destruct stage; cbv [root_ptable_matches_stage]; basics; constructor; solver.
-  Qed.
-
-  (* TODO : move *)
-  Lemma has_location_index_sequences_not_nil deref ppool root_ptable idxs ptr stage :
-    has_location deref ptr (table_loc ppool root_ptable idxs) ->
-    root_ptable_matches_stage root_ptable stage ->
-    index_sequences_to_pointer deref ptr root_ptable stage <> nil.
-  Proof.
-    basics. pose proof hafnium_ptable_nodup.
-    eapply In_not_nil; eapply has_location_index_sequence; solver.
-  Qed.
-
-  (* TODO : move *)
-  Lemma has_location_hd_index_sequences deref ppool root_ptable idxs ptr stage :
-    has_location deref ptr (table_loc ppool root_ptable idxs) ->
-    locations_exclusive deref ppool ->
-    root_ptable_matches_stage root_ptable stage ->
-    hd nil (index_sequences_to_pointer deref ptr root_ptable stage) = idxs.
-  Proof.
-    basics. pose proof hafnium_ptable_nodup.
-    match goal with H : _ |- _ =>
-                    eapply has_location_index_sequence in H; [ | solver .. ] end.
-    match goal with H : In _ _ |- _ =>
-                    pose proof (hd_in nil _ (In_not_nil _ _ H)) end.
-    repeat match goal with
-           | H : In _ _ |- _ =>
-             eapply index_sequences_has_location with (ppool:=ppool) in H;
-               [ | solver .. ]
-           end.
-    two_locations_contradiction.
-    solver.
-  Qed.
 
   (* TODO : move *)
   Lemma address_matches_indices_bool_iff a idxs stage :
+    length idxs <= S (max_level stage) ->
     address_matches_indices_bool a idxs stage = true <-> address_matches_indices stage a idxs.
   Proof.
     cbv [address_matches_indices_bool indices_from_address address_matches_indices].
@@ -974,9 +933,11 @@ Section Proofs.
            | |- _ = true => apply Nat.eqb_eq
            | H : In _ (seq _ _) |- _ => apply in_seq in H
            | H : context [Nat.eqb _ _ = true] |- @eq nat _ _ =>
-             apply Nat.eqb_eq; apply H; apply in_seq
+             erewrite nth_indep by solver;
+               apply Nat.eqb_eq; apply H; apply in_seq
            | |- _ <-> _ => split
            | _ => solver
+           | H : _ |- _ => apply H; solver
            end.
   Qed.
 
@@ -993,6 +954,10 @@ Section Proofs.
     match goal with H : _ |- _ =>
                     pose proof H;
                       eapply has_location_index_sequences_not_nil in H; [ | solver .. ]
+    end.
+    match goal with H : context [has_location] |- _ =>
+                    pose proof H;
+                      eapply has_location_length in H; [ | solver .. ]
     end.
     break_match; [ solver | ].
     match goal with H : ?ls = ?x :: _ |- _ =>
@@ -1011,8 +976,9 @@ Section Proofs.
            | |- In _ (seq _ _) => apply in_seq
            | H : In _ (map _ _) |- _ => apply in_map_iff in H
            | |- In _ (map _ _) => apply in_map_iff
-           | H : _ = true |- _ => apply address_matches_indices_bool_iff in H
-           | |- _ = true => apply address_matches_indices_bool_iff
+           | H : _ = true |- _ => apply address_matches_indices_bool_iff in H;
+                                    [ | solver .. ]
+           | |- _ = true => apply address_matches_indices_bool_iff; [ | solver .. ]
            | |- _ <-> _ => split
            | _ => solver
            end.
