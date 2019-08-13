@@ -35,15 +35,44 @@ Section AddressMatchesIndices.
     firstn (length idxs)
            (rev
               (map (fun lvl => get_index stage lvl a)
-                   (seq 0 (S (S (max_level stage)))))) = idxs.
+                   (seq 0 (S (S (max_level stage)))))) =
+    firstn (S (S (max_level stage))) idxs.
   Definition address_matches_indices stage a idxs : Prop :=
-    (forall i,
+    (forall i d,
         i < length idxs ->
-        get_index stage (max_level stage + 1 - i) a = nth_default 0 idxs i).
+        i < S (S (max_level stage)) ->
+        get_index stage (max_level stage + 1 - i) a = nth i idxs d).
 
-  Lemma address_matches_indices_iff stage a idxs :
+  Lemma address_matches_indices_alt_equiv stage a idxs :
     address_matches_indices_alt stage a idxs <-> address_matches_indices stage a idxs.
-  Admitted.
+  Proof.
+    cbv [address_matches_indices address_matches_indices_alt]. basics.
+    rewrite <-map_rev, <-map_firstn.
+    rewrite <-nth_eq_iff by (try apply Nat.eq_dec; exists 0; exists 1; solver).
+    split; basics;
+      [ destruct (Compare_dec.lt_dec i (S (S (max_level stage))))
+      | destruct (Compare_dec.lt_dec n (Nat.min (length idxs) (S (S (max_level stage))))) ];
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress autorewrite with push_length
+             | _ => rewrite nth_default_eq in *
+             | H : context [_ = nth _ _ _] |- _ =>
+               rewrite <-H by solver;
+                 erewrite nth_indep by (autorewrite with push_length; solver)
+             | H : context [_ = nth _ _ _] |- _ =>
+               erewrite nth_indep by solver;
+                 rewrite <-nth_firstn with (i0 := (S (S (max_level stage)))) by solver;
+                 rewrite <-H
+             | _ => rewrite nth_overflow by (autorewrite with push_length; solver)
+             | _ => rewrite map_nth with (d:=0) by solver
+             | _ => rewrite nth_firstn by solver
+             | _ => rewrite rev_nth by (autorewrite with push_length; solver)
+             | _ => rewrite seq_nth by solver
+             | |- _ <-> _ => split
+             | _ => solver
+             | _ => f_equal; solver
+             end.
+  Qed.
 
   Definition address_matches_indices_alt_dec stage a idxs :
     {address_matches_indices_alt stage a idxs} + {~ address_matches_indices_alt stage a idxs}.
@@ -55,16 +84,16 @@ Section AddressMatchesIndices.
   Definition address_matches_indices_dec stage a idxs :
     {address_matches_indices stage a idxs} + {~ address_matches_indices stage a idxs}.
   Proof.
-    destruct (address_matches_indices_alt_dec stage a idxs);
-      rewrite address_matches_indices_iff in *; solver.
+    destruct (address_matches_indices_alt_dec stage a idxs); basics;
+    rewrite address_matches_indices_alt_equiv in *; solver.
   Defined.
 
   Definition address_matches_indices_decidable stage a idxs :
     Decidable.decidable (address_matches_indices stage a idxs).
   Proof.
     cbv [Decidable.decidable].
-    destruct (address_matches_indices_alt_dec stage a idxs);
-      rewrite address_matches_indices_iff in *; solver.
+    destruct (address_matches_indices_alt_dec stage a idxs); basics;
+      rewrite address_matches_indices_alt_equiv in *; solver.
   Defined.
 End AddressMatchesIndices.
 
@@ -400,6 +429,97 @@ Section PointerLocations.
         intros.
         match goal with H : context [has_location] |- _ =>
                         invert H end; destruct stage; try solver.
+      Qed.
+
+      Lemma index_sequences_has_location ppool root_ptable idxs ptr stage :
+        root_ptable_matches_stage root_ptable stage ->
+        In idxs (index_sequences_to_pointer ptr root_ptable stage) ->
+        has_location ptr (table_loc ppool root_ptable idxs).
+      Proof.
+        destruct stage; cbv [root_ptable_matches_stage]; basics; constructor; solver.
+      Qed.
+
+      Lemma has_location_index_sequences_not_nil ppool root_ptable idxs ptr stage :
+        has_location ptr (table_loc ppool root_ptable idxs) ->
+        ~ In hafnium_ptable (map vm_ptable vms) ->
+        root_ptable_matches_stage root_ptable stage ->
+        index_sequences_to_pointer ptr root_ptable stage <> nil.
+      Proof.
+        basics.
+        eapply In_not_nil; eapply has_location_index_sequence; solver.
+      Qed.
+
+      Lemma has_location_hd_index_sequences ppool root_ptable idxs ptr stage :
+        has_location ptr (table_loc ppool root_ptable idxs) ->
+        locations_exclusive ppool ->
+        root_ptable_matches_stage root_ptable stage ->
+        ~ In hafnium_ptable (map vm_ptable vms) ->
+        hd nil (index_sequences_to_pointer ptr root_ptable stage) = idxs.
+      Proof.
+        basics.
+        match goal with H : _ |- _ =>
+                        eapply has_location_index_sequence in H; [ | solver .. ] end.
+        match goal with H : In _ _ |- _ =>
+                        pose proof (hd_in nil _ (In_not_nil _ _ H)) end.
+        repeat match goal with
+               | H : In _ _ |- _ =>
+                 eapply index_sequences_has_location with (ppool:=ppool) in H;
+                   [ | solver .. ]
+               end.
+        match goal with H : locations_exclusive _, H1 : _, H2 : _ |- _ =>
+                        specialize (H _ _ _ H1 H2); invert H
+        end.
+        solver.
+      Qed.
+
+      Lemma index_sequences_to_pointer''_length ptr :
+        forall level_above root_ptr idxs,
+          In idxs (index_sequences_to_pointer'' ptr root_ptr level_above) ->
+          length idxs < level_above.
+      Proof.
+        induction level_above; cbn [index_sequences_to_pointer''];
+          repeat match goal with
+                 | _ => progress basics
+                 | _ => progress invert_list_properties
+                 | _ => progress cbn [length]
+                 | H : In _ (flat_map _ _) |- _ => apply in_flat_map in H
+                 | H : In _ (map _ _) |- _ => apply in_map_iff in H
+                 | H : In _ _ |- _ => apply IHlevel_above in H
+                 | _ => break_match
+                 | _ => solver
+                 end.
+      Qed.
+
+      Lemma index_sequences_to_pointer'_length ptr stage :
+        forall root_ptrs root_index idxs,
+          In idxs (index_sequences_to_pointer' ptr root_index root_ptrs stage) ->
+          length idxs <= S (max_level stage).
+      Proof.
+        induction root_ptrs; cbn [index_sequences_to_pointer'];
+          basics; invert_list_properties; [ ].
+        rewrite in_app_iff, in_map_iff in *; basics; cbn [length]; [ | solver ].
+        match goal with H : _ |- _ =>
+                        apply index_sequences_to_pointer''_length in H
+        end; solver.
+      Qed.
+
+      Lemma index_sequences_to_pointer_length ptr root_ptable idxs stage :
+        In idxs (index_sequences_to_pointer ptr root_ptable stage) ->
+        length idxs <= S (max_level stage).
+      Proof.
+        cbv [index_sequences_to_pointer]; basics.
+        eapply index_sequences_to_pointer'_length; solver.
+      Qed.
+
+      Lemma has_location_length ppool ptr root_ptable idxs stage :
+        has_location ptr (table_loc ppool root_ptable idxs) ->
+        root_ptable_matches_stage root_ptable stage ->
+        ~ In hafnium_ptable (map vm_ptable vms) ->
+        length idxs <= S (max_level stage).
+      Proof.
+        basics.
+        eapply index_sequences_to_pointer_length.
+        eapply has_location_index_sequence; solver.
       Qed.
 
       (* TODO: remove if unused *)
