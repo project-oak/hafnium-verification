@@ -56,7 +56,10 @@ Section Proofs.
     abstract_state_equiv abst abst' ->
     represents abst conc ->
     represents abst' conc.
-  Admitted.
+  Proof.
+    intro Hequiv. destruct Hequiv as [Hown Haccess].
+    cbv [represents]; basics; rewrite <-?Hown, <-?Haccess; solver.
+  Qed.
 
   (* [represents] includes [is_valid] as one of its conditions *)
   Lemma represents_valid_concrete conc : (exists abst, represents abst conc) -> is_valid conc.
