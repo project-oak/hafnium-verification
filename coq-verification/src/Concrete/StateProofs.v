@@ -907,7 +907,7 @@ Section Proofs.
     cbv [vm_page_owned]; eauto using stage2_mode_has_value_proper.
   Qed.
 
-  (* TODO: remove if unused *)
+  (* TODO: move *)
   Lemma page_lookup_update_deref deref root_ptable idxs ppool stage a ptr t :
     root_ptable_matches_stage root_ptable stage ->
     has_location deref ptr (table_loc ppool root_ptable idxs) ->
@@ -918,10 +918,54 @@ Section Proofs.
   Admitted.
 
   (* TODO : move *)
+  Lemma has_location_hd_index_sequences deref ppool root_ptable idxs ptr stage :
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    locations_exclusive deref ppool ->
+    root_ptable_matches_stage root_ptable stage ->
+    hd nil (index_sequences_to_pointer deref ptr root_ptable stage) = idxs.
+  Admitted.
+
+  (* TODO : move *)
+  Lemma address_matches_indices_bool_iff a idxs stage :
+    address_matches_indices_bool a idxs stage = true <-> address_matches_indices stage a idxs.
+  Admitted.
+
+  (* TODO : move *)
+  Lemma addresses_under_pointer_in_range_iff
+        deref ppool ptr root_ptable begin end_ stage a idxs :
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    locations_exclusive deref ppool ->
+    root_ptable_matches_stage root_ptable stage ->
+    In a (addresses_under_pointer_in_range deref ptr root_ptable begin end_ stage)
+    <-> (address_matches_indices stage (pa_addr a) idxs /\ (begin <= va_addr (va_from_pa a) < end_)%N).
+  Proof.
+    cbv [addresses_under_pointer_in_range]; basics.
+    erewrite has_location_hd_index_sequences by solver.
+    rewrite filter_In.
+    repeat match goal with
+           | _ => progress basics
+           | _ => progress rewrite ?pa_from_va_id, ?va_from_pa_id, ?va_addr_id, ?va_init_id
+           | |- exists x : uintvaddr_t, pa_from_va (va_init x) = ?a /\ _ =>
+             exists (va_addr (va_from_pa a))
+           | |- exists x : nat, N.of_nat x = ?y /\ _ =>
+             exists (N.to_nat y)
+           | H : In _ (seq _ _) |- _ => apply in_seq in H
+           | |- In _ (seq _ _) => apply in_seq
+           | H : In _ (map _ _) |- _ => apply in_map_iff in H
+           | |- In _ (map _ _) => apply in_map_iff
+           | H : _ = true |- _ => apply address_matches_indices_bool_iff in H
+           | |- _ = true => apply address_matches_indices_bool_iff
+           | |- _ <-> _ => split
+           | _ => solver
+           end.
+  Qed.
+
+  (* TODO : move *)
   Lemma page_attrs_outside_range
         deref ppool root_ptable stage idxs ptr t level attrs begin end_ a :
     root_ptable_matches_stage root_ptable stage ->
     has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    locations_exclusive deref ppool ->
     attrs_outside_range_unchanged deref idxs (deref ptr) t level attrs begin end_ stage ->
     ~ In a (addresses_under_pointer_in_range deref ptr root_ptable begin end_ stage) ->
     level = level_from_indices stage idxs ->
@@ -932,13 +976,16 @@ Section Proofs.
     break_match; [ | solver ].
     cbv [attrs_outside_range_unchanged page_attrs'] in *.
     erewrite page_table_lookup_equiv by eauto using has_location_table_lookup.
-    assert (exists a_v, pa_from_va (va_init a_v) = a) as Hav by admit.
-    destruct Hav as [a_v ?].
-    match goal with H : _ |- _ => specialize (H a_v); basics; rewrite H end;
-      try solver; [ ].
-  (* here, we can show that since address_matches_indices but the address isn't in
-     addresses_under_pointer_in_range, the address must be out of range *)
-  Admitted.
+    rewrite <-(pa_from_va_id a), <-(va_init_id (va_from_pa a)).
+    match goal with H : forall a_v : uintvaddr_t, _ |- _ => rewrite H end;
+      rewrite ?va_init_id, ?pa_from_va_id; try solver; [ ].
+    match goal with H : _ |- _ =>
+                    rewrite addresses_under_pointer_in_range_iff in H by solver;
+                      apply Decidable.not_and in H;
+                      [ | apply address_matches_indices_decidable ]
+    end.
+    basics; solver.
+  Qed.
 
   (* If an address isn't in the range that changed, then stage2_mode_has_value
      is unchanged. *)
@@ -947,6 +994,8 @@ Section Proofs.
     (* ptr exists in v's page table *)
     has_location
       (ptable_deref conc) ptr (table_loc ppool (vm_ptable v) idxs) ->
+    (* locations_exclusive holds *)
+    locations_exclusive (ptable_deref conc) ppool ->
     (* attributes of the new table match the old, except in the range specified *)
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
@@ -971,6 +1020,7 @@ Section Proofs.
         conc ptr ppool v a begin end_ attrs idxs level t :
     has_location
       (ptable_deref conc) ptr (table_loc ppool (vm_ptable v) idxs) ->
+    locations_exclusive (ptable_deref conc) ppool ->
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
     ~ In a (addresses_under_pointer_in_range
@@ -988,6 +1038,7 @@ Section Proofs.
         conc ptr ppool v a begin end_ attrs idxs level t :
     has_location
       (ptable_deref conc) ptr (table_loc ppool (vm_ptable v) idxs) ->
+    locations_exclusive (ptable_deref conc) ppool ->
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage2 ->
     ~ In a (addresses_under_pointer_in_range
@@ -1005,6 +1056,7 @@ Section Proofs.
     (* ptr exists in v's page table *)
     has_location
       (ptable_deref conc) ptr (table_loc ppool hafnium_ptable idxs) ->
+    locations_exclusive (ptable_deref conc) ppool ->
     (* attributes of the new table match the old, except in the range specified *)
     attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) t
                            level attrs begin end_ Stage1 ->
@@ -1035,18 +1087,10 @@ Section Proofs.
     haf_page_owned conc a <-> haf_page_owned (reassign_pointer conc ptr t) a.
   Proof. cbv [haf_page_owned]; basics; solver. Qed.
 
-  (* TODO : move *)
-  Lemma addresses_under_pointer_iff
-        deref ppool ptr root_ptable begin end_ stage a idxs :
-    has_location deref ptr (table_loc ppool root_ptable idxs) ->
-    root_ptable_matches_stage root_ptable stage ->
-    In a (addresses_under_pointer_in_range deref ptr root_ptable begin end_ stage)
-    <-> (address_matches_indices stage (pa_addr a) idxs /\ (begin <= va_addr (va_from_pa a) < end_)%N).
-  Admitted.
-
   Lemma changed_has_new_attrs
         deref ppool ptr t a level attrs begin end_ idxs root_ptable stage:
     has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    locations_exclusive deref ppool ->
     address_wf (pa_addr a) stage ->
     root_ptable_wf (update_deref deref ptr t) stage root_ptable ->
     level = level_from_indices stage idxs ->
@@ -1061,7 +1105,7 @@ Section Proofs.
     cbv [attrs_changed_in_range]; basics.
     cbv [has_uniform_attrs page_attrs page_attrs'] in *.
     erewrite page_lookup_update_deref by solver.
-    rewrite addresses_under_pointer_iff in * by solver.
+    rewrite addresses_under_pointer_in_range_iff in * by solver.
     basics; break_match; [ | solver ].
     rewrite <-(pa_from_va_id a).
     rewrite <-(va_init_id (va_from_pa a)).
@@ -1073,6 +1117,7 @@ Section Proofs.
         conc ppool ptr v t a level attrs begin end_ idxs :
     let deref := conc.(ptable_deref) in
     has_location deref ptr (table_loc ppool (vm_ptable v) idxs) ->
+    locations_exclusive deref ppool ->
     address_wf (pa_addr a) Stage2 ->
     root_ptable_wf (update_deref deref ptr t) Stage2 (vm_ptable v) ->
     level = level_from_indices Stage2 idxs ->
