@@ -18,7 +18,7 @@ import("//build/toolchain/platform.gni")
 executable("test_binary") {
   include_dirs = [
     "//driver/linux/inc/uapi",
-    "//third_party/linux/include/uapi/",
+    "//third_party/linux/include/uapi",
   ]
 
   testonly = true

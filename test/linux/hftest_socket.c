@@ -78,9 +78,6 @@ noreturn void kmain(size_t memory_size)
 	ctx->recv = (struct spci_message *)recv;
 	ctx->memory_size = memory_size;
 
-	/* Pause so the next time cycles are given the service will be run. */
-	spci_yield();
-
 	for (;;) {
 		struct spci_message *send_buf = (struct spci_message *)send;
 		struct spci_message *recv_buf = (struct spci_message *)recv;
