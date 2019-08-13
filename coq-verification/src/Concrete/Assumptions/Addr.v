@@ -40,6 +40,8 @@ Axiom va_init : uintvaddr_t -> vaddr_t.
 
 Axiom ipa_add : ipaddr_t -> size_t -> ipaddr_t.
 
+Axiom va_addr : vaddr_t -> uintvaddr_t.
+
 Axiom va_from_pa : paddr_t -> vaddr_t.
 
 Axiom pa_from_va : vaddr_t -> paddr_t.
@@ -52,3 +54,5 @@ Axiom is_aligned : uintpaddr_t -> nat (* PAGE_SIZE *) -> bool.
 
 (* equality of the paddr_t type is decidable *)
 Axiom paddr_t_eq_dec : forall (a1 a2 : paddr_t), {a1 = a2} + {a1 <> a2}.
+Axiom pa_from_va_id : forall (a : paddr_t), pa_from_va (va_from_pa a) = a.
+Axiom va_init_id : forall (a : vaddr_t), va_init (va_addr a) = a.
