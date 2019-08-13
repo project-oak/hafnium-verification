@@ -464,7 +464,7 @@ Section Proofs.
   Proof.
     intro H. cbv [is_root] in H; rewrite H; intros.
     cbv [address_matches_indices]; autorewrite with push_length; intro i.
-    destruct i; [basics|solver].
+    destruct i; basics; [|solver].
     autorewrite with push_nth_default.
     rewrite index_of_uintvaddr by solver.
     rewrite Nat.sub_0_r, mm_max_level_eq.
