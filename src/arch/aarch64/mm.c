@@ -88,6 +88,13 @@
 #define STAGE2_ACCESS_READ  UINT64_C(1)
 #define STAGE2_ACCESS_WRITE UINT64_C(2)
 
+/**
+ * Threshold number of pages in TLB to invalidate after which we invalidate all
+ * TLB entries on a given level.
+ * Constant is the number of pointers per page table entry, also used by Linux.
+ */
+#define MAX_TLBI_OPS  MM_PTE_PER_PAGE
+
 /* clang-format on */
 
 #define tlbi(op)                               \
@@ -250,15 +257,24 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
 	uintvaddr_t end = va_addr(va_end);
 	uintvaddr_t it;
 
-	begin >>= 12;
-	end >>= 12;
-
 	/* Sync with page table updates. */
 	dsb(ishst);
 
-	/* Invalidate stage-1 TLB, one page from the range at a time. */
-	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-		tlbi_reg(vae2is, it);
+	/*
+	 * Revisions prior to ARMv8.4 do not support invalidating a range of
+	 * addresses, which means we have to loop over individual pages. If
+	 * there are too many, it is quicker to invalidate all TLB entries.
+	 */
+	if ((end - begin) > (MAX_TLBI_OPS * PAGE_SIZE)) {
+		tlbi(alle2);
+	} else {
+		begin >>= 12;
+		end >>= 12;
+		/* Invalidate stage-1 TLB, one page from the range at a time. */
+		for (it = begin; it < end;
+		     it += (UINT64_C(1) << (PAGE_BITS - 12))) {
+			tlbi_reg(vae2is, it);
+		}
 	}
 
 	/* Sync data accesses with TLB invalidation completion. */
@@ -280,33 +296,48 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 
 	/* TODO: This only applies to the current VMID. */
 
-	begin >>= 12;
-	end >>= 12;
-
 	/* Sync with page table updates. */
 	dsb(ishst);
 
 	/*
-	 * Invalidate stage-2 TLB, one page from the range at a time.
-	 * Note that this has no effect if the CPU has a TLB with combined
-	 * stage-1/stage-2 translation.
+	 * Revisions prior to ARMv8.4 do not support invalidating a range of
+	 * addresses, which means we have to loop over individual pages. If
+	 * there are too many, it is quicker to invalidate all TLB entries.
 	 */
-	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-		tlbi_reg(ipas2e1, it);
+	if ((end - begin) > (MAX_TLBI_OPS * PAGE_SIZE)) {
+		/*
+		 * Invalidate all stage-1 and stage-2 entries of the TLB for
+		 * the current VMID.
+		 */
+		tlbi(vmalls12e1);
+	} else {
+		begin >>= 12;
+		end >>= 12;
+
+		/*
+		 * Invalidate stage-2 TLB, one page from the range at a time.
+		 * Note that this has no effect if the CPU has a TLB with
+		 * combined stage-1/stage-2 translation.
+		 */
+		for (it = begin; it < end;
+		     it += (UINT64_C(1) << (PAGE_BITS - 12))) {
+			tlbi_reg(ipas2e1, it);
+		}
+
+		/*
+		 * Ensure completion of stage-2 invalidation in case a page
+		 * table walk on another CPU refilled the TLB with a complete
+		 * stage-1 + stage-2 walk based on the old stage-2 mapping.
+		 */
+		dsb(ish);
+
+		/*
+		 * Invalidate all stage-1 TLB entries. If the CPU has a combined
+		 * TLB for stage-1 and stage-2, this will invalidate stage-2 as
+		 * well.
+		 */
+		tlbi(vmalle1is);
 	}
-
-	/*
-	 * Ensure completion of stage-2 invalidation in case a page table walk
-	 * on another CPU refilled the TLB with a complete stage-1 + stage-2
-	 * walk based on the old stage-2 mapping.
-	 */
-	dsb(ish);
-
-	/*
-	 * Invalidate all stage-1 TLB entries. If the CPU has a combined TLB for
-	 * stage-1 and stage-2, this will invalidate stage-2 as well.
-	 */
-	tlbi(vmalle1is);
 
 	/* Sync data accesses with TLB invalidation completion. */
 	dsb(ish);
