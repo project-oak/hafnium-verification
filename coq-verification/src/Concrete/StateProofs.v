@@ -155,6 +155,70 @@ Section Proofs.
     intro; solver.
   Qed.
 
+  Lemma vm_find_Some v : In v vms -> vm_find (vm_id v) = Some v.
+  Proof.
+    cbv [vm_find].
+    repeat match goal with
+           | _ => progress basics
+           | _ => inversion_bool
+           | _ => destruct_vm_eq
+           | H : _ |- _ => apply find_some in H
+           | H : context [find ?f] |- _ => eapply (find_none f) in H; [|solver]
+           | |- context [find ?f ?l] => case_eq (find f l)
+           | H : ?v1 <> ?v2 |- _ =>
+             assert (vm_id v1 <> vm_id v2)
+               by eauto using NoDup_map_neq, no_duplicate_ids; solver
+           | _ => solver
+           end.
+  Qed.
+  Hint Resolve vm_find_Some.
+
+  Lemma vm_find_sound v vid : vm_find vid = Some v -> vm_id v = vid.
+  Proof.
+    cbv [vm_find].
+    repeat match goal with
+           | _ => progress basics
+           | _ => inversion_bool
+           | H : _ |- _ => apply find_some in H
+           | _ => solver
+           end.
+  Qed.
+  Hint Resolve vm_find_sound.
+
+  Lemma vm_find_unique_entity v1 v2 vid :
+    vm_find vid = Some v2 ->
+    In v1 vms ->
+    v1 <> v2 ->
+    ~ (@eq entity_id (inl vid) (inl (vm_id v1))).
+  Proof.
+    cbv [vm_find].
+    repeat match goal with
+           | _ => progress basics
+           | _ => inversion_bool
+           | H : _ |- _ => apply find_some in H
+           | |- inl _ <> inl _ =>
+             let H := fresh in intro H; invert H
+           | H : ?v1 <> ?v2 |- _ =>
+             assert (vm_id v1 <> vm_id v2)
+               by eauto using NoDup_map_neq, no_duplicate_ids; solver
+           | _ => solver
+           end.
+  Qed.
+  Hint Resolve vm_find_unique_entity.
+
+  Lemma vm_find_In vid v : vm_find vid = Some v -> In v vms.
+  Proof.
+    cbv [vm_find].
+    repeat match goal with
+           | _ => progress basics
+           | _ => inversion_bool
+           | H : _ |- _ => apply find_some in H
+           | _ => solver
+           end.
+  Qed.
+  Hint Resolve vm_find_In.
+
+
   Lemma index_sequences_update_deref'' deref ptr t level :
     forall root_ptr idxs,
       In idxs (index_sequences_to_pointer'' deref ptr root_ptr level) ->
@@ -1025,27 +1089,6 @@ Section Proofs.
     cbn [reassign_pointer ptable_deref].
     erewrite changed_has_new_attrs; solver.
   Qed.
-
-  (* TODO : move *)
-  Lemma vm_find_Some v : In v vms -> vm_find (vm_id v) = Some v.
-  Admitted. (* TODO *)
-  Hint Resolve vm_find_Some.
-
-  (* TODO : move *)
-  Lemma vm_find_sound v vid : vm_find vid = Some v -> vm_id v = vid.
-  Admitted. (* TODO *)
-  Hint Resolve vm_find_sound.
-
-  Lemma vm_find_unique_entity v1 v2 vid :
-    vm_find vid = Some v2 ->
-    v1 <> v2 ->
-    ~ (@eq entity_id (inl vid) (inl (vm_id v1))).
-  Admitted. (* TODO *)
-  Hint Resolve vm_find_unique_entity.
-
-  Lemma vm_find_In vid v : vm_find vid = Some v -> In v vms.
-  Admitted. (* TODO *)
-  Hint Resolve vm_find_In.
 
   Local Ltac solve_table_unchanged_step :=
     first [ eapply vm_table_unchanged_stage2; solver
