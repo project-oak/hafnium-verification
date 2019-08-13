@@ -327,9 +327,10 @@ Section Proofs.
              (table_loc : list nat)
              (t : mm_page_table) (level : nat) (attrs : attributes)
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
-    forall (a : uintvaddr_t),
-      address_matches_indices stage (pa_from_va (va_init a)).(pa_addr) table_loc ->
-      (begin <= a < end_)%N ->
+    forall (a_v : uintvaddr_t),
+      (begin <= a_v < end_)%N ->
+      let a : uintpaddr_t := pa_addr (pa_from_va (va_init a_v)) in
+      address_matches_indices stage a table_loc ->
       level = level_from_indices stage table_loc ->
       page_attrs' ptable_deref a t level stage = attrs.
 
@@ -970,6 +971,15 @@ Section Proofs.
     haf_page_owned conc a <-> haf_page_owned (reassign_pointer conc ptr t) a.
   Proof. cbv [haf_page_owned]; basics; solver. Qed.
 
+  (* TODO : move *)
+  Lemma addresses_under_pointer_iff
+        deref ppool ptr root_ptable begin end_ stage a idxs :
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    root_ptable_matches_stage root_ptable stage ->
+    In a (addresses_under_pointer_in_range deref ptr root_ptable begin end_ stage)
+    <-> (address_matches_indices stage (pa_addr a) idxs /\ (begin <= va_addr (va_from_pa a) < end_)%N).
+  Admitted.
+
   Lemma changed_has_new_attrs
         deref ppool ptr t a level attrs begin end_ idxs root_ptable stage:
     has_location deref ptr (table_loc ppool root_ptable idxs) ->
@@ -983,7 +993,17 @@ Section Proofs.
             deref ptr root_ptable begin end_ stage) ->
     page_attrs
       (update_deref deref ptr t) root_ptable stage (pa_addr a) = attrs.
-  Admitted. (* TODO *)
+  Proof.
+    cbv [attrs_changed_in_range]; basics.
+    cbv [has_uniform_attrs page_attrs page_attrs'] in *.
+    erewrite page_lookup_update_deref by solver.
+    rewrite addresses_under_pointer_iff in * by solver.
+    basics; break_match; [ | solver ].
+    rewrite <-(pa_from_va_id a).
+    rewrite <-(va_init_id (va_from_pa a)).
+    match goal with H : _ |- _ => apply H end;
+      rewrite ?va_init_id, ?pa_from_va_id; solver.
+  Qed.
 
   Lemma changed_has_new_attrs_stage2
         conc ppool ptr v t a level attrs begin end_ idxs :
