@@ -319,12 +319,12 @@ Section Proofs.
      [max_level]. The length of this sequence of indices is therefore
      [max_level + 2], because it's [0..(max_level + 1)] *inclusive*. *)
   Definition indices_from_address (a : uintpaddr_t) (stage : Stage) : list nat :=
-    map (fun lvl => get_index stage lvl a) (rev (seq 0 (S (S (max_level stage))))).
+    rev (map (fun lvl => get_index stage lvl a) (seq 0 (S (S (max_level stage))))).
 
   Definition address_matches_indices_bool
              (a : uintpaddr_t) (idxs : list nat) (stage : Stage) : bool :=
-    forallb (fun '(x,y) => x =? y) (combine (indices_from_address a stage) idxs)
-            && negb (length idxs =? 0).
+    forallb (fun i => get_index stage (max_level stage + 1 - i) a =? nth_default 0 idxs i)
+            (seq 0 (length idxs)).
 
   Definition addresses_under_pointer_in_range
              (deref : ptable_pointer -> mm_page_table)
@@ -333,9 +333,12 @@ Section Proofs.
     let vrange := map N.of_nat (seq (N.to_nat begin) (N.to_nat (end_ - begin))) in
     let prange := map (fun va => pa_from_va (va_init va)) vrange in
     let paths := index_sequences_to_pointer deref ptr root_ptable stage in
-    let path := hd nil paths in (* expects at most one sequence -- prove by locations_exclusive *)
-    filter
-      (fun a => address_matches_indices_bool (pa_addr a) path stage) prange.
+    match paths with
+    | nil => (* no paths -> no addresses *) nil
+    | path :: _ => (* expects at most one sequence -- prove by locations_exclusive *)
+      filter
+        (fun a => address_matches_indices_bool (pa_addr a) path stage) prange
+    end.
 
   Definition abstract_reassign_pointer_for_entity
              (abst : abstract_state) (conc : concrete_state)
@@ -472,9 +475,7 @@ Section Proofs.
     cbv [addresses_under_pointer_in_range]; basics.
     case_eq (index_sequences_to_pointer deref ptr root_ptable2 stage);
       [|intros idxs2 ? Hidxs2]; basics.
-    { apply filter_none; basics.
-      cbv [address_matches_indices_bool]; cbn [hd length Nat.eqb negb].
-      apply Bool.andb_false_r. }
+    { solver. }
     { assert (has_location deref ptr (table_loc ppool root_ptable2 idxs2)).
       { cbv [all_root_ptables root_ptable_matches_stage] in *.
         pose proof hafnium_ptable_nodup.
@@ -917,18 +918,67 @@ Section Proofs.
       else page_lookup deref root_ptable stage a.
   Admitted.
 
+  (* TODO : move to List *)
+  Lemma hd_in {A} (d : A) ls : ls <> nil -> In (hd d ls) ls.
+  Proof. destruct ls; solver. Qed.
+
+  (* TODO : move *)
+  Lemma index_sequences_has_location deref ppool root_ptable idxs ptr stage :
+    root_ptable_matches_stage root_ptable stage ->
+    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) ->
+    has_location deref ptr (table_loc ppool root_ptable idxs).
+  Proof.
+    destruct stage; cbv [root_ptable_matches_stage]; basics; constructor; solver.
+  Qed.
+
+  (* TODO : move *)
+  Lemma has_location_index_sequences_not_nil deref ppool root_ptable idxs ptr stage :
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    root_ptable_matches_stage root_ptable stage ->
+    index_sequences_to_pointer deref ptr root_ptable stage <> nil.
+  Proof.
+    basics. pose proof hafnium_ptable_nodup.
+    eapply In_not_nil; eapply has_location_index_sequence; solver.
+  Qed.
+
   (* TODO : move *)
   Lemma has_location_hd_index_sequences deref ppool root_ptable idxs ptr stage :
     has_location deref ptr (table_loc ppool root_ptable idxs) ->
     locations_exclusive deref ppool ->
     root_ptable_matches_stage root_ptable stage ->
     hd nil (index_sequences_to_pointer deref ptr root_ptable stage) = idxs.
-  Admitted.
+  Proof.
+    basics. pose proof hafnium_ptable_nodup.
+    match goal with H : _ |- _ =>
+                    eapply has_location_index_sequence in H; [ | solver .. ] end.
+    match goal with H : In _ _ |- _ =>
+                    pose proof (hd_in nil _ (In_not_nil _ _ H)) end.
+    repeat match goal with
+           | H : In _ _ |- _ =>
+             eapply index_sequences_has_location with (ppool:=ppool) in H;
+               [ | solver .. ]
+           end.
+    two_locations_contradiction.
+    solver.
+  Qed.
 
   (* TODO : move *)
   Lemma address_matches_indices_bool_iff a idxs stage :
     address_matches_indices_bool a idxs stage = true <-> address_matches_indices stage a idxs.
-  Admitted.
+  Proof.
+    cbv [address_matches_indices_bool indices_from_address address_matches_indices].
+    repeat match goal with
+           | _ => progress basics
+           | H : _ = true |- _ => rewrite forallb_forall in H
+           | |- _ = true => apply forallb_forall
+           | |- _ = true => apply Nat.eqb_eq
+           | H : In _ (seq _ _) |- _ => apply in_seq in H
+           | H : context [Nat.eqb _ _ = true] |- @eq nat _ _ =>
+             apply Nat.eqb_eq; apply H; apply in_seq
+           | |- _ <-> _ => split
+           | _ => solver
+           end.
+  Qed.
 
   (* TODO : move *)
   Lemma addresses_under_pointer_in_range_iff
@@ -940,6 +990,14 @@ Section Proofs.
     <-> (address_matches_indices stage (pa_addr a) idxs /\ (begin <= va_addr (va_from_pa a) < end_)%N).
   Proof.
     cbv [addresses_under_pointer_in_range]; basics.
+    match goal with H : _ |- _ =>
+                    pose proof H;
+                      eapply has_location_index_sequences_not_nil in H; [ | solver .. ]
+    end.
+    break_match; [ solver | ].
+    match goal with H : ?ls = ?x :: _ |- _ =>
+                    replace x with (hd nil ls) by (rewrite H; solver)
+    end.
     erewrite has_location_hd_index_sequences by solver.
     rewrite filter_In.
     repeat match goal with
@@ -1324,7 +1382,7 @@ Section Proofs.
   Proof.
     intros; cbv [addresses_under_pointer_in_range].
     replace (end_ - begin)%N with 0%N by solver.
-    reflexivity.
+    break_match; reflexivity.
   Qed.
 
   (* if the address range is empty (end_ <= begin), then the abstract state
