@@ -55,4 +55,6 @@ Axiom is_aligned : uintpaddr_t -> nat (* PAGE_SIZE *) -> bool.
 (* equality of the paddr_t type is decidable *)
 Axiom paddr_t_eq_dec : forall (a1 a2 : paddr_t), {a1 = a2} + {a1 <> a2}.
 Axiom pa_from_va_id : forall (a : paddr_t), pa_from_va (va_from_pa a) = a.
+Axiom va_from_pa_id : forall (a : vaddr_t), va_from_pa (pa_from_va a) = a.
 Axiom va_init_id : forall (a : vaddr_t), va_init (va_addr a) = a.
+Axiom va_addr_id : forall (a : uintvaddr_t), va_addr (va_init a) = a.

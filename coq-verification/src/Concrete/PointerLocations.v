@@ -58,6 +58,14 @@ Section AddressMatchesIndices.
     destruct (address_matches_indices_alt_dec stage a idxs);
       rewrite address_matches_indices_iff in *; solver.
   Defined.
+
+  Definition address_matches_indices_decidable stage a idxs :
+    Decidable.decidable (address_matches_indices stage a idxs).
+  Proof.
+    cbv [Decidable.decidable].
+    destruct (address_matches_indices_alt_dec stage a idxs);
+      rewrite address_matches_indices_iff in *; solver.
+  Defined.
 End AddressMatchesIndices.
 
 Section LevelFromIndices.
