@@ -103,6 +103,7 @@ struct arch_regs {
 		uintreg_t cptr_el2;
 		uintreg_t cnthctl_el2;
 		uintreg_t vttbr_el2;
+		uintreg_t mdcr_el2;
 	} lazy;
 
 	/* Floating point registers. */

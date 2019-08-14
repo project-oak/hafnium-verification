@@ -253,64 +253,68 @@ vcpu_switch:
 	stp x27, x28, [x1, #VCPU_REGS + 8 * 27]
 
 	/* Save lazy state. */
+	/* Use x28 as the base */
+	add x28, x1, #VCPU_LAZY
+
 	mrs x24, vmpidr_el2
 	mrs x25, csselr_el1
-	stp x24, x25, [x1, #VCPU_LAZY + 16 * 0]
+	stp x24, x25, [x28], #16
 
 	mrs x2, sctlr_el1
 	mrs x3, actlr_el1
-	stp x2, x3, [x1, #VCPU_LAZY + 16 * 1]
+	stp x2, x3, [x28], #16
 
 	mrs x4, cpacr_el1
 	mrs x5, ttbr0_el1
-	stp x4, x5, [x1, #VCPU_LAZY + 16 * 2]
+	stp x4, x5, [x28], #16
 
 	mrs x6, ttbr1_el1
 	mrs x7, tcr_el1
-	stp x6, x7, [x1, #VCPU_LAZY + 16 * 3]
+	stp x6, x7, [x28], #16
 
 	mrs x8, esr_el1
 	mrs x9, afsr0_el1
-	stp x8, x9, [x1, #VCPU_LAZY + 16 * 4]
+	stp x8, x9, [x28], #16
 
 	mrs x10, afsr1_el1
 	mrs x11, far_el1
-	stp x10, x11, [x1, #VCPU_LAZY + 16 * 5]
+	stp x10, x11, [x28], #16
 
 	mrs x12, mair_el1
 	mrs x13, vbar_el1
-	stp x12, x13, [x1, #VCPU_LAZY + 16 * 6]
+	stp x12, x13, [x28], #16
 
 	mrs x14, contextidr_el1
 	mrs x15, tpidr_el0
-	stp x14, x15, [x1, #VCPU_LAZY + 16 * 7]
+	stp x14, x15, [x28], #16
 
 	mrs x16, tpidrro_el0
 	mrs x17, tpidr_el1
-	stp x16, x17, [x1, #VCPU_LAZY + 16 * 8]
+	stp x16, x17, [x28], #16
 
 	mrs x18, amair_el1
 	mrs x19, cntkctl_el1
-	stp x18, x19, [x1, #VCPU_LAZY + 16 * 9]
+	stp x18, x19, [x28], #16
 
 	mrs x20, sp_el0
 	mrs x21, sp_el1
-	stp x20, x21, [x1, #VCPU_LAZY + 16 * 10]
+	stp x20, x21, [x28], #16
 
 	mrs x22, elr_el1
 	mrs x23, spsr_el1
-	stp x22, x23, [x1, #VCPU_LAZY + 16 * 11]
+	stp x22, x23, [x28], #16
 
 	mrs x24, par_el1
 	mrs x25, hcr_el2
-	stp x24, x25, [x1, #VCPU_LAZY + 16 * 12]
+	stp x24, x25, [x28], #16
 
 	mrs x26, cptr_el2
 	mrs x27, cnthctl_el2
-	stp x26, x27, [x1, #VCPU_LAZY + 16 * 13]
+	stp x26, x27, [x28], #16
 
-	mrs x28, vttbr_el2
-	str x28, [x1, #VCPU_LAZY + 16 * 14]
+	mrs x4, vttbr_el2
+	mrs x5, mdcr_el2
+	stp x4, x5, [x28], #16
 
 	/* Save GIC registers. */
 #if GIC_VERSION == 3 || GIC_VERSION == 4
@@ -321,32 +325,28 @@ vcpu_switch:
 	str x3, [x2, #16 * 0]
 #endif
 
-	/*
-	 * Save floating point registers.
-	 *
-	 * Offset is too large, so start from a new base.
-	 */
-	add x2, x1, #VCPU_FREGS
-	stp q0, q1, [x2, #32 * 0]
-	stp q2, q3, [x2, #32 * 1]
-	stp q4, q5, [x2, #32 * 2]
-	stp q6, q7, [x2, #32 * 3]
-	stp q8, q9, [x2, #32 * 4]
-	stp q10, q11, [x2, #32 * 5]
-	stp q12, q13, [x2, #32 * 6]
-	stp q14, q15, [x2, #32 * 7]
-	stp q16, q17, [x2, #32 * 8]
-	stp q18, q19, [x2, #32 * 9]
-	stp q20, q21, [x2, #32 * 10]
-	stp q22, q23, [x2, #32 * 11]
-	stp q24, q25, [x2, #32 * 12]
-	stp q26, q27, [x2, #32 * 13]
-	stp q28, q29, [x2, #32 * 14]
-	/* Offest becomes too large, so move the base. */
-	stp q30, q31, [x2, #32 * 15]!
+	/* Save floating point registers. */
+	/* Use x28 as the base. */
+	add x28, x1, #VCPU_FREGS
+	stp q0, q1, [x28], #32
+	stp q2, q3, [x28], #32
+	stp q4, q5, [x28], #32
+	stp q6, q7, [x28], #32
+	stp q8, q9, [x28], #32
+	stp q10, q11, [x28], #32
+	stp q12, q13, [x28], #32
+	stp q14, q15, [x28], #32
+	stp q16, q17, [x28], #32
+	stp q18, q19, [x28], #32
+	stp q20, q21, [x28], #32
+	stp q22, q23, [x28], #32
+	stp q24, q25, [x28], #32
+	stp q26, q27, [x28], #32
+	stp q28, q29, [x28], #32
+	stp q30, q31, [x28], #32
 	mrs x3, fpsr
 	mrs x4, fpcr
-	stp x3, x4, [x2, #32 * 1]
+	stp x3, x4, [x28], #32
 
 	/* Save new vcpu pointer in non-volatile register. */
 	mov x19, x0
@@ -408,64 +408,68 @@ vcpu_restore_all_and_run:
 
 vcpu_restore_lazy_and_run:
 	/* Restore lazy registers. */
-	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 0]
+	/* Use x28 as the base. */
+	add x28, x0, #VCPU_LAZY
+
+	ldp x24, x25, [x28], #16
 	msr vmpidr_el2, x24
 	msr csselr_el1, x25
 
-	ldp x2, x3, [x0, #VCPU_LAZY + 16 * 1]
+	ldp x2, x3, [x28], #16
 	msr sctlr_el1, x2
 	msr actlr_el1, x3
 
-	ldp x4, x5, [x0, #VCPU_LAZY + 16 * 2]
+	ldp x4, x5, [x28], #16
 	msr cpacr_el1, x4
 	msr ttbr0_el1, x5
 
-	ldp x6, x7, [x0, #VCPU_LAZY + 16 * 3]
+	ldp x6, x7, [x28], #16
 	msr ttbr1_el1, x6
 	msr tcr_el1, x7
 
-	ldp x8, x9, [x0, #VCPU_LAZY + 16 * 4]
+	ldp x8, x9, [x28], #16
 	msr esr_el1, x8
 	msr afsr0_el1, x9
 
-	ldp x10, x11, [x0, #VCPU_LAZY + 16 * 5]
+	ldp x10, x11, [x28], #16
 	msr afsr1_el1, x10
 	msr far_el1, x11
 
-	ldp x12, x13, [x0, #VCPU_LAZY + 16 * 6]
+	ldp x12, x13, [x28], #16
 	msr mair_el1, x12
 	msr vbar_el1, x13
 
-	ldp x14, x15, [x0, #VCPU_LAZY + 16 * 7]
+	ldp x14, x15, [x28], #16
 	msr contextidr_el1, x14
 	msr tpidr_el0, x15
 
-	ldp x16, x17, [x0, #VCPU_LAZY + 16 * 8]
+	ldp x16, x17, [x28], #16
 	msr tpidrro_el0, x16
 	msr tpidr_el1, x17
 
-	ldp x18, x19, [x0, #VCPU_LAZY + 16 * 9]
+	ldp x18, x19, [x28], #16
 	msr amair_el1, x18
 	msr cntkctl_el1, x19
 
-	ldp x20, x21, [x0, #VCPU_LAZY + 16 * 10]
+	ldp x20, x21, [x28], #16
 	msr sp_el0, x20
 	msr sp_el1, x21
 
-	ldp x22, x23, [x0, #VCPU_LAZY + 16 * 11]
+	ldp x22, x23, [x28], #16
 	msr elr_el1, x22
 	msr spsr_el1, x23
 
-	ldp x24, x25, [x0, #VCPU_LAZY + 16 * 12]
+	ldp x24, x25, [x28], #16
 	msr par_el1, x24
 	msr hcr_el2, x25
 
-	ldp x26, x27, [x0, #VCPU_LAZY + 16 * 13]
+	ldp x26, x27, [x28], #16
 	msr cptr_el2, x26
 	msr cnthctl_el2, x27
 
-	ldr x28, [x0, #VCPU_LAZY + 16 * 14]
-	msr vttbr_el2, x28
+	ldp x4, x5, [x28], #16
+	msr vttbr_el2, x4
+	msr mdcr_el2, x5
 
 	/* Restore GIC registers. */
 #if GIC_VERSION == 3 || GIC_VERSION == 4
