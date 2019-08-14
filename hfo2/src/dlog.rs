@@ -89,6 +89,6 @@ pub static mut dlog_buffer: [u8; DLOG_BUFFER_SIZE] = [0; DLOG_BUFFER_SIZE];
 #[no_mangle]
 pub unsafe extern "C" fn dlog_putchar(c: u8) {
     dlog_buffer[dlog_buffer_offset] = c;
-	dlog_buffer_offset = (dlog_buffer_offset + 1) % DLOG_BUFFER_SIZE;
+    dlog_buffer_offset = (dlog_buffer_offset + 1) % DLOG_BUFFER_SIZE;
     plat_console_putchar(c);
 }

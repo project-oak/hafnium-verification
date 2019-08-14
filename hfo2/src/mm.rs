@@ -76,7 +76,9 @@ extern "C" {
     fn arch_mm_stage1_root_table_count() -> u8;
     fn arch_mm_stage2_root_table_count() -> u8;
 
-    fn arch_mm_init(table: paddr_t, first: bool) -> bool;
+    fn arch_mm_init() -> bool;
+
+    fn arch_mm_enable(table: paddr_t);
 
     fn arch_mm_combine_table_entry_attrs(table_attrs: u64, block_attrs: u64) -> u64;
 
@@ -1140,7 +1142,7 @@ impl MemoryManager {
                 )
                 .unwrap();
 
-            if !arch_mm_init(page_table.get_mut().root, true) {
+            if !arch_mm_init() {
                 return None;
             }
         }
@@ -1155,16 +1157,12 @@ impl MemoryManager {
     /// `self.inner` because the value of `ptable.as_raw()` doesn't change after `ptable` is
     /// initialized. Of course, actual page table may vary during running. That's why this function
     /// returns `paddr_t` rather than `&[RawPageTable]`.
-    pub fn get_raw_ptable(&self) -> paddr_t {
+    fn get_raw_ptable(&self) -> paddr_t {
         unsafe { self.hypervisor_ptable.get_unchecked().as_raw() }
     }
 
-    pub fn cpu_init(raw_ptable: paddr_t) -> Result<(), ()> {
-        if unsafe { arch_mm_init(raw_ptable, false) } {
-            Ok(())
-        } else {
-            Err(())
-        }
+    pub unsafe fn cpu_init(&self) {
+        arch_mm_enable(self.get_raw_ptable())
     }
 
     pub fn vm_unmap_hypervisor(ptable: &mut PageTable<Stage2>, mpool: &MPool) -> Result<(), ()> {
@@ -1289,7 +1287,11 @@ pub extern "C" fn mm_ptable_addr_space_end(flags: u32) -> ptable_addr_t {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_ptable_init(t: *mut PageTable<Stage1>, flags: u32, ppool: *mut MPool) -> bool {
+pub unsafe extern "C" fn mm_ptable_init(
+    t: *mut PageTable<Stage1>,
+    flags: u32,
+    ppool: *mut MPool,
+) -> bool {
     let ppool = &*ppool;
     assert!(Flags::from_bits_truncate(flags).contains(Flags::STAGE1));
 

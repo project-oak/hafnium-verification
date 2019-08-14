@@ -28,7 +28,7 @@ fn abort_impl() -> ! {
 /// TODO(HfO2): This function is marked `linkage=weak`, because some tests have custom `abort`
 /// function but still need HfO2. Separating HfO2 into many libraries may resolve this.
 #[cfg(not(feature = "test"))]
-#[linkage="weak"]
+#[linkage = "weak"]
 #[no_mangle]
 pub extern "C" fn abort() -> ! {
     abort_impl()

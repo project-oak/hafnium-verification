@@ -116,6 +116,11 @@
 static uint8_t mm_s2_max_level;
 static uint8_t mm_s2_root_table_count;
 
+static uintreg_t mm_vtcr_el2;
+static uintreg_t mm_mair_el2;
+static uintreg_t mm_tcr_el2;
+static uintreg_t mm_sctlr_el2;
+
 /**
  * Returns the encoding of a page table entry that isn't present.
  */
@@ -518,11 +523,10 @@ uint8_t arch_mm_stage2_root_table_count(void)
 	return mm_s2_root_table_count;
 }
 
-bool arch_mm_init(paddr_t table, bool first)
+bool arch_mm_init(void)
 {
 	static const int pa_bits_table[16] = {32, 36, 40, 42, 44, 48};
 	uint64_t features = read_msr(id_aa64mmfr0_el1);
-	uint64_t v;
 	int pa_bits = pa_bits_table[features & 0xf];
 	int extend_bits;
 	int sl0;
@@ -540,9 +544,7 @@ bool arch_mm_init(paddr_t table, bool first)
 		return false;
 	}
 
-	if (first) {
-		dlog("Supported bits in physical address: %d\n", pa_bits);
-	}
+	dlog("Supported bits in physical address: %d\n", pa_bits);
 
 	/*
 	 * Determine sl0, starting level of the page table, based on the number
@@ -576,65 +578,69 @@ bool arch_mm_init(paddr_t table, bool first)
 	}
 	mm_s2_root_table_count = 1 << extend_bits;
 
-	if (first) {
-		dlog("Stage 2 has %d page table levels with %d pages at the "
-		     "root.\n",
-		     mm_s2_max_level + 1, mm_s2_root_table_count);
-	}
+	dlog("Stage 2 has %d page table levels with %d pages at the root.\n",
+	     mm_s2_max_level + 1, mm_s2_root_table_count);
 
-	v = (1u << 31) |	       /* RES1. */
-	    ((features & 0xf) << 16) | /* PS, matching features. */
-	    (0 << 14) |		       /* TG0: 4 KB granule. */
-	    (3 << 12) |		       /* SH0: inner shareable. */
-	    (1 << 10) |		       /* ORGN0: normal, cacheable ... */
-	    (1 << 8) |		       /* IRGN0: normal, cacheable ... */
-	    (sl0 << 6) |	       /* SL0. */
-	    ((64 - pa_bits) << 0);     /* T0SZ: dependent on PS. */
-	write_msr(vtcr_el2, v);
+	mm_vtcr_el2 = (1u << 31) |		 /* RES1. */
+		      ((features & 0xf) << 16) | /* PS, matching features. */
+		      (0 << 14) |		 /* TG0: 4 KB granule. */
+		      (3 << 12) |		 /* SH0: inner shareable. */
+		      (1 << 10) |	     /* ORGN0: normal, cacheable ... */
+		      (1 << 8) |	      /* IRGN0: normal, cacheable ... */
+		      (sl0 << 6) |	    /* SL0. */
+		      ((64 - pa_bits) << 0) | /* T0SZ: dependent on PS. */
+		      0;
 
 	/*
 	 * 0    -> Device-nGnRnE memory
 	 * 0xff -> Normal memory, Inner/Outer Write-Back Non-transient,
 	 *         Write-Alloc, Read-Alloc.
 	 */
-	write_msr(mair_el2, (0 << (8 * STAGE1_DEVICEINDX)) |
-				    (0xff << (8 * STAGE1_NORMALINDX)));
-
-	write_msr(ttbr0_el2, pa_addr(table));
+	mm_mair_el2 = (0 << (8 * STAGE1_DEVICEINDX)) |
+		      (0xff << (8 * STAGE1_NORMALINDX));
 
 	/*
 	 * Configure tcr_el2.
 	 */
-	v = (1 << 20) |		       /* TBI, top byte ignored. */
-	    ((features & 0xf) << 16) | /* PS. */
-	    (0 << 14) |		       /* TG0, granule size, 4KB. */
-	    (3 << 12) |		       /* SH0, inner shareable. */
-	    (1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
-	    (1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
-	    (25 << 0) | /* T0SZ, input address is 2^39 bytes. */
-	    0;
-	write_msr(tcr_el2, v);
+	mm_tcr_el2 = (1 << 20) |		/* TBI, top byte ignored. */
+		     ((features & 0xf) << 16) | /* PS. */
+		     (0 << 14) |		/* TG0, granule size, 4KB. */
+		     (3 << 12) |		/* SH0, inner shareable. */
+		     (1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
+		     (1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
+		     (25 << 0) | /* T0SZ, input address is 2^39 bytes. */
+		     0;
 
-	v = (1 << 0) |  /* M, enable stage 1 EL2 MMU. */
-	    (1 << 1) |  /* A, enable alignment check faults. */
-	    (1 << 2) |  /* C, data cache enable. */
-	    (1 << 3) |  /* SA, enable stack alignment check. */
-	    (3 << 4) |  /* RES1 bits. */
-	    (1 << 11) | /* RES1 bit. */
-	    (1 << 12) | /* I, instruction cache enable. */
-	    (1 << 16) | /* RES1 bit. */
-	    (1 << 18) | /* RES1 bit. */
-	    (1 << 19) | /* WXN bit, writable execute never. */
-	    (3 << 22) | /* RES1 bits. */
-	    (3 << 28) | /* RES1 bits. */
-	    0;
-
-	dsb(sy);
-	isb();
-	write_msr(sctlr_el2, v);
-	isb();
+	mm_sctlr_el2 = (1 << 0) |  /* M, enable stage 1 EL2 MMU. */
+		       (1 << 1) |  /* A, enable alignment check faults. */
+		       (1 << 2) |  /* C, data cache enable. */
+		       (1 << 3) |  /* SA, enable stack alignment check. */
+		       (3 << 4) |  /* RES1 bits. */
+		       (1 << 11) | /* RES1 bit. */
+		       (1 << 12) | /* I, instruction cache enable. */
+		       (1 << 16) | /* RES1 bit. */
+		       (1 << 18) | /* RES1 bit. */
+		       (1 << 19) | /* WXN bit, writable execute never. */
+		       (3 << 22) | /* RES1 bits. */
+		       (3 << 28) | /* RES1 bits. */
+		       0;
 
 	return true;
+}
+
+void arch_mm_enable(paddr_t table)
+{
+	/* Configure translation management registers. */
+	write_msr(ttbr0_el2, pa_addr(table));
+	write_msr(vtcr_el2, mm_vtcr_el2);
+	write_msr(mair_el2, mm_mair_el2);
+	write_msr(tcr_el2, mm_tcr_el2);
+
+	/* Configure sctlr_el2 to enable MMU and cache. */
+	dsb(sy);
+	isb();
+	write_msr(sctlr_el2, mm_sctlr_el2);
+	isb();
 }
 
 /**
