@@ -78,12 +78,37 @@ Axiom stage2_root_table_count_ok : arch_mm_stage2_root_table_count < Nat.pow 2 P
 Axiom stage1_max_level_pos : 0 < arch_mm_stage1_max_level.
 Axiom stage2_max_level_pos : 0 < arch_mm_stage2_max_level.
 
+(* shorthand definitions just for this file to make axiom statements neater *)
+Local Notation get_bit n bit := (negb (N.eqb (N.land n bit) 0)). (* (n & bit) != 0 *)
+
 (* arch_mm_pte_is_valid is true iff [ attrs & PTE_VALID != 0 ] *)
 Axiom is_valid_matches_flag :
   forall pte level,
     let attrs := arch_mm_pte_attrs pte level in
-    arch_mm_pte_is_valid pte level = negb (N.eqb (N.land attrs PTE_VALID) 0).
+    arch_mm_pte_is_valid pte level = get_bit attrs PTE_VALID.
 
-(* The attributes of absent PTEs are always the same *)
+(* arch_mm_pte_is_present returns true iff the valid bit is 0 or the stage-2
+   owned bit is true *)
+Axiom is_present_iff :
+  forall pte level,
+    let attrs := arch_mm_pte_attrs pte level in
+    let mode := arch_mm_stage2_attrs_to_mode attrs in
+    arch_mm_pte_is_present pte level =
+    (get_bit attrs PTE_VALID || get_bit mode MM_MODE_UNOWNED)%bool.
+
+(* when attributes are converted to a stage-2 mode, the valid bit matches *)
+Axiom stage2_attrs_to_mode_valid :
+  forall attrs,
+    ((N.land attrs PTE_VALID) =? 0)%N =
+    get_bit (arch_mm_stage2_attrs_to_mode attrs) MM_MODE_INVALID.
+
+(* absent PTEs don't have the valid bit set *)
+Axiom absent_invalid :
+  forall level, arch_mm_pte_is_valid (arch_mm_absent_pte level) level = false.
+
+(* we assume there exists some set of attributes that we can use which is neither
+   valid nor stage-2 owned *)
 Axiom absent_attrs : attributes.
-Axiom absent_pte_attrs : forall level, arch_mm_pte_attrs (arch_mm_absent_pte level) level = absent_attrs.
+Axiom absent_attrs_invalid : get_bit absent_attrs PTE_VALID = false.
+Axiom absent_attrs_unowned :
+  get_bit (arch_mm_stage2_attrs_to_mode absent_attrs) MM_MODE_UNOWNED = true.
