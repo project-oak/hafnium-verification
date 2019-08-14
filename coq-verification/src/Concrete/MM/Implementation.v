@@ -442,7 +442,7 @@ Definition mm_page_table_is_empty(table : mm_page_table) (level : nat) : bool :=
 static bool mm_map_level(ptable_addr_t begin, ptable_addr_t end, paddr_t pa,
                          uint64_t attrs, struct mm_page_table *table,
                          uint8_t level, int flags, struct mpool *ppool) *)
-Definition mm_map_level
+Fixpoint mm_map_level
            (s : concrete_state)
            (begin end_ : ptable_addr_t)
            (pa : paddr_t)
@@ -561,6 +561,27 @@ Definition mm_map_level
                  let failed := true in
                  (s, begin, pa, table, pte_index, failed, ppool, break)
                | Some nt =>
+
+                 (* /*
+                  * Recurse to map/unmap the appropriate entries within
+                  * the subtable.
+                  */
+                  if (!mm_map_level(begin, end, pa, attrs, nt, level - 1,
+                                    flags, ppool)) {
+                          return false;
+                  } *)
+                 match level with
+                 | O =>
+                   (* shouldn't happen; no table entries at level 0 *)
+                   let failed := true in
+                   (s, begin, pa, table, pte_index, failed, ppool, break)
+                 | S level_minus1 =>
+                   match mm_map_level s begin end_ pa attrs nt level_minus1 flags ppool with
+                   | (false, nt, s, ppool) =>
+                     let failed := true in
+                     (s, begin, pa, table, pte_index, failed, ppool, break)
+                   | (true, nt, s, ppool) =>
+
                  (* /*
                   * If the subtable is now empty, replace it with an
                   * absent entry at this level. We never need to do
@@ -595,7 +616,7 @@ Definition mm_map_level
                  let pa := mm_pa_start_of_next_block pa entry_size in
                  let pte_index := S pte_index in
                  (s, begin, pa, table, pte_index, failed, ppool, continue)
-               end) in
+               end end end) in
 
   (* return true; *)
   (* N.B. have to check here if the loop returned false partway through *)
