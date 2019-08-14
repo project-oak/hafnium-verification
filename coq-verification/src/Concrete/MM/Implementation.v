@@ -495,8 +495,8 @@ Fixpoint mm_map_level
                        */ *)
            if ((if unmap
                 then !arch_mm_pte_is_present pte level
-                else arch_mm_pte_is_block pte level)
-                 && (arch_mm_pte_attrs pte level =? attrs)%N)%bool
+                else (arch_mm_pte_is_block pte level)
+                       && (arch_mm_pte_attrs pte level =? attrs))%N)%bool
            then
              (* done; continue to the next entry *)
              (* begin = mm_start_of_next_block(begin, entry_size);
