@@ -129,6 +129,20 @@ Section Proofs.
       attrs_changed_in_range ptable_deref idxs old_table table level attrs begin' end_ stage.
   Admitted.
 
+  (* helper version of attrs_changed_in_range_block_start2 that phrases the
+     preconditions slightly differently *)
+  Lemma attrs_changed_in_range_block_start2
+        ptable_deref old_table table level attrs begin end_ idxs stage :
+    address_matches_indices stage (uintvaddr_to_uintpaddr begin) idxs ->
+    forall begin',
+      begin' = begin \/ is_start_of_block begin (mm_entry_size level) ->
+      (begin' <= begin)%N ->
+      attrs_changed_in_range ptable_deref idxs old_table table level attrs begin end_ stage ->
+      attrs_changed_in_range ptable_deref idxs old_table table level attrs begin' end_ stage.
+  Proof.
+    simplify; eauto using attrs_changed_in_range_block_start.
+  Qed.
+
   (*** Proofs about [mm_page_table_from_pa] ***)
 
   Lemma mm_page_table_from_pa_length t flags :
@@ -384,9 +398,24 @@ Section Proofs.
   Proof.
     rewrite <-!mm_level_end_high_eq; intros.
     pose proof mm_entry_size_pos (level + 1).
-    apply N.mul_cancel_l with (p:=mm_entry_size (level + 1));
-      try solver; [ ].
-    rewrite (N.div_between_eq a b c); solver.
+    apply (N.div_between_eq a b c); solver.
+  Qed.
+
+  Lemma mm_level_end_eq2 a b level :
+    (a <= b < mm_level_end a level)%N  ->
+    mm_level_end b level = mm_level_end a level.
+  Proof.
+    rewrite <-!mm_level_end_high_eq; intros.
+    cbv [mm_level_end] in *.
+    autorewrite with bits2arith pull_nat2n in *.
+    rewrite <-mm_entry_size_eq in *.
+    pose proof mm_entry_size_pos (level + 1).
+    match goal with
+      | H : (?w <= ?x < ?y * ?z)%N |- _ =>
+        pose proof (N.div_lt_upper_bound x z y ltac:(solver) ltac:(solver));
+          pose proof (N.div_le_mono w x z ltac:(solver) ltac:(solver))
+    end.
+    solver.
   Qed.
 
   Lemma mm_level_end_start_of_next_block_previous a b level :
@@ -546,20 +575,154 @@ Section Proofs.
              end.
   Qed.
 
-  Lemma mm_map_level_table_attrs conc begin end_ pa attrs table level
-        flags ppool ptr idxs :
-    let ret :=
-        mm_map_level conc begin end_ pa attrs table level flags ppool in
-    let success := fst (fst (fst ret)) in
-    let new_table := snd (fst (fst ret)) in
-    let conc' := snd (fst ret) in
-    let ppool' := snd ret in
-    conc.(ptable_deref) ptr = table ->
-    has_location_in_state conc ptr idxs ->
-    level <= max_level (stage_from_flags flags) ->
-    attrs_changed_in_range (ptable_deref conc) idxs table new_table (S level) attrs
-                           begin end_ (stage_from_flags flags).
-  Admitted.
+  (* TODO : move *)
+  (* if an address a matches a sequence of indices ending in [i], the start of
+     the next block at the level corresponding to the last index in the sequence
+     will either be the end of the level, or match the same sequence of indices
+     except for ending in [S i]. *)
+  Lemma mm_start_of_next_block_matches_indices stage (a : ptable_addr_t) idxs i level :
+    level = level_from_indices stage idxs ->
+    address_matches_indices stage (pa_addr (pa_from_va (va_init a))) (idxs ++ i :: nil) ->
+    mm_start_of_next_block a (mm_entry_size level) = mm_level_end a level \/
+    address_matches_indices stage (pa_addr (pa_from_va (va_init (mm_start_of_next_block a (mm_entry_size level)))))
+                            (idxs ++ S i :: nil).
+  Admitted. (* TODO *)
+
+  (*
+  (* that last index is the mm_index *)
+  (* TODO : move *)
+  Lemma __ deref idxs old_table new_table level attrs begin end_ stage i
+  H2 : (n < N.min (mm_level_end begin 0) end_)%N
+  H : (begin <= n)%N
+  H3 : is_begin_or_block_start begin n 0
+  H4 : address_matches_indices (stage_from_flags flags) (pa_addr (pa_from_va (va_init n))) (idxs ++ s :: nil)
+  H5 : attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) m0 1 absent_attrs begin n (stage_from_flags flags)
+  H6 : arch_mm_pte_is_present (nth_default_oobe (entries m0) s) 0 = false
+  H7, H8 : true = true
+  H9 : (flags & MM_FLAG_UNMAP)%N <> 0%N
+  ============================
+  attrs_changed_in_range (ptable_deref conc) idxs (ptable_deref conc ptr) m0 1 absent_attrs begin
+    (mm_start_of_next_block n (mm_entry_size 0)) (stage_from_flags flags) *)
+
+  (* dumb wrapper for one of the invariants so it doesn't get split too early *)
+  Definition is_begin_or_block_start
+             (init_begin begin : ptable_addr_t) level : Prop :=
+      (begin = init_begin \/ is_start_of_block begin (mm_entry_size level)).
+
+  (* dumb wrapper for one of the invariants so it doesn't get split too early *)
+  Definition end_of_level_or_indices_match
+             (init_begin begin : ptable_addr_t) level flags idxs : Prop :=
+    (begin = mm_level_end init_begin level
+     \/ (address_matches_indices (stage_from_flags flags)
+                                 (pa_addr (pa_from_va (va_init begin)))
+                                 idxs)).
+
+  (* Helper definition -- given attrs and flags, returns the expected attributes
+     of new PTES (the attributes of an absent PTE if UNMAP is set, and attrs
+     otherwise). *)
+  Definition new_attrs (attrs : attributes) (flags : int) :=
+    if ((flags & MM_FLAG_UNMAP) != 0)%N
+    then absent_attrs
+    else attrs.
+
+  Definition mm_map_level_loop_invariant
+        init_conc init_begin idxs old_table level attrs flags
+        (state : concrete_state * ptable_addr_t * paddr_t * mm_page_table * size_t * bool * mpool)
+    : Prop :=
+    let '(conc, begin, pa, new_table, pte_index, failed, ppool) := state in
+    (* Either we failed, or... *)
+    (failed = true \/
+     (* concrete state has remained unchanged *)
+     (conc = init_conc
+      (* ...and [begin] increases monotonically *)
+      /\ (init_begin <= begin)%N
+      (* ..and [begin] is either equal to its starting value or is the start
+         of a block *)
+      /\ is_begin_or_block_start init_begin begin level
+      (* ... and either we've reached the end of the level, or the address
+         matches the sequence of indices we expect *)
+      /\ end_of_level_or_indices_match init_begin begin level flags
+                                       (idxs ++ (pte_index :: nil))
+      (* ...and table attributes have changed in the given range *) 
+      /\ attrs_changed_in_range
+           (ptable_deref conc) idxs old_table new_table (S level)
+           (new_attrs attrs flags) init_begin begin
+           (stage_from_flags flags))).
+
+  (* TODO : move *)
+  Hint Resolve mm_entry_size_power_two.
+
+  Lemma mm_map_level_table_attrs conc level :
+    forall begin end_ pa attrs table flags ppool ptr idxs,
+      conc.(ptable_deref) ptr = table ->
+      level = level_from_indices (stage_from_flags flags) idxs ->
+      has_location_in_state conc ptr idxs ->
+      let ret :=
+          mm_map_level conc begin end_ pa attrs table level flags ppool in
+      let success := fst (fst (fst ret)) in
+      let new_table := snd (fst (fst ret)) in
+      success = true ->
+      attrs_changed_in_range (ptable_deref conc) idxs table new_table (S level)
+                             (new_attrs attrs flags) begin end_
+                             (stage_from_flags flags).
+  Proof.
+    induction level; cbn [mm_map_level].
+    { (* level = 0 *)
+      intros begin end_ pa attrs table flags ppool ptr idxs.
+      intros until 3.
+      (* use [while_loop_invariant] with [mm_map_level_loop_invariant] as the
+       invariant *)
+      let level := constr:(0) in
+      match goal with
+      | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
+        assert (mm_map_level_loop_invariant
+                  conc begin idxs table level attrs flags
+                  (@while_loop _ iter cond start body));
+          [ apply while_loop_invariant | ]
+      end;
+        cbv [mm_map_level_loop_invariant] in *; [ | | ].
+      { (* subgoal 1 : invariant holds over loop body *)
+        simplify; right; basics; rewrite ?mm_replace_entry_represents;
+          (* destruct end_of_level_or_indices_match and eliminate end-of-level
+             case (since it happens at the very end of the loop, it couldn't
+             have happened in the previous loop run) *)
+          match goal with
+          | H : context [end_of_level_or_indices_match] |- _ =>
+            cbv [end_of_level_or_indices_match] in H;
+              basics; [ repeat inversion_bool; solver | ]
+          end;
+          (* most of the invariant clauses can be solved quickly *)
+          try match goal with
+              (* solve the is_begin_or_block_start clause *)
+              | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
+                cbv [is_begin_or_block_start];
+                  solve [auto using mm_start_of_next_block_is_start]
+              (* solve the init_begin <= begin clause *)
+              | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
+                pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
+              (* solve the end_of_level_or_inidces_match clause *)
+              | |- context [end_of_level_or_indices_match] =>
+                cbv [end_of_level_or_indices_match];
+                  rewrite <-mm_level_end_eq2 with (b:=n) by (repeat inversion_bool; try solver);
+                  apply mm_start_of_next_block_matches_indices; solver
+              | _ => solver
+              end.
+        { cbv [new_attrs] in *.
+          repeat break_match; try solver; [ ].
+          repeat inversion_bool.
+          (* our concern is the range between n and start_of_next_block n; the rest is taken care of *)
+          (* the non-present thing gives us that information -- we just have to connect the fact that n matches that index sequence at the given level to the fact that taking the entry at the last index in the sequence gives us information about n - start_of_next_block n *)
+          Print attrs_changed_in_range.
+          Print attrs_outside_range_unchanged.
+          Search attrs_changed_in_range.
+          (*
+            Logic:
+           *)
+
+        
+
+  Qed. *)
+  Admitted. (* HERE *)
 
   (* TODO: make locations_exclusive take a list of mpools so we can include the
      fact that the local pool doesn't overlap with active tables -- this will be
@@ -669,11 +832,6 @@ Section Proofs.
   Admitted. (* TODO *)
 
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
-  Definition is_begin_or_block_start
-             (start_begin begin : ptable_addr_t) root_level : Prop :=
-      (begin = start_begin \/ is_start_of_block begin (mm_entry_size root_level)).
-
-  (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition table_index_expression (begin end_ : ptable_addr_t) root_level : size_t :=
     if N.lt_le_dec begin end_
     then
@@ -688,7 +846,7 @@ Section Proofs.
       S (mm_index (end_ - 1) root_level).
 
   Definition mm_map_root_loop_invariant
-             start_abst start_conc t_ptrs start_begin end_ attrs root_level
+             start_abst start_conc t_ptrs start_begin end_ attrs flags root_level
              (state : concrete_state * ptable_addr_t * size_t * bool * mpool)
     : Prop :=
     let '(s, begin, table_index, failed, ppool) := state in
@@ -719,7 +877,8 @@ Section Proofs.
             (fold_left
                (fun abst t_ptr =>
                   abstract_reassign_pointer
-                    abst start_conc t_ptr attrs start_begin end_)
+                    abst start_conc t_ptr (new_attrs attrs flags)
+                    start_begin end_)
                (firstn table_index t_ptrs)
                start_abst)
             s))).
@@ -780,7 +939,8 @@ Section Proofs.
       represents (fold_left
                     (fun abst t_ptr =>
                        abstract_reassign_pointer
-                         abst conc t_ptr attrs begin end_)
+                         abst conc t_ptr (new_attrs attrs flags)
+                         begin end_)
                     (mm_page_table_from_pa t.(root))
                     abst)
                  conc'.
@@ -813,7 +973,7 @@ Section Proofs.
     match goal with
     | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
       assert (mm_map_root_loop_invariant
-                abst conc t_ptrs begin end_ attrs root_level
+                abst conc t_ptrs begin end_ attrs flags root_level
                 (@while_loop _ iter cond start body));
         [ apply while_loop_invariant | ]
     end;
@@ -887,7 +1047,7 @@ Section Proofs.
           match goal with |- context [?x + 2 - 1] =>
                           replace (x + 2 - 1) with (S x) by solver end.
           replace (root_level - 1) with (max_level (stage_from_flags flags)) by solver.
-          eapply mm_map_level_table_attrs; solver. } }
+          eapply mm_map_level_table_attrs; autorewrite with push_length; solver. } }
       { (* is_begin_or_block_start start_begin begin  *)
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
@@ -929,11 +1089,11 @@ Section Proofs.
           cbv [level_from_indices]; cbn [length]; try solver; [ ].
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
-          destruct H; [ subst; eapply mm_map_level_table_attrs; solver | ]
+          destruct H; [ subst; eapply mm_map_level_table_attrs; autorewrite with push_length; try solver | ]
         end.
         eapply attrs_changed_in_range_block_start;
           try (replace (S (root_level - 1)) with root_level by lia; solver); [ ].
-        eapply mm_map_level_table_attrs; solver. } }
+        eapply mm_map_level_table_attrs; autorewrite with push_length; solver. } }
 
     { (* Subgoal 2 : invariant holds at start *)
       right.
