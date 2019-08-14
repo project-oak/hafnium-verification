@@ -582,41 +582,41 @@ Fixpoint mm_map_level
                      (s, begin, pa, table, pte_index, failed, ppool, break)
                    | (true, nt, s, ppool) =>
 
-                 (* /*
-                  * If the subtable is now empty, replace it with an
-                  * absent entry at this level. We never need to do
-                  * break-before-makes here because we are assigning
-                  * an absent value.
-                  */
-                     if (commit && unmap &&
-                         mm_page_table_is_empty(nt, level - 1)) {
-                             pte_t v = *pte;
-                             *pte = arch_mm_absent_pte(level);
-                             mm_free_page_pte(v, level, ppool);
-                     } *)
-                 let '(pte, s, ppool) :=
-                     if (commit && unmap &&
-                                mm_page_table_is_empty nt (level - 1))%bool
-                     then
-                       let v := pte in
-                       (* N.B. in functional programming we can't edit data under
-                          a pointer, so we need to construct a new table and pass
-                          it along. *)
-                       let table :=
-                           table.(mm_page_table_replace_entry)
-                                   (arch_mm_absent_pte level) pte_index in
-                       let '(s, ppool) := mm_free_page_pte s v level ppool in
-                       (pte, s, ppool)
-                     else (pte, s, ppool) in
-                 (* done; continue to the next entry *)
-                 (* begin = mm_start_of_next_block(begin, entry_size);
-                    pa = mm_pa_start_of_next_block(pa, entry_size);
-                    pte++; *)
-                 let begin := mm_start_of_next_block begin entry_size in
-                 let pa := mm_pa_start_of_next_block pa entry_size in
-                 let pte_index := S pte_index in
-                 (s, begin, pa, table, pte_index, failed, ppool, continue)
-               end end end) in
+                    (* /*
+                     * If the subtable is now empty, replace it with an
+                     * absent entry at this level. We never need to do
+                     * break-before-makes here because we are assigning
+                     * an absent value.
+                     */
+                        if (commit && unmap &&
+                            mm_page_table_is_empty(nt, level - 1)) {
+                                pte_t v = *pte;
+                                *pte = arch_mm_absent_pte(level);
+                                mm_free_page_pte(v, level, ppool);
+                        } *)
+                     let '(pte, s, ppool) :=
+                         if (commit && unmap &&
+                                    mm_page_table_is_empty nt (level - 1))%bool
+                         then
+                           let v := pte in
+                          (* N.B. in functional programming we can't edit data under
+                             a pointer, so we need to construct a new table and pass
+                             it along. *)
+                          let table :=
+                              table.(mm_page_table_replace_entry)
+                                      (arch_mm_absent_pte level) pte_index in
+                          let '(s, ppool) := mm_free_page_pte s v level ppool in
+                          (pte, s, ppool)
+                        else (pte, s, ppool) in
+                    (* done; continue to the next entry *)
+                    (* begin = mm_start_of_next_block(begin, entry_size);
+                       pa = mm_pa_start_of_next_block(pa, entry_size);
+                       pte++; *)
+                    let begin := mm_start_of_next_block begin entry_size in
+                    let pa := mm_pa_start_of_next_block pa entry_size in
+                    let pte_index := S pte_index in
+                    (s, begin, pa, table, pte_index, failed, ppool, continue)
+                  end end end) in
 
   (* return true; *)
   (* N.B. have to check here if the loop returned false partway through *)
