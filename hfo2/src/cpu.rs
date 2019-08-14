@@ -276,6 +276,17 @@ pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
     VCpuExecutionLocked { vcpu }
 }
 
+/// Tries to lock the given vCPU, and updates `locked` if succeed. 
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecutionLocked) -> bool {
+    if sl_try_lock(&(*vcpu).execution_lock) {
+        *locked = VCpuExecutionLocked { vcpu };
+        true
+    } else {
+        false
+    }
+}
+
 /// Unlocks a vCPU previously locked with vcpu_lock, and updates `locked` to
 /// reflect the fact that the vCPU is no longer locked.
 #[no_mangle]

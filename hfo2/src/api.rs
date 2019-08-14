@@ -321,7 +321,7 @@ unsafe fn internal_interrupt_inject(
 ///
 /// Returns:
 ///  - false if it fails to prepare `vcpu` to run.
-///  - - true if it succeeds to prepare `vcpu` to run. In this case,
+///  - true if it succeeds to prepare `vcpu` to run. In this case,
 ///    `vcpu.execution_lock` has acquired.
 ///
 /// TODO: Porting this function into Rust impacted test performance badly.
