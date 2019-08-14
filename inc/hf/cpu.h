@@ -122,6 +122,7 @@ void cpu_off(struct cpu *c);
 struct cpu *cpu_find(cpu_id_t id);
 
 struct vcpu_execution_locked vcpu_lock(struct vcpu *vcpu);
+bool vcpu_try_lock(struct vcpu *vcpu, vcpu_execution_locked *locked);
 void vcpu_unlock(struct vcpu_execution_locked *locked);
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu_execution_locked vcpu, ipaddr_t entry, uintreg_t arg);
