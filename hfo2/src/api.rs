@@ -323,13 +323,6 @@ unsafe fn internal_interrupt_inject(
 ///  - false if it fails to prepare `vcpu` to run.
 ///  - true if it succeeds to prepare `vcpu` to run. In this case,
 ///    `vcpu.execution_lock` has acquired.
-///
-/// TODO: Porting this function into Rust impacted test performance badly.
-/// In order to pass all test suites,
-///  - currently, enlong the time limits in test/hftest/hftest.py and
-///    kokoro/ubuntu/test.sh.
-///  - in the future, modify this function as one in this PR
-///    (https://hafnium-review.googlesource.com/c/hafnium/+/5600).
 unsafe fn api_vcpu_prepare_run(
     current: *const VCpu,
     vcpu: *mut VCpu,
@@ -337,15 +330,6 @@ unsafe fn api_vcpu_prepare_run(
 ) -> bool {
     let ret;
 
-    // Wait until the registers become available. All locks must be released
-    // between iterations of this loop to avoid potential deadlocks if, on
-    // any path, a lock needs to be taken after taking the decision to
-    // switch context but before the registers have been saved.
-    //
-    // The VM lock is not needed in the common case so it must only be taken
-    // when it is going to be needed. This ensures there are no inter-vCPU
-    // dependencies in the common run case meaning the sensitive context
-    // switch performance is consistent.
     if !sl_try_lock(&(*vcpu).execution_lock) {
         // vCPU is running or prepared to run on another pCPU.
         //
@@ -357,6 +341,10 @@ unsafe fn api_vcpu_prepare_run(
     }
 
     // The VM needs to be locked to deliver mailbox messages.
+    // The VM lock is not needed in the common case so it must only be taken
+    // when it is going to be needed. This ensures there are no inter-vCPU
+    // dependencies in the common run case meaning the sensitive context
+    // switch performance is consistent.
     let need_vm_lock = (*vcpu).state == VCpuStatus::BlockedMailbox;
     if need_vm_lock {
         sl_lock(&(*(*vcpu).vm).lock);
@@ -395,7 +383,7 @@ unsafe fn api_vcpu_prepare_run(
             if !ret {
                 sl_unlock(&(*vcpu).execution_lock);
             }
-            
+
             return ret;
         }
 
