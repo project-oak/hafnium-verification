@@ -531,19 +531,19 @@ Section Proofs.
      translation it returns a new table to the caller and the caller updates the
      state) *)
   Lemma mm_map_level_represents
-        (conc : concrete_state)
-        begin end_ pa attrs table level flags ppool :
-    (snd (fst (mm_map_level
-                 conc begin end_ pa attrs table level flags ppool))) = conc.
+        (conc : concrete_state) level :
+    forall begin end_ pa attrs table flags ppool,
+             (snd (fst (mm_map_level
+                          conc begin end_ pa attrs table level flags ppool))) = conc.
   Proof.
-    autounfold; cbv [mm_map_level].
-    repeat match goal with
-           | _ => simplify_step
-           | _ => apply while_loop_invariant; [ | solver ]
-           | _ => rewrite mm_free_page_pte_represents
-           | _ => rewrite mm_replace_entry_represents
-           | _ => rewrite mm_populate_table_pte_represents
-           end.
+    induction level; autounfold; cbn [mm_map_level];
+      repeat match goal with
+             | _ => simplify_step
+             | _ => apply while_loop_invariant; [ | solver ]
+             | _ => rewrite mm_free_page_pte_represents
+             | _ => rewrite mm_replace_entry_represents
+             | _ => rewrite mm_populate_table_pte_represents
+             end.
   Qed.
 
   Lemma mm_map_level_table_attrs conc begin end_ pa attrs table level
