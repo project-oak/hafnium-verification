@@ -392,6 +392,17 @@ Section Proofs.
       abst
       vms.
 
+  (* equivalent to arch_mm_pte_is_present; says that the attributes either have
+     the valid bit set or the stage-2 owned bit set. *)
+  Definition attrs_present (attrs : attributes) : bool :=
+    (((attrs & PTE_VALID) != 0)%N
+     || ((arch_mm_stage2_attrs_to_mode attrs & MM_MODE_UNOWNED) =? 0)%N)%bool.
+
+  (* either the attributes are exactly equivalent, or they are both absent *)
+  Definition attrs_equiv (attrs1 attrs2 : attributes) : Prop :=
+    attrs1 = attrs2
+    \/ (attrs_present attrs1 = false /\ attrs_present attrs2 = false).
+
   (* N.B. level is the level above the table *)
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
@@ -403,7 +414,7 @@ Section Proofs.
       let a : uintpaddr_t := pa_addr (pa_from_va (va_init a_v)) in
       address_matches_indices stage a table_loc ->
       level = level_from_indices stage table_loc ->
-      page_attrs' ptable_deref a t level stage = attrs.
+      attrs_equiv (page_attrs' ptable_deref a t level stage) attrs.
 
   (* N.B. level is the level above the table *)
   Definition attrs_outside_range_unchanged
@@ -1136,8 +1147,10 @@ Section Proofs.
       deref idxs (deref ptr) t level attrs begin end_ stage ->
     In a (addresses_under_pointer_in_range
             deref ptr root_ptable begin end_ stage) ->
-    page_attrs
-      (update_deref deref ptr t) root_ptable stage (pa_addr a) = attrs.
+    attrs_equiv
+      (page_attrs
+         (update_deref deref ptr t) root_ptable stage (pa_addr a))
+      attrs.
   Proof.
     cbv [attrs_changed_in_range]; basics.
     cbv [has_uniform_attrs page_attrs page_attrs'] in *.
@@ -1148,6 +1161,34 @@ Section Proofs.
     rewrite <-(va_init_id (va_from_pa a)).
     match goal with H : _ |- _ => apply H end;
       rewrite ?va_init_id, ?pa_from_va_id; solver.
+  Qed.
+
+  Lemma attrs_equiv_valid attrs1 attrs2 :
+    attrs_equiv attrs1 attrs2 ->
+    ((attrs1 & PTE_VALID) =? 0)%N = ((attrs2 & PTE_VALID) =? 0)%N.
+  Proof.
+    cbv [attrs_equiv attrs_present];
+      repeat match goal with
+             | _ => progress basics
+             | _ => inversion_bool
+             | _ => solver
+             end.
+  Qed.
+
+  Lemma attrs_equiv_to_mode attrs1 attrs2 flag :
+    (flag = MM_MODE_UNOWNED \/ flag = MM_MODE_INVALID) ->
+    attrs_equiv attrs1 attrs2 ->
+    ((arch_mm_stage2_attrs_to_mode attrs1 & flag) =? 0)%N
+    = ((arch_mm_stage2_attrs_to_mode attrs2 & flag) =? 0)%N.
+  Proof.
+    cbv [attrs_equiv attrs_present];
+      repeat match goal with
+             | _ => progress basics
+             | H : ( _ =? _)%N = _ |- _ => rewrite H
+             | H : _ |- _ => rewrite stage2_attrs_to_mode_valid in H
+             | _ => inversion_bool
+             | _ => solver
+             end.
   Qed.
 
   Lemma changed_has_new_attrs_stage2
@@ -1164,12 +1205,14 @@ Section Proofs.
     In a (addresses_under_pointer_in_range
             deref ptr (vm_ptable v) begin end_ Stage2) ->
     forall flag value,
+      (flag = MM_MODE_UNOWNED \/ flag = MM_MODE_INVALID) ->
       stage2_mode_flag_set attrs flag = value ->
       stage2_mode_has_value (reassign_pointer conc ptr t) v a flag value.
   Proof.
-    cbv [stage2_mode_flag_set stage2_mode_has_value]; basics.
-    cbn [reassign_pointer ptable_deref].
-    erewrite changed_has_new_attrs; solver.
+    cbv [stage2_mode_flag_set stage2_mode_has_value];
+      cbn [reassign_pointer ptable_deref]; basics;
+        erewrite attrs_equiv_to_mode
+        by eauto using changed_has_new_attrs; solver.
   Qed.
 
   Local Ltac solve_table_unchanged_step :=
@@ -1265,9 +1308,12 @@ Section Proofs.
                  | _ => progress basics
                  | _ => progress destruct_tuples
                  | _ => progress cbn [ptable_deref reassign_pointer] in *
-                 | _ => erewrite changed_has_new_attrs in * by solver
+                 | H : stage1_valid _ = _ |- _ =>
+                   cbv [stage1_valid] in H;
+                     erewrite <-attrs_equiv_valid in H
+                     by (eapply changed_has_new_attrs; solver)
                  | _ => solver
-                 | _ => cbv [stage1_valid] in *; repeat inversion_bool; solver
+                 | _ => repeat inversion_bool; solver
                  end. }
     { (* stage-2 [owned_by] states match *)
       rewrite owned_by_abstract_reassign_pointer_stage1 by eauto.
