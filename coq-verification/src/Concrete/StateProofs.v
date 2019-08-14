@@ -1445,8 +1445,14 @@ Section Proofs.
 
   (* abstract_reassign_pointer is a no-op if the given tables don't have any
      addresses in range *)
-  (* TODO: fill in preconditions; likely needs to know that the table is at the
-     right level *)
+  Lemma abstract_reassign_pointer_no_addresses
+        abst conc attrs begin end_ t_ptr :
+    no_addresses_in_range conc.(ptable_deref) t_ptr begin end_ ->
+    abstract_state_equiv
+      abst
+      (abstract_reassign_pointer abst conc t_ptr attrs begin end_).
+  Admitted.
+
   Lemma abstract_reassign_pointer_low
         abst conc attrs begin end_ t_ptrs :
     Forall
@@ -1459,7 +1465,12 @@ Section Proofs.
             abstract_reassign_pointer abst conc t_ptr attrs begin end_)
          t_ptrs
          abst).
-  Admitted.
+  Proof.
+    rewrite Forall_forall; basics.
+    apply fold_left_invariant_strong; [ basics | solver ].
+    eapply abstract_state_equiv_trans; [ solver | ].
+    auto using abstract_reassign_pointer_no_addresses.
+  Qed.
 
   (* we can expand the range to include pointers that are out of range *)
   (* TODO: fill in preconditions; likely needs to know that the table is at the
@@ -1480,5 +1491,15 @@ Section Proofs.
             abstract_reassign_pointer abst conc t_ptr attrs begin end_)
          t_ptrs
          abst).
-  Admitted.
+  Proof.
+    rewrite Forall_forall; basics.
+    destruct (Compare_dec.le_dec i (length t_ptrs));
+      [ | autorewrite with push_firstn; solver ].
+    rewrite <-(firstn_skipn i t_ptrs).
+    autorewrite with push_firstn.
+    rewrite Nat.min_id, fold_left_app.
+    apply fold_left_invariant_strong with (ls:=skipn _ _); [ basics | solver ].
+    eapply abstract_state_equiv_trans; [ solver | ].
+    auto using abstract_reassign_pointer_no_addresses.
+  Qed.
 End Proofs.

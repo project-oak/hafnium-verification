@@ -321,6 +321,15 @@ Section FoldLeft.
     generalize dependent b; induction ls; intros;
       cbn [fold_left]; eauto.
   Qed.
+
+  Lemma fold_left_invariant_strong (P : B -> Prop) (f : B -> A -> B) b ls :
+    (forall a b, In a ls -> P b -> P (f b a)) ->
+    P b ->
+    P (fold_left f ls b).
+  Proof.
+    generalize dependent b; induction ls; intros;
+      cbn [fold_left]; eauto.
+  Qed.
 End FoldLeft.
 
 (* Proofs about [filter] *)
@@ -350,6 +359,15 @@ Section FirstnSkipn.
     cbn [firstn]. destruct i; [reflexivity|].
     rewrite IHls by solver.
     reflexivity.
+  Qed.
+
+  Lemma firstn_app_l (l1 : list A) :
+    forall l2 n, n <= length l1 -> firstn n (l1 ++ l2) = firstn n l1.
+  Proof.
+    induction l1; destruct n; basics;
+      rewrite <-?app_comm_cons, ?firstn_cons;
+      autorewrite with push_length in *;
+      rewrite ?IHl1; try solver.
   Qed.
 
   Lemma in_firstn (a : A) ls : forall i, In a (firstn i ls) -> In a ls.
@@ -407,6 +425,8 @@ End FirstnSkipn.
 
 (* autorewrite databases for [firstn] and [skipn] *)
 Hint Rewrite @firstn_O @firstn_nil @firstn_cons : push_firstn.
+Hint Rewrite @firstn_app_l @firstn_all2 @firstn_firstn
+     using (autorewrite with push_length; solver) : push_firstn.
 Hint Rewrite @skipn_nil @skipn_cons : push_skipn.
 Hint Rewrite @skipn_all using lia : push_skipn.
 Hint Rewrite @skipn_length : push_length.
