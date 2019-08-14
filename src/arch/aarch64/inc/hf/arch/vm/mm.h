@@ -18,4 +18,5 @@
 
 #include "hf/mm.h"
 
-bool arch_vm_mm_init(paddr_t table);
+bool arch_vm_mm_init(void);
+void arch_vm_mm_enable(paddr_t table);
