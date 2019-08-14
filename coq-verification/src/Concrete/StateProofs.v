@@ -489,6 +489,21 @@ Section Proofs.
       solver. }
   Qed.
 
+  Lemma abstract_reassign_pointer_noop
+        abst conc ptr owned valid begin end_ e root_ptable stage :
+    stage = match e with
+            | inl _ => Stage2
+            | inr _ => Stage1
+            end ->
+    addresses_under_pointer_in_range
+      (ptable_deref conc) ptr root_ptable begin end_ stage = nil ->
+    abstract_reassign_pointer_for_entity
+      abst conc ptr owned valid e root_ptable begin end_ = abst.
+  Proof.
+    cbv [abstract_reassign_pointer_for_entity]; intros ? Hnil.
+    basics; rewrite Hnil; solver.
+  Qed.
+
   Lemma abstract_reassign_pointer_for_hafnium_noop
         abst conc ptr owned valid begin end_ v ppool :
     In v vms ->
@@ -501,12 +516,9 @@ Section Proofs.
       abst conc ptr owned valid (inr hid) hafnium_ptable begin end_ = abst.
   Proof.
     cbv [abstract_reassign_pointer_for_entity]; basics.
-    match goal with
-    | H : In ?v vms |- _ =>
-      assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
-    end.
-    pose proof hafnium_ptable_nodup.
-    erewrite addresses_under_pointer_in_range_pointer_absent;
+    pose proof (hafnium_neq_vm_ptable _ ltac:(solver)).
+    eapply abstract_reassign_pointer_noop; [ solver | ].
+    eapply addresses_under_pointer_in_range_pointer_absent;
       cbv [all_root_ptables]; solver.
   Qed.
 
@@ -522,13 +534,11 @@ Section Proofs.
       abst conc ptr owned valid (inl (vm_id v)) (vm_ptable v) begin end_ = abst.
   Proof.
     cbv [abstract_reassign_pointer_for_entity]; basics.
-    match goal with
-    | H : In ?v vms |- _ =>
-      assert (In (vm_ptable v) (map vm_ptable vms)) by eauto using in_map
-    end.
-    pose proof hafnium_ptable_nodup.
-    erewrite addresses_under_pointer_in_range_pointer_absent;
-      cbv [all_root_ptables]; solver.
+    pose_in_vm_ptable_map.
+    pose proof (hafnium_neq_vm_ptable _ ltac:(solver)).
+    eapply abstract_reassign_pointer_noop; [ solver | ].
+    eapply addresses_under_pointer_in_range_pointer_absent;
+      cbv [all_root_ptables]; try solver.
   Qed.
 
   Lemma accessible_by_abstract_reassign_pointer_for_entity
@@ -1451,7 +1461,14 @@ Section Proofs.
     abstract_state_equiv
       abst
       (abstract_reassign_pointer abst conc t_ptr attrs begin end_).
-  Admitted.
+  Proof.
+    cbv [no_addresses_in_range abstract_reassign_pointer].
+    basics. rewrite Forall_forall in *.
+    apply fold_right_invariant_strong; basics.
+    { pose_in_vm_ptable_map.
+      erewrite abstract_reassign_pointer_noop; solver. }
+    { erewrite abstract_reassign_pointer_noop; solver. }
+  Qed.
 
   Lemma abstract_reassign_pointer_low
         abst conc attrs begin end_ t_ptrs :
