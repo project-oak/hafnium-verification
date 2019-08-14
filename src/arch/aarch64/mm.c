@@ -269,7 +269,7 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
 		if (VM_TOOLCHAIN == 1) {
 			tlbi(vmalle1is);
 		} else {
-			tlbi(alle2);
+			tlbi(alle2is);
 		}
 	} else {
 		begin >>= 12;
@@ -317,7 +317,7 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 		 * Invalidate all stage-1 and stage-2 entries of the TLB for
 		 * the current VMID.
 		 */
-		tlbi(vmalls12e1);
+		tlbi(vmalls12e1is);
 	} else {
 		begin >>= 12;
 		end >>= 12;
@@ -329,7 +329,7 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 		 */
 		for (it = begin; it < end;
 		     it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-			tlbi_reg(ipas2e1, it);
+			tlbi_reg(ipas2e1is, it);
 		}
 
 		/*
