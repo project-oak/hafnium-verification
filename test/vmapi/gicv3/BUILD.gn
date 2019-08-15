@@ -41,10 +41,9 @@ vm_kernel("gicv3_test_vm") {
 initrd("gicv3_test") {
   testonly = true
 
+  manifest = "manifest.dts"
   primary_vm = ":gicv3_test_vm"
   secondary_vms = [ [
-        "1048576",
-        "1",
         "services0",
         "services:gicv3_service_vm0",
       ] ]

@@ -16,12 +16,13 @@
 
 use core::ptr;
 use core::slice;
+use core::str;
 
 use crate::std::*;
 use crate::types::*;
 
 #[repr(C)]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MemIter {
     next: *const u8,
     limit: *const u8,
@@ -157,6 +158,10 @@ impl MemIter {
 
     pub unsafe fn as_slice(&self) -> &[u8] {
         slice::from_raw_parts(self.next, self.limit.offset_from(self.next) as usize)
+    }
+
+    pub unsafe fn as_str(&self) -> &str {
+        str::from_utf8_unchecked(self.as_slice())
     }
 
     pub fn len(&self) -> usize {

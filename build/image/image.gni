@@ -150,10 +150,40 @@ template("linux_initrd") {
   }
 }
 
+template("device_tree") {
+  action_foreach(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "sources",
+                             "deps",
+                           ])
+    script = "//build/image/dtc.py"
+
+    dtb_file = "${target_out_dir}/{{source_name_part}}.dtb"
+
+    outputs = [
+      dtb_file,
+    ]
+    args = [
+      "{{source}}",
+      rebase_path(dtb_file),
+    ]
+  }
+}
+
 # Build the initial RAM disk for the hypervisor.
 template("initrd") {
   assert(defined(invoker.primary_vm),
          "initrd() must specify a \"primary_vm\" value")
+
+  manifest_target = "${target_name}__manifest"
+
+  device_tree(manifest_target) {
+    sources = [
+      invoker.manifest,
+    ]
+  }
 
   action(target_name) {
     forward_variables_from(invoker, [ "testonly" ])
@@ -191,27 +221,29 @@ template("initrd") {
     # Add the info about the secondary VMs. The information about the VMs is
     # encoded in lists with the following elements:
     #
-    #    1. Memory in bytes.
-    #    2. Number of cores.
-    #    3. File name for the VM image.
-    #    4. Build target for the VM.
+    #    1. File name for the VM image.
+    #    2. Build target for the VM.
     if (defined(invoker.secondary_vms)) {
       foreach(vm, invoker.secondary_vms) {
-        deps += [ vm[3] ]
+        deps += [ vm[1] ]
         args += [
           "--secondary_vm",
           vm[0],
-          vm[1],
-          vm[2],
-          rebase_path(get_label_info(vm[3], "target_out_dir") + "/" +
-                      get_label_info(vm[3], "name") + ".bin"),
+          rebase_path(get_label_info(vm[1], "target_out_dir") + "/" +
+                      get_label_info(vm[1], "name") + ".bin"),
         ]
       }
     }
 
+    manifest_target_outputs = get_target_outputs(":${manifest_target}")
+    deps += [ ":${manifest_target}" ]
+    args += [
+      "--manifest",
+      rebase_path(manifest_target_outputs[0]),
+    ]
+
     outputs = [
       initrd_file,
-      "${initrd_staging}/vms.txt",
     ]
   }
 }

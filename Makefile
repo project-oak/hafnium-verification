@@ -39,7 +39,7 @@ NINJA ?= $(PREBUILTS)/ninja/ninja
 export PATH := $(PREBUILTS)/clang/bin:$(PATH)
 
 CHECKPATCH := $(PWD)/third_party/linux/scripts/checkpatch.pl \
-	--ignore BRACES,SPDX_LICENSE_TAG,VOLATILE,SPLIT_STRING,AVOID_EXTERNS,USE_SPINLOCK_T,NEW_TYPEDEFS,INITIALISED_STATIC,FILE_PATH_CHANGES,EMBEDDED_FUNCTION_NAME,SINGLE_STATEMENT_DO_WHILE_MACRO --quiet
+	--ignore BRACES,SPDX_LICENSE_TAG,VOLATILE,SPLIT_STRING,AVOID_EXTERNS,USE_SPINLOCK_T,NEW_TYPEDEFS,INITIALISED_STATIC,FILE_PATH_CHANGES,EMBEDDED_FUNCTION_NAME,SINGLE_STATEMENT_DO_WHILE_MACRO,MACRO_WITH_FLOW_CONTROL --quiet
 
 # Select the project to build.
 PROJECT ?= reference
@@ -114,9 +114,9 @@ check: $(OUT_DIR)/build.ninja
 
 .PHONY: license
 license:
-	@find src/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
-	@find inc/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
-	@find test/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h | xargs -n1 python build/license.py --style c
+	@find src/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h -o -name \*.dts | xargs -n1 python build/license.py --style c
+	@find inc/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h -o -name \*.dts | xargs -n1 python build/license.py --style c
+	@find test/ -name \*.S -o -name \*.c -o -name \*.cc -o -name \*.h -o -name \*.dts | xargs -n1 python build/license.py --style c
 	@find build/ -name \*.py| xargs -n1 python build/license.py --style hash
 	@find test/ -name \*.py| xargs -n1 python build/license.py --style hash
 	@find . \( -name \*.gn -o -name \*.gni \) | xargs -n1 python build/license.py --style hash

@@ -31,7 +31,10 @@ use crate::types::*;
 
 use scopeguard::{guard, ScopeGuard};
 
-fn convert_number(data: &[u8]) -> Option<u64> {
+/// Helper method for parsing 32/64-bit units from FDT data.
+/// Note(HfO2): We do not require `data` aligned by `size_of::<u32>()`; The original was not, so
+/// it may be faster. However, we do not consider those kind of micro-optimizations here.
+pub fn fdt_parse_number(data: &[u8]) -> Option<u64> {
     let ret = match data.len() {
         4 => u64::from(u32::from_be_bytes(data.try_into().unwrap())),
         8 => u64::from_be_bytes(data.try_into().unwrap()),
@@ -45,7 +48,7 @@ impl<'a> FdtNode<'a> {
     fn read_number(&self, name: *const u8) -> Result<u64, ()> {
         let data = self.read_property(name)?;
 
-        convert_number(data).ok_or(())
+        fdt_parse_number(data).ok_or(())
     }
 
     unsafe fn write_number(&mut self, name: *const u8, value: u64) -> Result<(), ()> {
@@ -135,7 +138,10 @@ impl<'a> FdtNode<'a> {
                     return None;
                 }
 
-                cpu_ids[cpu_count] = convert_number(&data[..address_size]).unwrap() as cpu_id_t;
+                cpu_ids[cpu_count] = some_or!(fdt_parse_number(&data[..address_size]), {
+                    dlog!("Could not parse CPU id\n");
+                    return None;
+                }) as cpu_id_t;
                 cpu_count += 1;
 
                 data = &data[address_size..];
@@ -193,8 +199,8 @@ impl<'a> FdtNode<'a> {
 
             // Traverse all memory ranges within this node.
             while data.len() >= entry_size {
-                let addr = convert_number(&data[..address_size]).unwrap() as usize;
-                let len = convert_number(&data[address_size..entry_size]).unwrap() as usize;
+                let addr = fdt_parse_number(&data[..address_size]).unwrap() as usize;
+                let len = fdt_parse_number(&data[address_size..entry_size]).unwrap() as usize;
 
                 if mem_range_index < MAX_MEM_RANGES {
                     p.mem_ranges[mem_range_index].begin = pa_init(addr);

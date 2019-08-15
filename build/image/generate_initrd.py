@@ -29,17 +29,27 @@ import sys
 
 def Main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--manifest", required=True)
     parser.add_argument("--primary_vm", required=True)
     parser.add_argument("--primary_vm_initrd")
     parser.add_argument(
         "--secondary_vm",
         action="append",
-        nargs=4,
-        metavar=("MEMORY", "CORES", "NAME", "IMAGE"))
+        nargs=2,
+        metavar=("NAME", "IMAGE"))
     parser.add_argument("--staging", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     staged_files = ["vmlinuz", "initrd.img"]
+
+    # Create staging folder if needed.
+    if not os.path.isdir(args.staging):
+        os.makedirs(args.staging)
+
+    # Prepare the manifest.
+    if args.manifest:
+        shutil.copyfile(args.manifest, os.path.join(args.staging, "manifest.dtb"))
+        staged_files += ["manifest.dtb"]
     # Prepare the primary VM image.
     shutil.copyfile(args.primary_vm, os.path.join(args.staging, "vmlinuz"))
     # Prepare the primary VM's initrd.
@@ -48,14 +58,11 @@ def Main():
     else:
         open(os.path.join(args.staging, "initrd.img"), "w").close()
     # Prepare the secondary VMs.
-    with open(os.path.join(args.staging, "vms.txt"), "w") as vms_txt:
-        staged_files.append("vms.txt")
-        if args.secondary_vm:
-            for vm in args.secondary_vm:
-                (vm_memory, vm_cores, vm_name, vm_image) = vm
-                staged_files.append(vm_name)
-                shutil.copy(vm_image, os.path.join(args.staging, vm_name))
-                vms_txt.write("{} {} {}\n".format(vm_memory, vm_cores, vm_name))
+    if args.secondary_vm:
+        for vm in args.secondary_vm:
+            (vm_name, vm_image) = vm
+            staged_files.append(vm_name)
+            shutil.copy(vm_image, os.path.join(args.staging, vm_name))
     # Package files into an initial RAM disk.
     with open(args.output, "w") as initrd:
         # Move into the staging directory so the file names taken by cpio don't

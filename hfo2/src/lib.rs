@@ -54,6 +54,7 @@ mod hypervisor;
 mod init;
 mod layout;
 mod load;
+mod manifest;
 mod memiter;
 mod mm;
 mod mpool;

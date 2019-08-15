@@ -16,7 +16,6 @@
 
 use core::mem;
 use core::ptr;
-use core::str;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -24,6 +23,7 @@ use crate::boot_params::*;
 use crate::cpio::*;
 use crate::cpu::*;
 use crate::layout::*;
+use crate::manifest::*;
 use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -43,10 +43,11 @@ use arrayvec::ArrayVec;
 unsafe fn copy_to_unmapped(
     hypervisor_ptable: &mut PageTable<Stage1>,
     to: paddr_t,
-    from: *const c_void,
-    size: usize,
+    from_it: &MemIter,
     ppool: &MPool,
 ) -> bool {
+    let from = from_it.get_next();
+    let size = from_it.len();
     let to_end = pa_add(to, size);
 
     if hypervisor_ptable
@@ -74,7 +75,7 @@ pub unsafe fn load_primary(
 ) -> Result<MemIter, ()> {
     let primary_begin = layout_primary_begin();
 
-    let it = some_or!(find_file(&mut cpio.clone(), "vmlinuz\0".as_ptr()), {
+    let it = some_or!(find_file(cpio, "vmlinuz\0".as_ptr()), {
         dlog!("Unable to find vmlinuz\n");
         return Err(());
     });
@@ -84,18 +85,12 @@ pub unsafe fn load_primary(
         pa_addr(primary_begin) as *const u8
     );
 
-    if !copy_to_unmapped(
-        hypervisor_ptable,
-        primary_begin,
-        it.get_next() as usize as *mut _,
-        it.len(),
-        ppool,
-    ) {
+    if !copy_to_unmapped(hypervisor_ptable, primary_begin, &it, ppool) {
         dlog!("Unable to relocate kernel for primary vm.\n");
         return Err(());
     }
 
-    let initrd = some_or!(find_file(&mut cpio.clone(), "initrd.img\0".as_ptr()), {
+    let initrd = some_or!(find_file(cpio, "initrd.img\0".as_ptr()), {
         dlog!("Unable to find initrd.img\n");
         return Err(());
     });
@@ -224,54 +219,57 @@ pub unsafe fn load_secondary(
     mem_ranges_available.clone_from_slice(&params.mem_ranges);
     mem_ranges_available.truncate(params.mem_ranges_count);
 
-    let mut it = some_or!(find_file(&mut cpio.clone(), "vms.txt\0".as_ptr()), {
-        dlog!("vms.txt is missing\n");
-        return Ok(());
-    });
-
     // Round the last addresses down to the page size.
     for mem_range in mem_ranges_available.iter_mut() {
         mem_range.end = pa_init(round_down(pa_addr(mem_range.end), PAGE_SIZE));
     }
 
-    loop {
-        // Note(HfO2): There is `while let (Some(x), Some(y)) = (...) {}` but it
-        // is not short-circuiting.
-        let mut mem = some_or!(it.parse_uint(), break);
-        let cpu = some_or!(it.parse_uint(), break);
-        let name = some_or!(it.parse_str(), break);
-        let name_str = str::from_utf8_unchecked(name.as_slice());
+    let manifest_fdt = find_file(cpio, "manifest.dtb\0".as_ptr()).ok_or_else(|| {
+        dlog!("Could not find \"manifest.dtb\" in cpio.");
+    })?;
 
-        dlog!("Loading {}\n", name_str);
+    let mut manifest = mem::MaybeUninit::uninit().assume_init();
 
-        let kernel = some_or!(find_file_memiter(&mut cpio.clone(), &name), {
-            dlog!("Unable to load kernel\n");
+    Manifest::init(&mut manifest, &manifest_fdt).map_err(|e| {
+        dlog!(
+            "Could not parse manifest: {}.\n",
+            <Error as Into<&'static str>>::into(e)
+        );
+    })?;
+
+    for (i, manifest_vm) in manifest.vms.iter_mut().enumerate() {
+        let vm_id = HF_VM_ID_OFFSET + i as spci_vm_id_t;
+        if vm_id == HF_PRIMARY_VM_ID {
+            continue;
+        }
+
+        dlog!(
+            "Loading VM{}: {}.\n",
+            vm_id,
+            manifest_vm.debug_name.as_str()
+        );
+
+        let kernel = some_or!(find_file_memiter(cpio, &manifest_vm.kernel_filename), {
+            dlog!(
+                "Could not find kernel file \"{}\".",
+                manifest_vm.kernel_filename.as_str()
+            );
             continue;
         });
 
-        // Round up to page size.
-        mem = (mem + PAGE_SIZE as u64 - 1) & !(PAGE_SIZE as u64 - 1);
-
-        if mem < kernel.len() as u64 {
+        let mem_size = round_up(manifest_vm.mem_size as usize, PAGE_SIZE) as u64;
+        if mem_size < kernel.len() as u64 {
             dlog!("Kernel is larger than available memory\n");
             continue;
         }
 
-        let (secondary_mem_begin, secondary_mem_end) = ok_or!(
-            carve_out_mem_range(&mut mem_ranges_available, mem as u64),
-            {
-                dlog!("Not enough memory ({} bytes)\n", mem);
+        let (secondary_mem_begin, secondary_mem_end) =
+            ok_or!(carve_out_mem_range(&mut mem_ranges_available, mem_size), {
+                dlog!("Not enough memory ({} bytes)\n", mem_size);
                 continue;
-            }
-        );
+            });
 
-        if !copy_to_unmapped(
-            hypervisor_ptable,
-            secondary_mem_begin,
-            kernel.get_next() as usize as *const _,
-            kernel.len(),
-            ppool,
-        ) {
+        if !copy_to_unmapped(hypervisor_ptable, secondary_mem_begin, &kernel, ppool) {
             dlog!("Unable to copy kernel\n");
             continue;
         }
@@ -290,7 +288,7 @@ pub unsafe fn load_secondary(
             return Err(());
         }
 
-        let vm = some_or!(vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool), {
+        let vm = some_or!(vm_manager.new_vm(manifest_vm.vcpu_count, ppool), {
             dlog!("Unable to initialise VM\n");
             continue;
         });
@@ -314,7 +312,7 @@ pub unsafe fn load_secondary(
 
         dlog!(
             "Loaded with {} vcpus, entry at 0x{:x}\n",
-            cpu,
+            manifest_vm.vcpu_count,
             pa_addr(secondary_mem_begin)
         );
 
