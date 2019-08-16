@@ -97,6 +97,18 @@ impl<T> SpinLock<T> {
     pub unsafe fn get_mut_unchecked(&self) -> &mut T {
         &mut *self.data.get()
     }
+
+    pub fn lock_both<'s>(lhs: &'s Self, rhs: &'s Self) -> (SpinLockGuard<'s, T>, SpinLockGuard<'s, T>) {
+        RawSpinLock::lock_both(&lhs.lock, &rhs.lock);
+        (SpinLockGuard {
+            lock: lhs,
+            _marker: PhantomData,
+        },
+        SpinLockGuard {
+            lock: rhs,
+            _marker: PhantomData,
+        })
+    }
 }
 
 pub struct SpinLockGuard<'s, T> {
