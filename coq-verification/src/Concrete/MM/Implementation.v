@@ -305,21 +305,22 @@ static struct mm_page_table *mm_populate_table_pte(ptable_addr_t begin,
 						   int flags,
 						   struct mpool *ppool) *)
 (* N.B. instead of taking in a pointer to the PTE being replaced, we take in the
-   page table and an index; see the note above mm_replace_entry. *)
+   parent page table and an index; see the note above mm_replace_entry. *)
 Definition mm_populate_table_pte
            (s : concrete_state)
            (begin : ptable_addr_t)
-           (t : mm_page_table)
+           (parent : mm_page_table)
            (pte_index : nat)
            (level : nat)
            (flags : int)
            (ppool : mpool)
-  : mm_page_table (* new state of [t] *)
+  : mm_page_table (* new state of [parent] *)
     * option mm_page_table (* newly created table, [None] = null pointer *)
     * concrete_state * mpool :=
 
+  let pte := parent.(entries) [[ pte_index ]] in
+
   (* pte_t v = *pte; *)
-  let pte := t.(entries) [[ pte_index ]] in
   let v := pte in
 
   (* uint8_t level_below = level - 1; *)
@@ -331,11 +332,10 @@ Definition mm_populate_table_pte
      } *)
   if (arch_mm_pte_is_table v level)
   then
-    let t :=
-        s.(ptable_deref)
-            (hd null_pointer
-                (mm_page_table_from_pa (arch_mm_table_from_pte v level))) in
-    (t, Some t, s, ppool)
+    let t_ptr :=
+        hd null_pointer
+           (mm_page_table_from_pa (arch_mm_table_from_pte v level)) in
+    (parent, Some (s.(ptable_deref) t_ptr), s, ppool)
   else
 
     (* /* Allocate a new table. */
@@ -345,7 +345,7 @@ Definition mm_populate_table_pte
                return NULL;
        } *)
     match mm_alloc_page_tables 1 ppool with
-    | None => (t, None, s, ppool)
+    | None => (parent, None, s, ppool)
     | Some (ppool, ntable_ptr_list) =>
       let ntable_ptr := hd null_pointer ntable_ptr_list in
       let ntable := s.(ptable_deref) ntable_ptr in
@@ -389,6 +389,10 @@ Definition mm_populate_table_pte
             (ntable, new_pte)
             (seq 0 MM_PTE_PER_PAGE) in
 
+      (* Functional-program bookkeeping : update the value of ntable_ptr to
+         reflect the new value of ntable *)
+      let s := s.(reassign_pointer) ntable_ptr ntable in
+
       (* /* Ensure initialisation is visible before updating the pte. */
          atomic_thread_fence(memory_order_release); *)
       (* N.B. not yet modelling concurrency *)
@@ -398,13 +402,13 @@ Definition mm_populate_table_pte
          mm_replace_entry(begin, pte,
                           arch_mm_table_pte(level, pa_init((uintpaddr_t)ntable)),
                           level, flags, ppool); *)
-      let '(t, s, ppool) :=
+      let '(parent, s, ppool) :=
           mm_replace_entry
-            s begin t pte_index
+            s begin parent pte_index
             (arch_mm_table_pte level ntable_ptr) level flags ppool in
 
       (* return ntable; *)
-      (t, Some ntable, s, ppool)
+      (parent, Some ntable, s, ppool)
     end.
 
 (*
@@ -594,7 +598,7 @@ Fixpoint mm_map_level
                                 *pte = arch_mm_absent_pte(level);
                                 mm_free_page_pte(v, level, ppool);
                         } *)
-                     let '(pte, s, ppool) :=
+                     let '(pte, table, s, ppool) :=
                          if (commit && unmap &&
                                     mm_page_table_is_empty nt (level - 1))%bool
                          then
@@ -606,8 +610,8 @@ Fixpoint mm_map_level
                               table.(mm_page_table_replace_entry)
                                       (arch_mm_absent_pte level) pte_index in
                           let '(s, ppool) := mm_free_page_pte s v level ppool in
-                          (pte, s, ppool)
-                        else (pte, s, ppool) in
+                          (pte, table, s, ppool)
+                        else (pte, table, s, ppool) in
                     (* done; continue to the next entry *)
                     (* begin = mm_start_of_next_block(begin, entry_size);
                        pa = mm_pa_start_of_next_block(pa, entry_size);
