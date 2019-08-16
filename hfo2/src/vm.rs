@@ -98,7 +98,7 @@ impl Mailbox {
         let entry: *mut WaitEntry;
 
         if self.state != MailboxState::Empty
-            || self.recv == ptr::null_mut()
+            || self.recv.is_null()
             || list_empty(&self.waiter_list)
         {
             // The mailbox is not writable or there are no waiters.

@@ -211,7 +211,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
     }
 
     vm = vm_find(vm_id);
-    if vm == ptr::null_mut() {
+    if vm.is_null() {
         return 0;
     }
 
@@ -439,7 +439,7 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // The requested VM must exist.
     vm = vm_find(vm_id);
-    if vm == ptr::null_mut() {
+    if vm.is_null() {
         return ret.into_raw();
     }
 
@@ -561,7 +561,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // the lock since the tx mailbox address can only be configured once.
     let from_msg = (*from).state.lock().get_send_ptr();
 
-    if from_msg == ptr::null() {
+    if from_msg.is_null() {
         return SpciReturn::InvalidParameters;
     }
 
@@ -586,7 +586,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Ensure the target VM exists.
     let to = vm_find(from_msg_replica.target_vm_id);
-    if to == ptr::null_mut() {
+    if to.is_null() {
         return SpciReturn::InvalidParameters;
     }
 
@@ -597,7 +597,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // `from` lock at this point to prevent a deadlock scenario.
     let (mut to_state, mut from_state) = SpinLock::lock_both(&(*to).state, &(*from).state);
 
-    if to_state.is_empty() || !to_state.is_configured() {
+    if !to_state.is_empty() || !to_state.is_configured() {
         // Fail if the target isn't currently ready to receive data,
         // setting up for notification if requested.
         if notify {
@@ -778,14 +778,14 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     }
 
     let vm = vm_find(vm_id);
-    if vm == ptr::null_mut() {
+    if vm.is_null() {
         return -1;
     }
 
     // Check if there are outstanding notifications from given vm.
     let entry = (*vm).state.lock().fetch_waiter();
 
-    if entry == ptr::null_mut() {
+    if entry.is_null() {
         return -1;
     }
 
@@ -940,7 +940,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    if target_vm == ptr::null_mut() {
+    if target_vm.is_null() {
         return -1;
     }
 
