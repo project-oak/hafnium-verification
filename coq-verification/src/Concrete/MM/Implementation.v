@@ -350,6 +350,16 @@ Definition mm_populate_table_pte
       let ntable_ptr := hd null_pointer ntable_ptr_list in
       let ntable := s.(ptable_deref) ntable_ptr in
 
+      (* Functional-program bookkeeping : mm_alloc_page_tables could have edited
+         the api_page_pool, so we need to update it. Assumes api_page_pool is
+         the fallback of ppool. *)
+      let s :=
+          match mpool_fallback ppool with
+          | None => s
+          | Some new_api_page_pool =>
+            s.(update_page_pool) new_api_page_pool
+          end in
+
       (* /* Determine template for new pte and its increment. */
          if (arch_mm_pte_is_block(v, level)) {
                  inc = mm_entry_size(level_below);
