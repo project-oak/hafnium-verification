@@ -486,7 +486,7 @@ pub unsafe extern "C" fn api_vcpu_run(
 unsafe fn api_waiter_result(id: spci_vm_id_t, state: &VmState, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let ret = HfVCpuRunReturn::NotifyWaiters;
 
-    if !state.any_waiter() {
+    if state.is_waiter_list_empty() {
         // No waiters, nothing else to do.
         return 0;
     }

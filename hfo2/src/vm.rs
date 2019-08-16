@@ -112,7 +112,7 @@ impl Mailbox {
     }
 
     /// Checks if any waiters exists.
-    pub fn any_waiter(&self) -> bool {
+    pub fn is_waiter_list_empty(&self) -> bool {
         unsafe { list_empty(&self.waiter_list) }
     }
 
@@ -237,8 +237,8 @@ impl VmState {
     }
 
     /// Checks if any waiters exists.
-    pub fn any_waiter(&self) -> bool {
-        self.mailbox.any_waiter()
+    pub fn is_waiter_list_empty(&self) -> bool {
+        self.mailbox.is_waiter_list_empty()
     }
 
     /// Checks whether there exists a pending message. If one exists, marks the
