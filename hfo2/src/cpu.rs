@@ -395,12 +395,13 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
         // is a secondary which can migrate between pCPUs, the ID of the
         // vCPU is defined as the index and does not match the ID of the
         // pCPU it is running on.
+        // TODO: Don't we have to lock ptable?
         arch_regs_reset(
             &mut (*vcpu).regs,
             false,
             (*vm).id,
             vcpu_index(vcpu) as cpu_id_t,
-            (*vm).ptable.root,
+            (*vm).state.get_unchecked().ptable.root,
         );
         vcpu_on(vcpu_execution_locked, entry, arg);
     }
@@ -424,7 +425,7 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
     let mask = (*f).mode | Mode::INVALID;
     let resume;
 
-    sl_lock(&(*vm).lock);
+    let mut state = (*vm).state.lock();
 
     // Check if this is a legitimate fault, i.e., if the page table doesn't
     // allow the access attemped by the VM.
@@ -435,13 +436,11 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
     // anything else to recover from it. (Acquiring/releasing the lock
     // ensured that the invalidations have completed.)
     resume = mm_vm_get_mode(
-        &mut (*vm).ptable,
+        &mut state.ptable,
         (*f).ipaddr,
         ipa_add((*f).ipaddr, 1),
         &mut mode,
     ) && (mode & mask) == (*f).mode;
-
-    sl_unlock(&(*vm).lock);
 
     if !resume {
         dlog!(

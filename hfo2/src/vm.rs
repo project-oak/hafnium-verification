@@ -37,7 +37,7 @@ use crate::page::*;
 const LOG_BUFFER_SIZE: usize = 256;
 
 #[repr(C)]
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum MailboxState {
     /// There is no message in the mailbox.
     Empty,
@@ -149,8 +149,7 @@ impl Mailbox {
         pa_recv_end: paddr_t,
         local_page_pool: &mut MPool,
     ) -> Option<()> {
-        let ret;
-        let hypervisor_ptable = lock_hypervisor_ptable();
+        let mut hypervisor_ptable = lock_hypervisor_ptable();
 
         // Map the send page as read-only in the hypervisor address space.
         if let Some(_) = hypervisor_ptable.identity_map(
@@ -204,7 +203,7 @@ impl Mailbox {
 
 pub struct VmState {
     log_buffer: ArrayVec<[c_char; LOG_BUFFER_SIZE]>,
-    ptable: PageTable<Stage2>,
+    pub ptable: PageTable<Stage2>,
     mailbox: Mailbox,
 
     /// Wait entries to be used when waiting on other VM mailboxes.
@@ -214,7 +213,7 @@ pub struct VmState {
 
 impl VmState {
     /// Initializes VmState.
-    pub fn init(&mut self, vm: *mut Vm, ppool: &mut MPool) -> Option<()> {
+    pub unsafe fn init(&mut self, vm: *mut Vm, ppool: &mut MPool) -> Option<()> {
         self.mailbox.init();
 
         if !mm_vm_init(&mut self.ptable, ppool) {
@@ -272,7 +271,6 @@ impl VmState {
         orig_recv_mode: Mode,
         fallback_mpool: &MPool,
     ) -> Option<()> {
-        let ret;
 
         // Create a local pool so any freed memory can't be used by another
         // thread. This is to ensure the original mapping can be restored if 
@@ -295,7 +293,7 @@ impl VmState {
         ) {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
-            mm_vm_defrag(&mut self.ptable, &mut local_page_pool);
+            self.ptable.defrag(&local_page_pool);
 
             assert!(self.ptable.identity_map(
                 pa_send_begin,
@@ -349,7 +347,6 @@ impl VmState {
         recv: ipaddr_t,
         fallback_mpool: &MPool,
     ) -> Option<()> {
-        let ret;
 
         // Fail if addresses are not page-aligned.
         if !is_aligned(ipa_addr(send), PAGE_SIZE) || !is_aligned(ipa_addr(recv), PAGE_SIZE) {
@@ -416,22 +413,24 @@ impl VmState {
     }
 
     pub fn dequeue_ready_list(&mut self) -> Option<spci_vm_id_t> {
-        if list_empty(&self.mailbox.ready_list) {
-            return None;
+        unsafe {
+            if list_empty(&self.mailbox.ready_list) {
+                return None;
+            }
+
+            let ret = {
+                let entry: *mut WaitEntry =
+                    container_of!(self.mailbox.ready_list.next, WaitEntry, ready_links);
+                list_remove(&mut (*entry).ready_links);
+                entry.offset_from(self.wait_entries.as_ptr()) as spci_vm_id_t
+            };
+
+            Some(ret)
         }
-
-        let ret = {
-            let entry: *mut WaitEntry =
-                container_of!(self.mailbox.ready_list.next, WaitEntry, ready_links);
-            list_remove(&mut (*entry).ready_links);
-            entry.offset_from(self.wait_entries.as_ptr()) as spci_vm_id_t
-        };
-
-        Some(ret)
     }
 
     pub fn enqueue_ready_list(&mut self, entry: &mut WaitEntry) {
-        debug_assert!(list_empty(&entry.ready_links));
+        debug_assert!(unsafe { list_empty(&entry.ready_links) });
 
         unsafe {
             list_append(&mut self.mailbox.ready_list, &mut entry.ready_links);
@@ -451,11 +450,13 @@ impl VmState {
     /// for another now. Returns false if `self` is waiting for another.
     /// TODO: better name?
     pub fn wait(&mut self, target: &mut Self, target_id: spci_vm_id_t) -> bool {
-        let entry = &self.wait_entries[target_id as usize];
+        let entry = &mut self.wait_entries[target_id as usize];
 
         // Append waiter only if it's not there yet.
-        if list_empty(&(*entry).wait_links) {
-            list_append(&mut target.mailbox.waiter_list, &mut (*entry).wait_links);
+        if unsafe { list_empty(&(*entry).wait_links) } {
+            unsafe {
+                list_append(&mut target.mailbox.waiter_list, &mut (*entry).wait_links);
+            }
             true
         } else {
             false
@@ -493,7 +494,7 @@ pub struct Vm {
     ///   1. Mutable inner fields are contained in VCpuState.
     ///   2. VCpuState has higher lock order than one of Vm. It is nonsense to
     ///      lock VmState to acquire VCpuState.
-    vcpus: [VCpu; MAX_CPUS],
+    pub vcpus: [VCpu; MAX_CPUS],
 
     /// See api.c for the partial ordering on locks.
     pub state: SpinLock<VmState>,
@@ -581,7 +582,7 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
     let locked = VmLocked { vm };
 
-    sl_lock(&(*vm).lock);
+    (*vm).state.lock().into_raw();
 
     locked
 }
@@ -595,7 +596,7 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
         vm2: VmLocked { vm: vm2 },
     };
 
-    sl_lock_both(&(*vm1).lock, &(*vm2).lock);
+    SpinLock::lock_both(&(*vm1).state, &(*vm2).state);
 
     dual_lock
 }
@@ -604,7 +605,8 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
 /// the fact that the VM is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
-    sl_unlock(&(*(*locked).vm).lock);
+    let guard: SpinLockGuard<'static, VmState> = SpinLockGuard::from_raw(&(*(*locked).vm).state as *const _ as usize);
+    mem::drop(guard);
     (*locked).vm = ptr::null_mut();
 }
 
