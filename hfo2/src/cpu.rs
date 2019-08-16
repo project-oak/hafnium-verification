@@ -103,6 +103,7 @@ pub struct VCpuFaultInfo {
     mode: Mode,
 }
 
+#[repr(C)]
 pub struct VCpu {
     /// Protects accesses to vCPU's state and architecture registers. If a
     /// vCPU is running, its execution lock is logically held by the

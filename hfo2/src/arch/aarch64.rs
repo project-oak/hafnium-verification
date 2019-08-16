@@ -91,7 +91,7 @@ const CPU_ID: usize = 0;
 const CPU_STACK_BOTTOM: usize = 8;
 const VCPU_REGS: usize = 32;
 const REGS_LAZY: usize = 264;
-const REGS_FREGS: usize = 232;
+const REGS_FREGS: usize = REGS_LAZY + 232;
 //#[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
 const REGS_GIC: usize = REGS_FREGS + 528;
 
