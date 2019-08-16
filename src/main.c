@@ -157,11 +157,11 @@ struct vcpu *cpu_main(struct cpu *c)
 	}
 
 	vcpu = vm_get_vcpu(vm_find(HF_PRIMARY_VM_ID), cpu_index(c));
-	vm = vcpu->vm;
-	vcpu->cpu = c;
+	vm = vcpu_get_vm(vcpu);
+	vcpu_set_cpu(vcpu, c);
 
 	/* Reset the registers to give a clean start for the primary's vCPU. */
-	arch_regs_reset(&vcpu->regs, true, vm->id, c->id, vm->ptable.root);
+	arch_regs_reset(vcpu_get_regs(vcpu), true, vm_get_id(vm), c->id, vm_get_ptable(vm)->root);
 
 	return vcpu;
 }

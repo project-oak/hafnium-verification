@@ -94,7 +94,7 @@ bool load_primary(struct mm_stage1_locked stage1_locked,
 			return false;
 		}
 
-		if (vm->id != HF_PRIMARY_VM_ID) {
+		if (vm_get_id(vm) != HF_PRIMARY_VM_ID) {
 			dlog("Primary vm was not given correct id\n");
 			return false;
 		}
@@ -102,14 +102,14 @@ bool load_primary(struct mm_stage1_locked stage1_locked,
 		/* Map the 1TB of memory. */
 		/* TODO: We should do a whitelist rather than a blacklist. */
 		if (!mm_vm_identity_map(
-			    &vm->ptable, pa_init(0),
+			    vm_get_ptable(vm), pa_init(0),
 			    pa_init(UINT64_C(1024) * 1024 * 1024 * 1024),
 			    MM_MODE_R | MM_MODE_W | MM_MODE_X, NULL, ppool)) {
 			dlog("Unable to initialise memory for primary vm\n");
 			return false;
 		}
 
-		if (!mm_vm_unmap_hypervisor(&vm->ptable, ppool)) {
+		if (!mm_vm_unmap_hypervisor(vm_get_ptable(vm), ppool)) {
 			dlog("Unable to unmap hypervisor from primary vm\n");
 			return false;
 		}
@@ -286,7 +286,7 @@ bool load_secondary(struct mm_stage1_locked stage1_locked,
 		}
 
 		/* Grant the VM access to the memory. */
-		if (!mm_vm_identity_map(&vm->ptable, secondary_mem_begin,
+		if (!mm_vm_identity_map(vm_get_ptable(vm), secondary_mem_begin,
 					secondary_mem_end,
 					MM_MODE_R | MM_MODE_W | MM_MODE_X,
 					&secondary_entry, ppool)) {
@@ -295,7 +295,7 @@ bool load_secondary(struct mm_stage1_locked stage1_locked,
 		}
 
 		/* Deny the primary VM access to this memory. */
-		if (!mm_vm_unmap(&primary->ptable, secondary_mem_begin,
+		if (!mm_vm_unmap(vm_get_ptable(primary), secondary_mem_begin,
 				 secondary_mem_end, ppool)) {
 			dlog("Unable to unmap secondary VM from primary VM\n");
 			return false;

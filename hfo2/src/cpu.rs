@@ -103,7 +103,6 @@ pub struct VCpuFaultInfo {
     mode: Mode,
 }
 
-#[repr(C)]
 pub struct VCpu {
     /// Protects accesses to vCPU's state and architecture registers. If a
     /// vCPU is running, its execution lock is logically held by the
@@ -138,7 +137,7 @@ pub struct Cpu {
     pub id: cpu_id_t,
 
     /// Pointer to bottom of the stack.
-    stack_bottom: *mut c_void,
+    pub stack_bottom: *mut c_void,
 
     /// Enabling/disabling irqs are counted per-cpu. They are enabled when the count is zero, and
     /// disabled when it's non-zero.
@@ -183,6 +182,8 @@ pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
     let mut j: u32;
     let boot_cpu_id: cpu_id_t = cpus.get_ref()[0].id;
     let mut found_boot_cpu: bool = false;
+
+    arch_cpu_module_init();
 
     cpu_count = count as u32;
 
@@ -319,6 +320,36 @@ pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
     let index = vcpu.offset_from(vcpus);
     assert!(index < core::u16::MAX as isize);
     index as u16
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_get_regs(vcpu: *mut VCpu) -> *mut ArchRegs {
+    &mut (*vcpu).regs
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_get_regs_const(vcpu: *const VCpu) -> *const ArchRegs {
+    &(*vcpu).regs
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_get_vm(vcpu: *mut VCpu) -> *mut Vm {
+    (*vcpu).vm
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *mut VCpu) -> *mut Cpu {
+    (*vcpu).cpu
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_set_cpu(vcpu: *mut VCpu, cpu: *mut Cpu) {
+    (*vcpu).cpu = cpu;
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts {
+    &mut (*vcpu).interrupts
 }
 
 /// Check whether the given vcpu_state is an off state, for the purpose of

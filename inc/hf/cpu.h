@@ -67,32 +67,11 @@ struct vcpu_fault_info {
 	int mode;
 };
 
-struct vcpu {
-	/*
-	 * Protects accesses to vCPU's state and architecture registers. If a
-	 * vCPU is running, its execution lock is logically held by the
-	 * running pCPU.
-	 */
-	struct spinlock execution_lock;
-	
-	
-	/*
-	 * Protects accesses to vCPU's interrupts.
-	 */
-	struct spinlock interrupts_lock;
-
-	/*
-	 * The state is only changed in the context of the vCPU being run. This
-	 * ensures the scheduler can easily keep track of the vCPU state as
-	 * transitions are indicated by the return code from the run call.
-	 */
-	enum vcpu_state state;
-
-	struct cpu *cpu;
-	struct vm *vm;
-	struct arch_regs regs;
-	struct interrupts interrupts;
-};
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wvisibility"
+struct vcpu;
+struct vm;
+#pragma GCC diagnostic pop
 
 /** Encapsulates a vCPU whose execution lock is held. */
 struct vcpu_execution_locked {
@@ -127,6 +106,12 @@ void vcpu_unlock(struct vcpu_execution_locked *locked);
 void vcpu_init(struct vcpu *vcpu, struct vm *vm);
 void vcpu_on(struct vcpu_execution_locked vcpu, ipaddr_t entry, uintreg_t arg);
 spci_vcpu_index_t vcpu_index(const struct vcpu *vcpu);
+struct arch_regs *vcpu_get_regs(struct vcpu *vcpu);
+const struct arch_regs *vcpu_get_regs_const(const struct vcpu *vcpu);
+struct vm *vcpu_get_vm(struct vcpu *vcpu);
+struct cpu *vcpu_get_cpu(struct vcpu *vcpu);
+void vcpu_set_cpu(struct vcpu *vcpu, struct cpu *cpu);
+struct interrupts *vcpu_get_interrupts(struct vcpu *vcpu);
 bool vcpu_is_off(struct vcpu_execution_locked vcpu);
 bool vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 				    uintreg_t arg);

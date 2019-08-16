@@ -19,6 +19,7 @@
 
 use core::mem;
 
+use crate::cpu::*;
 use crate::types::*;
 
 const FLOAT_REG_BYTES: usize = 16;
@@ -82,6 +83,26 @@ pub struct ArchRegs {
 
     /// Peripheral registers, handled separately from other system registers.
     peripherals: ArchPeriRegs,
+}
+
+// from src/arch/aarch64/hypervisor/offset.h
+// Note: always keep this constants same as ones in offset.h
+const CPU_ID: usize = 0;
+const CPU_STACK_BOTTOM: usize = 8;
+const VCPU_REGS: usize = 32;
+const REGS_LAZY: usize = 264;
+const REGS_FREGS: usize = 232;
+//#[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
+const REGS_GIC: usize = REGS_FREGS + 528;
+
+/// Checks above constants are correct.
+pub fn arch_cpu_module_init() {
+    assert_eq!(offset_of!(Cpu, id), CPU_ID);
+    assert_eq!(offset_of!(Cpu, stack_bottom), CPU_STACK_BOTTOM);
+    assert_eq!(offset_of!(VCpu, regs), VCPU_REGS);
+    assert_eq!(offset_of!(ArchRegs, lazy), REGS_LAZY);
+    assert_eq!(offset_of!(ArchRegs, fp), REGS_FREGS);
+    assert_eq!(offset_of!(ArchRegs, gic_ich_hcr_el2), REGS_GIC);
 }
 
 #[repr(C)]
