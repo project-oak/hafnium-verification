@@ -141,6 +141,13 @@ bitflags! {
     }
 }
 
+impl Mode {
+    /// Check that the mode indicates memory that is vaid, owned and exclusive.
+    pub fn valid_owned_and_exclusive(&self) -> bool {
+        (*self & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED)).is_empty()
+    }
+}
+
 bitflags! {
     /// Flags for memory management operations.
     struct Flags: u32 {
@@ -1205,6 +1212,10 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *const MPool) {
     let mpool = &*mpool;
     stage1_locked.defrag(mpool);
+}
+
+pub fn lock_hypervisor_ptable() -> SpinLockGuard<'static, PageTable<Stage1>> {
+    HYPERVISOR_PAGE_TABLE.lock()
 }
 
 #[no_mangle]

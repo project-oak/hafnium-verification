@@ -227,26 +227,6 @@ pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
     sl_unlock(&(*vcpu).execution_lock);
 }
 
-/// Retrieves the next waiter and removes it from the wait list if the VM's
-/// mailbox is in a writable state.
-unsafe fn api_fetch_waiter(locked_vm: VmLocked) -> *mut WaitEntry {
-    let entry: *mut WaitEntry;
-    let vm = locked_vm.vm;
-
-    if (*vm).mailbox.state != MailboxState::Empty
-        || (*vm).mailbox.recv == ptr::null_mut()
-        || list_empty(&(*vm).mailbox.waiter_list)
-    {
-        // The mailbox is not writable or there are no waiters.
-        return ptr::null_mut();
-    }
-
-    // Remove waiter from the wait list.
-    entry = container_of!((*vm).mailbox.waiter_list.next, WaitEntry, wait_links);
-    list_remove(&mut (*entry).wait_links);
-    entry
-}
-
 /// Assuming that the arguments have already been checked by the caller, injects
 /// a virtual interrupt of the given ID into the given target vCPU. This doesn't
 /// cause the vCPU to actually be run immediately; it will be taken when the
@@ -340,16 +320,6 @@ unsafe fn api_vcpu_prepare_run(
         return false;
     }
 
-    // The VM needs to be locked to deliver mailbox messages.
-    // The VM lock is not needed in the common case so it must only be taken
-    // when it is going to be needed. This ensures there are no inter-vCPU
-    // dependencies in the common run case meaning the sensitive context
-    // switch performance is consistent.
-    let need_vm_lock = (*vcpu).state == VCpuStatus::BlockedMailbox;
-    if need_vm_lock {
-        sl_lock(&(*(*vcpu).vm).lock);
-    }
-
     if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
         if (*vcpu).state != VCpuStatus::Aborted {
             dlog!(
@@ -360,10 +330,6 @@ unsafe fn api_vcpu_prepare_run(
             (*vcpu).state = VCpuStatus::Aborted;
         }
         ret = false;
-        // goto out;
-        if need_vm_lock {
-            sl_unlock(&(*(*vcpu).vm).lock);
-        }
 
         if !ret {
             sl_unlock(&(*vcpu).execution_lock);
@@ -375,10 +341,6 @@ unsafe fn api_vcpu_prepare_run(
     match (*vcpu).state {
         VCpuStatus::Off | VCpuStatus::Aborted => {
             ret = false;
-            // goto out;
-            if need_vm_lock {
-                sl_unlock(&(*(*vcpu).vm).lock);
-            }
 
             if !ret {
                 sl_unlock(&(*vcpu).execution_lock);
@@ -389,10 +351,13 @@ unsafe fn api_vcpu_prepare_run(
 
         // A pending message allows the vCPU to run so the message can be
         // delivered directly.
-        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).mailbox.state == MailboxState::Received => {
+        // The VM needs to be locked to deliver mailbox messages.
+        // The VM lock is not needed in the common case so it must only be taken
+        // when it is going to be needed. This ensures there are no inter-vCPU
+        // dependencies in the common run case meaning the sensitive context
+        // switch performance is consistent.
+        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).state.lock().try_read() => {
             arch_regs_set_retval(&mut (*vcpu).regs, SpciReturn::Success as uintreg_t);
-            (*(*vcpu).vm).mailbox.state = MailboxState::Read;
-            // break;
         }
         // Fall through. (TODO: isn't it too verbose?)
 
@@ -424,10 +389,6 @@ unsafe fn api_vcpu_prepare_run(
             }
 
             ret = false;
-            // goto out;
-            if need_vm_lock {
-                sl_unlock(&(*(*vcpu).vm).lock);
-            }
 
             if !ret {
                 sl_unlock(&(*vcpu).execution_lock);
@@ -445,11 +406,6 @@ unsafe fn api_vcpu_prepare_run(
     (*vcpu).cpu = (*current).cpu;
 
     ret = true;
-
-    // out:
-    if need_vm_lock {
-        sl_unlock(&(*(*vcpu).vm).lock);
-    }
 
     if !ret {
         sl_unlock(&(*vcpu).execution_lock);
@@ -524,25 +480,19 @@ pub unsafe extern "C" fn api_vcpu_run(
     return ret.into_raw();
 }
 
-/// Check that the mode indicates memory that is vaid, owned and exclusive.
-fn api_mode_valid_owned_and_exclusive(mode: Mode) -> bool {
-    (mode & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED)).is_empty()
-}
-
 /// Determines the value to be returned by api_vm_configure and
 /// api_mailbox_clear after they've succeeded. If a secondary VM is running and
 /// there are waiters, it also switches back to the primary VM for it to wake
 /// waiters up.
-unsafe fn api_waiter_result(locked_vm: VmLocked, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
-    let vm = locked_vm.vm;
+unsafe fn api_waiter_result(id: spci_vm_id_t, state: &VmState, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let ret = HfVCpuRunReturn::NotifyWaiters;
 
-    if list_empty(&(*vm).mailbox.waiter_list) {
+    if !state.any_waiter() {
         // No waiters, nothing else to do.
         return 0;
     }
 
-    if (*vm).id == HF_PRIMARY_VM_ID {
+    if id == HF_PRIMARY_VM_ID {
         // The caller is the primary VM. Tell it to wake up waiters.
         return 1;
     }
@@ -552,223 +502,6 @@ unsafe fn api_waiter_result(locked_vm: VmLocked, current: *mut VCpu, next: *mut 
     *next = api_switch_to_primary(current, ret, VCpuStatus::Ready);
 
     0
-}
-
-/// Configures the hypervisor's stage-1 view of the send and receive pages. The
-/// stage-1 page tables must be locked so memory cannot be taken by another core
-/// which could result in this transaction being unable to roll back in the case
-/// of an error.
-unsafe fn api_vm_configure_stage1(
-    vm_locked: VmLocked,
-    pa_send_begin: paddr_t,
-    pa_send_end: paddr_t,
-    pa_recv_begin: paddr_t,
-    pa_recv_end: paddr_t,
-    local_page_pool: *mut MPool,
-) -> bool {
-    let ret;
-    let mut mm_stage1_locked = mm_lock_stage1();
-
-    // Map the send page as read-only in the hypervisor address space.
-    (*vm_locked.vm).mailbox.send = mm_identity_map(
-        mm_stage1_locked,
-        pa_send_begin,
-        pa_send_end,
-        Mode::R,
-        local_page_pool,
-    ) as usize as *const SpciMessage;
-    if (*vm_locked.vm).mailbox.send == ptr::null() {
-        // TODO: partial defrag of failed range.
-        // Recover any memory consumed in failed mapping.
-        mm_defrag(mm_stage1_locked, local_page_pool);
-
-        // goto fail;
-        ret = false;
-
-        mm_unlock_stage1(&mut mm_stage1_locked);
-        return ret;
-    }
-
-    // Map the receive page as writable in the hypervisor address space. On
-    // failure, unmap the send page before returning.
-    (*vm_locked.vm).mailbox.recv = mm_identity_map(
-        mm_stage1_locked,
-        pa_recv_begin,
-        pa_recv_end,
-        Mode::W,
-        local_page_pool,
-    ) as usize as *mut SpciMessage;
-    if (*vm_locked.vm).mailbox.recv == ptr::null_mut() {
-        // TODO: parital defrag of failed range.
-        // Recover any memory consumed in failed mapping.
-        mm_defrag(mm_stage1_locked, local_page_pool);
-
-        // goto fail_undo_send;
-        (*vm_locked.vm).mailbox.send = ptr::null();
-        assert!(mm_unmap(
-            mm_stage1_locked,
-            pa_send_begin,
-            pa_send_end,
-            local_page_pool
-        ));
-
-        ret = false;
-
-        mm_unlock_stage1(&mut mm_stage1_locked);
-        return ret;
-    }
-
-    ret = true;
-    // goto out;
-    mm_unlock_stage1(&mut mm_stage1_locked);
-    return ret;
-
-    // The following mappings will not require more memory than is available
-    // in the local pool.
-    // fail_undo_send:
-    (*vm_locked.vm).mailbox.send = ptr::null();
-    assert!(mm_unmap(
-        mm_stage1_locked,
-        pa_send_begin,
-        pa_send_end,
-        local_page_pool
-    ));
-
-    // fail:
-    ret = false;
-
-    // out:
-    mm_unlock_stage1(&mut mm_stage1_locked);
-    return ret;
-}
-
-/// Configures the send and receive pages in the VM stage-2 and hypervisor
-/// stage-1 page tables. Locking of the page tables combined with a local memory
-/// pool ensures there will always be enough memory to recover from any errors
-/// that arise.
-unsafe fn api_vm_configure_pages(
-    vm_locked: VmLocked,
-    pa_send_begin: paddr_t,
-    pa_send_end: paddr_t,
-    orig_send_mode: Mode,
-    pa_recv_begin: paddr_t,
-    pa_recv_end: paddr_t,
-    orig_recv_mode: Mode,
-) -> bool {
-    let ret;
-    let mut local_page_pool: MPool = mem::uninitialized();
-
-    // Create a local pool so any freed memory can't be used by another thread.
-    // This is to ensure the original mapping can be restored if any stage of
-    // the process fails.
-    mpool_init_with_fallback(&mut local_page_pool, API_PAGE_POOL.get_ref());
-
-    // Take memory ownership away from the VM and mark as shared.
-    if !mm_vm_identity_map(
-        &mut (*vm_locked.vm).ptable,
-        pa_send_begin,
-        pa_send_end,
-        (Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W),
-        ptr::null_mut(),
-        &mut local_page_pool,
-    ) {
-        //goto fail;
-        ret = false;
-        mpool_fini(&mut local_page_pool);
-        return ret;
-    }
-
-    if !mm_vm_identity_map(
-        &mut (*vm_locked.vm).ptable,
-        pa_recv_begin,
-        pa_recv_end,
-        (Mode::UNOWNED | Mode::SHARED | Mode::R),
-        ptr::null_mut(),
-        &mut local_page_pool,
-    ) {
-        // TODO: partial defrag of failed range.
-        // Recover any memory consumed in failed mapping.
-        mm_vm_defrag(&mut (*vm_locked.vm).ptable, &mut local_page_pool);
-        // goto fail_undo_send;
-        assert!(mm_vm_identity_map(
-            &mut (*vm_locked.vm).ptable,
-            pa_send_begin,
-            pa_send_end,
-            orig_send_mode,
-            ptr::null_mut(),
-            &mut local_page_pool
-        ));
-        ret = false;
-        mpool_fini(&mut local_page_pool);
-        return ret;
-    }
-
-    if !api_vm_configure_stage1(
-        vm_locked,
-        pa_send_begin,
-        pa_send_end,
-        pa_recv_begin,
-        pa_recv_end,
-        &mut local_page_pool,
-    ) {
-        // goto fail_undo_send_and_recv;
-        assert!(mm_vm_identity_map(
-            &mut (*vm_locked.vm).ptable,
-            pa_recv_begin,
-            pa_recv_end,
-            orig_recv_mode,
-            ptr::null_mut(),
-            &mut local_page_pool
-        ));
-
-        assert!(mm_vm_identity_map(
-            &mut (*vm_locked.vm).ptable,
-            pa_send_begin,
-            pa_send_end,
-            orig_send_mode,
-            ptr::null_mut(),
-            &mut local_page_pool
-        ));
-
-        ret = false;
-
-        mpool_fini(&mut local_page_pool);
-        return ret;
-    }
-
-    ret = true;
-    // goto out;
-    mpool_fini(&mut local_page_pool);
-    return ret;
-
-    // The following mappings will not require more memory than is available in
-    // the local pool.
-    // fail_undo_send_and_recv:
-    assert!(mm_vm_identity_map(
-        &mut (*vm_locked.vm).ptable,
-        pa_recv_begin,
-        pa_recv_end,
-        orig_recv_mode,
-        ptr::null_mut(),
-        &mut local_page_pool
-    ));
-
-    // fail_undo_send:
-    assert!(mm_vm_identity_map(
-        &mut (*vm_locked.vm).ptable,
-        pa_send_begin,
-        pa_send_end,
-        orig_send_mode,
-        ptr::null_mut(),
-        &mut local_page_pool
-    ));
-
-    // fail:
-    ret = false;
-
-    // out:
-    mpool_fini(&mut local_page_pool);
-    return ret;
 }
 
 /// Configures the VM to send/receive data through the specified pages. The
@@ -788,26 +521,6 @@ pub unsafe extern "C" fn api_vm_configure(
     next: *mut *mut VCpu,
 ) -> i64 {
     let vm = (*current).vm;
-    let ret;
-    let mut orig_send_mode = mem::uninitialized();
-    let mut orig_recv_mode = mem::uninitialized();
-
-    // Fail if addresses are not page-aligned.
-    if !is_aligned(ipa_addr(send), PAGE_SIZE) || !is_aligned(ipa_addr(recv), PAGE_SIZE) {
-        return -1;
-    }
-
-    // Convert to physical addresses.
-    let pa_send_begin = pa_from_ipa(send);
-    let pa_send_end = pa_add(pa_send_begin, PAGE_SIZE);
-
-    let pa_recv_begin = pa_from_ipa(recv);
-    let pa_recv_end = pa_add(pa_recv_begin, PAGE_SIZE);
-
-    // Fail if the same page is used for the send and receive pages.
-    if pa_addr(pa_send_begin) == pa_addr(pa_recv_begin) {
-        return -1;
-    }
 
     // The hypervisor's memory map must be locked for the duration of this
     // operation to ensure there will be sufficient memory to recover from
@@ -815,74 +528,13 @@ pub unsafe extern "C" fn api_vm_configure(
     //
     // TODO: the scope of the can be reduced but will require restructing
     //       to keep a single unlock point.
-    let mut vm_locked = vm_lock(vm);
-
-    // We only allow these to be setup once.
-    if (*vm).mailbox.send != ptr::null() || (*vm).mailbox.recv != ptr::null_mut() {
-        // goto fail;
-        ret = -1;
-        vm_unlock(&mut vm_locked);
-        return ret;
-    }
-
-    // Ensure the pages are valid, owned and exclusive to the VM and that the
-    // VM has the required access to the memory.
-    if !mm_vm_get_mode(
-        &mut (*vm).ptable,
-        send,
-        ipa_add(send, PAGE_SIZE),
-        &mut orig_send_mode,
-    ) || !api_mode_valid_owned_and_exclusive(orig_send_mode)
-        || !orig_send_mode.contains(Mode::R)
-        || !orig_send_mode.contains(Mode::W)
-    {
-        // goto fail;
-        ret = -1;
-        vm_unlock(&mut vm_locked);
-        return ret;
-    }
-
-    if !mm_vm_get_mode(
-        &mut (*vm).ptable,
-        recv,
-        ipa_add(recv, PAGE_SIZE),
-        &mut orig_recv_mode,
-    ) || !api_mode_valid_owned_and_exclusive(orig_recv_mode)
-        || !orig_recv_mode.contains(Mode::R)
-    {
-        // goto fail;
-        ret = -1;
-        vm_unlock(&mut vm_locked);
-        return ret;
-    }
-
-    if !api_vm_configure_pages(
-        vm_locked,
-        pa_send_begin,
-        pa_send_end,
-        orig_send_mode,
-        pa_recv_begin,
-        pa_recv_end,
-        orig_recv_mode,
-    ) {
-        // goto fail;
-        ret = -1;
-        vm_unlock(&mut vm_locked);
-        return ret;
+    let state = (*vm).state.lock();
+    if state.configure(send, recv, API_PAGE_POOL.get_ref()).is_none() {
+        return -1;
     }
 
     // Tell caller about waiters, if any.
-    ret = api_waiter_result(vm_locked, current, next);
-    // goto exit;
-    vm_unlock(&mut vm_locked);
-    return ret;
-
-    // fail:
-    ret = -1;
-
-    // exit:
-    vm_unlock(&mut vm_locked);
-    return ret;
+    api_waiter_result((*vm).id, &state, current, next)
 }
 
 /// Copies data from the sender's send buffer to the recipient's receive buffer
@@ -908,9 +560,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // header. If the tx mailbox at from_msg is configured (i.e.
     // from_msg != ptr::null()) then it can be safely accessed after releasing
     // the lock since the tx mailbox address can only be configured once.
-    sl_lock(&(*from).lock);
-    let from_msg = (*from).mailbox.send;
-    sl_unlock(&(*from).lock);
+    let from_msg = (*from).state.lock().get_send_ptr();
 
     if from_msg == ptr::null() {
         return SpciReturn::InvalidParameters;
@@ -946,29 +596,19 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // buffer. Since in spci_msg_handle_architected_message we may call
     // api_spci_share_memory which must hold the `from` lock, we must hold the
     // `from` lock at this point to prevent a deadlock scenario.
-    let mut vm_from_to_lock = vm_lock_both(to, from);
+    let (to_state, from_state) = SpinLock::lock_both(&(*to).state, &(*from).state);
 
-    if (*to).mailbox.state != MailboxState::Empty || (*to).mailbox.recv == ptr::null_mut() {
+    if to_state.is_empty() || !to_state.is_configured() {
         // Fail if the target isn't currently ready to receive data,
         // setting up for notification if requested.
         if notify {
-            let entry = &mut (*(*current).vm).wait_entries[from_msg_replica.target_vm_id as usize];
-
-            // Append waiter only if it's not there yet.
-            if list_empty(&(*entry).wait_links) {
-                list_append(&mut (*to).mailbox.waiter_list, &mut (*entry).wait_links);
-            }
+            from_state.wait(&mut to_state, (*to).id);
         }
 
-        ret = SpciReturn::Busy;
-        // goto out;
-        vm_unlock(&mut vm_from_to_lock.vm1);
-        vm_unlock(&mut vm_from_to_lock.vm2);
-
-        return ret;
+        return SpciReturn::Busy;
     }
 
-    let to_msg = (*to).mailbox.recv;
+    let to_msg = to_state.get_recv_ptr();
 
     // Handle architected messages.
     if !from_msg_replica.flags.contains(SpciMessageFlags::IMPDEF) {
@@ -978,24 +618,14 @@ pub unsafe extern "C" fn api_spci_msg_send(
             + mem::size_of::<SpciMemoryRegionConstituent>()
             + mem::size_of::<SpciMemoryRegion>()] = mem::uninitialized();
 
-        let architected_header = spci_get_architected_message_header((*from).mailbox.send);
+        let architected_header = spci_get_architected_message_header(from_msg);
 
         if from_msg_replica.length as usize > message_buffer.len() {
-            ret = SpciReturn::InvalidParameters;
-            // goto out;
-            vm_unlock(&mut vm_from_to_lock.vm1);
-            vm_unlock(&mut vm_from_to_lock.vm2);
-
-            return ret;
+            return SpciReturn::InvalidParameters;
         }
 
         if (from_msg_replica.length as usize) < mem::size_of::<SpciArchitectedMessageHeader>() {
-            ret = SpciReturn::InvalidParameters;
-            // goto out;
-            vm_unlock(&mut vm_from_to_lock.vm1);
-            vm_unlock(&mut vm_from_to_lock.vm2);
-
-            return ret;
+            return SpciReturn::InvalidParameters;
         }
 
         // Copy the architected message into an internal buffer.
@@ -1015,18 +645,14 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // fields in message_buffer. The memory area message_buffer must be
         // exclusively owned by Hf so that TOCTOU issues do not arise.
         ret = spci_msg_handle_architected_message(
-            vm_from_to_lock.vm1,
-            vm_from_to_lock.vm2,
+            VmLocked { vm: to },
+            VmLocked { vm: from },
             architected_message_replica,
             &mut from_msg_replica,
             to_msg,
         );
 
         if ret != SpciReturn::Success {
-            //goto out;
-            vm_unlock(&mut vm_from_to_lock.vm1);
-            vm_unlock(&mut vm_from_to_lock.vm2);
-
             return ret;
         }
     } else {
@@ -1034,7 +660,11 @@ pub unsafe extern "C" fn api_spci_msg_send(
         memcpy_s(
             &mut (*to_msg).payload as *mut _ as usize as _,
             SPCI_MSG_PAYLOAD_MAX,
-            &(*(*from).mailbox.send).payload as *const _ as usize as _,
+            // below was &mut (*(*from).mailbox.send).payload, but we can safely
+            // assume it is equal to (*from_msg).payload, even though from_msg
+            // was defined before entering critical section. That's because
+            // we do not allow vm to be configured more than once.
+            &mut (*from_msg).payload as *const _ as usize as _,
             size,
         );
         *to_msg = from_msg_replica;
@@ -1045,26 +675,17 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Messages for the primary VM are delivered directly.
     if (*to).id == HF_PRIMARY_VM_ID {
-        (*to).mailbox.state = MailboxState::Read;
+        to_state.set_read();
         *next = api_switch_to_primary(current, primary_ret, VCpuStatus::Ready);
-
-        // goto out;
-        vm_unlock(&mut vm_from_to_lock.vm1);
-        vm_unlock(&mut vm_from_to_lock.vm2);
-
         return ret;
     }
 
-    (*to).mailbox.state = MailboxState::Received;
+    to_state.set_received();
 
     // Return to the primary VM directly or with a switch.
     if (*from).id != HF_PRIMARY_VM_ID {
         *next = api_switch_to_primary(current, primary_ret, VCpuStatus::Ready);
     }
-
-    // out:
-    vm_unlock(&mut vm_from_to_lock.vm1);
-    vm_unlock(&mut vm_from_to_lock.vm2);
 
     return ret;
 }
@@ -1079,35 +700,26 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> SpciReturn {
-    let vm = (*current).vm;
+    let vm = &*(*current).vm;
     let return_code: SpciReturn;
     let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
     // The primary VM will receive messages as a status code from running vcpus
     // and must not call this function.
-    if (*vm).id == HF_PRIMARY_VM_ID {
+    if vm.id == HF_PRIMARY_VM_ID {
         return SpciReturn::Interrupted;
     }
 
-    sl_lock(&(*vm).lock);
+    let vm_state = vm.state.lock();
 
     // Return pending messages without blocking.
-    if (*vm).mailbox.state == MailboxState::Received {
-        (*vm).mailbox.state = MailboxState::Read;
-        return_code = SpciReturn::Success;
-        // goto out;
-        sl_unlock(&(*vm).lock);
-
-        return return_code;
+    if vm_state.try_read() {
+        return SpciReturn::Success;
     }
 
     // No pending message so fail if not allowed to block.
     if !block {
-        return_code = SpciReturn::Retry;
-        // goto out;
-        sl_unlock(&(*vm).lock);
-
-        return return_code;
+        return SpciReturn::Retry;
     }
 
     // From this point onward this call can only be interrupted or a message
@@ -1118,9 +730,6 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     // Don't block if there are enabled and pending interrupts, to match
     // behaviour of wait_for_interrupt.
     if (*current).interrupts.enabled_and_pending_count > 0 {
-        // goto out;
-        sl_unlock(&(*vm).lock);
-
         return return_code;
     }
 
@@ -1133,9 +742,6 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 
         *next = api_switch_to_primary(current, run_return, VCpuStatus::BlockedMailbox);
     }
-
-    // out:
-    sl_unlock(&(*vm).lock);
 
     return return_code;
 }
@@ -1152,24 +758,12 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
     let vm = (*current).vm;
-    let ret;
+    let vm_state = (*vm).state.lock();
 
-    sl_lock(&(*vm).lock);
-    if list_empty(&(*vm).mailbox.ready_list) {
-        ret = -1;
-        // goto exit;
-        sl_unlock(&(*vm).lock);
-        return ret;
+    match vm_state.dequeue_ready_list() {
+        Some(id) => id as i64,
+        None => -1
     }
-
-    let entry: *mut WaitEntry =
-        container_of!((*vm).mailbox.ready_list.next, WaitEntry, ready_links);
-    list_remove(&mut (*entry).ready_links);
-    ret = entry.offset_from((*vm).wait_entries.as_ptr()) as i64;
-
-    // exit:
-    sl_unlock(&(*vm).lock);
-    return ret;
 }
 
 /// Retrieves the next VM waiting to be notified that the mailbox of the
@@ -1190,25 +784,21 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     }
 
     // Check if there are outstanding notifications from given vm.
-    let mut locked = vm_lock(vm);
-    let entry = api_fetch_waiter(locked);
-    vm_unlock(&mut locked);
+    let entry = (*vm).state.lock().fetch_waiter();
 
     if entry == ptr::null_mut() {
         return -1;
     }
 
     // Enqueue notification to waiting VM.
+    // TODO: Is ready_list indeed a queue? I think API module treating it like
+    // a stack.
     let waiting_vm = (*entry).waiting_vm as *mut Vm;
 
-    sl_lock(&(*waiting_vm).lock);
+    let vm_state = (*waiting_vm).state.lock();
     if list_empty(&(*entry).ready_links) {
-        list_append(
-            &mut (*waiting_vm).mailbox.ready_list,
-            &mut (*entry).ready_links,
-        );
+        vm_state.enqueue_ready_list(&mut *entry);
     }
-    sl_unlock(&(*waiting_vm).lock);
 
     (*waiting_vm).id as i64
 }
@@ -1227,8 +817,8 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
 pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let vm = (*current).vm;
     let ret;
-    let mut locked = vm_lock(vm);
-    match (*vm).mailbox.state {
+    let state = (*vm).state.lock();
+    match state.get_state() {
         MailboxState::Empty => {
             ret = 0;
         }
@@ -1236,12 +826,11 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut V
             ret = -1;
         }
         MailboxState::Read => {
-            ret = api_waiter_result(locked, current, next);
-            (*vm).mailbox.state = MailboxState::Empty;
+            ret = api_waiter_result((*vm).id, &state, current, next);
+            state.set_empty();
         }
     }
 
-    vm_unlock(&mut locked);
     ret
 }
 
