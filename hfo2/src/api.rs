@@ -22,7 +22,6 @@ use crate::abi::*;
 use crate::addr::*;
 use crate::arch::*;
 use crate::cpu::*;
-use crate::dlog::*;
 use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -528,7 +527,7 @@ pub unsafe extern "C" fn api_vm_configure(
     //
     // TODO: the scope of the can be reduced but will require restructing
     //       to keep a single unlock point.
-    let state = (*vm).state.lock();
+    let mut state = (*vm).state.lock();
     if state.configure(send, recv, API_PAGE_POOL.get_ref()).is_none() {
         return -1;
     }
@@ -596,7 +595,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // buffer. Since in spci_msg_handle_architected_message we may call
     // api_spci_share_memory which must hold the `from` lock, we must hold the
     // `from` lock at this point to prevent a deadlock scenario.
-    let (to_state, from_state) = SpinLock::lock_both(&(*to).state, &(*from).state);
+    let (mut to_state, mut from_state) = SpinLock::lock_both(&(*to).state, &(*from).state);
 
     if to_state.is_empty() || !to_state.is_configured() {
         // Fail if the target isn't currently ready to receive data,
@@ -664,7 +663,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
             // assume it is equal to (*from_msg).payload, even though from_msg
             // was defined before entering critical section. That's because
             // we do not allow vm to be configured more than once.
-            &mut (*from_msg).payload as *const _ as usize as _,
+            &(*from_msg).payload as *const _ as usize as _,
             size,
         );
         *to_msg = from_msg_replica;
@@ -710,7 +709,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
         return SpciReturn::Interrupted;
     }
 
-    let vm_state = vm.state.lock();
+    let mut vm_state = vm.state.lock();
 
     // Return pending messages without blocking.
     if vm_state.try_read() {
@@ -758,7 +757,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
     let vm = (*current).vm;
-    let vm_state = (*vm).state.lock();
+    let mut vm_state = (*vm).state.lock();
 
     match vm_state.dequeue_ready_list() {
         Some(id) => id as i64,
@@ -795,7 +794,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     // a stack.
     let waiting_vm = (*entry).waiting_vm as *mut Vm;
 
-    let vm_state = (*waiting_vm).state.lock();
+    let mut vm_state = (*waiting_vm).state.lock();
     if list_empty(&(*entry).ready_links) {
         vm_state.enqueue_ready_list(&mut *entry);
     }
@@ -817,7 +816,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
 pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let vm = (*current).vm;
     let ret;
-    let state = (*vm).state.lock();
+    let mut state = (*vm).state.lock();
     match state.get_state() {
         MailboxState::Empty => {
             ret = 0;
@@ -908,8 +907,8 @@ pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> intid_t {
 /// Returns whether the current vCPU is allowed to inject an interrupt into the
 /// given VM and vCPU.
 #[inline]
-unsafe fn is_injection_allowed(target_vm_id: spci_vm_id_t, current: *const VCpu) -> bool {
-    let current_vm_id = (*(*current).vm).id;
+fn is_injection_allowed(target_vm_id: spci_vm_id_t, current: &VCpu) -> bool {
+    let current_vm_id = unsafe { (*current.vm).id };
 
     // The primary VM is allowed to inject interrupts into any VM. Secondary
     // VMs are only allowed to inject interrupts into their own vCPUs.
@@ -950,7 +949,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    if !is_injection_allowed(target_vm_id, current) {
+    if !is_injection_allowed(target_vm_id, &*current) {
         return -1;
     }
 
@@ -969,44 +968,30 @@ pub unsafe extern "C" fn api_interrupt_inject(
 
 /// Clears a region of physical memory by overwriting it with zeros. The data is
 /// flushed from the cache so the memory has been cleared across the system.
-unsafe fn api_clear_memory(begin: paddr_t, end: paddr_t, ppool: *mut MPool) -> bool {
+fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
+    let mut hypervisor_ptable = lock_hypervisor_ptable();
+    let size = pa_difference(begin, end);
+    let region = pa_addr(begin);
+
     // TODO: change this to a cpu local single page window rather than a global
     //       mapping of the whole range. Such an approach will limit the
     //       changes to stage-1 tables and will allow only local invalidation.
 
-    let ret;
-    let mut stage1_locked = mm_lock_stage1();
-    // TODO: Refactor result variable name.
-    // But mm_identity_map returns begin if succeed or null pointer otherwise.
-    // Hence the name is not important.
-    let ptr_ = mm_identity_map(stage1_locked, begin, end, Mode::W, ppool);
-    let size = pa_difference(begin, end);
-
-    if ptr_ == ptr::null_mut() {
+    if let None = hypervisor_ptable.identity_map(begin, end, Mode::W, ppool) {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
-        mm_defrag(stage1_locked, ppool);
-        // goto fail;
-        ret = false;
-        mm_unlock_stage1(&mut stage1_locked);
-        return ret;
+        hypervisor_ptable.defrag(ppool);
+        return false;
     }
 
-    memset_s(ptr_ as usize as _, size, 0, size);
-    arch_mm_write_back_dcache(ptr_ as usize, size);
-    mm_unmap(stage1_locked, begin, end, ppool);
+    unsafe {
+        memset_s(region as usize as _, size, 0, size);
+        arch_mm_write_back_dcache(region as usize, size);
+    }
 
-    ret = true;
-    // goto out;
-    mm_unlock_stage1(&mut stage1_locked);
-    return ret;
+    hypervisor_ptable.unmap(begin, end, ppool);
 
-    // fail:
-    ret = false;
-
-    // out:
-    mm_unlock_stage1(&mut stage1_locked);
-    ret
+    true
 }
 
 // TODO: Move function to spci_architectted_message.c. (How in Rust?)
@@ -1031,20 +1016,18 @@ pub unsafe extern "C" fn api_spci_share_memory(
     memory_to_attributes: u32,
     share: usize,
 ) -> SpciReturn {
-    let to = to_locked.vm;
-    let from = from_locked.vm;
-    let ret;
+    let to_state = (*to_locked.vm).state.get_mut_unchecked();
+    let from_state = (*from_locked.vm).state.get_mut_unchecked();
 
     // Disallow reflexive shares as this suggests an error in the VM.
-    if to == from {
+    if to_locked.vm == from_locked.vm {
         return SpciReturn::InvalidParameters;
     }
 
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let mut local_page_pool: MPool = mem::uninitialized();
-    mpool_init_with_fallback(&mut local_page_pool, API_PAGE_POOL.get_ref());
+    let mut local_page_pool: MPool = MPool::new_with_fallback(API_PAGE_POOL.get_ref());
 
     // Obtain the single contiguous set of pages from the memory_region.
     // TODO: Add support for multiple constituent regions.
@@ -1066,8 +1049,8 @@ pub unsafe extern "C" fn api_spci_share_memory(
     };
 
     if !spci_msg_check_transition(
-        to,
-        from,
+        to_locked.vm,
+        from_locked.vm,
         share,
         &mut orig_from_mode,
         begin,
@@ -1084,53 +1067,39 @@ pub unsafe extern "C" fn api_spci_share_memory(
 
     // First update the mapping for the sender so there is not overlap with the
     // recipient.
-    if !mm_vm_identity_map(
-        &mut (*from).ptable,
+    if from_state.ptable.identity_map(
         pa_begin,
         pa_end,
         from_mode,
-        ptr::null_mut(),
-        &mut local_page_pool,
-    ) {
-        ret = SpciReturn::NoMemory;
-        // goto out;
-        mpool_fini(&mut local_page_pool);
-        return ret;
+        &local_page_pool,
+    ).is_none() {
+        return SpciReturn::NoMemory;
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if !mm_vm_identity_map(
-        &mut (*to).ptable,
+    if to_state.ptable.identity_map(
         pa_begin,
         pa_end,
         to_mode,
-        ptr::null_mut(),
-        &mut local_page_pool,
-    ) {
+        &local_page_pool,
+    ).is_none() {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
-        mm_vm_defrag(&mut (*from).ptable, &mut local_page_pool);
+        from_state.ptable.defrag(&local_page_pool);
 
-        ret = SpciReturn::NoMemory;
-
-        assert!(mm_vm_identity_map(
-            &mut (*from).ptable,
+        assert!(from_state.ptable.identity_map(
             pa_begin,
             pa_end,
             orig_from_mode,
-            ptr::null_mut(),
-            &mut local_page_pool
-        ));
-        // goto out;
-        mpool_fini(&mut local_page_pool);
-        return ret;
+            &local_page_pool
+        ).is_some());
+
+        return SpciReturn::NoMemory;
     }
 
-    ret = SpciReturn::Success;
 
-    // out:
-    mpool_fini(&mut local_page_pool);
-    return ret;
+
+    SpciReturn::Success
 }
 
 /// Shares memory from the calling VM with another. The memory can be shared in
@@ -1141,46 +1110,30 @@ pub unsafe extern "C" fn api_spci_share_memory(
 ///       of the memory they have been given, opting to not wipe the memory and
 ///       possibly allowing multiple blocks to be transferred. What this will
 ///       look like is TBD.
-#[no_mangle]
-pub unsafe extern "C" fn api_share_memory(
-    vm_id: spci_vm_id_t,
-    addr: ipaddr_t,
-    size: size_t,
-    share: usize,
-    current: *mut VCpu,
-) -> i64 {
-    let from = (*current).vm;
+fn share_memory(vm_id: spci_vm_id_t, addr: ipaddr_t, size: usize, share: HfShare, current: &VCpu) -> Option<()> {
+    let from: &Vm = unsafe { &*current.vm };
 
     // Disallow reflexive shares as this suggests an error in the VM.
-    if vm_id == (*from).id {
+    if vm_id == from.id {
         assert!(false);
-        return -1;
+        return None;
     }
 
     // Ensure the target VM exists.
-    let to = vm_find(vm_id);
-    if to == ptr::null_mut() {
-        return -1;
+    let to = unsafe { vm_find(vm_id) };
+    if to.is_null() {
+        return None;
     }
+
+    let to = unsafe { &*to };
 
     let begin = addr;
     let end = ipa_add(addr, size);
 
     // Fail if addresses are not page-aligned.
     if !is_aligned(ipa_addr(begin), PAGE_SIZE) || !is_aligned(ipa_addr(end), PAGE_SIZE) {
-        return -1;
+        return None;
     }
-
-    // Convert the sharing request to memory management modes.
-    let share = match share {
-        0 => HfShare::Give,
-        1 => HfShare::Lend,
-        2 => HfShare::Share,
-        _ => {
-            // The input is untrusted so might not be a valid value.
-            return -1;
-        }
-    };
 
     let (from_mode, to_mode) = match share {
         HfShare::Give => (
@@ -1199,72 +1152,31 @@ pub unsafe extern "C" fn api_share_memory(
     // the process fails.
     // TODO: So that's reason why Hafnium use local_page_pool! We need to verify
     // this.
-    let mut local_page_pool = mem::uninitialized();
-    mpool_init_with_fallback(&mut local_page_pool, API_PAGE_POOL.get_ref());
+    let local_page_pool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
 
-    sl_lock_both(&(*from).lock, &(*to).lock);
-
-    let ret;
+    let (mut from_state, mut to_state) = SpinLock::lock_both(&(*from).state, &(*to).state);
 
     // Ensure that the memory range is mapped with the same mode so that
     // changes can be reverted if the process fails.
-    let mut orig_from_mode = mem::uninitialized();
-    if !mm_vm_get_mode(&mut (*from).ptable, begin, end, &mut orig_from_mode) {
-        // goto fail;
-        ret = -1;
-
-        sl_unlock(&(*from).lock);
-        sl_unlock(&(*to).lock);
-
-        mpool_fini(&mut local_page_pool);
-
-        return ret;
-    }
+    let orig_from_mode = from_state.ptable.get_mode(begin, end)?;
 
     // Ensure the memory range is valid for the sender. If it isn't, the sender
     // has either shared it with another VM already or has no claim to the
     // memory.
     if orig_from_mode.contains(Mode::INVALID) {
-        // goto fail;
-        ret = -1;
-
-        sl_unlock(&(*from).lock);
-        sl_unlock(&(*to).lock);
-
-        mpool_fini(&mut local_page_pool);
-
-        return ret;
+        return None;
     }
 
     // The sender must own the memory and have exclusive access to it in order
     // to share it. Alternatively, it is giving memory back to the owning VM.
     if orig_from_mode.contains(Mode::UNOWNED) {
-        let mut orig_to_mode = mem::uninitialized();
+        let orig_to_mode = to_state.ptable.get_mode(begin, end)?;
 
-        if share != HfShare::Give
-            || !mm_vm_get_mode(&mut (*to).ptable, begin, end, &mut orig_to_mode)
-            || orig_to_mode.contains(Mode::UNOWNED)
-        {
-            // goto fail;
-            ret = -1;
-
-            sl_unlock(&(*from).lock);
-            sl_unlock(&(*to).lock);
-
-            mpool_fini(&mut local_page_pool);
-
-            return ret;
+        if share != HfShare::Give || orig_to_mode.contains(Mode::UNOWNED) {
+            return None;
         }
     } else if orig_from_mode.contains(Mode::SHARED) {
-        // goto fail;
-        ret = -1;
-
-        sl_unlock(&(*from).lock);
-        sl_unlock(&(*to).lock);
-
-        mpool_fini(&mut local_page_pool);
-
-        return ret;
+        return None;
     }
 
     let pa_begin = pa_from_ipa(begin);
@@ -1272,108 +1184,71 @@ pub unsafe extern "C" fn api_share_memory(
 
     // First update the mapping for the sender so there is not overlap with the
     // recipient.
-    if !mm_vm_identity_map(
-        &mut (*from).ptable,
+    from_state.ptable.identity_map(
         pa_begin,
         pa_end,
         from_mode,
-        ptr::null_mut(),
-        &mut local_page_pool,
-    ) {
-        // goto fail;
-        ret = -1;
-
-        sl_unlock(&(*from).lock);
-        sl_unlock(&(*to).lock);
-
-        mpool_fini(&mut local_page_pool);
-
-        return ret;
-    }
+        &local_page_pool,
+    )?;
 
     // Clear the memory so no VM or device can see the previous contents.
-    if !api_clear_memory(pa_begin, pa_end, &mut local_page_pool) {
-        // goto fail_return_to_sender;
-        assert!(mm_vm_identity_map(
-            &mut (*from).ptable,
+    if !clear_memory(pa_begin, pa_end, &local_page_pool) {
+        assert!(from_state.ptable.identity_map(
             pa_begin,
             pa_end,
             orig_from_mode,
-            ptr::null_mut(),
-            &mut local_page_pool
-        ));
+            &local_page_pool
+        ).is_some());
 
-        ret = -1;
-
-        sl_unlock(&(*from).lock);
-        sl_unlock(&(*to).lock);
-
-        mpool_fini(&mut local_page_pool);
-        return ret;
+        return None;
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if !mm_vm_identity_map(
-        &mut (*to).ptable,
+    if to_state.ptable.identity_map(
         pa_begin,
         pa_end,
         to_mode,
-        ptr::null_mut(),
-        &mut local_page_pool,
-    ) {
+        &local_page_pool,
+    ).is_none() {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
-        mm_vm_defrag(&mut (*from).ptable, &mut local_page_pool);
+        from_state.ptable.defrag(&local_page_pool);
         // goto fail_return_to_sender;
-        assert!(mm_vm_identity_map(
-            &mut (*from).ptable,
+        assert!(from_state.ptable.identity_map(
             pa_begin,
             pa_end,
             orig_from_mode,
-            ptr::null_mut(),
-            &mut local_page_pool
-        ));
+            &local_page_pool
+        ).is_some());
 
-        // fail:
-        ret = -1;
-
-        // out:
-        sl_unlock(&(*from).lock);
-        sl_unlock(&(*to).lock);
-
-        mpool_fini(&mut local_page_pool);
-        return ret;
+        return None;
     }
 
-    ret = 0;
-    // goto out;
-    sl_unlock(&(*from).lock);
-    sl_unlock(&(*to).lock);
+    Some(())
+}
+#[no_mangle]
+pub unsafe extern "C" fn api_share_memory(
+    vm_id: spci_vm_id_t,
+    addr: ipaddr_t,
+    size: size_t,
+    share: usize,
+    current: *const VCpu,
+) -> i64 {
+    // Convert the sharing request to memory management modes.
+    let share = match share {
+        0 => HfShare::Give,
+        1 => HfShare::Lend,
+        2 => HfShare::Share,
+        _ => {
+            // The input is untrusted so might not be a valid value.
+            return -1;
+        }
+    };
 
-    mpool_fini(&mut local_page_pool);
-
-    return ret;
-
-    // fail_return_to_sender:
-    assert!(mm_vm_identity_map(
-        &mut (*from).ptable,
-        pa_begin,
-        pa_end,
-        orig_from_mode,
-        ptr::null_mut(),
-        &mut local_page_pool
-    ));
-
-    // fail:
-    ret = -1;
-
-    // out:
-    sl_unlock(&(*from).lock);
-    sl_unlock(&(*to).lock);
-
-    mpool_fini(&mut local_page_pool);
-
-    return ret;
+    match share_memory(vm_id, addr, size, share, &*current) {
+        Some(_) => 0,
+        None => -1,
+    }
 }
 
 /// Returns the version of the implemented SPCI specification.

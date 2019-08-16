@@ -21,6 +21,7 @@
 #![feature(maybe_uninit_ref)]
 #![feature(ptr_offset_from)]
 #![feature(const_raw_ptr_to_usize_cast)]
+#![feature(bind_by_move_pattern_guards)]
 
 #[macro_use]
 extern crate bitflags;
