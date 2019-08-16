@@ -19,6 +19,8 @@ use core::mem::MaybeUninit;
 use core::ptr;
 use core::sync::atomic::AtomicBool;
 
+use arrayvec::ArrayVec;
+
 use crate::arch::*;
 use crate::cpu::*;
 use crate::list::*;
@@ -28,6 +30,7 @@ use crate::spci::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
+use crate::dlog::*;
 
 const LOG_BUFFER_SIZE: usize = 256;
 
@@ -72,6 +75,24 @@ pub struct Mailbox {
     pub ready_list: list_entry,
 }
 
+struct VmState {
+    log_buffer: ArrayVec<[c_char; LOG_BUFFER_SIZE]>,
+}
+
+impl VmState {
+    pub fn debug_log(&mut self, id: spci_vm_id_t, c: c_char) {
+        if c == '\n' as u32 as u8
+            || c == '\0' as u32 as u8
+            || self.log_buffer.is_full()
+        {
+            dlog_flush_vm_buffer(id, &mut self.log_buffer);
+            self.log_buffer.clear();
+        } else {
+            self.log_buffer.push(c);
+        }
+    }
+}
+
 pub struct Vm {
     pub id: spci_vm_id_t,
     /// See api.c for the partial ordering on locks.
@@ -80,13 +101,18 @@ pub struct Vm {
     pub vcpus: [VCpu; MAX_CPUS],
     pub ptable: PageTable<Stage2>,
     pub mailbox: Mailbox,
-    pub log_buffer: [c_char; LOG_BUFFER_SIZE],
-    pub log_buffer_length: usize,
+    state: SpinLock<VmState>,
 
     /// Wait entries to be used when waiting on other VM mailboxes.
     pub wait_entries: [WaitEntry; MAX_VMS],
     pub aborting: AtomicBool,
     pub arch: ArchVm,
+}
+
+impl Vm {
+    pub fn debug_log(&self, c: c_char) {
+        self.state.lock().debug_log(self.id, c)
+    }
 }
 
 /// Encapsulates a VM whose lock is held.

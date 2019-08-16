@@ -1789,7 +1789,7 @@ pub unsafe extern "C" fn api_share_memory(
 
 /// Returns the version of the implemented SPCI specification.
 #[no_mangle]
-pub unsafe extern "C" fn api_spci_version() -> i32 {
+pub extern "C" fn api_spci_version() -> i32 {
     // Ensure that both major and minor revision representation occupies at
     // most 15 bits.
     const_assert!(0x8000 > SPCI_VERSION_MAJOR);
@@ -1801,18 +1801,6 @@ pub unsafe extern "C" fn api_spci_version() -> i32 {
 #[no_mangle]
 pub unsafe extern "C" fn api_debug_log(c: c_char, current: *mut VCpu) -> i64 {
     let vm = (*current).vm;
-    let mut vm_locked = vm_lock(vm);
-
-    if c == '\n' as u32 as u8
-        || c == '\0' as u32 as u8
-        || (*vm).log_buffer_length == (*vm).log_buffer.len()
-    {
-        dlog_flush_vm_buffer(vm_locked);
-    } else {
-        (*vm).log_buffer[(*vm).log_buffer_length] = c;
-        (*vm).log_buffer_length += 1;
-    }
-
-    vm_unlock(&mut vm_locked);
+    (*vm).debug_log(c);
     0
 }
