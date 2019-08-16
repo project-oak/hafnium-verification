@@ -72,7 +72,6 @@ pub struct Mailbox {
     pub ready_list: list_entry,
 }
 
-#[repr(C)]
 pub struct Vm {
     pub id: spci_vm_id_t,
     /// See api.c for the partial ordering on locks.
@@ -212,4 +211,24 @@ pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
 pub unsafe extern "C" fn vm_get_vcpu(vm: *mut Vm, vcpu_index: spci_vcpu_index_t) -> *mut VCpu {
     assert!(vcpu_index < (*vm).vcpu_count);
     &mut (*vm).vcpus[vcpu_index as usize]
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vm_get_id(vm: *const Vm) -> spci_vm_id_t {
+    (*vm).id
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vm_get_ptable(vm: *mut Vm) -> *mut PageTable<Stage2> {
+    &mut (*vm).ptable
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vm_get_arch(vm: *mut Vm) -> *mut ArchVm {
+    &mut (*vm).arch
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vm_get_vcpu_count(vm: *const Vm) -> spci_vcpu_count_t {
+    (*vm).vcpu_count
 }

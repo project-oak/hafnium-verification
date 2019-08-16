@@ -47,3 +47,7 @@ pub struct ArchRegs {
     vcpu_id: cpu_id_t,
     virtual_interrupt: bool,
 }
+
+pub fn arch_cpu_module_init() {
+    // Do nothing.
+}

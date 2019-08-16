@@ -52,8 +52,8 @@ static struct vcpu *current(void)
  */
 void complete_saving_state(struct vcpu *vcpu)
 {
-	vcpu->regs.peripherals.cntv_cval_el0 = read_msr(cntv_cval_el0);
-	vcpu->regs.peripherals.cntv_ctl_el0 = read_msr(cntv_ctl_el0);
+	vcpu_get_regs(vcpu)->peripherals.cntv_cval_el0 = read_msr(cntv_cval_el0);
+	vcpu_get_regs(vcpu)->peripherals.cntv_ctl_el0 = read_msr(cntv_ctl_el0);
 
 	api_regs_state_saved(vcpu);
 
@@ -63,7 +63,7 @@ void complete_saving_state(struct vcpu *vcpu)
 	 * This is used to emulate the virtual timer for the primary in case it
 	 * should fire while the secondary is running.
 	 */
-	if (vcpu->vm->id == HF_PRIMARY_VM_ID) {
+	if (vm_get_id(vcpu_get_vm(vcpu)) == HF_PRIMARY_VM_ID) {
 		/*
 		 * Clear timer control register before copying compare value, to
 		 * avoid a spurious timer interrupt. This could be a problem if
@@ -87,15 +87,15 @@ void begin_restoring_state(struct vcpu *vcpu)
 	 * is configured as edge-triggered, as it would then be latched in.
 	 */
 	write_msr(cntv_ctl_el0, 0);
-	write_msr(cntv_cval_el0, vcpu->regs.peripherals.cntv_cval_el0);
-	write_msr(cntv_ctl_el0, vcpu->regs.peripherals.cntv_ctl_el0);
+	write_msr(cntv_cval_el0, vcpu_get_regs(vcpu)->peripherals.cntv_cval_el0);
+	write_msr(cntv_ctl_el0, vcpu_get_regs(vcpu)->peripherals.cntv_ctl_el0);
 
 	/*
 	 * If we are switching (back) to the primary, disable the EL2 physical
 	 * timer which was being used to emulate the EL0 virtual timer, as the
 	 * virtual timer is now running for the primary again.
 	 */
-	if (vcpu->vm->id == HF_PRIMARY_VM_ID) {
+	if (vm_get_id(vcpu_get_vm(vcpu)) == HF_PRIMARY_VM_ID) {
 		write_msr(cnthp_ctl_el2, 0);
 		write_msr(cnthp_cval_el2, 0);
 	}
@@ -149,10 +149,10 @@ static void invalidate_vm_tlb(void)
  */
 void maybe_invalidate_tlb(struct vcpu *vcpu)
 {
-	size_t current_cpu_index = cpu_index(vcpu->cpu);
+	size_t current_cpu_index = cpu_index(vcpu_get_cpu(vcpu));
 	spci_vcpu_index_t new_vcpu_index = vcpu_index(vcpu);
 
-	if (vcpu->vm->arch.last_vcpu_on_cpu[current_cpu_index] !=
+	if (vm_get_arch(vcpu_get_vm(vcpu))->last_vcpu_on_cpu[current_cpu_index] !=
 	    new_vcpu_index) {
 		/*
 		 * The vCPU has changed since the last time this VM was run on
@@ -161,7 +161,7 @@ void maybe_invalidate_tlb(struct vcpu *vcpu)
 		invalidate_vm_tlb();
 
 		/* Record the fact that this vCPU is now running on this CPU. */
-		vcpu->vm->arch.last_vcpu_on_cpu[current_cpu_index] =
+		vm_get_arch(vcpu_get_vm(vcpu))->last_vcpu_on_cpu[current_cpu_index] =
 			new_vcpu_index;
 	}
 }
@@ -360,15 +360,15 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		 * directly in the register.
 		 */
 		set_virtual_interrupt_current(
-			current()->interrupts.enabled_and_pending_count > 0);
+			vcpu_get_interrupts(current())->enabled_and_pending_count > 0);
 	} else {
 		/*
 		 * About to switch vCPUs, set the bit for the vCPU to which we
 		 * are switching in the saved copy of the register.
 		 */
 		set_virtual_interrupt(
-			&ret.new->regs,
-			ret.new->interrupts.enabled_and_pending_count > 0);
+			vcpu_get_regs(ret.new),
+			vcpu_get_interrupts(ret.new)->enabled_and_pending_count > 0);
 	}
 
 	return ret;
@@ -412,7 +412,7 @@ static struct vcpu_fault_info fault_info_init(uintreg_t esr,
 	struct vcpu_fault_info r;
 
 	r.mode = mode;
-	r.pc = va_init(vcpu->regs.pc);
+	r.pc = va_init(vcpu_get_regs_const(vcpu)->pc);
 
 	/*
 	 * Check the FnV bit, which is only valid if dfsc/ifsc is 010000. It
@@ -439,7 +439,7 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 	switch (esr >> 26) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
 		/* Skip the instruction. */
-		vcpu->regs.pc += (esr & (1u << 25)) ? 4 : 2;
+		vcpu_get_regs(vcpu)->pc += (esr & (1u << 25)) ? 4 : 2;
 		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
 		if (esr & 1) {
 			/* WFE */
@@ -469,27 +469,27 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		break;
 
 	case 0x17: /* EC = 010111, SMC instruction. */ {
-		uintreg_t smc_pc = vcpu->regs.pc;
+		uintreg_t smc_pc = vcpu_get_regs(vcpu)->pc;
 		uintreg_t ret;
 		struct vcpu *next = NULL;
 
-		if (!smc_handler(vcpu, vcpu->regs.r[0], vcpu->regs.r[1],
-				 vcpu->regs.r[2], vcpu->regs.r[3], &ret,
+		if (!smc_handler(vcpu, vcpu_get_regs(vcpu)->r[0], vcpu_get_regs(vcpu)->r[1],
+				 vcpu_get_regs(vcpu)->r[2], vcpu_get_regs(vcpu)->r[3], &ret,
 				 &next)) {
-			dlog("Unsupported SMC call: 0x%x\n", vcpu->regs.r[0]);
+			dlog("Unsupported SMC call: 0x%x\n", vcpu_get_regs(vcpu)->r[0]);
 			ret = PSCI_ERROR_NOT_SUPPORTED;
 		}
 
 		/* Skip the SMC instruction. */
-		vcpu->regs.pc = smc_pc + (esr & (1u << 25) ? 4 : 2);
-		vcpu->regs.r[0] = ret;
+		vcpu_get_regs(vcpu)->pc = smc_pc + (esr & (1u << 25) ? 4 : 2);
+		vcpu_get_regs(vcpu)->r[0] = ret;
 		return next;
 	}
 
 	default:
 		dlog("Unknown lower sync exception pc=0x%x, esr=0x%x, "
 		     "ec=0x%x\n",
-		     vcpu->regs.pc, esr, esr >> 26);
+		     vcpu_get_regs(vcpu)->pc, esr, esr >> 26);
 		break;
 	}
 

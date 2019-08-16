@@ -221,8 +221,8 @@ bool spci_msg_check_transition(struct vm *to, struct vm *from,
 	 * Ensure that the memory range is mapped with the same
 	 * mode.
 	 */
-	if (!mm_vm_get_mode(&from->ptable, begin, end, orig_from_mode) ||
-	    !mm_vm_get_mode(&to->ptable, begin, end, &orig_to_mode)) {
+	if (!mm_vm_get_mode(vm_get_ptable(from), begin, end, orig_from_mode) ||
+	    !mm_vm_get_mode(vm_get_ptable(to), begin, end, &orig_to_mode)) {
 		return false;
 	}
 

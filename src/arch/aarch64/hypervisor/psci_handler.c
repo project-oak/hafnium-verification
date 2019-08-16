@@ -160,14 +160,14 @@ bool psci_primary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		 * standby power state, the SMC will return and the updated
 		 * vcpu registers will be ignored.
 		 */
-		arch_regs_set_pc_arg(&vcpu->regs, ipa_init(arg1), arg2);
+		arch_regs_set_pc_arg(vcpu_get_regs(vcpu), ipa_init(arg1), arg2);
 		*ret = smc64(PSCI_CPU_SUSPEND, arg0, (uintreg_t)&cpu_entry,
-			     (uintreg_t)vcpu->cpu);
+			     (uintreg_t)vcpu_get_cpu(vcpu));
 		break;
 	}
 
 	case PSCI_CPU_OFF:
-		cpu_off(vcpu->cpu);
+		cpu_off(vcpu_get_cpu(vcpu));
 		smc32(PSCI_CPU_OFF, 0, 0, 0);
 		panic("CPU off failed");
 		break;
@@ -281,7 +281,7 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 	case PSCI_AFFINITY_INFO: {
 		cpu_id_t target_affinity = arg0;
 		uint32_t lowest_affinity_level = arg1;
-		struct vm *vm = vcpu->vm;
+		struct vm *vm = vcpu_get_vm(vcpu);
 		struct vcpu *target_vcpu;
 		struct vcpu_execution_locked vcpu_locked;
 		spci_vcpu_index_t target_vcpu_index =
@@ -293,7 +293,7 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 			break;
 		}
 
-		if (target_vcpu_index >= vm->vcpu_count) {
+		if (target_vcpu_index >= vm_get_vcpu_count(vm)) {
 			*ret = PSCI_ERROR_INVALID_PARAMETERS;
 			break;
 		}
@@ -336,10 +336,10 @@ bool psci_secondary_vm_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		uint64_t context_id = arg2;
 		spci_vcpu_index_t target_vcpu_index =
 			vcpu_id_to_index(target_cpu);
-		struct vm *vm = vcpu->vm;
+		struct vm *vm = vcpu_get_vm(vcpu);
 		struct vcpu *target_vcpu;
 
-		if (target_vcpu_index >= vm->vcpu_count) {
+		if (target_vcpu_index >= vm_get_vcpu_count(vm)) {
 			*ret = PSCI_ERROR_INVALID_PARAMETERS;
 			break;
 		}
@@ -397,7 +397,7 @@ bool psci_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
 		  uintreg_t arg1, uintreg_t arg2, uintreg_t *ret,
 		  struct vcpu **next)
 {
-	if (vcpu->vm->id == HF_PRIMARY_VM_ID) {
+	if (vm_get_id(vcpu_get_vm(vcpu)) == HF_PRIMARY_VM_ID) {
 		return psci_primary_vm_handler(vcpu, func, arg0, arg1, arg2,
 					       ret);
 	}
