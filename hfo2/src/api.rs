@@ -44,13 +44,15 @@ use crate::vm::*;
 // of a page.
 const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
+/// A global page pools for sharing memories. Its mutability only needs to
+/// initialize.
 static mut API_PAGE_POOL: MaybeUninit<MPool> = MaybeUninit::uninit();
 
 /// Initialises the API page pool by taking ownership of the contents of the
 /// given page pool.
 #[no_mangle]
-pub unsafe extern "C" fn api_init(ppool: *mut MPool) {
-    mpool_init_from(API_PAGE_POOL.get_mut(), ppool);
+pub unsafe extern "C" fn api_init(ppool: *const MPool) {
+    API_PAGE_POOL = MaybeUninit::new(MPool::new_from(&*ppool));
 }
 
 /// Switches the physical CPU back to the corresponding vcpu of the primary VM.
@@ -483,7 +485,7 @@ pub unsafe extern "C" fn api_vcpu_run(
 /// api_mailbox_clear after they've succeeded. If a secondary VM is running and
 /// there are waiters, it also switches back to the primary VM for it to wake
 /// waiters up.
-unsafe fn api_waiter_result(id: spci_vm_id_t, state: &VmState, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
+unsafe fn waiter_result(id: spci_vm_id_t, state: &VmState, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let ret = HfVCpuRunReturn::NotifyWaiters;
 
     if state.is_waiter_list_empty() {
@@ -533,7 +535,7 @@ pub unsafe extern "C" fn api_vm_configure(
     }
 
     // Tell caller about waiters, if any.
-    api_waiter_result((*vm).id, &state, current, next)
+    waiter_result((*vm).id, &state, current, next)
 }
 
 /// Copies data from the sender's send buffer to the recipient's receive buffer
@@ -792,7 +794,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     // Enqueue notification to waiting VM.
     // TODO: Is ready_list indeed a queue? I think API module treating it like
     // a stack.
-    let waiting_vm = (*entry).waiting_vm as *mut Vm;
+    let waiting_vm = (*entry).waiting_vm;
 
     let mut vm_state = (*waiting_vm).state.lock();
     if list_empty(&(*entry).ready_links) {
@@ -825,7 +827,7 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut V
             ret = -1;
         }
         MailboxState::Read => {
-            ret = api_waiter_result((*vm).id, &state, current, next);
+            ret = waiter_result((*vm).id, &state, current, next);
             state.set_empty();
         }
     }
@@ -1027,7 +1029,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let mut local_page_pool: MPool = MPool::new_with_fallback(API_PAGE_POOL.get_ref());
+    let local_page_pool: MPool = MPool::new_with_fallback(API_PAGE_POOL.get_ref());
 
     // Obtain the single contiguous set of pages from the memory_region.
     // TODO: Add support for multiple constituent regions.
@@ -1147,7 +1149,7 @@ fn share_memory(vm_id: spci_vm_id_t, addr: ipaddr_t, size: usize, share: HfShare
         ),
     };
 
-    // Create a local pool so any freed memory can't be used by antoher thread.
+    // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
     // TODO: So that's reason why Hafnium use local_page_pool! We need to verify
