@@ -250,8 +250,7 @@ unsafe fn internal_interrupt_inject(
     let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
     let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
     let mut ret: i64 = 0;
-
-    sl_lock(&(*target_vcpu).interrupts_lock);
+    let mut interrupts = (*target_vcpu).interrupts.lock();
 
     // We only need to change state and (maybe) trigger a virtual IRQ if it
     // is enabled and was not previously pending. Otherwise we can skip
@@ -259,29 +258,25 @@ unsafe fn internal_interrupt_inject(
     //
     // If you change this logic make sure to update the need_vm_lock logic
     // above to match.
-    if (*target_vcpu).interrupts.enabled[intid_index]
-        & !(*target_vcpu).interrupts.pending[intid_index]
+    if interrupts.enabled[intid_index]
+        & !interrupts.pending[intid_index]
         & intid_mask
         == 0
     {
-        // goto out;
         // Either way, make it pending.
-        (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
-        sl_unlock(&(*target_vcpu).interrupts_lock);
-        return ret;
+        interrupts.pending[intid_index] |= intid_mask;
+        return 0;
     }
 
     // Increment the count.
-    (*target_vcpu).interrupts.enabled_and_pending_count += 1;
+    interrupts.enabled_and_pending_count += 1;
 
     // Only need to update state if there was not already an interrupt enabled
     // and pending.
-    if (*target_vcpu).interrupts.enabled_and_pending_count != 1 {
-        // goto out;
+    if interrupts.enabled_and_pending_count != 1 {
         // Either way, make it pending.
-        (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
-        sl_unlock(&(*target_vcpu).interrupts_lock);
-        return ret;
+        interrupts.pending[intid_index] |= intid_mask;
+        return 0;
     }
 
     if (*(*current).vm).id == HF_PRIMARY_VM_ID {
@@ -292,10 +287,8 @@ unsafe fn internal_interrupt_inject(
         *next = api_wake_up(current, target_vcpu);
     }
 
-    // out:
     // Either way, make it pending.
-    (*target_vcpu).interrupts.pending[intid_index] |= intid_mask;
-    sl_unlock(&(*target_vcpu).interrupts_lock);
+    interrupts.pending[intid_index] |= intid_mask;
     return ret;
 }
 
@@ -365,7 +358,7 @@ unsafe fn api_vcpu_prepare_run(
 
         // Allow virtual interrupts to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            if (*vcpu).interrupts.enabled_and_pending_count > 0 =>
+            if (*vcpu).interrupts.lock().enabled_and_pending_count > 0 =>
         {
             // break;
         }
@@ -741,7 +734,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 
     // Don't block if there are enabled and pending interrupts, to match
     // behaviour of wait_for_interrupt.
-    if (*current).interrupts.enabled_and_pending_count > 0 {
+    if (*current).interrupts.lock().enabled_and_pending_count > 0 {
         return return_code;
     }
 
@@ -860,30 +853,29 @@ pub unsafe extern "C" fn api_interrupt_enable(
         return -1;
     }
 
-    sl_lock(&(*current).interrupts_lock);
+    let mut interrupts = (*current).interrupts.lock();
     if enable {
         // If it is pending and was not enabled before, increment the count.
-        if ((*current).interrupts.pending[intid_index]
-            & !(*current).interrupts.enabled[intid_index]
+        if (interrupts.pending[intid_index]
+            & !interrupts.enabled[intid_index]
             & intid_mask)
             != 0
         {
-            (*current).interrupts.enabled_and_pending_count += 1;
+            interrupts.enabled_and_pending_count += 1;
         }
-        (*current).interrupts.enabled[intid_index] |= intid_mask;
+        interrupts.enabled[intid_index] |= intid_mask;
     } else {
         // If it is pending and was enabled before, decrement the count.
-        if ((*current).interrupts.pending[intid_index]
-            & (*current).interrupts.enabled[intid_index]
+        if (interrupts.pending[intid_index]
+            & interrupts.enabled[intid_index]
             & intid_mask)
             != 0
         {
-            (*current).interrupts.enabled_and_pending_count -= 1;
+            interrupts.enabled_and_pending_count -= 1;
         }
-        (*current).interrupts.enabled[intid_index] &= !intid_mask;
+        interrupts.enabled[intid_index] &= !intid_mask;
     }
 
-    sl_unlock(&(*current).interrupts_lock);
     0
 }
 
@@ -893,25 +885,24 @@ pub unsafe extern "C" fn api_interrupt_enable(
 #[no_mangle]
 pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> intid_t {
     let mut first_interrupt = HF_INVALID_INTID;
+    let mut interrupts = (*current).interrupts.lock();
 
     // Find the first enabled pending interrupt ID, returns it, and
     // deactive it.
-    sl_lock(&(*current).interrupts_lock);
     for i in 0..(HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS) {
         let enabled_and_pending =
-            (*current).interrupts.enabled[i] & (*current).interrupts.pending[i];
+            interrupts.enabled[i] & interrupts.pending[i];
         if enabled_and_pending != 0 {
             let bit_index = enabled_and_pending.trailing_zeros();
 
             // Mark it as no longer pending and decrement the count.
-            (*current).interrupts.pending[i] &= !(1u32 << bit_index);
-            (*current).interrupts.enabled_and_pending_count -= 1;
+            interrupts.pending[i] &= !(1u32 << bit_index);
+            interrupts.enabled_and_pending_count -= 1;
             first_interrupt = (i * INTERRUPT_REGISTER_BITS) as u32 + bit_index;
             break;
         }
     }
 
-    sl_unlock(&(*current).interrupts_lock);
     first_interrupt
 }
 

@@ -110,9 +110,6 @@ pub struct VCpu {
     /// running pCPU.
     pub execution_lock: RawSpinLock,
 
-    /// Protects accesses to vCPU's interrupts.
-    pub interrupts_lock: RawSpinLock,
-
     /// The state is only changed in the context of the vCPU being run. This ensures the scheduler
     /// can easily keep track of the vCPU state as transitions are indicated by the return code from
     /// the run call.
@@ -121,7 +118,7 @@ pub struct VCpu {
     pub cpu: *mut Cpu,
     pub vm: *mut Vm,
     pub regs: ArchRegs,
-    pub interrupts: Interrupts,
+    pub interrupts: SpinLock<Interrupts>,
 }
 
 /// Encapsulates a vCPU whose lock is held.
@@ -302,7 +299,6 @@ pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
 pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
     memset_s(vcpu as _, mem::size_of::<VCpu>(), 0, mem::size_of::<VCpu>());
     sl_init(&mut (*vcpu).execution_lock);
-    sl_init(&mut (*vcpu).interrupts_lock);
     (*vcpu).vm = vm;
     (*vcpu).state = VCpuStatus::Off;
 }
@@ -351,7 +347,7 @@ pub unsafe extern "C" fn vcpu_set_cpu(vcpu: *mut VCpu, cpu: *mut Cpu) {
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts {
-    &mut (*vcpu).interrupts
+    (*vcpu).interrupts.get_mut_unchecked()
 }
 
 /// Check whether the given vcpu_state is an off state, for the purpose of
