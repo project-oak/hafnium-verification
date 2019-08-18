@@ -68,7 +68,7 @@ unsafe fn api_switch_to_primary(
     secondary_state: VCpuStatus,
 ) -> *mut VCpu {
     let primary = vm_find(HF_PRIMARY_VM_ID);
-    let next = vm_get_vcpu(primary, cpu_index((*current).cpu) as spci_vcpu_index_t);
+    let next = vm_get_vcpu(primary, cpu_index((*current).state.get_mut_unchecked().cpu) as spci_vcpu_index_t);
 
     // If the secondary is blocked but has a timer running, sleep until the
     // timer fires rather than indefinitely.
@@ -89,10 +89,11 @@ unsafe fn api_switch_to_primary(
     }
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
-    arch_regs_set_retval(&mut (*next).regs, primary_ret.into_raw());
+    // TODO: next is not locked...
+    arch_regs_set_retval(&mut (*next).state.get_mut_unchecked().regs, primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
-    (*current).state = secondary_state;
+    (*current).state.get_mut_unchecked().state = secondary_state;
 
     next
 }
@@ -227,7 +228,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
 /// and can therefore be used by other pcpus.
 #[no_mangle]
 pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
-    sl_unlock(&(*vcpu).execution_lock);
+    (*vcpu).state.unlock_unchecked();
 }
 
 /// Assuming that the arguments have already been checked by the caller, injects
@@ -272,45 +273,35 @@ unsafe fn api_vcpu_prepare_run(
     vcpu: *mut VCpu,
     run_ret: *mut HfVCpuRunReturn,
 ) -> bool {
-    let ret;
-
-    if !sl_try_lock(&(*vcpu).execution_lock) {
-        // vCPU is running or prepared to run on another pCPU.
-        //
-        // It's ok not to return the sleep duration here because the other
-        // physical CPU that is currently running this vCPU will return the
-        // sleep duration if needed. The default return value is
-        // HfVCpuRunReturn::WaitForInterrupt, so no need to set it explicitly.
-        return false;
-    }
+    let mut vcpu_state = match (*vcpu).state.try_lock() {
+        Some(guard) => guard,
+        None => {
+            // vCPU is running or prepared to run on another pCPU.
+            //
+            // It's ok not to return the sleep duration here because the other
+            // physical CPU that is currently running this vCPU will return the
+            // sleep duration if needed. The default return value is
+            // HfVCpuRunReturn::WaitForInterrupt, so no need to set it 
+            // explicitly.
+            return false;
+        }
+    };
 
     if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
-        if (*vcpu).state != VCpuStatus::Aborted {
+        if vcpu_state.state != VCpuStatus::Aborted {
             dlog!(
                 "Aborting VM {} vCPU {}\n",
                 (*(*vcpu).vm).id,
                 vcpu_index(vcpu)
             );
-            (*vcpu).state = VCpuStatus::Aborted;
+            vcpu_state.state = VCpuStatus::Aborted;
         }
-        ret = false;
-
-        if !ret {
-            sl_unlock(&(*vcpu).execution_lock);
-        }
-
-        return ret;
+        return false;
     }
 
-    match (*vcpu).state {
+    match vcpu_state.state {
         VCpuStatus::Off | VCpuStatus::Aborted => {
-            ret = false;
-
-            if !ret {
-                sl_unlock(&(*vcpu).execution_lock);
-            }
-
-            return ret;
+            return false;
         }
 
         // A pending message allows the vCPU to run so the message can be
@@ -321,7 +312,7 @@ unsafe fn api_vcpu_prepare_run(
         // dependencies in the common run case meaning the sensitive context
         // switch performance is consistent.
         VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read() => {
-            arch_regs_set_retval(&mut (*vcpu).regs, SpciReturn::Success as uintreg_t);
+            arch_regs_set_retval(&mut vcpu_state.regs, SpciReturn::Success as uintreg_t);
         }
 
         // Allow virtual interrupts to be delivered.
@@ -333,7 +324,7 @@ unsafe fn api_vcpu_prepare_run(
 
         // The timer expired so allow the interrupt to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            if arch_timer_pending(&(*vcpu).regs) =>
+            if arch_timer_pending(&vcpu_state.regs) =>
         {
             // break;
         }
@@ -341,23 +332,17 @@ unsafe fn api_vcpu_prepare_run(
         // The vCPU is not ready to run, return the appropriate code to the
         // primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
-            if arch_timer_enabled(&(*vcpu).regs) {
-                let ns = arch_timer_remaining_ns(&mut (*vcpu).regs);
+            if arch_timer_enabled(&vcpu_state.regs) {
+                let ns = arch_timer_remaining_ns(&mut vcpu_state.regs);
 
-                *run_ret = if (*vcpu).state == VCpuStatus::BlockedMailbox {
+                *run_ret = if vcpu_state.state == VCpuStatus::BlockedMailbox {
                     HfVCpuRunReturn::WaitForMessage { ns }
                 } else {
                     HfVCpuRunReturn::WaitForInterrupt { ns }
                 };
             }
 
-            ret = false;
-
-            if !ret {
-                sl_unlock(&(*vcpu).execution_lock);
-            }
-
-            return ret;
+            return false;
         }
 
         VCpuStatus::Ready => {
@@ -366,15 +351,11 @@ unsafe fn api_vcpu_prepare_run(
     }
 
     // It has been decided that the vCPU should be run.
-    (*vcpu).cpu = (*current).cpu;
+    vcpu_state.cpu = (*current).state.get_mut_unchecked().cpu;
 
-    ret = true;
-
-    if !ret {
-        sl_unlock(&(*vcpu).execution_lock);
-    }
-
-    return ret;
+    // We want to keep the lock of vcpu.state because we're going to run.
+    vcpu_state.into_raw();
+    true
 }
 
 /// Runs the given vcpu of the given vm.
@@ -422,7 +403,7 @@ pub unsafe extern "C" fn api_vcpu_run(
     // vcpu->regs here because api_vcpu_prepare_run already made sure that
     // regs_available was true (and then set it to false) before returning
     // true.
-    if arch_timer_pending(&mut (*vcpu).regs) {
+    if arch_timer_pending(&mut (*vcpu).state.get_mut_unchecked().regs) {
         // Make virtual timer interrupt pending.
         internal_interrupt_inject(vcpu, HF_VIRTUAL_TIMER_INTID, vcpu, ptr::null_mut());
 
@@ -430,7 +411,7 @@ pub unsafe extern "C" fn api_vcpu_run(
         // Ideally we wouldn't do this because it affects what the secondary
         // vcPU sees, but if we don't then we end up with a loop of the
         // interrupt firing each time we try to return to the secondary vCPU.
-        arch_timer_mask(&mut (*vcpu).regs);
+        arch_timer_mask(&mut (*vcpu).state.get_mut_unchecked().regs);
     }
 
     // Switch to the vcpu.
@@ -885,7 +866,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         target_vm_id,
         target_vcpu_idx,
         (*(*current).vm).id,
-        (*(*current).cpu).id
+        (*(*current).state.get_unchecked().cpu).id
     );
     internal_interrupt_inject(target_vcpu, intid, current, next)
 }
