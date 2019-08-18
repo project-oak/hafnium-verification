@@ -247,49 +247,17 @@ unsafe fn internal_interrupt_inject(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> i64 {
-    let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
-    let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
-    let mut ret: i64 = 0;
-    let mut interrupts = (*target_vcpu).interrupts.lock();
-
-    // We only need to change state and (maybe) trigger a virtual IRQ if it
-    // is enabled and was not previously pending. Otherwise we can skip
-    // everything except setting the pending bit.
-    //
-    // If you change this logic make sure to update the need_vm_lock logic
-    // above to match.
-    if interrupts.enabled[intid_index]
-        & !interrupts.pending[intid_index]
-        & intid_mask
-        == 0
-    {
-        // Either way, make it pending.
-        interrupts.pending[intid_index] |= intid_mask;
-        return 0;
+    if let Some(_) = (*target_vcpu).interrupts.lock().inject(intid) {
+        if (*(*current).vm).id == HF_PRIMARY_VM_ID {
+            // If the call came from the primary VM, let it know that it should
+            // run or kick the target vCPU.
+            return 1;
+        } else if current != target_vcpu && next != ptr::null_mut() {
+            *next = api_wake_up(current, target_vcpu);
+        }
     }
 
-    // Increment the count.
-    interrupts.enabled_and_pending_count += 1;
-
-    // Only need to update state if there was not already an interrupt enabled
-    // and pending.
-    if interrupts.enabled_and_pending_count != 1 {
-        // Either way, make it pending.
-        interrupts.pending[intid_index] |= intid_mask;
-        return 0;
-    }
-
-    if (*(*current).vm).id == HF_PRIMARY_VM_ID {
-        // If the call came from the primary VM, let it know that it should
-        // run or kick the target vCPU.
-        ret = 1;
-    } else if current != target_vcpu && next != ptr::null_mut() {
-        *next = api_wake_up(current, target_vcpu);
-    }
-
-    // Either way, make it pending.
-    interrupts.pending[intid_index] |= intid_mask;
-    return ret;
+    0
 }
 
 /// Prepares the vcpu to run by updating its state and fetching whether a return
@@ -846,37 +814,10 @@ pub unsafe extern "C" fn api_interrupt_enable(
     enable: bool,
     current: *mut VCpu,
 ) -> i64 {
-    let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
-    let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
-
-    if intid >= HF_NUM_INTIDS {
-        return -1;
+    match (*current).interrupts.lock().enable(intid, enable) {
+        Some(_) => 0,
+        None => -1,
     }
-
-    let mut interrupts = (*current).interrupts.lock();
-    if enable {
-        // If it is pending and was not enabled before, increment the count.
-        if (interrupts.pending[intid_index]
-            & !interrupts.enabled[intid_index]
-            & intid_mask)
-            != 0
-        {
-            interrupts.enabled_and_pending_count += 1;
-        }
-        interrupts.enabled[intid_index] |= intid_mask;
-    } else {
-        // If it is pending and was enabled before, decrement the count.
-        if (interrupts.pending[intid_index]
-            & interrupts.enabled[intid_index]
-            & intid_mask)
-            != 0
-        {
-            interrupts.enabled_and_pending_count -= 1;
-        }
-        interrupts.enabled[intid_index] &= !intid_mask;
-    }
-
-    0
 }
 
 /// Returns the ID of the next pending interrupt for the calling vCPU, and
@@ -884,26 +825,7 @@ pub unsafe extern "C" fn api_interrupt_enable(
 /// HF_INVALID_INTID if there are no pending interrupts.
 #[no_mangle]
 pub unsafe extern "C" fn api_interrupt_get(current: *mut VCpu) -> intid_t {
-    let mut first_interrupt = HF_INVALID_INTID;
-    let mut interrupts = (*current).interrupts.lock();
-
-    // Find the first enabled pending interrupt ID, returns it, and
-    // deactive it.
-    for i in 0..(HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS) {
-        let enabled_and_pending =
-            interrupts.enabled[i] & interrupts.pending[i];
-        if enabled_and_pending != 0 {
-            let bit_index = enabled_and_pending.trailing_zeros();
-
-            // Mark it as no longer pending and decrement the count.
-            interrupts.pending[i] &= !(1u32 << bit_index);
-            interrupts.enabled_and_pending_count -= 1;
-            first_interrupt = (i * INTERRUPT_REGISTER_BITS) as u32 + bit_index;
-            break;
-        }
-    }
-
-    first_interrupt
+    (*current).interrupts.lock().get()
 }
 
 /// Returns whether the current vCPU is allowed to inject an interrupt into the

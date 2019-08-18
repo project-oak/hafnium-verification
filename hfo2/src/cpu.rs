@@ -95,6 +95,110 @@ pub struct Interrupts {
     pub enabled_and_pending_count: u32,
 }
 
+impl Interrupts {
+    pub fn id_to_index(intid: intid_t) -> Option<(usize, u32)> {
+        if intid >= HF_NUM_INTIDS {
+            return None;
+        }
+
+        let intid_index = intid as usize / INTERRUPT_REGISTER_BITS;
+        let intid_mask = 1u32 << (intid % INTERRUPT_REGISTER_BITS as u32);
+
+        Some((intid_index, intid_mask))
+    }
+
+    /// injects a virtual interrupt of the given ID into the given target vCPU.
+    /// Returns:
+    ///  - None if no further action is needed.
+    ///  - Some(()) if the vcpu had have no pending interrupt before, thus
+    ///    proper scheduling is required.
+    pub fn inject(&mut self, intid: intid_t) -> Option<()> {
+        let (intid_index, intid_mask) = Self::id_to_index(intid)?;
+        // We only need to change state and (maybe) trigger a virtual IRQ if it
+        // is enabled and was not previously pending. Otherwise we can skip
+        // everything except setting the pending bit.
+        //
+        // If you change this logic make sure to update the need_vm_lock logic
+        // above to match.
+        let ret = {
+            if self.enabled[intid_index] & !self.pending[intid_index]
+               & intid_mask == 0
+            {
+                None
+            } else {
+                // Increment the count.
+                self.enabled_and_pending_count += 1;
+
+                // Only need to update state if there was not already an 
+                // interrupt enabled and pending.
+                if self.enabled_and_pending_count != 1 {
+                    None
+                } else {
+                    Some(())
+                }
+            }            
+        };
+
+        // Either way, make it pending.
+        self.pending[intid_index] |= intid_mask;
+        ret
+    }
+
+    /// Enables or disables a given interrupt ID for the calling vCPU.
+    pub fn enable(&mut self, intid: intid_t, enable: bool) -> Option<()> {
+        let (intid_index, intid_mask) = Self::id_to_index(intid)?;
+
+        if enable {
+            // If it is pending and was not enabled before, increment the count.
+            if (self.pending[intid_index]
+                & !self.enabled[intid_index]
+                & intid_mask)
+                != 0
+            {
+                self.enabled_and_pending_count += 1;
+            }
+            self.enabled[intid_index] |= intid_mask;
+        } else {
+            // If it is pending and was enabled before, decrement the count.
+            if (self.pending[intid_index]
+                & self.enabled[intid_index]
+                & intid_mask)
+                != 0
+            {
+                self.enabled_and_pending_count -= 1;
+            }
+            self.enabled[intid_index] &= !intid_mask;
+        }
+
+        Some(())
+    }
+
+    /// Returns the ID of the next pending interrupt for the calling vCPU, and
+    /// acknowledges it (i.e. marks it as no longer pending). Returns
+    /// HF_INVALID_INTID if there are no pending interrupts.
+    pub fn get(&mut self) -> intid_t {
+        let mut first_interrupt = HF_INVALID_INTID;
+
+        // Find the first enabled pending interrupt ID, returns it, and
+        // deactive it.
+        for i in 0..(HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS) {
+            let enabled_and_pending =
+                self.enabled[i] & self.pending[i];
+            if enabled_and_pending != 0 {
+                let bit_index = enabled_and_pending.trailing_zeros();
+
+                // Mark it as no longer pending and decrement the count.
+                self.pending[i] &= !(1u32 << bit_index);
+                self.enabled_and_pending_count -= 1;
+                first_interrupt = (i * INTERRUPT_REGISTER_BITS) as u32 + bit_index;
+                break;
+            }
+        }
+
+        first_interrupt
+    }
+}
+
 #[repr(C)]
 pub struct VCpuFaultInfo {
     ipaddr: ipaddr_t,
