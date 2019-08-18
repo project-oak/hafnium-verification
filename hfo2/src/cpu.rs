@@ -207,21 +207,49 @@ pub struct VCpuFaultInfo {
     mode: Mode,
 }
 
+pub struct VCpuState {
+    /// The state is only changed in the context of the vCPU being run. This 
+    /// ensures the scheduler can easily keep track of the vCPU state as 
+    /// transitions are indicated by the return code from the run call.
+    pub state: VCpuStatus,
+    pub cpu: *mut Cpu,
+    pub regs: ArchRegs,
+}
+
+impl VCpuState {
+    /// Initialise the registers for the given vCPU and set the state to
+    /// VCpuStatus::Ready. The caller must hold the vCPU execution lock while
+    /// calling this.
+    pub fn on(&mut self, entry: ipaddr_t, arg: uintreg_t) {
+        unsafe { arch_regs_set_pc_arg(&mut self.regs, entry, arg); }
+        self.state = VCpuStatus::Ready;
+    }
+
+    /// Check whether the given vcpu_state is an off state, for the purpose of
+    /// turning vCPUs on and off. Note that aborted still counts as on in this
+    /// context.
+    pub fn is_off(&self) -> bool {
+        match self.state {
+            VCpuStatus::Off => true,
+            _ =>
+            // Aborted still counts as ON for the purposes of PSCI,
+            // because according to the PSCI specification (section
+            // 5.7.1) a core is only considered to be off if it has
+            // been turned off with a CPU_OFF call or hasn't yet
+            // been turned on with a CPU_ON call.
+            {
+                false
+            }
+        }
+    }
+}
+
 #[repr(C)]
 pub struct VCpu {
-    /// Protects accesses to vCPU's state and architecture registers. If a
-    /// vCPU is running, its execution lock is logically held by the
-    /// running pCPU.
-    pub execution_lock: RawSpinLock,
-
-    /// The state is only changed in the context of the vCPU being run. This ensures the scheduler
-    /// can easily keep track of the vCPU state as transitions are indicated by the return code from
-    /// the run call.
-    pub state: VCpuStatus,
-
-    pub cpu: *mut Cpu,
     pub vm: *mut Vm,
-    pub regs: ArchRegs,
+
+    /// If a vCPU is running, its lock is logically held by the running pCPU.
+    pub state: SpinLock<VCpuState>,
     pub interrupts: SpinLock<Interrupts>,
 }
 
@@ -343,10 +371,8 @@ pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) ->
     if !prev {
         let vm = vm_find(HF_PRIMARY_VM_ID);
         let vcpu = vm_get_vcpu(vm, cpu_index(c) as u16);
-        let mut vcpu_execution_locked = vcpu_lock(vcpu);
 
-        vcpu_on(vcpu_execution_locked, entry, arg);
-        vcpu_unlock(&mut vcpu_execution_locked);
+        (*vcpu).state.lock().on(entry, arg);
     }
 
     prev
@@ -375,7 +401,7 @@ pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
 /// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
-    sl_lock(&(*vcpu).execution_lock);
+    (*vcpu).state.lock().into_raw();
 
     VCpuExecutionLocked { vcpu }
 }
@@ -383,11 +409,13 @@ pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
 /// Tries to lock the given vCPU, and updates `locked` if succeed.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecutionLocked) -> bool {
-    if sl_try_lock(&(*vcpu).execution_lock) {
-        *locked = VCpuExecutionLocked { vcpu };
-        true
-    } else {
-        false
+    match (*vcpu).state.try_lock() {
+        Some(guard) => {
+            guard.into_raw();
+            *locked = VCpuExecutionLocked { vcpu };
+            true
+        },
+        None => false,
     }
 }
 
@@ -395,16 +423,15 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
 /// reflect the fact that the vCPU is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
-    sl_unlock(&(*(*locked).vcpu).execution_lock);
+    (*(*locked).vcpu).state.unlock_unchecked();
     (*locked).vcpu = ptr::null_mut();
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
     memset_s(vcpu as _, mem::size_of::<VCpu>(), 0, mem::size_of::<VCpu>());
-    sl_init(&mut (*vcpu).execution_lock);
     (*vcpu).vm = vm;
-    (*vcpu).state = VCpuStatus::Off;
+    (*vcpu).state.get_mut_unchecked().state = VCpuStatus::Off;
 }
 
 /// Initialise the registers for the given vCPU and set the state to
@@ -412,8 +439,7 @@ pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
 /// calling this.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_on(vcpu: VCpuExecutionLocked, entry: ipaddr_t, arg: uintreg_t) {
-    arch_regs_set_pc_arg(&mut (*vcpu.vcpu).regs, entry, arg);
-    (*vcpu.vcpu).state = VCpuStatus::Ready;
+    (*vcpu.vcpu).state.get_mut_unchecked().on(entry, arg);
 }
 
 #[no_mangle]
@@ -426,12 +452,12 @@ pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_regs(vcpu: *mut VCpu) -> *mut ArchRegs {
-    &mut (*vcpu).regs
+    &mut (*vcpu).state.get_mut_unchecked().regs
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_regs_const(vcpu: *const VCpu) -> *const ArchRegs {
-    &(*vcpu).regs
+    &(*vcpu).state.get_mut_unchecked().regs
 }
 
 #[no_mangle]
@@ -441,12 +467,12 @@ pub unsafe extern "C" fn vcpu_get_vm(vcpu: *mut VCpu) -> *mut Vm {
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *mut VCpu) -> *mut Cpu {
-    (*vcpu).cpu
+    (*vcpu).state.get_mut_unchecked().cpu
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_set_cpu(vcpu: *mut VCpu, cpu: *mut Cpu) {
-    (*vcpu).cpu = cpu;
+    (*vcpu).state.get_mut_unchecked().cpu = cpu;
 }
 
 #[no_mangle]
@@ -459,18 +485,7 @@ pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts
 /// context.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
-    match (*vcpu.vcpu).state {
-        VCpuStatus::Off => true,
-        _ =>
-        // Aborted still counts as ON for the purposes of PSCI,
-        // because according to the PSCI specification (section
-        // 5.7.1) a core is only considered to be off if it has
-        // been turned off with a CPU_OFF call or hasn't yet
-        // been turned on with a CPU_ON call.
-        {
-            false
-        }
-    }
+    (*vcpu.vcpu).state.get_mut_unchecked().is_off()
 }
 
 /// Starts a vCPU of a secondary VM.
@@ -483,30 +498,27 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
     entry: ipaddr_t,
     arg: uintreg_t,
 ) -> bool {
-    let mut vcpu_execution_locked;
     let vm = (*vcpu).vm;
-    let vcpu_was_off;
 
     assert!((*vm).id != HF_PRIMARY_VM_ID);
 
-    vcpu_execution_locked = vcpu_lock(vcpu);
-    vcpu_was_off = vcpu_is_off(vcpu_execution_locked);
+    let mut state = (*vcpu).state.lock();
+    let vcpu_was_off = state.is_off();
     if vcpu_was_off {
         // Set vCPU registers to a clean state ready for boot. As this
         // is a secondary which can migrate between pCPUs, the ID of the
         // vCPU is defined as the index and does not match the ID of the
         // pCPU it is running on.
         arch_regs_reset(
-            &mut (*vcpu).regs,
+            &mut state.regs,
             false,
             (*vm).id,
             vcpu_index(vcpu) as cpu_id_t,
             (*vm).get_ptable_raw(),
         );
-        vcpu_on(vcpu_execution_locked, entry, arg);
+        state.on(entry, arg);
     }
 
-    vcpu_unlock(&mut vcpu_execution_locked);
     vcpu_was_off
 }
 

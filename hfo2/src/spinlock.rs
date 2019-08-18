@@ -86,6 +86,21 @@ impl<T> SpinLock<T> {
         }
     }
 
+    pub fn try_lock<'s>(&'s self) -> Option<SpinLockGuard<'s, T>> {
+        if self.lock.try_lock() {
+            Some(SpinLockGuard {
+                lock: self,
+                _marker: PhantomData,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub unsafe fn unlock_unchecked(&self) {
+        self.lock.unlock();
+    }
+
     pub unsafe fn get_unchecked(&self) -> &T {
         &*self.data.get()
     }
