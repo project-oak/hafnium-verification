@@ -50,3 +50,25 @@ Axiom mpool_alloc_contiguous :
    exist purely conceptually *)
 Axiom mpool_contains : mpool -> ptable_pointer -> Prop.
 Axiom mpool_fallback : mpool -> option mpool. (* returns fallback if there is one *)
+
+(* if [mpool_alloc] returns [Some], then the pool must have contained the
+   returned pointer before the call, and must not contain it afterwards *)
+Axiom mpool_alloc_contains_before :
+  forall ppool ppool' ptr,
+    mpool_alloc ppool = Some (ppool', ptr) ->
+    mpool_contains ppool ptr.
+Axiom mpool_alloc_contains_after :
+  forall ppool ppool' ptr,
+    mpool_alloc ppool = Some (ppool', ptr) ->
+    ~ mpool_contains ppool' ptr.
+
+(* If an mpool has a fallback, then allocating from it either means allocating
+   from the fallback or not changing the fallback *)
+Axiom mpool_alloc_fallback :
+  forall ppool ppool' new_ptr fallback,
+    mpool_fallback ppool = Some fallback ->
+    mpool_alloc ppool = Some (ppool', new_ptr) ->
+    mpool_fallback ppool' = Some fallback \/
+    (exists fallback',
+        mpool_alloc fallback = Some (fallback', new_ptr)
+        /\ mpool_fallback ppool' = Some fallback').

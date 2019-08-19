@@ -71,6 +71,19 @@ Section Proofs.
   Proof. cbv [abstract_state_equiv]. solver. Qed.
   Hint Resolve abstract_state_equiv_refl.
 
+  (* [abstract_state_equiv] is symmetric *)
+  Lemma abstract_state_equiv_sym abst1 abst2 :
+    abstract_state_equiv abst1 abst2 ->
+    abstract_state_equiv abst2 abst1.
+  Proof.
+    cbv [abstract_state_equiv].
+    basics; try solver.
+    match goal with
+    | H : context [_ <-> _] |- _ => rewrite H; solver
+    end.
+  Qed.
+  Hint Resolve abstract_state_equiv_sym.
+
   (* [abstract_state_equiv] is transitive *)
   Lemma abstract_state_equiv_trans abst1 abst2 abst3 :
     abstract_state_equiv abst1 abst2 ->
@@ -420,7 +433,7 @@ Section Proofs.
   Definition attrs_outside_range_unchanged
              (deref : ptable_pointer -> mm_page_table)
              (table_loc : list nat)
-             (t_orig t : mm_page_table) (level : nat) (attrs : attributes)
+             (t_orig t : mm_page_table) (level : nat)
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
     forall (a_v : uintvaddr_t),
       (a_v < begin \/ end_ <= a_v)%N ->
@@ -438,7 +451,7 @@ Section Proofs.
              (begin end_ : uintvaddr_t) (stage : Stage) : Prop :=
     has_uniform_attrs ptable_deref table_loc t level attrs begin end_ stage
     /\ attrs_outside_range_unchanged
-         ptable_deref table_loc t_orig t level attrs begin end_ stage.
+         ptable_deref table_loc t_orig t level begin end_ stage.
 
   Definition has_location_in_state conc ptr idxs : Prop :=
     exists root_ptable,
@@ -1010,11 +1023,11 @@ Section Proofs.
 
   (* TODO : move *)
   Lemma page_attrs_outside_range
-        deref ppool root_ptable stage idxs ptr t level attrs begin end_ a :
+        deref ppool root_ptable stage idxs ptr t level begin end_ a :
     root_ptable_matches_stage root_ptable stage ->
     has_location deref ptr (table_loc ppool root_ptable idxs) ->
     locations_exclusive deref ppool ->
-    attrs_outside_range_unchanged deref idxs (deref ptr) t level attrs begin end_ stage ->
+    attrs_outside_range_unchanged deref idxs (deref ptr) t level begin end_ stage ->
     ~ In a (addresses_under_pointer_in_range deref ptr root_ptable begin end_ stage) ->
     level = level_from_indices stage idxs ->
     page_attrs (update_deref deref ptr t) root_ptable stage (pa_addr a)
@@ -1498,6 +1511,53 @@ Section Proofs.
          addresses_under_pointer_in_range deref ptr root_ptable begin end_ Stage2 = nil)
       (map vm_ptable vms)
     /\ addresses_under_pointer_in_range deref ptr hafnium_ptable begin end_ Stage1 = nil.
+
+  Lemma locations_exclusive_update_deref
+        deref ppool ppool' ptr t :
+    has_location deref ptr (mpool_loc ppool) ->
+    locations_exclusive deref ppool ->
+    mpool_alloc ppool = Some (ppool', ptr) ->
+    forall level,
+      Forall (fun pte =>
+                arch_mm_pte_is_table pte level = false) (entries t) ->
+    locations_exclusive (update_deref deref ptr t) ppool'.
+  Proof.
+    cbv [locations_exclusive]; basics.
+    Search has_location update_deref.
+    invert H.
+    (* actually, there are no new pointers added here... *)
+    (* TODO *)
+  Admitted.
+
+  (* reassign_pointer is a no-op if there are no addresses in range *)
+  Lemma reassign_pointer_no_addresses
+        abst ppool ppool' conc ptr t:
+    has_location conc.(ptable_deref) ptr (mpool_loc ppool) ->
+    locations_exclusive conc.(ptable_deref) ppool ->
+    mpool_alloc ppool = Some (ppool', ptr) ->
+    represents abst conc ->
+    represents abst (reassign_pointer (update_page_pool conc ppool') ptr t).
+  Proof.
+    cbv [represents is_valid reassign_pointer update_page_pool].
+    cbn [ptable_deref api_page_pool].
+    basics; process_represents; rewrite Forall_forall in *.
+  Admitted. (* TODO *)
+
+  (* if fallback unused, then ptr must have been in local ppool and therefore disjoint from tables *)
+  Lemma reassign_pointer_no_addresses_fallback_unused
+        abst ppool ppool' conc ptr t:
+    has_location conc.(ptable_deref) ptr (mpool_loc ppool) ->
+    locations_exclusive conc.(ptable_deref) ppool ->
+    mpool_alloc ppool = Some (ppool', ptr) ->
+    mpool_fallback ppool = Some (api_page_pool conc) ->
+    mpool_fallback ppool' = Some (api_page_pool conc) ->
+    represents abst conc ->
+    represents abst (reassign_pointer conc ptr t).
+  Proof.
+    cbv [represents is_valid reassign_pointer update_page_pool].
+    cbn [ptable_deref api_page_pool].
+    basics; process_represents; rewrite Forall_forall in *.
+  Admitted. (* TODO *)
 
   (* abstract_reassign_pointer is a no-op if the given tables don't have any
      addresses in range *)
