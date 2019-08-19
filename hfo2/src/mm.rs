@@ -808,8 +808,13 @@ impl<S: Stage> PageTable<S> {
         mem::forget(self);
     }
 
-    fn get_raw(&self) -> *const RawPage {
-        pa_addr(self.root) as *const RawPage
+    /// Returns the address of the root of this page table. The return type is
+    /// paddr_t, physically addressed raw pointer. That means calling this
+    /// method is safe but accessing the memory of returned address is unsafe.
+    /// TODO: Better return type is PAddr<RawPage> (meaning of *mut RawPage
+    /// which is address physically.)
+    pub fn as_raw(&self) -> paddr_t {
+        self.root
     }
 
     fn deref(&self) -> &[RawPageTable] {
