@@ -369,20 +369,18 @@ impl VmState {
 
         // Ensure the pages are valid, owned and exclusive to the VM and that
         // the VM has the required access to the memory.
-        let orig_send_mode =
-            self
-                .ptable
-                .get_mode(send, ipa_add(send, PAGE_SIZE))
-                .filter(|mode| mode.valid_owned_and_exclusive())
-                .filter(|mode| mode.contains(Mode::R))
-                .filter(|mode| mode.contains(Mode::W))?;
+        let orig_send_mode = self
+            .ptable
+            .get_mode(send, ipa_add(send, PAGE_SIZE))
+            .filter(|mode| mode.valid_owned_and_exclusive())
+            .filter(|mode| mode.contains(Mode::R))
+            .filter(|mode| mode.contains(Mode::W))?;
 
-        let orig_recv_mode =
-            self
-                .ptable
-                .get_mode(recv, ipa_add(recv, PAGE_SIZE))
-                .filter(|mode| mode.valid_owned_and_exclusive())
-                .filter(|mode| mode.contains(Mode::R))?;
+        let orig_recv_mode = self
+            .ptable
+            .get_mode(recv, ipa_add(recv, PAGE_SIZE))
+            .filter(|mode| mode.valid_owned_and_exclusive())
+            .filter(|mode| mode.contains(Mode::R))?;
 
         self.configure_pages(
             pa_send_begin,
@@ -446,14 +444,14 @@ impl VmState {
         let entry = &mut self.wait_entries[target_id as usize];
 
         // Append waiter only if it's not there yet.
-        if unsafe { list_empty(&(*entry).wait_links) } {
-            unsafe {
-                list_append(&mut target.mailbox.waiter_list, &mut (*entry).wait_links);
-            }
-            true
-        } else {
-            false
+        if unsafe { !list_empty(&(*entry).wait_links) } {
+            return false;
         }
+
+        unsafe {
+            list_append(&mut target.mailbox.waiter_list, &mut (*entry).wait_links);
+        }
+        true
     }
 
     pub fn get_send_ptr(&self) -> *const SpciMessage {
@@ -594,8 +592,8 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
 /// the fact that the VM is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
-    let guard: SpinLockGuard<'static, VmState> =
-        SpinLockGuard::from_raw(&(*(*locked).vm).state as *const _ as usize);
+    let guard =
+        SpinLockGuard::<'static, VmState>::from_raw(&(*(*locked).vm).state as *const _ as usize);
     mem::drop(guard);
     (*locked).vm = ptr::null_mut();
 }
