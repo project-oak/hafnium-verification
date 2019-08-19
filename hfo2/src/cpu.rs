@@ -396,13 +396,12 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
         // is a secondary which can migrate between pCPUs, the ID of the
         // vCPU is defined as the index and does not match the ID of the
         // pCPU it is running on.
-        // TODO: Don't we have to lock ptable?
         arch_regs_reset(
             &mut (*vcpu).regs,
             false,
             (*vm).id,
             vcpu_index(vcpu) as cpu_id_t,
-            (*vm).inner.get_unchecked().ptable.root,
+            (*vm).get_ptable_raw(),
         );
         vcpu_on(vcpu_execution_locked, entry, arg);
     }

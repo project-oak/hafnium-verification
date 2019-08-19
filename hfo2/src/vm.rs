@@ -494,6 +494,10 @@ pub struct Vm {
 }
 
 impl Vm {
+    pub fn get_ptable_raw(&self) -> paddr_t {
+        unsafe { self.inner.get_unchecked().ptable.as_raw() }
+    }
+
     pub fn debug_log(&self, c: c_char) {
         self.inner.lock().debug_log(self.id, c)
     }
