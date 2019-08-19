@@ -138,6 +138,7 @@ pub struct Cpu {
     pub id: cpu_id_t,
 
     /// Pointer to bottom of the stack.
+    /// `pub` here is only required by `arch_cpu_module_init`.
     pub stack_bottom: *mut c_void,
 
     /// Enabling/disabling irqs are counted per-cpu. They are enabled when the count is zero, and
