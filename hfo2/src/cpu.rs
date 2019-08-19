@@ -418,14 +418,11 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_handle_page_fault(
     current: *const VCpu,
-    f: *mut VCpuFaultInfo,
+    f: *const VCpuFaultInfo,
 ) -> bool {
     let vm = (*current).vm;
-    let mut mode = mem::uninitialized(); // to avoid use-of-uninitialized error
     let mask = (*f).mode | Mode::INVALID;
-    let resume;
-
-    let mut state = (*vm).state.lock();
+    let state = (*vm).state.lock();
 
     // Check if this is a legitimate fault, i.e., if the page table doesn't
     // allow the access attemped by the VM.
@@ -435,12 +432,9 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
     // invalidations while holding the VM lock, so we don't need to do
     // anything else to recover from it. (Acquiring/releasing the lock
     // ensured that the invalidations have completed.)
-    resume = mm_vm_get_mode(
-        &mut state.ptable,
-        (*f).ipaddr,
-        ipa_add((*f).ipaddr, 1),
-        &mut mode,
-    ) && (mode & mask) == (*f).mode;
+    let resume = state.ptable.get_mode((*f).ipaddr, ipa_add((*f).ipaddr, 1))
+        .map(|mode| mode & mask == (*f).mode)
+        .unwrap_or(false);
 
     if !resume {
         dlog!(
