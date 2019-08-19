@@ -86,10 +86,12 @@ impl Mailbox {
     /// Initializes the mailbox.
     /// TODO: Refactor `vm_init` and make `Mailbox::new()` instead of this.
     pub unsafe fn init(&mut self) {
+        self.state = MailboxState::Empty;
+        self.recv = ptr::null_mut();
+        self.send = ptr::null();
+
         list_init(&mut self.waiter_list);
         list_init(&mut self.ready_list);
-
-        self.state = MailboxState::Empty;
     }
 
     /// Retrieves the next waiter and removes it from the wait list if the VM's
@@ -145,7 +147,7 @@ impl Mailbox {
         pa_send_end: paddr_t,
         pa_recv_begin: paddr_t,
         pa_recv_end: paddr_t,
-        local_page_pool: &mut MPool,
+        local_page_pool: &MPool,
     ) -> Option<()> {
         let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
 
@@ -264,21 +266,21 @@ impl VmState {
         // Create a local pool so any freed memory can't be used by another
         // thread. This is to ensure the original mapping can be restored if
         // any stage of the process fails.
-        let mut local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
+        let local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
 
         // Take memory ownership away from the VM and mark as shared.
         self.ptable.identity_map(
             pa_send_begin,
             pa_send_end,
             Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
-            &mut local_page_pool,
+            &local_page_pool,
         )?;
 
         if let None = self.ptable.identity_map(
             pa_recv_begin,
             pa_recv_end,
             Mode::UNOWNED | Mode::SHARED | Mode::R,
-            &mut local_page_pool,
+            &local_page_pool,
         ) {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
@@ -290,7 +292,7 @@ impl VmState {
                     pa_send_begin,
                     pa_send_end,
                     orig_send_mode,
-                    &mut local_page_pool
+                    &local_page_pool
                 )
                 .is_some());
             return None;
@@ -301,7 +303,7 @@ impl VmState {
             pa_send_end,
             pa_recv_begin,
             pa_recv_end,
-            &mut local_page_pool,
+            &local_page_pool,
         ) {
             // goto fail_undo_send_and_recv;
             assert!(self
@@ -310,7 +312,7 @@ impl VmState {
                     pa_recv_begin,
                     pa_recv_end,
                     orig_recv_mode,
-                    &mut local_page_pool
+                    &local_page_pool
                 )
                 .is_some());
 
@@ -320,7 +322,7 @@ impl VmState {
                     pa_send_begin,
                     pa_send_end,
                     orig_send_mode,
-                    &mut local_page_pool
+                    &local_page_pool
                 )
                 .is_some());
 
