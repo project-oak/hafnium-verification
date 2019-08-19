@@ -485,7 +485,12 @@ pub unsafe extern "C" fn api_vcpu_run(
 /// api_mailbox_clear after they've succeeded. If a secondary VM is running and
 /// there are waiters, it also switches back to the primary VM for it to wake
 /// waiters up.
-unsafe fn waiter_result(id: spci_vm_id_t, state: &VmState, current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
+unsafe fn waiter_result(
+    id: spci_vm_id_t,
+    state: &VmState,
+    current: *mut VCpu,
+    next: *mut *mut VCpu,
+) -> i64 {
     let ret = HfVCpuRunReturn::NotifyWaiters;
 
     if state.is_waiter_list_empty() {
@@ -530,7 +535,10 @@ pub unsafe extern "C" fn api_vm_configure(
     // TODO: the scope of the can be reduced but will require restructing
     //       to keep a single unlock point.
     let mut state = (*vm).state.lock();
-    if state.configure(send, recv, API_PAGE_POOL.get_ref()).is_none() {
+    if state
+        .configure(send, recv, API_PAGE_POOL.get_ref())
+        .is_none()
+    {
         return -1;
     }
 
@@ -763,7 +771,7 @@ pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
 
     match vm_state.dequeue_ready_list() {
         Some(id) => id as i64,
-        None => -1
+        None => -1,
     }
 }
 
@@ -971,7 +979,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
 /// Clears a region of physical memory by overwriting it with zeros. The data is
 /// flushed from the cache so the memory has been cleared across the system.
 fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
-    let mut hypervisor_ptable = lock_hypervisor_ptable();
+    let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
     let size = pa_difference(begin, end);
     let region = pa_addr(begin);
 
@@ -1069,37 +1077,31 @@ pub unsafe extern "C" fn api_spci_share_memory(
 
     // First update the mapping for the sender so there is not overlap with the
     // recipient.
-    if from_state.ptable.identity_map(
-        pa_begin,
-        pa_end,
-        from_mode,
-        &local_page_pool,
-    ).is_none() {
+    if from_state
+        .ptable
+        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
+        .is_none()
+    {
         return SpciReturn::NoMemory;
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if to_state.ptable.identity_map(
-        pa_begin,
-        pa_end,
-        to_mode,
-        &local_page_pool,
-    ).is_none() {
+    if to_state
+        .ptable
+        .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
+        .is_none()
+    {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         from_state.ptable.defrag(&local_page_pool);
 
-        assert!(from_state.ptable.identity_map(
-            pa_begin,
-            pa_end,
-            orig_from_mode,
-            &local_page_pool
-        ).is_some());
+        assert!(from_state
+            .ptable
+            .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
+            .is_some());
 
         return SpciReturn::NoMemory;
     }
-
-
 
     SpciReturn::Success
 }
@@ -1112,7 +1114,13 @@ pub unsafe extern "C" fn api_spci_share_memory(
 ///       of the memory they have been given, opting to not wipe the memory and
 ///       possibly allowing multiple blocks to be transferred. What this will
 ///       look like is TBD.
-fn share_memory(vm_id: spci_vm_id_t, addr: ipaddr_t, size: usize, share: HfShare, current: &VCpu) -> Option<()> {
+fn share_memory(
+    vm_id: spci_vm_id_t,
+    addr: ipaddr_t,
+    size: usize,
+    share: HfShare,
+    current: &VCpu,
+) -> Option<()> {
     let from: &Vm = unsafe { &*current.vm };
 
     // Disallow reflexive shares as this suggests an error in the VM.
@@ -1186,42 +1194,34 @@ fn share_memory(vm_id: spci_vm_id_t, addr: ipaddr_t, size: usize, share: HfShare
 
     // First update the mapping for the sender so there is not overlap with the
     // recipient.
-    from_state.ptable.identity_map(
-        pa_begin,
-        pa_end,
-        from_mode,
-        &local_page_pool,
-    )?;
+    from_state
+        .ptable
+        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)?;
 
     // Clear the memory so no VM or device can see the previous contents.
     if !clear_memory(pa_begin, pa_end, &local_page_pool) {
-        assert!(from_state.ptable.identity_map(
-            pa_begin,
-            pa_end,
-            orig_from_mode,
-            &local_page_pool
-        ).is_some());
+        assert!(from_state
+            .ptable
+            .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
+            .is_some());
 
         return None;
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if to_state.ptable.identity_map(
-        pa_begin,
-        pa_end,
-        to_mode,
-        &local_page_pool,
-    ).is_none() {
+    if to_state
+        .ptable
+        .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
+        .is_none()
+    {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         from_state.ptable.defrag(&local_page_pool);
         // goto fail_return_to_sender;
-        assert!(from_state.ptable.identity_map(
-            pa_begin,
-            pa_end,
-            orig_from_mode,
-            &local_page_pool
-        ).is_some());
+        assert!(from_state
+            .ptable
+            .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
+            .is_some());
 
         return None;
     }

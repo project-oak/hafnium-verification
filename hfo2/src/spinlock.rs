@@ -98,16 +98,21 @@ impl<T> SpinLock<T> {
         &mut *self.data.get()
     }
 
-    pub fn lock_both<'s>(lhs: &'s Self, rhs: &'s Self) -> (SpinLockGuard<'s, T>, SpinLockGuard<'s, T>) {
+    pub fn lock_both<'s>(
+        lhs: &'s Self,
+        rhs: &'s Self,
+    ) -> (SpinLockGuard<'s, T>, SpinLockGuard<'s, T>) {
         RawSpinLock::lock_both(&lhs.lock, &rhs.lock);
-        (SpinLockGuard {
-            lock: lhs,
-            _marker: PhantomData,
-        },
-        SpinLockGuard {
-            lock: rhs,
-            _marker: PhantomData,
-        })
+        (
+            SpinLockGuard {
+                lock: lhs,
+                _marker: PhantomData,
+            },
+            SpinLockGuard {
+                lock: rhs,
+                _marker: PhantomData,
+            },
+        )
     }
 }
 

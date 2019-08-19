@@ -432,7 +432,9 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
     // invalidations while holding the VM lock, so we don't need to do
     // anything else to recover from it. (Acquiring/releasing the lock
     // ensured that the invalidations have completed.)
-    let resume = state.ptable.get_mode((*f).ipaddr, ipa_add((*f).ipaddr, 1))
+    let resume = state
+        .ptable
+        .get_mode((*f).ipaddr, ipa_add((*f).ipaddr, 1))
         .map(|mode| mode & mask == (*f).mode)
         .unwrap_or(false);
 
