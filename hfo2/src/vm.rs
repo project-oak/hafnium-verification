@@ -17,6 +17,7 @@
 use core::mem;
 use core::mem::MaybeUninit;
 use core::ptr;
+use core::str;
 use core::sync::atomic::AtomicBool;
 
 use arrayvec::ArrayVec;
@@ -464,7 +465,9 @@ impl VmState {
 
     pub fn debug_log(&mut self, id: spci_vm_id_t, c: c_char) {
         if c == '\n' as u32 as u8 || c == '\0' as u32 as u8 || self.log_buffer.is_full() {
-            dlog_flush_vm_buffer(id, &mut self.log_buffer);
+            // flush the buffer.
+            let log = str::from_utf8(&self.log_buffer).unwrap();
+            dlog!("VM {}: {}\n", id, log);
             self.log_buffer.clear();
         } else {
             self.log_buffer.push(c);
