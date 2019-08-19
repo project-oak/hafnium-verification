@@ -369,19 +369,20 @@ impl VmState {
 
         // Ensure the pages are valid, owned and exclusive to the VM and that
         // the VM has the required access to the memory.
-        let orig_send_mode = self.ptable.get_mode(send, ipa_add(send, PAGE_SIZE))?;
+        let orig_send_mode =
+            self
+                .ptable
+                .get_mode(send, ipa_add(send, PAGE_SIZE))
+                .filter(|mode| mode.valid_owned_and_exclusive())
+                .filter(|mode| mode.contains(Mode::R))
+                .filter(|mode| mode.contains(Mode::W))?;
 
-        if !orig_send_mode.valid_owned_and_exclusive()
-            || !orig_send_mode.contains(Mode::R)
-            || !orig_send_mode.contains(Mode::W)
-        {
-            return None;
-        }
-
-        let orig_recv_mode = self.ptable.get_mode(recv, ipa_add(recv, PAGE_SIZE))?;
-        if !orig_recv_mode.valid_owned_and_exclusive() || !orig_recv_mode.contains(Mode::R) {
-            return None;
-        }
+        let orig_recv_mode =
+            self
+                .ptable
+                .get_mode(recv, ipa_add(recv, PAGE_SIZE))
+                .filter(|mode| mode.valid_owned_and_exclusive())
+                .filter(|mode| mode.contains(Mode::R))?;
 
         self.configure_pages(
             pa_send_begin,
