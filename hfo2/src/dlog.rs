@@ -54,25 +54,3 @@ pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
 }
-
-/// Send the contents of the given VM's log buffer to the log, preceded by the
-/// VM ID and followed by a newline.
-pub fn dlog_flush_vm_buffer(id: spci_vm_id_t, buffer: &mut [c_char]) {
-    use core::fmt::Write;
-    let mut writer = WRITER.lock();
-
-    writer.write_str("VM ");
-    writer.write_fmt(format_args!("{}", id));
-    writer.write_str(": ");
-
-    for c in buffer.iter_mut() {
-        unsafe {
-            plat_console_putchar(*c);
-        }
-        *c = '\0' as u32 as u8;
-    }
-
-    unsafe {
-        plat_console_putchar('\n' as u32 as u8);
-    }
-}
