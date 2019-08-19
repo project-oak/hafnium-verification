@@ -252,6 +252,7 @@ impl VmState {
     /// stage-1 page tables. Locking of the page tables combined with a local
     /// memory pool ensures there will always be enough memory to recover from
     /// any errors that arise.
+    /// TODO: Clean up this function using RAII.
     fn configure_pages(
         &mut self,
         pa_send_begin: paddr_t,
