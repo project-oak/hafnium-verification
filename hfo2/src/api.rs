@@ -357,7 +357,7 @@ unsafe fn api_vcpu_prepare_run(
         // when it is going to be needed. This ensures there are no inter-vCPU
         // dependencies in the common run case meaning the sensitive context
         // switch performance is consistent.
-        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).state.lock().try_read() => {
+        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read() => {
             arch_regs_set_retval(&mut (*vcpu).regs, SpciReturn::Success as uintreg_t);
         }
         // Fall through. (TODO: isn't it too verbose?)
@@ -486,19 +486,19 @@ pub unsafe extern "C" fn api_vcpu_run(
 /// there are waiters, it also switches back to the primary VM for it to wake
 /// waiters up.
 unsafe fn waiter_result(
-    id: spci_vm_id_t,
-    state: &VmState,
+    vm_id: spci_vm_id_t,
+    vm_inner: &VmInner,
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> i64 {
     let ret = HfVCpuRunReturn::NotifyWaiters;
 
-    if state.is_waiter_list_empty() {
+    if vm_inner.is_waiter_list_empty() {
         // No waiters, nothing else to do.
         return 0;
     }
 
-    if id == HF_PRIMARY_VM_ID {
+    if vm_id == HF_PRIMARY_VM_ID {
         // The caller is the primary VM. Tell it to wake up waiters.
         return 1;
     }
@@ -534,8 +534,8 @@ pub unsafe extern "C" fn api_vm_configure(
     //
     // TODO: the scope of the can be reduced but will require restructing
     //       to keep a single unlock point.
-    let mut state = (*vm).state.lock();
-    if state
+    let mut vm_inner = (*vm).inner.lock();
+    if vm_inner
         .configure(send, recv, API_PAGE_POOL.get_ref())
         .is_none()
     {
@@ -543,7 +543,7 @@ pub unsafe extern "C" fn api_vm_configure(
     }
 
     // Tell caller about waiters, if any.
-    waiter_result((*vm).id, &state, current, next)
+    waiter_result((*vm).id, &vm_inner, current, next)
 }
 
 /// Copies data from the sender's send buffer to the recipient's receive buffer
@@ -569,7 +569,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // header. If the tx mailbox at from_msg is configured (i.e.
     // from_msg != ptr::null()) then it can be safely accessed after releasing
     // the lock since the tx mailbox address can only be configured once.
-    let from_msg = (*from).state.lock().get_send_ptr();
+    let from_msg = (*from).inner.lock().get_send_ptr();
 
     if from_msg.is_null() {
         return SpciReturn::InvalidParameters;
@@ -605,7 +605,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // buffer. Since in spci_msg_handle_architected_message we may call
     // api_spci_share_memory which must hold the `from` lock, we must hold the
     // `from` lock at this point to prevent a deadlock scenario.
-    let (mut to_state, mut from_state) = SpinLock::lock_both(&(*to).state, &(*from).state);
+    let (mut to_state, mut from_state) = SpinLock::lock_both(&(*to).inner, &(*from).inner);
 
     if !to_state.is_empty() || !to_state.is_configured() {
         // Fail if the target isn't currently ready to receive data,
@@ -719,10 +719,10 @@ pub unsafe extern "C" fn api_spci_msg_recv(
         return SpciReturn::Interrupted;
     }
 
-    let mut vm_state = vm.state.lock();
+    let mut vm_inner = vm.inner.lock();
 
     // Return pending messages without blocking.
-    if vm_state.try_read() {
+    if vm_inner.try_read() {
         return SpciReturn::Success;
     }
 
@@ -767,9 +767,9 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
     let vm = (*current).vm;
-    let mut vm_state = (*vm).state.lock();
+    let mut vm_inner = (*vm).inner.lock();
 
-    match vm_state.dequeue_ready_list() {
+    match vm_inner.dequeue_ready_list() {
         Some(id) => id as i64,
         None => -1,
     }
@@ -793,7 +793,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     }
 
     // Check if there are outstanding notifications from given vm.
-    let entry = (*vm).state.lock().fetch_waiter();
+    let entry = (*vm).inner.lock().fetch_waiter();
 
     if entry.is_null() {
         return -1;
@@ -804,9 +804,9 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     // a stack.
     let waiting_vm = (*entry).waiting_vm;
 
-    let mut vm_state = (*waiting_vm).state.lock();
+    let mut vm_inner = (*waiting_vm).inner.lock();
     if list_empty(&(*entry).ready_links) {
-        vm_state.enqueue_ready_list(&mut *entry);
+        vm_inner.enqueue_ready_list(&mut *entry);
     }
 
     (*waiting_vm).id as i64
@@ -826,8 +826,8 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
 pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let vm = (*current).vm;
     let ret;
-    let mut state = (*vm).state.lock();
-    match state.get_state() {
+    let mut vm_inner = (*vm).inner.lock();
+    match vm_inner.get_state() {
         MailboxState::Empty => {
             ret = 0;
         }
@@ -835,8 +835,8 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut V
             ret = -1;
         }
         MailboxState::Read => {
-            ret = waiter_result((*vm).id, &state, current, next);
-            state.set_empty();
+            ret = waiter_result((*vm).id, &vm_inner, current, next);
+            vm_inner.set_empty();
         }
     }
 
@@ -1026,8 +1026,8 @@ pub unsafe extern "C" fn api_spci_share_memory(
     memory_to_attributes: u32,
     share: usize,
 ) -> SpciReturn {
-    let to_state = (*to_locked.vm).state.get_mut_unchecked();
-    let from_state = (*from_locked.vm).state.get_mut_unchecked();
+    let to_state = (*to_locked.vm).inner.get_mut_unchecked();
+    let from_state = (*from_locked.vm).inner.get_mut_unchecked();
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if to_locked.vm == from_locked.vm {
@@ -1164,7 +1164,7 @@ fn share_memory(
     // this.
     let local_page_pool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
 
-    let (mut from_state, mut to_state) = SpinLock::lock_both(&(*from).state, &(*to).state);
+    let (mut from_state, mut to_state) = SpinLock::lock_both(&(*from).inner, &(*to).inner);
 
     // Ensure that the memory range is mapped with the same mode so that
     // changes can be reverted if the process fails.
