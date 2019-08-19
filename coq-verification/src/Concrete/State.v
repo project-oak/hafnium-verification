@@ -57,6 +57,14 @@ Definition reassign_pointer
     api_page_pool := s.(api_page_pool);
   |}.
 
+Definition update_page_pool
+           (s : concrete_state) (new_pool : mpool)
+  : concrete_state :=
+  {|
+    ptable_deref := s.(ptable_deref);
+    api_page_pool := new_pool;
+  |}.
+
 Definition is_valid {cp : concrete_params} (s : concrete_state) : Prop :=
   locations_exclusive s.(ptable_deref) s.(api_page_pool)
   /\ Forall (root_ptable_wf s.(ptable_deref) Stage2) (map vm_ptable vms)

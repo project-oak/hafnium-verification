@@ -586,7 +586,8 @@ Fixpoint mm_map_level
                   } *)
                  match level with
                  | O =>
-                   (* shouldn't happen; no table entries at level 0 *)
+                   (* shouldn't happen; if we're at level 0, end_ can't be
+                      partway through a block *)
                    let failed := true in
                    (s, begin, pa, table, pte_index, failed, ppool, break)
                  | S level_minus1 =>
