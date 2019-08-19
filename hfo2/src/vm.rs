@@ -152,8 +152,7 @@ impl Mailbox {
         let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
 
         // Map the send page as read-only in the hypervisor address space.
-        if let Some(_) =
-            hypervisor_ptable.identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool)
+        if hypervisor_ptable.identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool).is_some()
         {
             self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
         } else {
@@ -165,8 +164,7 @@ impl Mailbox {
 
         // Map the receive page as writable in the hypervisor address space. On
         // failure, unmap the send page before returning.
-        if let Some(_) =
-            hypervisor_ptable.identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool)
+        if hypervisor_ptable.identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool).is_some()
         {
             self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
         } else {
@@ -276,12 +274,12 @@ impl VmState {
             &local_page_pool,
         )?;
 
-        if let None = self.ptable.identity_map(
+        if self.ptable.identity_map(
             pa_recv_begin,
             pa_recv_end,
             Mode::UNOWNED | Mode::SHARED | Mode::R,
             &local_page_pool,
-        ) {
+        ).is_none() {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
             self.ptable.defrag(&local_page_pool);
@@ -298,13 +296,13 @@ impl VmState {
             return None;
         }
 
-        if let None = self.mailbox.configure_stage1(
+        if self.mailbox.configure_stage1(
             pa_send_begin,
             pa_send_end,
             pa_recv_begin,
             pa_recv_end,
             &local_page_pool,
-        ) {
+        ).is_none() {
             // goto fail_undo_send_and_recv;
             assert!(self
                 .ptable
