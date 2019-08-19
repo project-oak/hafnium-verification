@@ -401,7 +401,7 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
             false,
             (*vm).id,
             vcpu_index(vcpu) as cpu_id_t,
-            (*vm).state.get_unchecked().ptable.root,
+            (*vm).inner.get_unchecked().ptable.root,
         );
         vcpu_on(vcpu_execution_locked, entry, arg);
     }
@@ -422,7 +422,7 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
 ) -> bool {
     let vm = (*current).vm;
     let mask = (*f).mode | Mode::INVALID;
-    let state = (*vm).state.lock();
+    let vm_inner = (*vm).inner.lock();
 
     // Check if this is a legitimate fault, i.e., if the page table doesn't
     // allow the access attemped by the VM.
@@ -432,7 +432,7 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
     // invalidations while holding the VM lock, so we don't need to do
     // anything else to recover from it. (Acquiring/releasing the lock
     // ensured that the invalidations have completed.)
-    let resume = state
+    let resume = vm_inner
         .ptable
         .get_mode((*f).ipaddr, ipa_add((*f).ipaddr, 1))
         .map(|mode| mode & mask == (*f).mode)

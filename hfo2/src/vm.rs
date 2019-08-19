@@ -192,7 +192,7 @@ impl Mailbox {
     }
 }
 
-pub struct VmState {
+pub struct VmInner {
     log_buffer: ArrayVec<[c_char; LOG_BUFFER_SIZE]>,
     pub ptable: PageTable<Stage2>,
     mailbox: Mailbox,
@@ -202,8 +202,8 @@ pub struct VmState {
     arch: ArchVm,
 }
 
-impl VmState {
-    /// Initializes VmState.
+impl VmInner {
+    /// Initializes VmInner.
     pub unsafe fn init(&mut self, vm: *mut Vm, ppool: &mut MPool) -> Option<()> {
         self.mailbox.init();
 
@@ -482,20 +482,20 @@ pub struct Vm {
 
     /// VCpus of this vm.
     /// Note: This field is regarded as a kind of mutable states of Vm, but is
-    /// not contained in VmState, because
+    /// not contained in VmInner, because
     ///   1. Mutable inner fields are contained in VCpuState.
     ///   2. VCpuState has higher lock order than one of Vm. It is nonsense to
-    ///      lock VmState to acquire VCpuState.
+    ///      lock VmInner to acquire VCpuState.
     pub vcpus: [VCpu; MAX_CPUS],
 
     /// See api.c for the partial ordering on locks.
-    pub state: SpinLock<VmState>,
+    pub inner: SpinLock<VmInner>,
     pub aborting: AtomicBool,
 }
 
 impl Vm {
     pub fn debug_log(&self, c: c_char) {
-        self.state.lock().debug_log(self.id, c)
+        self.inner.lock().debug_log(self.id, c)
     }
 }
 
@@ -540,7 +540,7 @@ pub unsafe extern "C" fn vm_init(
     (*vm).id = vm_count;
     (*vm).vcpu_count = vcpu_count;
     (*vm).aborting = AtomicBool::new(false);
-    (*vm).state.get_mut_unchecked().init(vm, &mut *ppool);
+    (*vm).inner.get_mut_unchecked().init(vm, &mut *ppool);
 
     // Do basic initialization of vcpus.
     for i in 0..vcpu_count {
@@ -573,7 +573,7 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
     let locked = VmLocked { vm };
 
-    (*vm).state.lock().into_raw();
+    (*vm).inner.lock().into_raw();
 
     locked
 }
@@ -587,7 +587,7 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
         vm2: VmLocked { vm: vm2 },
     };
 
-    SpinLock::lock_both(&(*vm1).state, &(*vm2).state);
+    SpinLock::lock_both(&(*vm1).inner, &(*vm2).inner);
 
     dual_lock
 }
@@ -597,7 +597,7 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
 #[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
     let guard =
-        SpinLockGuard::<'static, VmState>::from_raw(&(*(*locked).vm).state as *const _ as usize);
+        SpinLockGuard::<'static, VmInner>::from_raw(&(*(*locked).vm).inner as *const _ as usize);
     mem::drop(guard);
     (*locked).vm = ptr::null_mut();
 }
@@ -617,12 +617,12 @@ pub unsafe extern "C" fn vm_get_id(vm: *const Vm) -> spci_vm_id_t {
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_ptable(vm: *mut Vm) -> *mut PageTable<Stage2> {
-    &mut (*vm).state.get_mut_unchecked().ptable
+    &mut (*vm).inner.get_mut_unchecked().ptable
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_arch(vm: *mut Vm) -> *mut ArchVm {
-    &mut (*vm).state.get_mut_unchecked().arch
+    &mut (*vm).inner.get_mut_unchecked().arch
 }
 
 #[no_mangle]
