@@ -167,7 +167,7 @@ type ptable_addr_t = uintvaddr_t;
 const_assert_eq!(addr_size_eq; mem::size_of::<ptable_addr_t>(), mem::size_of::<uintpaddr_t>());
 
 /// The hypervisor page table.
-static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
+pub static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
     SpinLock::new(unsafe { PageTable::null() });
 
 /// Is stage2 invalidation enabled?
@@ -1212,10 +1212,6 @@ pub unsafe extern "C" fn mm_cpu_init() -> bool {
 pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *const MPool) {
     let mpool = &*mpool;
     stage1_locked.defrag(mpool);
-}
-
-pub fn lock_hypervisor_ptable() -> SpinLockGuard<'static, PageTable<Stage1>> {
-    HYPERVISOR_PAGE_TABLE.lock()
 }
 
 #[no_mangle]

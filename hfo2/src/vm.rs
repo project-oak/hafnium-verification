@@ -21,18 +21,18 @@ use core::sync::atomic::AtomicBool;
 
 use arrayvec::ArrayVec;
 
+use crate::addr::*;
 use crate::arch::*;
 use crate::cpu::*;
+use crate::dlog::*;
 use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
+use crate::page::*;
 use crate::spci::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
-use crate::dlog::*;
-use crate::addr::*;
-use crate::page::*;
 
 const LOG_BUFFER_SIZE: usize = 256;
 
@@ -97,9 +97,7 @@ impl Mailbox {
     pub unsafe fn fetch_waiter(&mut self) -> *mut WaitEntry {
         let entry: *mut WaitEntry;
 
-        if self.state != MailboxState::Empty
-            || self.recv.is_null()
-            || list_empty(&self.waiter_list)
+        if self.state != MailboxState::Empty || self.recv.is_null() || list_empty(&self.waiter_list)
         {
             // The mailbox is not writable or there are no waiters.
             return ptr::null_mut();
@@ -138,8 +136,8 @@ impl Mailbox {
     }
 
     /// Configures the hypervisor's stage-1 view of the send and receive pages.
-    /// The stage-1 page tables must be locked so memory cannot be taken by 
-    /// another core which could result in this transaction being unable to 
+    /// The stage-1 page tables must be locked so memory cannot be taken by
+    /// another core which could result in this transaction being unable to
     /// roll back in the case of an error.
     pub fn configure_stage1(
         &mut self,
@@ -149,15 +147,12 @@ impl Mailbox {
         pa_recv_end: paddr_t,
         local_page_pool: &mut MPool,
     ) -> Option<()> {
-        let mut hypervisor_ptable = lock_hypervisor_ptable();
+        let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
 
         // Map the send page as read-only in the hypervisor address space.
-        if let Some(_) = hypervisor_ptable.identity_map(
-            pa_send_begin,
-            pa_send_end,
-            Mode::R,
-            local_page_pool,
-        ) {
+        if let Some(_) =
+            hypervisor_ptable.identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool)
+        {
             self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
         } else {
             // TODO: partial defrag of failed range.
@@ -168,23 +163,18 @@ impl Mailbox {
 
         // Map the receive page as writable in the hypervisor address space. On
         // failure, unmap the send page before returning.
-        if let Some(_) = hypervisor_ptable.identity_map(
-            pa_recv_begin,
-            pa_recv_end,
-            Mode::W,
-            local_page_pool,
-        ) {
+        if let Some(_) =
+            hypervisor_ptable.identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool)
+        {
             self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
         } else {
             // TODO: parital defrag of failed range.
             // Recover any memory consumed in failed mapping.
             hypervisor_ptable.defrag(local_page_pool);
             self.send = ptr::null();
-            assert!(hypervisor_ptable.unmap(
-                pa_send_begin,
-                pa_send_end,
-                local_page_pool
-            ).is_some());
+            assert!(hypervisor_ptable
+                .unmap(pa_send_begin, pa_send_end, local_page_pool)
+                .is_some());
 
             return None;
         }
@@ -226,10 +216,10 @@ impl VmState {
             list_init(&mut self.wait_entries[i].wait_links);
             list_init(&mut self.wait_entries[i].ready_links);
         }
-        
+
         Some(())
     }
-    
+
     /// Retrieves the next waiter and removes it from the wait list if the VM's
     /// mailbox is in a writable state.
     pub unsafe fn fetch_waiter(&mut self) -> *mut WaitEntry {
@@ -258,8 +248,8 @@ impl VmState {
     }
 
     /// Configures the send and receive pages in the VM stage-2 and hypervisor
-    /// stage-1 page tables. Locking of the page tables combined with a local 
-    /// memory pool ensures there will always be enough memory to recover from 
+    /// stage-1 page tables. Locking of the page tables combined with a local
+    /// memory pool ensures there will always be enough memory to recover from
     /// any errors that arise.
     fn configure_pages(
         &mut self,
@@ -271,9 +261,8 @@ impl VmState {
         orig_recv_mode: Mode,
         fallback_mpool: &MPool,
     ) -> Option<()> {
-
         // Create a local pool so any freed memory can't be used by another
-        // thread. This is to ensure the original mapping can be restored if 
+        // thread. This is to ensure the original mapping can be restored if
         // any stage of the process fails.
         let mut local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
 
@@ -295,12 +284,15 @@ impl VmState {
             // Recover any memory consumed in failed mapping.
             self.ptable.defrag(&local_page_pool);
 
-            assert!(self.ptable.identity_map(
-                pa_send_begin,
-                pa_send_end,
-                orig_send_mode,
-                &mut local_page_pool
-            ).is_some());
+            assert!(self
+                .ptable
+                .identity_map(
+                    pa_send_begin,
+                    pa_send_end,
+                    orig_send_mode,
+                    &mut local_page_pool
+                )
+                .is_some());
             return None;
         }
 
@@ -312,19 +304,25 @@ impl VmState {
             &mut local_page_pool,
         ) {
             // goto fail_undo_send_and_recv;
-            assert!(self.ptable.identity_map(
-                pa_recv_begin,
-                pa_recv_end,
-                orig_recv_mode,
-                &mut local_page_pool
-            ).is_some());
+            assert!(self
+                .ptable
+                .identity_map(
+                    pa_recv_begin,
+                    pa_recv_end,
+                    orig_recv_mode,
+                    &mut local_page_pool
+                )
+                .is_some());
 
-            assert!(self.ptable.identity_map(
-                pa_send_begin,
-                pa_send_end,
-                orig_send_mode,
-                &mut local_page_pool
-            ).is_some());
+            assert!(self
+                .ptable
+                .identity_map(
+                    pa_send_begin,
+                    pa_send_end,
+                    orig_send_mode,
+                    &mut local_page_pool
+                )
+                .is_some());
 
             return None;
         }
@@ -338,7 +336,7 @@ impl VmState {
     /// Returns:
     ///  - -1 on failure.
     ///  - 0 on success if no further action is needed.
-    ///  - 1 if it was called by the primary VM and the primary VM now needs to 
+    ///  - 1 if it was called by the primary VM and the primary VM now needs to
     ///    wake up or kick waiters. Waiters should be retrieved by calling
     ///    hf_mailbox_waiter_get.
     pub fn configure(
@@ -347,7 +345,6 @@ impl VmState {
         recv: ipaddr_t,
         fallback_mpool: &MPool,
     ) -> Option<()> {
-
         // Fail if addresses are not page-aligned.
         if !is_aligned(ipa_addr(send), PAGE_SIZE) || !is_aligned(ipa_addr(recv), PAGE_SIZE) {
             return None;
@@ -370,7 +367,7 @@ impl VmState {
             return None;
         }
 
-        // Ensure the pages are valid, owned and exclusive to the VM and that 
+        // Ensure the pages are valid, owned and exclusive to the VM and that
         // the VM has the required access to the memory.
         let orig_send_mode = self.ptable.get_mode(send, ipa_add(send, PAGE_SIZE))?;
 
@@ -381,13 +378,8 @@ impl VmState {
             return None;
         }
 
-        let orig_recv_mode = self.ptable.get_mode(
-            recv,
-            ipa_add(recv, PAGE_SIZE),
-        )?;
-        if !orig_recv_mode.valid_owned_and_exclusive()
-            || !orig_recv_mode.contains(Mode::R)
-        {
+        let orig_recv_mode = self.ptable.get_mode(recv, ipa_add(recv, PAGE_SIZE))?;
+        if !orig_recv_mode.valid_owned_and_exclusive() || !orig_recv_mode.contains(Mode::R) {
             return None;
         }
 
@@ -446,7 +438,7 @@ impl VmState {
         self.mailbox.state = MailboxState::Empty;
     }
 
-    /// Adds `self` into the waiter list of `target`, if `self` is not waiting 
+    /// Adds `self` into the waiter list of `target`, if `self` is not waiting
     /// for another now. Returns false if `self` is waiting for another.
     /// TODO: better name?
     pub fn wait(&mut self, target: &mut Self, target_id: spci_vm_id_t) -> bool {
@@ -472,10 +464,7 @@ impl VmState {
     }
 
     pub fn debug_log(&mut self, id: spci_vm_id_t, c: c_char) {
-        if c == '\n' as u32 as u8
-            || c == '\0' as u32 as u8
-            || self.log_buffer.is_full()
-        {
+        if c == '\n' as u32 as u8 || c == '\0' as u32 as u8 || self.log_buffer.is_full() {
             dlog_flush_vm_buffer(id, &mut self.log_buffer);
             self.log_buffer.clear();
         } else {
@@ -545,7 +534,6 @@ pub unsafe extern "C" fn vm_init(
         mem::size_of::<Vm>(),
     );
 
-
     (*vm).id = vm_count;
     (*vm).vcpu_count = vcpu_count;
     (*vm).aborting = AtomicBool::new(false);
@@ -605,7 +593,8 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
 /// the fact that the VM is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
-    let guard: SpinLockGuard<'static, VmState> = SpinLockGuard::from_raw(&(*(*locked).vm).state as *const _ as usize);
+    let guard: SpinLockGuard<'static, VmState> =
+        SpinLockGuard::from_raw(&(*(*locked).vm).state as *const _ as usize);
     mem::drop(guard);
     (*locked).vm = ptr::null_mut();
 }
