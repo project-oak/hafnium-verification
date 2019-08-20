@@ -54,7 +54,13 @@ Section Proofs.
       exists abst', represents_valid abst' (f conc).
   Hint Unfold preserves_represents_valid.
 
-  Ltac simplify_step :=
+  Ltac simplify_solver :=
+    match goal with
+    | _ => solver
+    | H : break = continue |- _ => cbv [break continue] in H; solver
+    | H : continue = break |- _ => cbv [break continue] in H; solver
+    end.
+  Ltac simplify_no_break_step :=
     match goal with
     | _ => progress basics
     | _ => progress cbn [fst snd] in *
@@ -63,11 +69,18 @@ Section Proofs.
       rewrite (surjective_pairing x)
     | H : context [let '(_,_) := ?x in _] |- _ =>
       rewrite (surjective_pairing x) in H
-    | _ => break_match
-    | _ => solver
-    | H : break = continue |- _ => cbv [break continue] in H; solver
-    | H : continue = break |- _ => cbv [break continue] in H; solver
     end.
+  Ltac simplify_step :=
+    match goal with
+    | _ => simplify_no_break_step
+    | _ => break_match
+    | _ => simplify_solver
+    end.
+  Ltac simplify_no_break :=
+    repeat match goal with
+           | _ => simplify_no_break_step
+           | _ => simplify_solver
+           end.
   Ltac simplify := repeat simplify_step.
 
   (*** shorthand definitions ***)
@@ -539,6 +552,29 @@ Section Proofs.
              end.
   Qed.
 
+  Lemma mm_free_page_pte_fallback conc pte level ppool :
+    let ret := mm_free_page_pte conc pte level ppool in
+    let ppool' := snd ret in
+    mpool_fallback ppool' =  mpool_fallback ppool.
+  Proof.
+    autounfold.
+    generalize dependent conc. generalize dependent pte.
+    generalize dependent ppool.
+    induction level; intros; cbn [mm_free_page_pte];
+      repeat match goal with
+             | _ => simplify_step
+             | _ => rewrite mpool_free_fallback
+             | _ => apply fold_right_invariant; [ | solver ]
+             end.
+  Qed.
+
+  Lemma mm_free_page_pte_exclusive conc pte level ppool :
+    let ret := mm_free_page_pte conc pte level ppool in
+    let ppool' := snd ret in
+    locations_exclusive (ptable_deref conc) ppool ->
+    locations_exclusive (ptable_deref conc) ppool'.
+  Admitted. (* TODO *)
+
   (*** Proofs about [mm_replace_entry] ***)
 
   (* mm_replace_entry doesn't change the state (it does in C, but in the Coq
@@ -556,6 +592,25 @@ Section Proofs.
            | _ => rewrite mm_free_page_pte_represents
            end.
   Qed.
+
+  Lemma mm_replace_entry_fallback
+        conc begin t pte_index new_pte level flags ppool :
+    let ret := mm_replace_entry conc begin t pte_index new_pte level flags ppool in
+    let ppool' := snd ret in
+    mpool_fallback ppool' =  mpool_fallback ppool.
+  Proof.
+    cbv [mm_replace_entry]; simplify; rewrite mm_free_page_pte_fallback; solver.
+  Qed.
+
+  Lemma mm_replace_entry_exclusive
+        conc begin t pte_index new_pte level flags ppool :
+    let ret := mm_replace_entry
+                 conc begin t pte_index new_pte level flags ppool in
+    let ppool' := snd ret in
+    arch_mm_pte_is_table new_pte level = false ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    locations_exclusive (ptable_deref conc) ppool'.
+  Admitted. (* TODO *)
 
   (*** Proofs about [mm_populate_table_pte] ***)
 
@@ -576,7 +631,7 @@ Section Proofs.
     mpool_fallback ppool = Some conc.(api_page_pool) ->
     locations_exclusive (ptable_deref conc) ppool ->
     represents abst conc ->
-    represents abst 
+    represents abst
                (snd (fst (mm_populate_table_pte
                             conc begin t pte_index level flags ppool))).
   Proof.
@@ -603,6 +658,33 @@ Section Proofs.
              | _ => solver
              end.
   Qed.
+
+  Lemma mm_populate_table_pte_fallback conc begin t pte_index level flags ppool :
+    let ret := mm_populate_table_pte conc begin t pte_index level flags ppool in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    mpool_fallback ppool = Some conc.(api_page_pool) ->
+    mpool_fallback ppool' = Some conc'.(api_page_pool).
+  Proof.
+    cbv [mm_populate_table_pte mm_alloc_page_tables]; simplify;
+      rewrite mm_replace_entry_fallback, mm_replace_entry_represents;
+      try match goal with
+          | H : mpool_alloc ppool = Some _ |- _ =>
+            pose proof H;
+              eapply mpool_alloc_fallback in H; [ | solver .. ]
+          end; repeat inversion_bool; simplify.
+  Qed.
+
+  Lemma mm_populate_table_pte_exclusive conc begin t pte_index level flags ppool :
+    let ret := mm_populate_table_pte conc begin t pte_index level flags ppool in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    forall fallback,
+      mpool_fallback ppool = Some fallback ->
+      locations_exclusive (ptable_deref conc) fallback ->
+      locations_exclusive (ptable_deref conc) ppool ->
+      locations_exclusive (ptable_deref conc') ppool'.
+  Admitted. (* TODO *)
 
   (*** Proofs about [mm_map_level] ***)
 
@@ -696,8 +778,10 @@ Section Proofs.
 
   (* TODO : move *)
   Hint Resolve mm_entry_size_power_two.
-  Hint Rewrite mm_populate_table_pte_represents
-       mm_free_page_pte_represents mm_replace_entry_represents : concrete_unchanged.
+  Hint Resolve absent_not_table block_not_table.
+  Hint Rewrite mm_free_page_pte_represents mm_replace_entry_represents : concrete_unchanged.
+  Hint Rewrite mm_free_page_pte_fallback mm_replace_entry_fallback
+       mm_populate_table_pte_fallback using solver : push_fallback.
 
   (* dumb wrapper for one of the invariants so it doesn't get split too early *)
   Definition is_begin_or_block_start
@@ -718,29 +802,33 @@ Section Proofs.
     else attrs.
 
   Definition mm_map_level_loop_invariant
-        init_conc init_begin end_ idxs old_table level attrs flags
+        init_abst init_begin end_ idxs old_table level attrs flags
         (state : concrete_state * ptable_addr_t * paddr_t * mm_page_table * size_t * bool * mpool)
     : Prop :=
     let '(conc, begin, pa, new_table, pte_index, failed, ppool) := state in
     (* [begin] is either equal to its starting value or is the start
        of a block *)
     (is_begin_or_block_start init_begin begin level
+     (* ..and abstract state has remained unchanged *)
+     /\ represents init_abst conc
+     (* ...and the backup page pool is the api_page_pool *)
+     /\ mpool_fallback ppool = Some (api_page_pool conc)
+     (* ...and locations_exclusive holds with the local pool *)
+     /\ locations_exclusive (ptable_deref conc) ppool
+     (* ...and [begin] is greater than or equal to the initial value *)
+     /\ (init_begin <= begin)%N
+     (* ...and either we've reached the end of the level, or the address
+        matches the sequence of indices we expect *)
+     /\ end_of_level_or_index_matches init_begin begin level pte_index
      (* ...and either we failed, or... *)
      /\ (failed = true \/
-         (* concrete state has remained unchanged *)
-         (conc = init_conc
-          (* ...and [begin] is greater than or equal to the initial value *)
-          /\ (init_begin <= begin)%N
-          (* ... and either we've reached the end of the level, or the address
-         matches the sequence of indices we expect *)
-          /\ end_of_level_or_index_matches init_begin begin level pte_index
-          (* ...and table attributes have changed in the given range *)
-          /\ if ((flags & MM_FLAG_COMMIT) != 0)%N
-             then attrs_changed_in_range
-                    (ptable_deref conc) idxs old_table new_table (S level)
-                    (new_attrs attrs flags) init_begin (N.min begin end_)
-                    (stage_from_flags flags)
-             else old_table = new_table))).
+         (* table attributes have changed in the given range *)
+         (if ((flags & MM_FLAG_COMMIT) != 0)%N
+          then attrs_changed_in_range
+                 (ptable_deref conc) idxs old_table new_table (S level)
+                 (new_attrs attrs flags) init_begin (N.min begin end_)
+                 (stage_from_flags flags)
+          else old_table = new_table))).
 
   Definition mm_map_level_loop_arguments_sig
              conc begin end_ pa attrs table level flags ppool :
@@ -789,163 +877,28 @@ Section Proofs.
     apply Hproj2.
   Qed.
 
-  Lemma mm_map_level_loop_invariant_is_invariant level flags end_ attrs begin :
-    forall conc pa table ppool idxs,
+  Lemma mm_map_level_loop_invariant_holds' level flags end_ attrs begin :
+    forall abst conc pa table ppool idxs,
       (begin < end_)%N ->
+      represents abst conc ->
+      mpool_fallback ppool = Some (api_page_pool conc) ->
+      locations_exclusive (ptable_deref conc) ppool ->
+      S level = level_from_indices (stage_from_flags flags) idxs ->
       let end_capped := N.min (mm_level_end begin level) end_ in
+      let cond := (fun '(_, begin, _, _, _, _, _) => (begin <? end_capped)%N) in
       let successful := (fun '(_, _, _, _, _, failed, _) => negb failed) in
       let loop_args := mm_map_level_loop_arguments
                          conc begin end_ pa attrs table level flags ppool in
       is_while_loop_invariant
         (mm_map_level_loop_invariant
-           conc begin (N.min (mm_level_end begin level) end_) idxs table level
+           abst begin (N.min (mm_level_end begin level) end_) idxs table level
               attrs flags)
-        successful (snd (fst (fst loop_args))) (snd loop_args).
-  Proof.
-    cbv [is_while_loop_invariant]; induction level;
-      cbn [mm_map_level_loop_arguments].
-    { (* level = 0 *)
-      cbv [mm_map_level_loop_invariant].
-      simplify; autorewrite with concrete_unchanged;
-        (* destruct end_of_level_or_index_matches and eliminate end-of-level
-             case (since it happens at the very end of the loop, it couldn't
-             have happened in the previous loop run) *)
-        try match goal with
-            | H : context [end_of_level_or_index_matches] |- _ =>
-              cbv [end_of_level_or_index_matches] in H;
-                basics; [ repeat inversion_bool; solver | ]
-            end;
-        (* some [pose proof] statements about the current [begin] address, to
-             help [solver] with arithmetic goals *)
-        match goal with
-        | H : is_begin_or_block_start _ ?b ?level |- _ =>
-          pose proof (mm_start_of_next_block_le_level_end b level);
-            pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
-        end;
-        (* prove the cases where the loop didn't fail *)
-        try match goal with
-              |- ?failed = true \/ _ =>
-              destruct failed; [ left; solver | right; basics ] end;
-        (* many of the invariant clauses can be solved quickly *)
-        try match goal with
-            (* solve the is_begin_or_block_start clause *)
-            | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
-              cbv [is_begin_or_block_start];
-                solve [auto using mm_start_of_next_block_is_start]
-            (* solve the init_begin <= begin clause *)
-            | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
-              pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
-            (* solve the end_of_level_or_inidces_match clause *)
-            | |- context [end_of_level_or_index_matches _ (mm_start_of_next_block ?x _)] =>
-              cbv [end_of_level_or_index_matches];
-                rewrite <-mm_level_end_eq2 with (b:=x) by (repeat inversion_bool; try solver);
-                match goal with
-                | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
-                end; rewrite mm_index_start_of_next_block; solver
-            (* get rid of any easy invariant clause we can just solve with [solver] *)
-            | _ => solver
-            end.
-      { cbv [new_attrs] in *.
-        repeat break_match; try solver; [ ].
-        repeat inversion_bool.
-        rewrite N.min_l in * by solver.
-        let new_begin :=
-            match goal with
-              H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-        cbv [attrs_changed_in_range
-               has_uniform_attrs attrs_outside_range_unchanged] in *;
-          basics; try solver;
-            try match goal with H : _ |- _ => apply H; solver end; [ ];
-              let v :=
-                  match goal with |- context [va_init ?x] => x end in
-              destruct (N.lt_le_dec v new_begin); [ solver | ];
-                apply attrs_equiv_absent;
-                apply page_attrs'_absent;
-                rewrite mm_index_eq2 with (b:=new_begin);
-                solver. }
-      { (* present but has the right attributes *)
-        admit. (* TODO *) }
-      { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
-        admit. (* TODO *) }
-      { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
-        admit. (* TODO *) } }
-    { (* level > 0 *)
-      cbv [mm_map_level_loop_invariant].
-      simplify; autorewrite with concrete_unchanged;
-        (* destruct end_of_level_or_index_matches and eliminate end-of-level
-             case (since it happens at the very end of the loop, it couldn't
-             have happened in the previous loop run) *)
-        try match goal with
-            | H : context [end_of_level_or_index_matches] |- _ =>
-              cbv [end_of_level_or_index_matches] in H;
-                basics; [ repeat inversion_bool; solver | ]
-            end;
-        (* some [pose proof] statements about the current [begin] address, to
-             help [solver] with arithmetic goals *)
-        match goal with
-        | H : is_begin_or_block_start _ ?b ?level |- _ =>
-          pose proof (mm_start_of_next_block_le_level_end b level);
-            pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
-        end;
-        (* prove the cases where the loop didn't fail *)
-        try match goal with
-              |- ?failed = true \/ _ =>
-              destruct failed; [ left; solver | right; basics ] end;
-        (* many of the invariant clauses can be solved quickly *)
-        try match goal with
-            (* solve the is_begin_or_block_start clause *)
-            | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
-              cbv [is_begin_or_block_start];
-                solve [auto using mm_start_of_next_block_is_start]
-            (* solve the init_begin <= begin clause *)
-            | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
-              pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
-            (* solve the end_of_level_or_inidces_match clause *)
-            | |- context [end_of_level_or_index_matches _ (mm_start_of_next_block ?x _)] =>
-              cbv [end_of_level_or_index_matches];
-                rewrite <-mm_level_end_eq2 with (b:=x) by (repeat inversion_bool; try solver);
-                match goal with
-                | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
-                end; rewrite mm_index_start_of_next_block; solver
-            (* get rid of any easy invariant clause we can just solve with [solver] *)
-            | _ => solver
-            end.
-      { cbv [new_attrs] in *.
-        repeat break_match; try solver; [ ].
-        repeat inversion_bool.
-        rewrite N.min_l in * by solver.
-        let new_begin :=
-            match goal with
-              H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-        cbv [attrs_changed_in_range
-               has_uniform_attrs attrs_outside_range_unchanged] in *;
-          basics; try solver;
-            try match goal with H : _ |- _ => apply H; solver end; [ ];
-              let v :=
-                  match goal with |- context [va_init ?x] => x end in
-              destruct (N.lt_le_dec v new_begin); [ solver | ];
-                apply attrs_equiv_absent;
-                apply page_attrs'_absent;
-                rewrite mm_index_eq2 with (b:=new_begin);
-                solver. }
-      { (* present but has the right attributes *)
-        admit. (* TODO *) }
-      { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
-        admit. (* TODO *) }
-      { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
-        admit. (* TODO *) } }
-  Admitted. (* prove by induction *)
-
-  Lemma mm_map_level_loop_invariant_holds level flags end_ attrs begin :
-    forall conc pa table ppool idxs,
-      (begin < end_)%N ->
-      let end_capped := N.min (mm_level_end begin level) end_ in
-      let cond := (fun '(_, begin, _, _, _, _, _) => (begin <? end_capped)%N) in
+        successful (snd (fst (fst loop_args))) (snd loop_args) ->
       forall P : _ -> Prop,
         (forall state,
             (cond state = false \/ negb (snd (fst state)) = false) ->
             mm_map_level_loop_invariant
-              conc begin (N.min (mm_level_end begin level) end_) idxs table level
+              abst begin (N.min (mm_level_end begin level) end_) idxs table level
               attrs flags state ->
             P (let '(s, _, _, table, _, failed, ppool) := state in
                (negb failed, table, s, ppool))) ->
@@ -967,7 +920,7 @@ Section Proofs.
     eapply
       (while_loop_invariant_strong
          (mm_map_level_loop_invariant
-            conc begin (N.min (mm_level_end begin level) end_) idxs table level 
+            abst begin (N.min (mm_level_end begin level) end_) idxs table level
             attrs flags)
          P
          (fun state => let '(_, _, _, _, _, failed, _) := state in
@@ -985,7 +938,7 @@ Section Proofs.
       destruct level; cbn [mm_map_level_loop_arguments];
         cbv [is_while_loop_success]; simplify. }
     { (* invariant behaves like an invariant *)
-      apply mm_map_level_loop_invariant_is_invariant; solver. }
+      solver. }
     { (* we have enough fuel *)
       destruct level; cbn [mm_map_level_loop_arguments];
         simplify. }
@@ -993,10 +946,10 @@ Section Proofs.
       pose proof (mm_level_end_lt begin level).
       destruct level; cbn [mm_map_level_loop_arguments];
         cbv [mm_map_level_loop_invariant];
-        simplify; cbv [is_begin_or_block_start]; try solver;
+        simplify; cbv [is_begin_or_block_start end_of_level_or_index_matches];
+          try solver;
           match goal with |- false = true \/ _ => right end;
-          basics; try rewrite N.min_l by solver;
-            cbv [end_of_level_or_index_matches]; solver. }
+          basics; try rewrite N.min_l by solver; solver. }
     { (* invariant implies conclusion *)
       basics;
         match goal with
@@ -1006,223 +959,244 @@ Section Proofs.
         destruct level; cbn [mm_map_level_loop_arguments] in *;
           cbv [mm_map_level_loop_invariant] in *; simplify. }
   Qed.
-      dest
-      
-      
 
-
-
-
-
-
-
-    
-    { (* invariant holds over loop *)
-      cbv [mm_map_level_loop_invariant] in *.
-    
-    induction level; cbn [mm_map_level].
-    { basics.
-      let level := constr:(0) in
-      eapply
-        (while_loop_invariant_strong
-           (mm_map_level_loop_invariant
-            conc begin (N.min (mm_level_end begin level) end_) idxs table level 
-            attrs flags)
-           (fun state => P (let '(s, _, _, table, _, failed, ppool) := state in
-                            (negb failed, table, s, ppool)))
-           (fun state => let '(_, _, _, _, _, failed, _) := state in
-                         negb failed)
-           (fun state => let '(_, begin, _, _, _, _, _) := state in
-                         N.to_nat begin)
-           (N.to_nat (N.min (mm_level_end begin level) end_)));
-        cbv [mm_map_level_loop_invariant] in *.
-      { (* while loop "value" is okay *)
-        cbv [is_while_loop_value]; simplify;
-          try match goal with |- N.to_nat _ < N.to_nat _ =>
-                              apply N.to_nat_lt_iff end;
-          eauto using N.to_nat_ltb, mm_start_of_next_block_lt. }
-      { (* while loop "successful" is okay *)
-        cbv [is_while_loop_success]; simplify. }
-      { (* don't break before finishing loop *)
-        simplify. }
-      { (* invariant holds over loop *)
-        simplify; autorewrite with concrete_unchanged;
-          (* destruct end_of_level_or_index_matches and eliminate end-of-level
-             case (since it happens at the very end of the loop, it couldn't
-             have happened in the previous loop run) *)
-          try match goal with
-              | H : context [end_of_level_or_index_matches] |- _ =>
-                cbv [end_of_level_or_index_matches] in H;
-                  basics; [ repeat inversion_bool; solver | ]
-              end;
-          (* some [pose proof] statements about the current [begin] address, to
+  Lemma mm_map_level_loop_invariant_is_invariant level :
+    forall abst conc begin end_ pa table attrs ppool idxs flags,
+      (begin < end_)%N ->
+      S level = level_from_indices (stage_from_flags flags) idxs ->
+      let end_capped := N.min (mm_level_end begin level) end_ in
+      let successful := (fun '(_, _, _, _, _, failed, _) => negb failed) in
+      let loop_args := mm_map_level_loop_arguments
+                         conc begin end_ pa attrs table level flags ppool in
+      is_while_loop_invariant
+        (mm_map_level_loop_invariant
+           abst begin (N.min (mm_level_end begin level) end_) idxs table level
+              attrs flags)
+        successful (snd (fst (fst loop_args))) (snd loop_args).
+  Proof.
+     induction level; cbn [mm_map_level_loop_arguments].
+    { (* level = 0 *)
+      simplify_no_break.
+      cbv [is_while_loop_invariant]; simplify_no_break; [ solve [simplify] | ].
+      Time
+      cbv [mm_map_level_loop_invariant] in *; basics;
+        (* some [pose proof] statements about the current [begin] address, to
              help [solver] with arithmetic goals *)
-          match goal with
-          | H : is_begin_or_block_start _ ?b ?level |- _ =>
-            pose proof (mm_start_of_next_block_le_level_end b level);
-              pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
-          end;
-          (* prove the cases where the loop didn't fail *)
-          try match goal with
-                |- ?failed = true \/ _ =>
-                destruct failed; [ left; solver | right; basics ] end;
-          (* many of the invariant clauses can be solved quickly *)
-          try match goal with
-              (* solve the is_begin_or_block_start clause *)
-              | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
-                cbv [is_begin_or_block_start];
-                  solve [auto using mm_start_of_next_block_is_start]
-              (* solve the init_begin <= begin clause *)
-              | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
-                pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
-              (* solve the end_of_level_or_inidces_match clause *)
-              | |- context [end_of_level_or_index_matches _ (mm_start_of_next_block ?x _)] =>
-                cbv [end_of_level_or_index_matches];
-                  rewrite <-mm_level_end_eq2 with (b:=x) by (repeat inversion_bool; try solver);
-                  match goal with
-                  | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
-                  end; rewrite mm_index_start_of_next_block; solver
-              (* get rid of any easy invariant clause we can just solve with [solver] *)
-              | _ => solver
-              end.
-        (* 6 attrs_changed_in_range proofs *)
-        { cbv [new_attrs] in *.
-          repeat break_match; try solver; [ ].
-          repeat inversion_bool.
-          rewrite N.min_l in * by solver.
-          let new_begin :=
-              match goal with
-                H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-          cbv [attrs_changed_in_range
-                 has_uniform_attrs attrs_outside_range_unchanged] in *;
-            basics; try solver;
-              try match goal with H : _ |- _ => apply H; solver end; [ ];
-                let v :=
-                    match goal with |- context [va_init ?x] => x end in
-                destruct (N.lt_le_dec v new_begin); [ solver | ];
-                  apply attrs_equiv_absent;
-                  apply page_attrs'_absent;
-                  rewrite mm_index_eq2 with (b:=new_begin);
-                  solver. }
-        { (* present but has the right attributes *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
-          admit. (* TODO *) } }
-      { (* we have sufficient fuel *)
-        autorewrite with push_n2nat; solver. }
-      { (* invariant holds at start *)
-        let level := constr:(0) in
-        pose proof (mm_level_end_lt begin level).
-        simplify; cbv [is_begin_or_block_start]; try solver;
-          match goal with |- false = true \/ _ => right end;
-          basics; try rewrite N.min_l by solver;
-            cbv [end_of_level_or_index_matches]; solver. }
-      { (* invariant implies conclusion *)
-        basics;
-          match goal with H : _ |- _ =>
-                          apply H; solve [simplify] end. } }
+        match goal with
+        | H : is_begin_or_block_start _ ?b ?level |- _ =>
+          pose proof (mm_start_of_next_block_le_level_end b level);
+            pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
+        end;
+        (* concrete state is valid *)
+        match goal with
+        | H : represents _ ?c |- _ =>
+          assert (is_valid c) by eauto using represents_valid_concrete end;
+        cbv [is_valid] in *;
+        repeat match goal with
+               | _ => progress basics
+               (* prove the cases where the loop didn't fail *)
+               | |- ?failed = true \/ _ =>
+                 case_eq failed; basics; [ left; solver | right; basics ]
+               (* destruct end_of_level_or_index_matches and eliminate end-of-level
+                  case (since it happens at the very end of the loop, it couldn't
+                  have happened in the previous loop run) *)
+               | H : context [end_of_level_or_index_matches] |- _ =>
+                 cbv [end_of_level_or_index_matches] in H;
+                   basics; [ repeat inversion_bool; solver | ]
+               (* solve the is_begin_or_block_start clause *)
+               | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
+                 cbv [is_begin_or_block_start];
+                   solve [auto using mm_start_of_next_block_is_start]
+               (* solve the init_begin <= begin clause *)
+               | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
+                 pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
+               (* solve the end_of_level_or_index_matches clause *)
+               | |- context [end_of_level_or_index_matches _ ?x ?l (mm_index ?x ?l)] =>
+                 cbv [end_of_level_or_index_matches]; right; solver
+               (* solve the end_of_level_or_index_matches clause *)
+               | |- context [end_of_level_or_index_matches _ (mm_start_of_next_block ?x _)] =>
+                 cbv [end_of_level_or_index_matches];
+                   rewrite <-mm_level_end_eq2 with (b:=x) by (repeat inversion_bool; try solver);
+                   match goal with
+                   | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
+                   end; rewrite mm_index_start_of_next_block; solver
+               | _ => rewrite mm_replace_entry_fallback by solver
+               | _ => rewrite mm_populate_table_pte_fallback by solver
+               | |- locations_exclusive _ _ => eapply mm_replace_entry_exclusive; solver
+               | |- locations_exclusive _ _ => eapply mm_populate_table_pte_exclusive; solver
+               | |- represents _ _ => eapply mm_populate_table_pte_represents; solver
+               | _ => progress autorewrite with concrete_unchanged
+               | _ => simplify_step
+               end.
+      { cbv [new_attrs] in *.
+        repeat break_match; try solver; [ ].
+        repeat inversion_bool.
+        rewrite N.min_l in * by solver.
+        let new_begin :=
+            match goal with
+              H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
+        cbv [attrs_changed_in_range
+               has_uniform_attrs attrs_outside_range_unchanged] in *;
+          basics; try solver;
+            try match goal with H : _ |- _ => apply H; solver end; [ ];
+              let v :=
+                  match goal with |- context [va_init ?x] => x end in
+              destruct (N.lt_le_dec v new_begin); [ solver | ];
+                apply attrs_equiv_absent;
+                apply page_attrs'_absent;
+                rewrite mm_index_eq2 with (b:=new_begin);
+                solver. }
+      { (* present but has the right attributes *)
+        admit. (* TODO *) }
+      { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
+        admit. (* TODO *) }
+      { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
+        admit. (* TODO *) } }
     { (* level > 0 *)
-    { basics.
-      let level := constr:(S level) in
-      eapply
-        (while_loop_invariant_strong
-           (mm_map_level_loop_invariant
-            conc begin (N.min (mm_level_end begin level) end_) idxs table level 
-            attrs flags)
-           (fun state => P (let '(s, _, _, table, _, failed, ppool) := state in
-                            (negb failed, table, s, ppool)))
-           (fun state => let '(_, _, _, _, _, failed, _) := state in
-                         negb failed)
-           (fun state => let '(_, begin, _, _, _, _, _) := state in
-                         N.to_nat begin)
-           (N.to_nat (N.min (mm_level_end begin level) end_)));
-        cbv [mm_map_level_loop_invariant] in *.
-      { (* while loop "value" is okay *)
-        cbv [is_while_loop_value]; simplify;
-          try match goal with |- N.to_nat _ < N.to_nat _ =>
-                              apply N.to_nat_lt_iff end;
-          eauto using N.to_nat_ltb, mm_start_of_next_block_lt, mm_entry_size_power_two. }
-      { (* while loop "successful" is okay *)
-        cbv [is_while_loop_success]; simplify. }
-      { (* don't break before finishing loop *)
-        simplify. }
-      { (* invariant holds over loop *)
-        simplify; autorewrite with concrete_unchanged;
-          (* destruct end_of_level_or_index_matches and eliminate end-of-level
-             case (since it happens at the very end of the loop, it couldn't
-             have happened in the previous loop run) *)
-          try match goal with
-              | H : context [end_of_level_or_index_matches] |- _ =>
-                cbv [end_of_level_or_index_matches] in H;
-                  basics; [ repeat inversion_bool; solver | ]
-              end;
-          (* some [pose proof] statements about the current [begin] address, to
-             help [solver] with arithmetic goals *)
-          match goal with
-          | H : is_begin_or_block_start _ ?b ?level |- _ =>
-            pose proof (mm_start_of_next_block_le_level_end b level);
-              pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
-          end;
-          (* prove the cases where the loop didn't fail *)
-          try match goal with
-                |- ?failed = true \/ _ =>
-                destruct failed; [ left; solver | right; basics ] end;
-          (* many of the invariant clauses can be solved quickly *)
-          try match goal with
-              (* solve the is_begin_or_block_start clause *)
-              | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
-                cbv [is_begin_or_block_start];
-                  solve [auto using mm_start_of_next_block_is_start]
-              (* solve the init_begin <= begin clause *)
-              | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
-                pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
-              (* solve the end_of_level_or_inidces_match clause *)
-              | |- context [end_of_level_or_index_matches _ (mm_start_of_next_block ?x _)] =>
-                cbv [end_of_level_or_index_matches];
-                  rewrite <-mm_level_end_eq2 with (b:=x) by (repeat inversion_bool; try solver);
-                  match goal with
-                  | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
-                  end; rewrite mm_index_start_of_next_block; solver
-              (* get rid of any easy invariant clause we can just solve with [solver] *)
-              | _ => solver
-              end.
-        (* 6 attrs_changed_in_range proofs *)
-        { cbv [new_attrs] in *.
-          repeat break_match; try solver; [ ].
-          repeat inversion_bool.
-          rewrite N.min_l in * by solver.
-          let new_begin :=
-              match goal with
-                H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-          cbv [attrs_changed_in_range
-                 has_uniform_attrs attrs_outside_range_unchanged] in *;
-            basics; try solver;
-              try match goal with H : _ |- _ => apply H; solver end; [ ];
-                let v :=
-                    match goal with |- context [va_init ?x] => x end in
-                destruct (N.lt_le_dec v new_begin); [ solver | ];
-                  apply attrs_equiv_absent;
-                  apply page_attrs'_absent;
-                  rewrite mm_index_eq2 with (b:=new_begin);
-                  solver. }
-        { (* present but has the right attributes *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
-          admit. (* TODO *) } }
-      { (* we have sufficient fuel *)
-        autorewrite with push_n2nat; solver. }
-      { (* invariant holds at start *)
-        admit. }
-      { (* invariant implies conclusion *)
-        basics; apply H; simplify. } }
+      simplify_no_break.
+      cbv [is_while_loop_invariant]; simplify_no_break; [ solve [simplify] | ].
+
+      (* extract information from the loop invariant *)
+      match goal with
+      | H : mm_map_level_loop_invariant _ _ _ _ _ _ _ _ _ |- _ =>
+        pose proof H; cbv [mm_map_level_loop_invariant] in H;
+          repeat match goal with
+                 | H : _ /\ _ |- _ => destruct H
+                 end
+      end.
+
+      (* concrete state is valid *)
+      match goal with
+      | H : represents _ ?c |- _ =>
+        assert (is_valid c) by eauto using represents_valid_concrete
+      end; cbv [is_valid] in *;
+        repeat match goal with
+               | H : _ /\ _ |- _ => destruct H
+               end.
+
+      (* destruct end_of_level_or_index_matches and eliminate end-of-level case *)
+      match goal with
+      | H : context [end_of_level_or_index_matches] |- _ =>
+        destruct H; [ repeat inversion_bool; subst; solver | ]
+      end.
+
+      (* use the inductive hypothesis to state that we can use the invariant for proofs about recursive calls *)
+      match goal with
+      | H : mm_map_level_loop_invariant ?abst _ ?end_ _ _ _ ?attrs ?flags
+                                        (?c, ?begin, ?pa, ?new_table, ?pte_index, _, ?ppool) |- _ =>
+        let Hinv := fresh in
+        pose proof
+             (fun conc ppool table idxs Hrep Hfallback Hexcl Hlevel =>
+                mm_map_level_loop_invariant_holds' level flags end_ attrs begin abst conc pa table ppool idxs
+                                                   (ltac:(repeat inversion_bool; solver))
+                                                   Hrep Hfallback Hexcl Hlevel
+                                                   (ltac:(apply IHlevel; repeat inversion_bool; solver)))
+          as Hinv; clear IHlevel;
+          (* specialize the invariant to the concrete state returned by mm_populate_table_pte *)
+          let ret := constr:(mm_populate_table_pte c begin new_table pte_index (S level) flags ppool) in
+          pose proof (fun i table =>
+                        Hinv (snd (fst ret)) (snd ret) table (idxs ++ cons i nil)
+                                   (ltac:(eauto using mm_populate_table_pte_represents))
+                                   (ltac:(eauto using mm_populate_table_pte_fallback))
+                                   (ltac:(eauto using mm_populate_table_pte_exclusive))
+                                   (ltac:(intros; cbv [level_from_indices] in *;
+                                          autorewrite with push_length in *; solver)))
+            as Hinvariant; clear Hinv
+      end.
+
+      (* some [pose proof] statements about the current [begin] address, to
+         help [solver] with arithmetic goals *)
+      match goal with
+      | H : is_begin_or_block_start _ ?b ?level |- _ =>
+        pose proof (mm_start_of_next_block_le_level_end b level);
+          pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
+      end.
+
+      Time
+        cbv [mm_map_level_loop_invariant]; simplify_no_break;
+        (* solve all the easy/bookkeeping clauses of the invariant immediately *)
+        try match goal with
+            | |- (begin <= _)%N => solve [simplify]
+            | |- is_begin_or_block_start _ _ _ =>
+              repeat break_match; cbn [fst snd]; cbv [is_begin_or_block_start];
+                auto using mm_start_of_next_block_is_start
+            | |- represents _ _ =>
+              (* specialize the invariant to make proofs more efficient *)
+              pose proof (fun i table =>
+                            Hinvariant i table
+                                       (fun ret => represents abst (snd (fst ret)))
+                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
+                clear Hinvariant;
+                simplify; autorewrite with concrete_unchanged;
+                  solve [eauto using mm_populate_table_pte_represents]
+            | |- mpool_fallback _ = _ =>
+              (* specialize the invariant to make proofs more efficient *)
+              pose proof (fun i table =>
+                            Hinvariant i table
+                                       (fun ret => mpool_fallback (snd ret) = Some (api_page_pool (snd (fst ret))))
+                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
+                clear Hinvariant;
+                simplify; autorewrite with concrete_unchanged push_fallback;
+                  solve [eauto using mm_populate_table_pte_represents]
+            | |- locations_exclusive _ _ =>
+              (* specialize the invariant to make proofs more efficient *)
+              pose proof (fun i table =>
+                            Hinvariant i table
+                                       (fun ret => locations_exclusive (ptable_deref (snd (fst ret))) (snd ret))
+                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
+                clear Hinvariant;
+                simplify; autorewrite with concrete_unchanged;
+                  solve [eauto using mm_replace_entry_exclusive,
+                         mm_free_page_pte_exclusive, mm_populate_table_pte_exclusive]
+            | |- end_of_level_or_index_matches _ _ _ _ =>
+              simplify;
+                match goal with
+                | |- end_of_level_or_index_matches _ ?x ?l (mm_index ?x ?l) =>
+                  cbv [end_of_level_or_index_matches]; right; solver
+                | |- context [end_of_level_or_index_matches _ (mm_start_of_next_block ?x _)] =>
+                  cbv [end_of_level_or_index_matches];
+                    rewrite <-mm_level_end_eq2 with (b:=x) by (repeat inversion_bool; try solver);
+                    match goal with
+                    | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
+                    end; rewrite mm_index_start_of_next_block; solver
+                end
+            end;
+        (* two cases, both the attrs_changed_in_range clause; left is failed=true so goes easily *)
+        [ solve [simplify] | ].
+      simplify; right; autorewrite with concrete_unchanged;
+        try match goal with
+            | |- _ = _ =>
+              try solve [ repeat first [inversion_bool | progress basics | solver ] ]
+            end.
+        (* 4 cases same as level = 0 case *)
+        (* 4 cases requiring inductive reasoning *)
+        (* 2 cases needing same-attributes-if-commit-false (prove via mm_populate_table_pte and altering invariant) *)
+        1-10:admit. }
+  Admitted.
+
+  Lemma mm_map_level_loop_invariant_holds level flags end_ attrs begin :
+    forall abst conc pa table ppool idxs,
+      (begin < end_)%N ->
+      represents abst conc ->
+      mpool_fallback ppool = Some (api_page_pool conc) ->
+      locations_exclusive (ptable_deref conc) ppool ->
+      S level = level_from_indices (stage_from_flags flags) idxs ->
+      let end_capped := N.min (mm_level_end begin level) end_ in
+      let cond := (fun '(_, begin, _, _, _, _, _) => (begin <? end_capped)%N) in
+      forall P : _ -> Prop,
+        (forall state,
+            (cond state = false \/ negb (snd (fst state)) = false) ->
+            mm_map_level_loop_invariant
+              abst begin (N.min (mm_level_end begin level) end_) idxs table level
+              attrs flags state ->
+            P (let '(s, _, _, table, _, failed, ppool) := state in
+               (negb failed, table, s, ppool))) ->
+        P (mm_map_level conc begin end_ pa attrs table level flags ppool).
+  Proof.
+    cbv zeta; basics.
+    eapply mm_map_level_loop_invariant_holds'; eauto; [ ].
+    apply mm_map_level_loop_invariant_is_invariant; auto.
   Qed.
-        
-
-
 
   (* mm_map_level doesn't change the *abstract* state; it is permitted to make
      tables where there used to be blocks and vice versa, but it is up to the
@@ -1230,31 +1204,28 @@ Section Proofs.
   Lemma mm_map_level_represents
         abst (conc : concrete_state) level :
     forall begin end_ pa attrs table flags ppool,
+      (begin < end_)%N ->
       mpool_fallback ppool = Some (api_page_pool conc) ->
       locations_exclusive (ptable_deref conc) ppool ->
+      level <= max_level (stage_from_flags flags) ->
       represents abst conc ->
       represents
         abst
         (snd (fst (mm_map_level
                      conc begin end_ pa attrs table level flags ppool))).
   Proof.
-    induction level; autounfold; cbn [mm_map_level].
-      repeat match goal with
-             | _ => simplify_step
-             | _ => apply while_loop_invariant_strong; [ | solver .. ]
-             | _ => rewrite mm_free_page_pte_represents
-             | _ => rewrite mm_replace_entry_represents
-             | _ => apply mm_populate_table_pte_represents; solver
-             end.
-    {
-      apply while_loop_invariant_strong.
-    apply mm_populate_table_pte_represents; try solver.
-    (* TODO: the while loop invariant needs to track these preconditions *)
+    basics.
+    eapply mm_map_level_loop_invariant_holds
+      with (idxs:=repeat 0 (max_level (stage_from_flags flags) - level + 1)); eauto.
+    { cbv [level_from_indices]; autorewrite with push_length; solver. }
+    { cbv [mm_map_level_loop_invariant]; simplify. }
   Qed.
-  Hint Rewrite mm_map_level_represents : concrete_unchanged.
 
   Lemma mm_map_level_table_attrs conc level :
-    forall begin end_ pa attrs table flags ppool ptr idxs,
+    forall abst begin end_ pa attrs table flags ppool ptr idxs,
+      represents abst conc ->
+      mpool_fallback ppool = Some (api_page_pool conc) ->
+      locations_exclusive (ptable_deref conc) ppool ->
       conc.(ptable_deref) ptr = table ->
       S level = level_from_indices (stage_from_flags flags) idxs ->
       has_location_in_state conc ptr idxs ->
@@ -1269,264 +1240,22 @@ Section Proofs.
                              (new_attrs attrs flags) begin end_
                              (stage_from_flags flags).
   Proof.
-    induction level; cbn [mm_map_level].
-    { (* level = 0 *)
-      intros begin end_ pa attrs table flags ppool ptr idxs.
-      intros until 5.
-      (* use [while_loop_invariant] with [mm_map_level_loop_invariant] as the
-       invariant *)
-      let level := constr:(0) in
-      let end_ := constr:(N.min (mm_level_end begin level) end_) in
-      match goal with
-      | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
-        assert (mm_map_level_loop_invariant
-                  conc begin end_ idxs table level attrs flags
-                  (@while_loop _ iter cond start body));
-          [ apply while_loop_invariant | ]
-      end;
-        cbv [mm_map_level_loop_invariant] in *; [ | | ].
-      { (* subgoal 1 : invariant holds over loop body *)
-        simplify; right; basics; autorewrite with concrete_unchanged;
-          (* destruct end_of_level_or_index_matches and eliminate end-of-level
-             case (since it happens at the very end of the loop, it couldn't
-             have happened in the previous loop run) *)
-          match goal with
-          | H : context [end_of_level_or_index_matches] |- _ =>
-            cbv [end_of_level_or_index_matches] in H;
-              basics; [ repeat inversion_bool; solver | ]
-          end;
-          (* some [pose proof] statements about the current [begin] address, to
-             help [solver] with arithmetic goals *)
-          match goal with
-          | H : is_begin_or_block_start _ ?b ?level |- _ =>
-            pose proof (mm_start_of_next_block_le_level_end b level);
-              pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
-          end;
-          (* most of the invariant clauses can be solved quickly *)
-          try match goal with
-              (* solve the is_begin_or_block_start clause *)
-              | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
-                cbv [is_begin_or_block_start];
-                  solve [auto using mm_start_of_next_block_is_start]
-              (* solve the init_begin <= begin clause *)
-              | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
-                pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
-              (* solve the end_of_level_or_inidces_match clause *)
-              | |- context [end_of_level_or_index_matches] =>
-                cbv [end_of_level_or_index_matches];
-                  rewrite <-mm_level_end_eq2 with (b:=n) by (repeat inversion_bool; try solver);
-                  match goal with
-                  | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
-                  end; rewrite mm_index_start_of_next_block; solver
-              (* get rid of any easy invariant clause we can just solve with [solver] *)
-              | _ => solver
-              end.
-        { cbv [new_attrs] in *.
-          repeat break_match; try solver; [ ].
-          repeat inversion_bool.
-          rewrite N.min_l in * by solver.
-          let new_begin :=
-              match goal with
-                H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-          cbv [attrs_changed_in_range
-                 has_uniform_attrs attrs_outside_range_unchanged] in *;
-            basics; try solver;
-              try match goal with H : _ |- _ => apply H; solver end; [ ];
-                let v :=
-                    match goal with |- context [va_init ?x] => x end in
-                destruct (N.lt_le_dec v new_begin); [ solver | ];
-                  apply attrs_equiv_absent;
-                  apply page_attrs'_absent;
-                  rewrite mm_index_eq2 with (b:=new_begin);
-                  solver. }
-        { (* present but has the right attributes *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
-          admit. (* TODO *) } }
-      { (* subgoal 2 : invariant holds at start *)
-        let level := constr:(0) in
-        pose proof (mm_level_end_lt begin level).
-        simplify; right; basics; try rewrite N.min_l by solver;
-          cbv [is_begin_or_block_start end_of_level_or_index_matches]; try solver. }
-      { (* subgoal 3 : invaraint implies conclusion *)
-        repeat inversion_bool; simplify; repeat inversion_bool; try solver; [ | ];
-          match goal with
-          | |- context [@while_loop _ ?iter ?cond ?st ?body] =>
-
-            (* use  [while_loop_completed] to say that we must have reached our end
-           condition and therefore [begin >= end_] *)
-            let level := constr:(0) in
-            assert (cond (@while_loop _ iter cond st body) = false);
-              [ apply (while_loop_completed iter cond body
-                                            (fun '(_,_,_,_,_,failed,_) => negb failed)
-                                            (fun '(_,begin,_,_,_,_,_) => N.to_nat begin)
-                                            (N.to_nat (N.min (mm_level_end begin level) end_))) | ];
-
-              (* store the loop result as a varaible and then "forget" the
-               variable's value; we don't need that information (that our result
-               was from a while loop) any more, and disposing of it speeds up
-               proofs *)
-              let H := fresh in
-              let RET := fresh "RET" in
-              remember (@while_loop _ iter cond st body) as RET eqn:H;
-                clear H
-          end;
-          (* prove all [while_loop_completed]'s preconditions *)
-          repeat match goal with
-                 | _ => progress simplify_step
-                 | _ => apply N.to_nat_ltb
-                 | |- N.to_nat _ < N.to_nat _ => apply N.to_nat_lt_iff
-                 | _ => rewrite Nnat.N2Nat.inj_sub; solver
-                 | _ => solve [auto using mm_start_of_next_block_lt,
-                               mm_entry_size_power_two]
-                 end.
-        { repeat inversion_bool.
-          match goal with H : context [N.min (mm_level_end ?x ?l) ?y] |- _ =>
-                          destruct (N.lt_le_dec (mm_level_end x l) y);
-                            rewrite ?N.min_r, ?N.min_l in * by solver
-          end;
-            try (apply attrs_changed_in_range_level_end; solver); solver. }
-        { repeat inversion_bool.
-          match goal with H : context [N.min (mm_level_end ?x ?l) ?y] |- _ =>
-                          destruct (N.lt_le_dec (mm_level_end x l) y);
-                            rewrite ?N.min_r, ?N.min_l in * by solver
-          end;
-            try (apply attrs_changed_in_range_level_end; solver); solver. } } }
-    { (* level <> 0; inductive case *)
-      intros begin end_ pa attrs table flags ppool ptr idxs.
-      intros until 5.
-      (* use [while_loop_invariant] with [mm_map_level_loop_invariant] as the
-       invariant *)
-      let level := constr:(S level) in
-      let end_ := constr:(N.min (mm_level_end begin level) end_) in
-      match goal with
-      | |- context [@while_loop _ ?iter ?cond ?start ?body] =>
-        assert (mm_map_level_loop_invariant
-                  conc begin end_ idxs table level attrs flags
-                  (@while_loop _ iter cond start body));
-          [ apply while_loop_invariant | ]
-      end;
-        cbv [mm_map_level_loop_invariant] in *; [ | | ].
-      { (* subgoal 1 : invariant holds over loop body *)
-        simplify; right; basics; autorewrite with concrete_unchanged;
-          (* destruct end_of_level_or_index_matches and eliminate end-of-level
-             case (since it happens at the very end of the loop, it couldn't
-             have happened in the previous loop run) *)
-          match goal with
-          | H : context [end_of_level_or_index_matches] |- _ =>
-            cbv [end_of_level_or_index_matches] in H;
-              basics; [ repeat inversion_bool; solver | ]
-          end;
-          (* some [pose proof] statements about the current [begin] address, to
-             help [solver] with arithmetic goals *)
-          match goal with
-          | H : is_begin_or_block_start _ ?b ?level |- _ =>
-            pose proof (mm_start_of_next_block_le_level_end b level);
-              pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
-          end;
-          (* most of the invariant clauses can be solved quickly *)
-          try match goal with
-              (* solve the is_begin_or_block_start clause *)
-              | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
-                cbv [is_begin_or_block_start];
-                  solve [auto using mm_start_of_next_block_is_start]
-              (* solve the init_begin <= begin clause *)
-              | |- (_ <= mm_start_of_next_block ?a ?sz)%N =>
-                pose proof (mm_start_of_next_block_lt a sz ltac:(solver)); solver
-              (* solve the end_of_level_or_inidces_match clause *)
-              | |- context [end_of_level_or_index_matches] =>
-                cbv [end_of_level_or_index_matches];
-                  rewrite <-mm_level_end_eq2 with (b:=n) by (repeat inversion_bool; try solver);
-                  match goal with
-                  | |- ?a = ?b \/ _ => destruct (N.eq_dec a b); [ left; solver | right]
-                  end; rewrite mm_index_start_of_next_block; solver
-              (* get rid of any easy invariant clause we can just solve with [solver] *)
-              | _ => solver
-              | _ => repeat progress (inversion_bool; basics); solver
-              end.
-        { cbv [new_attrs] in *.
-          repeat break_match; try solver; [ ].
-          repeat inversion_bool.
-          rewrite N.min_l in * by solver.
-          let new_begin :=
-              match goal with
-                H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-          cbv [attrs_changed_in_range
-                 has_uniform_attrs attrs_outside_range_unchanged] in *;
-            basics; try solver;
-              try match goal with H : _ |- _ => apply H; solver end; [ ];
-                let v :=
-                    match goal with |- context [va_init ?x] => x end in
-                destruct (N.lt_le_dec v new_begin); [ solver | ];
-                  apply attrs_equiv_absent;
-                  apply page_attrs'_absent;
-                  rewrite mm_index_eq2 with (b:=new_begin);
-                  solver. }
-        { (* present but has the right attributes *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
-          admit. (* TODO *) }
-        { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
-          admit. (* TODO *) }
-        { (* we used mm_populate_table_pte to make/get the subtable, and then
-             after the recursive call it was empty, so we replace the entry with
-             an absent PTE. Probably the best proof for this is just that if
-             something is empty it has all-absent attributes, and so does
-             replacing with an absent PTE. *)
-          admit. (* TODO *) }
-        {
-          repeat inversion_bool.
-      { (* subgoal 2 : invariant holds at start *)
-        let level := constr:(S level) in
-        pose proof (mm_level_end_lt begin level).
-        simplify; right; basics; try rewrite N.min_l by solver;
-          cbv [is_begin_or_block_start end_of_level_or_index_matches]; try solver. }
-      { (* subgoal 3 : invaraint implies conclusion *)
-        repeat inversion_bool; simplify; repeat inversion_bool; try solver; [ | ];
-          match goal with
-          | |- context [@while_loop _ ?iter ?cond ?st ?body] =>
-
-            (* use  [while_loop_completed] to say that we must have reached our end
-           condition and therefore [begin >= end_] *)
-            let level := constr:(S level) in
-            assert (cond (@while_loop _ iter cond st body) = false);
-              [ apply (while_loop_completed iter cond body
-                                            (fun '(_,_,_,_,_,failed,_) => negb failed)
-                                            (fun '(_,begin,_,_,_,_,_) => N.to_nat begin)
-                                            (N.to_nat (N.min (mm_level_end begin level) end_))) | ];
-
-              (* store the loop result as a varaible and then "forget" the
-               variable's value; we don't need that information (that our result
-               was from a while loop) any more, and disposing of it speeds up
-               proofs *)
-              let H := fresh in
-              let RET := fresh "RET" in
-              remember (@while_loop _ iter cond st body) as RET eqn:H;
-                clear H
-          end;
-          (* prove all [while_loop_completed]'s preconditions *)
-          repeat match goal with
-                 | _ => progress simplify_step
-                 | _ => apply N.to_nat_ltb
-                 | |- N.to_nat _ < N.to_nat _ => apply N.to_nat_lt_iff
-                 | _ => rewrite Nnat.N2Nat.inj_sub; solver
-                 | _ => solve [auto using mm_start_of_next_block_lt,
-                               mm_entry_size_power_two]
-                 end.
-        { repeat inversion_bool.
-          match goal with H : context [N.min (mm_level_end ?x ?l) ?y] |- _ =>
-                          destruct (N.lt_le_dec (mm_level_end x l) y);
-                            rewrite ?N.min_r, ?N.min_l in * by solver
-          end;
-            try (apply attrs_changed_in_range_level_end; solver); solver. }
-        { repeat inversion_bool.
-          match goal with H : context [N.min (mm_level_end ?x ?l) ?y] |- _ =>
-                          destruct (N.lt_le_dec (mm_level_end x l) y);
-                            rewrite ?N.min_r, ?N.min_l in * by solver
-          end;
-            try (apply attrs_changed_in_range_level_end; solver); solver. } } }
+    cbv zeta; basics.
+    match goal with H : context [mm_map_level] |- _ => revert H end.
+    eapply mm_map_level_loop_invariant_holds; eauto.
+    cbv [mm_map_level_loop_invariant]; simplify; repeat inversion_bool;
+      try solver; [ ].
+   (* need to write a concrete_state_equiv that captures "owned and valid bits
+      the same" and use it everywhere, including proving attrs_changed_in_range
+      is proper over it *)
+    replace conc with c at 1 by admit.
+    rewrite N.min_r in * by solver.
+    match goal with H : context [N.min (mm_level_end ?x ?l) ?y] |- _ =>
+                    destruct (N.lt_le_dec (mm_level_end x l) y);
+                      rewrite ?N.min_r, ?N.min_l in * by solver;
+                      [ | solver ]
+    end.
+    apply attrs_changed_in_range_level_end; solver.
   Admitted.
 
   (* TODO: make locations_exclusive take a list of mpools so we can include the
@@ -1610,6 +1339,23 @@ Section Proofs.
         (reassign_pointer c ptr table).(ptable_deref) ptr' root_ptable.
   Admitted. (* TODO *)
 
+  Lemma mm_map_level_fallback level :
+    forall conc begin end_ pa attrs table flags ppool,
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    mpool_fallback ppool = Some (api_page_pool conc) ->
+    mpool_fallback ppool' = Some (api_page_pool conc').
+  Proof.
+    cbv zeta. induction level; cbn [mm_map_level].
+    { simplify; apply while_loop_invariant; simplify;
+        autorewrite with concrete_unchanged push_fallback; auto. }
+    { simplify; apply while_loop_invariant; simplify;
+        autorewrite with concrete_unchanged push_fallback;
+        auto using mm_populate_table_pte_fallback. }
+  Qed.
+
   (*** Helpers for [mm_map_root] proofs ***)
 
   (* table pointers that come before the index of [begin] don't contain any
@@ -1666,6 +1412,10 @@ Section Proofs.
       (* ..and [begin] is either equal to its starting value or is the start
          of a block *)
       /\ is_begin_or_block_start start_begin begin root_level
+      (* ...and the page tables and local page pool don't overlap *)
+      /\ locations_exclusive (ptable_deref s) ppool
+      (* and the fallback of the local page pool is the global one *)
+      /\ mpool_fallback ppool = Some (api_page_pool s)
       (* ...and we don't add/remove/change references to the root page tables  *)
       /\ (Forall (fun t_ptr =>
                     Forall
@@ -1737,6 +1487,10 @@ Section Proofs.
     (* we need to know we're actually at the root level *)
     is_root root_level flags ->
     ptable_is_root t flags ->
+    (* and that the page tables and local page pool don't overlap *)
+    locations_exclusive (ptable_deref conc) ppool ->
+    (* and that the fallback of the local page pool is the global one *)
+    mpool_fallback ppool = Some (api_page_pool conc) ->
     (* and that [begin] and [end_ - 1] are on the same level *)
     mm_level_end begin root_level = mm_level_end (end_ - 1) root_level ->
     forall abst,
@@ -1798,7 +1552,7 @@ Section Proofs.
 
       (* conclude that mm_map_level succeeded *)
       simplify; repeat inversion_bool; [ ].
-      right; rewrite !mm_map_level_represents.
+      right.
 
       (* find the current [begin] and assert its properties *)
       match goal with
@@ -1845,13 +1599,22 @@ Section Proofs.
         cbv [table_index_expression] in *; simplify; [ ].
         apply represents_valid_concrete.
         destruct abst; eexists. (* [destruct abst] is so [eexist] doesn't use [abst] *)
-        eapply reassign_pointer_represents; eauto; [ | | ].
+        eapply reassign_pointer_represents; eauto; [ | | | | ].
+        { eapply mm_map_level_represents; solver. }
         { apply has_location_nth_default with (flags:=flags); eauto. }
-        { apply mm_map_level_reassign_pointer; solver. }
+        { apply represents_valid_concrete; eexists;
+            eapply mm_map_level_represents; solver. }
+        { (* TODO : prove reassign_pointer and is_valid proper over concrete_state_equiv *)
+          match goal with |- context [reassign_pointer ?x] =>
+                          replace x with c by admit end.
+          apply mm_map_level_reassign_pointer; solver. }
         { cbv [level_from_indices]. cbv [length].
           match goal with |- context [?x + 2 - 1] =>
                           replace (x + 2 - 1) with (S x) by solver end.
           replace (root_level - 1) with (max_level (stage_from_flags flags)) by solver.
+         (* TODO : prove attrs_changed_in_range proper over concrete_state_equiv *)
+          match goal with |- context [attrs_changed_in_range (ptable_deref ?x)] =>
+                          replace x with c by admit end.
           eapply mm_map_level_table_attrs;
             cbv [level_from_indices]; autorewrite with push_length;
               try apply Bool.negb_true_iff, N.eqb_neq;
@@ -1860,6 +1623,12 @@ Section Proofs.
         cbv [is_begin_or_block_start]. right.
         apply mm_start_of_next_block_is_start;
           auto using mm_entry_size_power_two. }
+      { (* locations_exclusive *)
+        admit. (* TODO : need to prove this about mm_map_level for the local pool *) }
+      { (* mpool_fallback *)
+        simplify; autorewrite with push_fallback.
+        cbv [reassign_pointer]; cbn [api_page_pool].
+        apply mm_map_level_fallback; auto. }
       { (* index sequences don't change *)
         cbv [table_index_expression] in *; simplify; [ ].
         apply Forall_forall; intros.
@@ -1869,6 +1638,9 @@ Section Proofs.
                  rewrite Forall_forall in H; specialize (H _ ltac:(eassumption));
                    try rewrite H
                end.
+        (* TODO : prove reassign_pointer and index_sequences_to_pointer proper over concrete_state_equiv *)
+          match goal with |- context [reassign_pointer ?x] =>
+                          replace x with c by admit end.
         eapply mm_map_level_index_sequences; eauto; [ ].
         apply In_nth_default; solver. }
       { (* represents step *)
@@ -1878,6 +1650,10 @@ Section Proofs.
           by (autorewrite with push_length; lia).
         rewrite fold_left_app.
         cbn [fold_left].
+
+        (* TODO : prove reassign_pointer and represents proper over concrete_state_equiv *)
+          match goal with |- context [reassign_pointer ?x] =>
+                          replace x with c by admit end.
 
         (* swap out starting concrete state for current one *)
         match goal with
@@ -1895,6 +1671,7 @@ Section Proofs.
           try apply has_location_nth_default with (flags:=flags);
           try apply mm_map_level_reassign_pointer;
           cbv [level_from_indices]; cbn [length]; try solver; [ ].
+        destruct abst. (* so eauto doesn't insert abst where we don't want it *)
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
           destruct H; [ subst; eapply mm_map_level_table_attrs;
@@ -1968,7 +1745,7 @@ Section Proofs.
                | _ => eapply root_mm_index_out_of_range_high
                | _ => solver
                end. }
-  Qed.
+  Admitted.
 
   (* placeholder; later there will be actual expressions for the new abstract
      states *)

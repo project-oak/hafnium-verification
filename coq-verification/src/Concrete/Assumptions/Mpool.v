@@ -72,3 +72,9 @@ Axiom mpool_alloc_fallback :
     (exists fallback',
         mpool_alloc fallback = Some (fallback', new_ptr)
         /\ mpool_fallback ppool' = Some fallback').
+
+(* Freeing is simpler; it doesn't ever change the fallback because memory is
+   freed into the local pool *)
+Axiom mpool_free_fallback :
+  forall ppool ptr,
+    mpool_fallback (mpool_free ppool ptr) = mpool_fallback ppool.
