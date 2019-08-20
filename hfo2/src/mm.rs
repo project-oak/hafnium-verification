@@ -24,6 +24,9 @@
 //!
 //! We assume that the stage 1 and stage 2 page table addresses are `usize`.  It looks like that
 //! assumption might not be holding so we need to check that everything is going to be okay.
+//! 
+//! TODO(HfO2): Many functions return Option<()> to represent success or fail.
+//! Change them to return Result<(), ()> (#37.)
 
 use core::cmp;
 use core::marker::PhantomData;
