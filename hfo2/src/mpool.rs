@@ -179,6 +179,9 @@ impl Pool {
     }
 }
 
+/// Memory pool equipped with spinlock and fallback pool.
+/// TODO(HfO2): Make a trait, which generalizes Pool (linked list) and a pair of
+/// (pool, fallback) (#35.)
 #[repr(C)]
 pub struct MPool {
     pool: SpinLock<Pool>,
