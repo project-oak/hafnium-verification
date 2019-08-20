@@ -1523,7 +1523,6 @@ Section Proofs.
     locations_exclusive (update_deref deref ptr t) ppool'.
   Proof.
     cbv [locations_exclusive]; basics.
-    Search has_location update_deref.
     invert H.
     (* actually, there are no new pointers added here... *)
     (* TODO *)
