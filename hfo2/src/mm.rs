@@ -26,7 +26,7 @@
 //! assumption might not be holding so we need to check that everything is going to be okay.
 //! 
 //! TODO(HfO2): Many functions return Option<()> to represent success or fail.
-//! Change them to return Result<(), ()> (#37.)
+//! Change them to return Result<(), ()> (#34.)
 
 use core::cmp;
 use core::marker::PhantomData;
