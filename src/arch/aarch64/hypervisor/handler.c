@@ -391,8 +391,9 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		 * Not switching vCPUs, set the bit for the current vCPU
 		 * directly in the register.
 		 */
-		set_virtual_interrupt_current(
-			vcpu_get_interrupts(current())->enabled_and_pending_count > 0);
+		struct vcpu *vcpu = current();
+
+		set_virtual_interrupt_current(vcpu_is_interrupted(vcpu));
 	} else {
 		/*
 		 * About to switch vCPUs, set the bit for the vCPU to which we
@@ -400,7 +401,7 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 		 */
 		set_virtual_interrupt(
 			vcpu_get_regs(ret.new),
-			vcpu_get_interrupts(ret.new)->enabled_and_pending_count > 0);
+			vcpu_is_interrupted(ret.new));
 	}
 
 	return ret;

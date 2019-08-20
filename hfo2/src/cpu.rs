@@ -173,8 +173,12 @@ impl Interrupts {
         Ok(())
     }
 
+    /// Checks whether the vCPU's attempt to block for a message has already been interrupted or
+    /// whether it is allowed to block.
     #[inline]
     pub fn is_interrupted(&self) -> bool {
+        // Don't block if there are enabled and pending interrupts, to match behaviour of
+        // wait_for_interrupt.
         self.enabled_and_pending_count > 0
     }
 
@@ -534,6 +538,11 @@ pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *const VCpu) -> *const Cpu {
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *const VCpu) -> *mut Interrupts {
     (*vcpu).interrupts.get_mut_unchecked()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_is_interrupted(vcpu: *const VCpu) -> bool {
+    (*vcpu).interrupts.lock().is_interrupted()
 }
 
 /// Check whether the given vcpu_inner is an off state, for the purpose of
