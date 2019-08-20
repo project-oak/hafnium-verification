@@ -336,11 +336,8 @@ impl VmInner {
     /// pages must not be shared.
     ///
     /// Returns:
-    ///  - -1 on failure.
-    ///  - 0 on success if no further action is needed.
-    ///  - 1 if it was called by the primary VM and the primary VM now needs to
-    ///    wake up or kick waiters. Waiters should be retrieved by calling
-    ///    hf_mailbox_waiter_get.
+    ///  - None on failure.
+    ///  - Some(()) on success.
     pub fn configure(
         &mut self,
         send: ipaddr_t,
