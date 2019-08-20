@@ -78,6 +78,14 @@ Axiom stage2_root_table_count_ok : arch_mm_stage2_root_table_count < Nat.pow 2 P
 Axiom stage1_max_level_pos : 0 < arch_mm_stage1_max_level.
 Axiom stage2_max_level_pos : 0 < arch_mm_stage2_max_level.
 
+(* absent and block PTEs are not tables *)
+Axiom absent_not_table :
+  forall level,
+    arch_mm_pte_is_table (arch_mm_absent_pte level) level = false.
+Axiom block_not_table :
+  forall level pa attrs,
+    arch_mm_pte_is_table (arch_mm_block_pte level pa attrs) level = false.
+
 (* shorthand definitions just for this file to make axiom statements neater *)
 Local Notation get_bit n bit := (negb (N.eqb (N.land n bit) 0)). (* (n & bit) != 0 *)
 
