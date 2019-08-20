@@ -1128,7 +1128,6 @@ fn share_memory(
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if vm_id == from.id {
-        assert!(false);
         return None;
     }
 
