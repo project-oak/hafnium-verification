@@ -67,6 +67,10 @@ struct vcpu_fault_info {
 	int mode;
 };
 
+/**
+ * Vcpu has forward declaration only. Its detailed structure is moved to the
+ * Rust code (vcpu.rs.)
+ */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wvisibility"
 struct vcpu;
