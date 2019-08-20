@@ -457,13 +457,17 @@ impl VmInner {
     }
 
     pub fn debug_log(&mut self, id: spci_vm_id_t, c: c_char) {
-        if c == '\n' as u32 as u8 || c == '\0' as u32 as u8 || self.log_buffer.is_full() {
-            // flush the buffer.
+        let flush = if c == b'\n' || c == b'\0' {
+            true
+        } else {
+            self.log_buffer.push(c);
+            self.log_buffer.is_full()
+        };
+
+        if flush {
             let log = str::from_utf8(&self.log_buffer).unwrap_or("non-UTF8 bytes");
             dlog!("VM {}: {}\n", id, log);
             self.log_buffer.clear();
-        } else {
-            self.log_buffer.push(c);
         }
     }
 }
