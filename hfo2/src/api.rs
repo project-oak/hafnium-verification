@@ -988,7 +988,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
     //       mapping of the whole range. Such an approach will limit the
     //       changes to stage-1 tables and will allow only local invalidation.
 
-    if let None = hypervisor_ptable.identity_map(begin, end, Mode::W, ppool) {
+    if hypervisor_ptable.identity_map(begin, end, Mode::W, ppool).is_none() {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         hypervisor_ptable.defrag(ppool);
