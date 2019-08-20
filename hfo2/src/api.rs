@@ -654,6 +654,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // at spci_msg_handle_architected_message will make several accesses to
         // fields in message_buffer. The memory area message_buffer must be
         // exclusively owned by Hf so that TOCTOU issues do not arise.
+        // TODO(HfO2): This code looks unsafe. Port spci_architected_message.c
+        // and avoid creating VmLocked manually.
         ret = spci_msg_handle_architected_message(
             VmLocked { vm: to },
             VmLocked { vm: from },
