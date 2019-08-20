@@ -538,7 +538,7 @@ pub unsafe extern "C" fn api_vm_configure(
     let mut vm_inner = (*vm).inner.lock();
     if vm_inner
         .configure(send, recv, API_PAGE_POOL.get_ref())
-        .is_none()
+        .is_err()
     {
         return -1;
     }
