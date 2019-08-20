@@ -44,12 +44,14 @@ use crate::vm::*;
 // of a page.
 const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
-/// A global page pools for sharing memories. Its mutability only needs to
-/// initialize.
+/// A global page pool for sharing memories. Its mutability is needed only for
+/// initialization.
 static mut API_PAGE_POOL: MaybeUninit<MPool> = MaybeUninit::uninit();
 
 /// Initialises the API page pool by taking ownership of the contents of the
 /// given page pool.
+/// TODO(HfO2): The ownership of `ppool` is actually moved from `one_time_init`
+/// to here. Refactor this function like `Api::new(ppool: MPool) -> Api`. (#31)
 #[no_mangle]
 pub unsafe extern "C" fn api_init(ppool: *const MPool) {
     API_PAGE_POOL = MaybeUninit::new(MPool::new_from(&*ppool));
@@ -360,7 +362,6 @@ unsafe fn api_vcpu_prepare_run(
         VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read() => {
             arch_regs_set_retval(&mut (*vcpu).regs, SpciReturn::Success as uintreg_t);
         }
-        // Fall through. (TODO: isn't it too verbose?)
 
         // Allow virtual interrupts to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
@@ -669,10 +670,10 @@ pub unsafe extern "C" fn api_spci_msg_send(
         memcpy_s(
             &mut (*to_msg).payload as *mut _ as usize as _,
             SPCI_MSG_PAYLOAD_MAX,
-            // below was &mut (*(*from).mailbox.send).payload, but we can safely
-            // assume it is equal to (*from_msg).payload, even though from_msg
-            // was defined before entering critical section. That's because
-            // we do not allow vm to be configured more than once.
+            // HfO2: below was &(*(*from).mailbox.send).payload, but we can
+            // safely assume it is equal to &(*from_msg).payload, even though
+            // from_msg was defined before entering critical section. That's
+            // because we do not allow vm to be configured more than once.
             &(*from_msg).payload as *const _ as usize as _,
             size,
         );

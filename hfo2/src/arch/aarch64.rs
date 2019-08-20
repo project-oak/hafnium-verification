@@ -96,6 +96,10 @@ const REGS_FREGS: usize = REGS_LAZY + 232;
 const REGS_GIC: usize = REGS_FREGS + 528;
 
 /// Checks above constants are correct.
+/// HfO2: This checking was originally done in compile time in C. But it was
+/// impossible because Rust compiler rejects construction of variables with
+/// interior mutability (`VCpu` has `SpinLock`) in constant expressions. Hence
+/// we check those constants in runtime.
 pub fn arch_cpu_module_init() {
     assert_eq!(offset_of!(Cpu, id), CPU_ID);
     assert_eq!(offset_of!(Cpu, stack_bottom), CPU_STACK_BOTTOM);
