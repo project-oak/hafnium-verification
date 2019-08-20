@@ -1121,18 +1121,18 @@ fn share_memory(
     size: usize,
     share: HfShare,
     current: &VCpu,
-) -> Option<()> {
+) -> Result<(), ()> {
     let from: &Vm = unsafe { &*current.vm };
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if vm_id == from.id {
-        return None;
+        return Err(());
     }
 
     // Ensure the target VM exists.
     let to = unsafe { vm_find(vm_id) };
     if to.is_null() {
-        return None;
+        return Err(());
     }
 
     let to = unsafe { &*to };
@@ -1142,7 +1142,7 @@ fn share_memory(
 
     // Fail if addresses are not page-aligned.
     if !is_aligned(ipa_addr(begin), PAGE_SIZE) || !is_aligned(ipa_addr(end), PAGE_SIZE) {
-        return None;
+        return Err(());
     }
 
     let (from_mode, to_mode) = match share {
@@ -1168,25 +1168,29 @@ fn share_memory(
 
     // Ensure that the memory range is mapped with the same mode so that
     // changes can be reverted if the process fails.
-    let orig_from_mode = from_state.ptable.get_mode(begin, end)?;
-
-    // Ensure the memory range is valid for the sender. If it isn't, the sender
-    // has either shared it with another VM already or has no claim to the
-    // memory.
-    if orig_from_mode.contains(Mode::INVALID) {
-        return None;
-    }
+    // Also ensure the memory range is valid for the sender. If it isn't, the
+    // sender has either shared it with another VM already or has no claim to
+    // the memory.
+    let orig_from_mode = from_state
+        .ptable
+        .get_mode(begin, end)
+        .filter(|mode| !mode.contains(Mode::INVALID))
+        .ok_or(())?;
 
     // The sender must own the memory and have exclusive access to it in order
     // to share it. Alternatively, it is giving memory back to the owning VM.
     if orig_from_mode.contains(Mode::UNOWNED) {
-        let orig_to_mode = to_state.ptable.get_mode(begin, end)?;
+        to_state
+            .ptable
+            .get_mode(begin, end)
+            .filter(|mode| !mode.contains(Mode::UNOWNED))
+            .ok_or(())?;
 
-        if share != HfShare::Give || orig_to_mode.contains(Mode::UNOWNED) {
-            return None;
+        if share != HfShare::Give {
+            return Err(());
         }
     } else if orig_from_mode.contains(Mode::SHARED) {
-        return None;
+        return Err(());
     }
 
     let pa_begin = pa_from_ipa(begin);
@@ -1196,7 +1200,8 @@ fn share_memory(
     // recipient.
     from_state
         .ptable
-        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)?;
+        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
+        .ok_or(())?;
 
     // Clear the memory so no VM or device can see the previous contents.
     if !clear_memory(pa_begin, pa_end, &local_page_pool) {
@@ -1205,7 +1210,7 @@ fn share_memory(
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
             .is_some());
 
-        return None;
+        return Err(());
     }
 
     // Complete the transfer by mapping the memory into the recipient.
@@ -1223,10 +1228,10 @@ fn share_memory(
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
             .is_some());
 
-        return None;
+        return Err(());
     }
 
-    Some(())
+    Ok(())
 }
 #[no_mangle]
 pub unsafe extern "C" fn api_share_memory(
@@ -1248,8 +1253,8 @@ pub unsafe extern "C" fn api_share_memory(
     };
 
     match share_memory(vm_id, addr, size, share, &*current) {
-        Some(_) => 0,
-        None => -1,
+        Ok(_) => 0,
+        Err(_) => -1,
     }
 }
 
