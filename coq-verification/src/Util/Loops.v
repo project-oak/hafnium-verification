@@ -326,3 +326,50 @@ Proof.
   cbv [while_loop]; intros. rewrite while_loop'_step.
   repeat break_match; solver.
 Qed.
+
+Definition is_while_loop_value {state} value end_value cond body : Prop :=
+  (* value is < end_value iff cond is true *)
+  (forall s : state, cond s = (value s <? end_value))
+  (* ...and value decreases monotonically *)
+  /\ (forall s : state, snd (body s) = continue -> value s < value (fst (body s))).
+
+Definition is_while_loop_success {state} successful body : Prop :=
+  (* the success metric never goes from false to true *)
+  (forall s : state, successful s = false -> successful (fst (body s)) = false)
+  (* ...and success implies that the loop continues *)
+  /\ (forall s : state, successful (fst (body s)) = true -> snd (body s) = continue).
+
+Definition is_while_loop_invariant
+           {state} (inv : state -> Prop) successful cond body : Prop :=
+  (* the loop only breaks when the continuation condition or success condition
+       is false anyway -- this guarantees that if successful = true, the loop
+       completed *)
+  (forall s, cond s = true -> inv s ->
+             snd (body s) = continue
+             \/ cond (fst (body s)) = false
+             \/ successful (fst (body s)) = false)
+  (* ...and invariant holds over loop *)
+  /\ (forall s : state, cond s = true -> inv s -> inv (fst (body s))).
+
+Lemma while_loop_invariant_strong
+      {state} (inv P : state -> Prop) (successful : state -> bool)
+      (value : state -> nat) (end_value : nat)
+      max_iterations cond body start :
+  is_while_loop_value value end_value cond body ->
+  is_while_loop_success successful body ->
+  is_while_loop_invariant inv successful cond body ->
+  (* we have enough fuel *)
+  end_value - value start <= max_iterations ->
+  (* invariant holds at start *)
+  inv start ->
+  (* invariant implies conclusion *)
+  (forall s, inv s -> (cond s = false \/ successful s = false) -> P s) ->
+  P (while_loop (max_iterations:=max_iterations) cond start body).
+Proof.
+  cbv [is_while_loop_value is_while_loop_success is_while_loop_invariant]; basics.
+  match goal with H : _ |- _ => apply H end.
+  { apply while_loop_invariant; eauto. }
+  { match goal with |- context [successful ?s] =>
+                    case_eq (successful s); basics; try solver end.
+    left. eapply while_loop_completed; eauto. }
+Qed.
