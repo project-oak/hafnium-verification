@@ -803,8 +803,6 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     }
 
     // Enqueue notification to waiting VM.
-    // TODO: Is ready_list indeed a queue? I think API module treating it like
-    // a stack.
     let waiting_vm = (*entry).waiting_vm;
 
     let mut vm_inner = (*waiting_vm).inner.lock();
