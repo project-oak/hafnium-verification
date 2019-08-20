@@ -149,7 +149,7 @@ impl Mailbox {
         pa_recv_begin: paddr_t,
         pa_recv_end: paddr_t,
         local_page_pool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
 
         // Map the send page as read-only in the hypervisor address space.
@@ -160,7 +160,7 @@ impl Mailbox {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
             hypervisor_ptable.defrag(local_page_pool);
-            return None;
+            return Err(());
         }
 
         // Map the receive page as writable in the hypervisor address space. On
@@ -177,10 +177,10 @@ impl Mailbox {
                 .unmap(pa_send_begin, pa_send_end, local_page_pool)
                 .is_some());
 
-            return None;
+            return Err(());
         }
 
-        Some(())
+        Ok(())
     }
 
     pub fn get_send_ptr(&self) -> *const SpciMessage {
@@ -204,11 +204,11 @@ pub struct VmInner {
 
 impl VmInner {
     /// Initializes VmInner.
-    pub unsafe fn init(&mut self, vm: *mut Vm, ppool: &mut MPool) -> Option<()> {
+    pub unsafe fn init(&mut self, vm: *mut Vm, ppool: &mut MPool) -> Result<(), ()> {
         self.mailbox.init();
 
         if !mm_vm_init(&mut self.ptable, ppool) {
-            return None;
+            return Err(());
         }
 
         // Initialise waiter entries.
@@ -218,7 +218,7 @@ impl VmInner {
             list_init(&mut self.wait_entries[i].ready_links);
         }
 
-        Some(())
+        Ok(())
     }
 
     /// Retrieves the next waiter and removes it from the wait list if the VM's
@@ -262,7 +262,7 @@ impl VmInner {
         pa_recv_end: paddr_t,
         orig_recv_mode: Mode,
         fallback_mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         // Create a local pool so any freed memory can't be used by another
         // thread. This is to ensure the original mapping can be restored if
         // any stage of the process fails.
@@ -274,7 +274,7 @@ impl VmInner {
             pa_send_end,
             Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
             &local_page_pool,
-        )?;
+        ).ok_or(())?;
 
         if self.ptable.identity_map(
             pa_recv_begin,
@@ -295,7 +295,7 @@ impl VmInner {
                     &local_page_pool
                 )
                 .is_some());
-            return None;
+            return Err(());
         }
 
         if self.mailbox.configure_stage1(
@@ -304,8 +304,7 @@ impl VmInner {
             pa_recv_begin,
             pa_recv_end,
             &local_page_pool,
-        ).is_none() {
-            // goto fail_undo_send_and_recv;
+        ).is_err() {
             assert!(self
                 .ptable
                 .identity_map(
@@ -326,10 +325,10 @@ impl VmInner {
                 )
                 .is_some());
 
-            return None;
+            return Err(());
         }
 
-        Some(())
+        Ok(())
     }
 
     /// Configures the VM to send/receive data through the specified pages. The
@@ -343,10 +342,10 @@ impl VmInner {
         send: ipaddr_t,
         recv: ipaddr_t,
         fallback_mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         // Fail if addresses are not page-aligned.
         if !is_aligned(ipa_addr(send), PAGE_SIZE) || !is_aligned(ipa_addr(recv), PAGE_SIZE) {
-            return None;
+            return Err(());
         }
 
         // Convert to physical addresses.
@@ -358,12 +357,12 @@ impl VmInner {
 
         // Fail if the same page is used for the send and receive pages.
         if pa_addr(pa_send_begin) == pa_addr(pa_recv_begin) {
-            return None;
+            return Err(());
         }
 
         // We only allow these to be setup once.
         if self.is_configured() {
-            return None;
+            return Err(());
         }
 
         // Ensure the pages are valid, owned and exclusive to the VM and that
@@ -373,13 +372,13 @@ impl VmInner {
             .get_mode(send, ipa_add(send, PAGE_SIZE))
             .filter(|mode| mode.valid_owned_and_exclusive())
             .filter(|mode| mode.contains(Mode::R))
-            .filter(|mode| mode.contains(Mode::W))?;
+            .filter(|mode| mode.contains(Mode::W)).ok_or(())?;
 
         let orig_recv_mode = self
             .ptable
             .get_mode(recv, ipa_add(recv, PAGE_SIZE))
             .filter(|mode| mode.valid_owned_and_exclusive())
-            .filter(|mode| mode.contains(Mode::R))?;
+            .filter(|mode| mode.contains(Mode::R)).ok_or(())?;
 
         self.configure_pages(
             pa_send_begin,
