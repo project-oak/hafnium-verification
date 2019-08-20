@@ -606,19 +606,19 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // buffer. Since in spci_msg_handle_architected_message we may call
     // api_spci_share_memory which must hold the `from` lock, we must hold the
     // `from` lock at this point to prevent a deadlock scenario.
-    let (mut to_state, mut from_state) = SpinLock::lock_both(&(*to).inner, &(*from).inner);
+    let (mut to_inner, mut from_inner) = SpinLock::lock_both(&(*to).inner, &(*from).inner);
 
-    if !to_state.is_empty() || !to_state.is_configured() {
+    if !to_inner.is_empty() || !to_inner.is_configured() {
         // Fail if the target isn't currently ready to receive data,
         // setting up for notification if requested.
         if notify {
-            from_state.wait(&mut to_state, (*to).id);
+            from_inner.wait(&mut to_inner, (*to).id);
         }
 
         return SpciReturn::Busy;
     }
 
-    let to_msg = to_state.get_recv_ptr();
+    let to_msg = to_inner.get_recv_ptr();
 
     // Handle architected messages.
     if !from_msg_replica.flags.contains(SpciMessageFlags::IMPDEF) {
@@ -687,12 +687,12 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Messages for the primary VM are delivered directly.
     if (*to).id == HF_PRIMARY_VM_ID {
-        to_state.set_read();
+        to_inner.set_read();
         *next = api_switch_to_primary(current, primary_ret, VCpuStatus::Ready);
         return ret;
     }
 
-    to_state.set_received();
+    to_inner.set_received();
 
     // Return to the primary VM directly or with a switch.
     if (*from).id != HF_PRIMARY_VM_ID {
@@ -1027,8 +1027,8 @@ pub unsafe extern "C" fn api_spci_share_memory(
     memory_to_attributes: u32,
     share: usize,
 ) -> SpciReturn {
-    let to_state = (*to_locked.vm).inner.get_mut_unchecked();
-    let from_state = (*from_locked.vm).inner.get_mut_unchecked();
+    let to_inner = (*to_locked.vm).inner.get_mut_unchecked();
+    let from_inner = (*from_locked.vm).inner.get_mut_unchecked();
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if to_locked.vm == from_locked.vm {
@@ -1078,7 +1078,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
 
     // First update the mapping for the sender so there is not overlap with the
     // recipient.
-    if from_state
+    if from_inner
         .ptable
         .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
         .is_none()
@@ -1087,16 +1087,16 @@ pub unsafe extern "C" fn api_spci_share_memory(
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if to_state
+    if to_inner
         .ptable
         .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
         .is_none()
     {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
-        from_state.ptable.defrag(&local_page_pool);
+        from_inner.ptable.defrag(&local_page_pool);
 
-        assert!(from_state
+        assert!(from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
             .is_some());
@@ -1164,14 +1164,14 @@ fn share_memory(
     // this.
     let local_page_pool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
 
-    let (mut from_state, mut to_state) = SpinLock::lock_both(&(*from).inner, &(*to).inner);
+    let (mut from_inner, mut to_inner) = SpinLock::lock_both(&(*from).inner, &(*to).inner);
 
     // Ensure that the memory range is mapped with the same mode so that
     // changes can be reverted if the process fails.
     // Also ensure the memory range is valid for the sender. If it isn't, the
     // sender has either shared it with another VM already or has no claim to
     // the memory.
-    let orig_from_mode = from_state
+    let orig_from_mode = from_inner
         .ptable
         .get_mode(begin, end)
         .filter(|mode| !mode.contains(Mode::INVALID))
@@ -1180,7 +1180,7 @@ fn share_memory(
     // The sender must own the memory and have exclusive access to it in order
     // to share it. Alternatively, it is giving memory back to the owning VM.
     if orig_from_mode.contains(Mode::UNOWNED) {
-        to_state
+        to_inner
             .ptable
             .get_mode(begin, end)
             .filter(|mode| !mode.contains(Mode::UNOWNED))
@@ -1198,14 +1198,14 @@ fn share_memory(
 
     // First update the mapping for the sender so there is not overlap with the
     // recipient.
-    from_state
+    from_inner
         .ptable
         .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
         .ok_or(())?;
 
     // Clear the memory so no VM or device can see the previous contents.
     if !clear_memory(pa_begin, pa_end, &local_page_pool) {
-        assert!(from_state
+        assert!(from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
             .is_some());
@@ -1214,16 +1214,16 @@ fn share_memory(
     }
 
     // Complete the transfer by mapping the memory into the recipient.
-    if to_state
+    if to_inner
         .ptable
         .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
         .is_none()
     {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
-        from_state.ptable.defrag(&local_page_pool);
+        from_inner.ptable.defrag(&local_page_pool);
         // goto fail_return_to_sender;
-        assert!(from_state
+        assert!(from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
             .is_some());
