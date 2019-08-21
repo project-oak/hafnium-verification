@@ -703,10 +703,18 @@ Section Proofs.
   Qed.
 
   (* TODO : move *)
-  Lemma attrs_equiv_absent attrs :
-    attrs_present attrs = false -> attrs_equiv attrs absent_attrs.
+  Lemma attrs_equiv_absent attrs stage :
+    attrs_present attrs = false -> attrs_equiv attrs absent_attrs stage.
   Proof.
-    cbv [attrs_equiv]; right. rewrite attrs_present_absent_attrs; solver.
+    intros. pose proof attrs_present_absent_attrs.
+    cbv [attrs_equiv attrs_present] in *; destruct stage;
+      repeat match goal with
+             | _ => progress basics
+             | _ => inversion_bool
+             | |- context [N.eqb ?x ?y] =>
+               case_eq (N.eqb x y)
+             | _ => solver
+             end.
   Qed.
 
   (* TODO : move *)
