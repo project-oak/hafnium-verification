@@ -623,21 +623,20 @@ Section Proofs.
     update_page_pool conc (api_page_pool conc) = conc.
   Proof. destruct conc; reflexivity. Qed.
 
-  (* mm_populate_table_pte doesn't change the *abstract* state; since it's just
-     making tables where there used to be blocks, nothing actually changes *)
-  Lemma mm_populate_table_pte_represents
-        abst (conc : concrete_state)
-        begin t pte_index level flags ppool :
+  (* mm_populate_table_pte might create tables where there used to be blocks,
+     but the concrete state it returns is *equivalent* to the initial state
+     because attributes don't change. *)
+  Lemma mm_populate_table_pte_equiv
+        (conc : concrete_state) begin t pte_index level flags ppool :
     mpool_fallback ppool = Some conc.(api_page_pool) ->
     locations_exclusive (ptable_deref conc) ppool ->
-    represents abst conc ->
-    represents abst
-               (snd (fst (mm_populate_table_pte
-                            conc begin t pte_index level flags ppool))).
+    is_valid conc ->
+    concrete_state_equiv (snd (fst (mm_populate_table_pte
+                                      conc begin t pte_index level flags ppool)))
+                         conc.
   Proof.
-    autounfold; cbv [mm_populate_table_pte mm_alloc_page_tables]; basics.
-    assert (is_valid conc) by eauto using represents_valid_concrete.
-    cbv [is_valid] in *.
+    cbv [mm_populate_table_pte
+           mm_alloc_page_tables is_valid]; basics.
     simplify;
       try match goal with
           | H : mpool_alloc ppool = Some _ |- _ =>
@@ -652,11 +651,27 @@ Section Proofs.
                replace x with y in * by solver; clear Hx
              | _ => rewrite mm_replace_entry_represents
              | _ => rewrite update_page_pool_noop
-             | _ => eapply reassign_pointer_no_addresses; solver
-             | _ => eapply reassign_pointer_no_addresses_fallback_unused;
-                      solver
+             | _ => eapply reassign_pointer_fresh; solver
+             | _ => eapply reassign_pointer_fresh_fallback_unused
+                 with (ppool0:=ppool); solver
              | _ => solver
              end.
+  Qed.
+
+  (* mm_populate_table_pte doesn't change the *abstract* state; since it's just
+     making tables where there used to be blocks, nothing actually changes *)
+  Lemma mm_populate_table_pte_represents
+        abst (conc : concrete_state)
+        begin t pte_index level flags ppool :
+    mpool_fallback ppool = Some conc.(api_page_pool) ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    represents abst conc ->
+    represents abst
+               (snd (fst (mm_populate_table_pte
+                            conc begin t pte_index level flags ppool))).
+  Proof.
+    basics. eapply represents_proper; [ | eassumption ].
+    eauto using mm_populate_table_pte_equiv.
   Qed.
 
   Lemma mm_populate_table_pte_fallback conc begin t pte_index level flags ppool :
