@@ -41,14 +41,56 @@ Section Proofs.
   Context {ap : @abstract_state_parameters paddr_t nat}
           {cp : concrete_params} {cp_valid : params_valid}.
 
+  (* TODO : explanatory comment *)
+  Lemma page_lookup_update_deref deref root_ptable idxs ppool stage a ptr t :
+    root_ptable_matches_stage root_ptable stage ->
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    page_lookup (update_deref deref ptr t) root_ptable stage a
+    = if address_matches_indices_dec stage a idxs
+      then page_lookup' deref a t (level_from_indices stage idxs) stage
+      else page_lookup deref root_ptable stage a.
+  Admitted.
+
+  (* equivalent to arch_mm_pte_is_present; says that the attributes either have
+     the valid bit set or the stage-2 owned bit set. *)
+  Definition attrs_present (attrs : attributes) : bool :=
+    (((attrs & PTE_VALID) != 0)%N
+     || ((arch_mm_stage2_attrs_to_mode attrs & MM_MODE_UNOWNED) =? 0)%N)%bool.
+
+  (* Two sets of attributes are equivalent if either they are both absent or
+     their valid and owned bits match (owned for stage-2 only). *)
+  Definition attrs_equiv (attrs1 attrs2 : attributes) (stage : Stage) : Prop :=
+    (((attrs1 & PTE_VALID) =? 0) = ((attrs2 & PTE_VALID)%N =? 0))%N
+    /\ (match stage with
+        | Stage1 => True
+        | Stage2 =>
+          let mode1 := arch_mm_stage2_attrs_to_mode attrs1 in
+          let mode2 := arch_mm_stage2_attrs_to_mode attrs2 in
+          (((mode1 & MM_MODE_UNOWNED) =? 0) =
+           ((mode2 & MM_MODE_UNOWNED) =? 0))%N
+        end).
+
+  (* Two concrete states are equivalent if a) any page lookup in any root page
+     table returns PTEs with equivalent attributes and b) the global page pools
+     have the same contents. *)
+  Definition concrete_state_equiv (conc1 conc2 : concrete_state) : Prop :=
+    (forall (addr : uintpaddr_t) root_ptable stage,
+        root_ptable_matches_stage root_ptable stage ->
+        address_wf addr stage ->
+        let attrs1 := page_attrs (ptable_deref conc1) root_ptable stage addr in
+        let attrs2 := page_attrs (ptable_deref conc2) root_ptable stage addr in
+        attrs_equiv attrs1 attrs2 stage)
+    /\ (forall ptr,
+           mpool_contains (api_page_pool conc1) ptr <->
+           mpool_contains (api_page_pool conc2) ptr).
+
   (* if two concrete states are equivalent and an abstract state represents one
      of them, then it also represents the other. *)
   Lemma represents_proper abst conc conc' :
-    (forall ptr, conc.(ptable_deref) ptr = conc'.(ptable_deref) ptr) ->
-    (conc.(api_page_pool) = conc'.(api_page_pool)) ->
+    concrete_state_equiv conc conc' ->
     represents abst conc ->
     represents abst conc'.
-  Admitted.
+  Admitted. (* TODO *)
 
   (* if two abstract states are equivalent and one represents a concrete state,
      then the other also represents that concrete state. *)
@@ -65,6 +107,60 @@ Section Proofs.
   Lemma represents_valid_concrete conc : (exists abst, represents abst conc) -> is_valid conc.
   Proof. cbv [represents]; basics; auto. Qed.
   Hint Resolve represents_valid_concrete.
+
+  (* [attrs_equiv] is reflexive *)
+  Lemma attrs_equiv_refl attrs stage : attrs_equiv attrs attrs stage.
+  Proof. cbv [attrs_equiv]; destruct stage; solver. Qed.
+  Hint Resolve attrs_equiv_refl.
+
+  (* [attrs_equiv] is symmetric *)
+  Lemma attrs_equiv_sym attrs1 attrs2 stage :
+    attrs_equiv attrs1 attrs2 stage ->
+    attrs_equiv attrs2 attrs1 stage.
+  Proof.
+    cbv [attrs_equiv]; destruct stage; basics; solver.
+  Qed.
+  Hint Resolve attrs_equiv_sym.
+
+  (* [attrs_equiv] is transitive *)
+  Lemma attrs_equiv_trans attrs1 attrs2 attrs3 stage :
+    attrs_equiv attrs1 attrs2 stage ->
+    attrs_equiv attrs2 attrs3 stage ->
+    attrs_equiv attrs1 attrs3 stage.
+  Proof.
+    cbv [attrs_equiv]; destruct stage; basics; solver.
+  Qed.
+
+  (* [concrete_state_equiv] is reflexive *)
+  Lemma concrete_state_equiv_refl conc : concrete_state_equiv conc conc.
+  Proof. cbv [concrete_state_equiv]. basics; solver. Qed.
+  Hint Resolve concrete_state_equiv_refl.
+
+  (* [concrete_state_equiv] is symmetric *)
+  Lemma concrete_state_equiv_sym conc1 conc2 :
+    concrete_state_equiv conc1 conc2 ->
+    concrete_state_equiv conc2 conc1.
+  Proof.
+    cbv [concrete_state_equiv].
+    basics; try solver.
+    match goal with
+    | H : context [_ <-> _] |- _ => rewrite H; solver
+    end.
+  Qed.
+  Hint Resolve concrete_state_equiv_sym.
+
+  (* [concrete_state_equiv] is transitive *)
+  Lemma concrete_state_equiv_trans conc1 conc2 conc3 :
+    concrete_state_equiv conc1 conc2 ->
+    concrete_state_equiv conc2 conc3 ->
+    concrete_state_equiv conc1 conc3.
+  Proof.
+    cbv [concrete_state_equiv].
+    basics; try solver; eauto using attrs_equiv_trans.
+    match goal with
+    | H : context [_ <-> _] |- _ => rewrite H; solver
+    end.
+  Qed.
 
   (* [abstract_state_equiv] is reflexive *)
   Lemma abstract_state_equiv_refl abst : abstract_state_equiv abst abst.
@@ -97,6 +193,16 @@ Section Proofs.
     end.
   Qed.
 
+  Lemma concrete_state_equiv_exact (conc1 conc2 : concrete_state) :
+    (forall ptr, ptable_deref conc1 ptr = ptable_deref conc2 ptr) ->
+    api_page_pool conc1 = api_page_pool conc2 ->
+    concrete_state_equiv conc1 conc2.
+  Proof.
+    cbv [concrete_state_equiv page_attrs]; basics.
+    { erewrite page_lookup_proper; eauto. }
+    { match goal with H : _ |- _ => rewrite H; solver end. }
+  Qed.
+
   (* if the new table is the same as the old, abstract state doesn't change *)
   Lemma reassign_pointer_noop_represents conc ptr t abst :
     conc.(ptable_deref) ptr = t ->
@@ -105,13 +211,14 @@ Section Proofs.
   Proof.
     repeat match goal with
            | _ => progress basics
-           | _ => progress cbn [reassign_pointer ptable_deref]
+           | _ => progress cbn [reassign_pointer ptable_deref api_page_pool]
            | _ => progress cbv [update_deref]
            | |- _ <-> _ => split
            | _ => break_match
            | _ => solver
            | _ => eapply represents_proper;
-                    [ | | solve[eauto] ]; eauto; [ ]
+                    [ | solve[eauto] ]; eauto; [ ]
+           | _ => apply concrete_state_equiv_exact
            end.
   Qed.
 
@@ -405,17 +512,6 @@ Section Proofs.
       abst
       vms.
 
-  (* equivalent to arch_mm_pte_is_present; says that the attributes either have
-     the valid bit set or the stage-2 owned bit set. *)
-  Definition attrs_present (attrs : attributes) : bool :=
-    (((attrs & PTE_VALID) != 0)%N
-     || ((arch_mm_stage2_attrs_to_mode attrs & MM_MODE_UNOWNED) =? 0)%N)%bool.
-
-  (* either the attributes are exactly equivalent, or they are both absent *)
-  Definition attrs_equiv (attrs1 attrs2 : attributes) : Prop :=
-    attrs1 = attrs2
-    \/ (attrs_present attrs1 = false /\ attrs_present attrs2 = false).
-
   (* N.B. level is the level above the table *)
   Definition has_uniform_attrs
              (ptable_deref : ptable_pointer -> mm_page_table)
@@ -427,7 +523,7 @@ Section Proofs.
       let a : uintpaddr_t := pa_addr (pa_from_va (va_init a_v)) in
       address_matches_indices stage a table_loc ->
       level = level_from_indices stage table_loc ->
-      attrs_equiv (page_attrs' ptable_deref a t level stage) attrs.
+      attrs_equiv (page_attrs' ptable_deref a t level stage) attrs stage.
 
   (* N.B. level is the level above the table *)
   Definition attrs_outside_range_unchanged
@@ -946,17 +1042,6 @@ Section Proofs.
     cbv [vm_page_owned]; eauto using stage2_mode_has_value_proper.
   Qed.
 
-  (* TODO: move *)
-  Lemma page_lookup_update_deref deref root_ptable idxs ppool stage a ptr t :
-    root_ptable_matches_stage root_ptable stage ->
-    has_location deref ptr (table_loc ppool root_ptable idxs) ->
-    page_lookup (update_deref deref ptr t) root_ptable stage a
-    = if address_matches_indices_dec stage a idxs
-      then page_lookup' deref a t (level_from_indices stage idxs) stage
-      else page_lookup deref root_ptable stage a.
-  Admitted.
-
-
   (* TODO : move *)
   Lemma address_matches_indices_bool_iff a idxs stage :
     length idxs <= S (max_level stage) ->
@@ -1163,7 +1248,7 @@ Section Proofs.
     attrs_equiv
       (page_attrs
          (update_deref deref ptr t) root_ptable stage (pa_addr a))
-      attrs.
+      attrs stage.
   Proof.
     cbv [attrs_changed_in_range]; basics.
     cbv [has_uniform_attrs page_attrs page_attrs'] in *.
@@ -1176,8 +1261,8 @@ Section Proofs.
       rewrite ?va_init_id, ?pa_from_va_id; solver.
   Qed.
 
-  Lemma attrs_equiv_valid attrs1 attrs2 :
-    attrs_equiv attrs1 attrs2 ->
+  Lemma attrs_equiv_valid attrs1 attrs2 stage :
+    attrs_equiv attrs1 attrs2 stage ->
     ((attrs1 & PTE_VALID) =? 0)%N = ((attrs2 & PTE_VALID) =? 0)%N.
   Proof.
     cbv [attrs_equiv attrs_present];
@@ -1190,17 +1275,20 @@ Section Proofs.
 
   Lemma attrs_equiv_to_mode attrs1 attrs2 flag :
     (flag = MM_MODE_UNOWNED \/ flag = MM_MODE_INVALID) ->
-    attrs_equiv attrs1 attrs2 ->
+    attrs_equiv attrs1 attrs2 Stage2 ->
     ((arch_mm_stage2_attrs_to_mode attrs1 & flag) =? 0)%N
     = ((arch_mm_stage2_attrs_to_mode attrs2 & flag) =? 0)%N.
   Proof.
-    cbv [attrs_equiv attrs_present];
+    cbv [attrs_equiv];
       repeat match goal with
              | _ => progress basics
              | H : ( _ =? _)%N = _ |- _ => rewrite H
              | H : _ |- _ => rewrite stage2_attrs_to_mode_valid in H
              | _ => inversion_bool
              | _ => solver
+             | H : negb ?x = negb ?y |- _ =>
+               let H' := fresh in
+               assert (x = y) as H'; [ destruct x; destruct y; solver | rewrite H' ]
              end.
   Qed.
 
@@ -1224,8 +1312,8 @@ Section Proofs.
   Proof.
     cbv [stage2_mode_flag_set stage2_mode_has_value];
       cbn [reassign_pointer ptable_deref]; basics;
-        erewrite attrs_equiv_to_mode
-        by eauto using changed_has_new_attrs; solver.
+        erewrite attrs_equiv_to_mode;
+        eauto using changed_has_new_attrs.
   Qed.
 
   Local Ltac solve_table_unchanged_step :=
