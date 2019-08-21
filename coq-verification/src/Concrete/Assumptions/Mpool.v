@@ -61,6 +61,13 @@ Axiom mpool_alloc_contains_after :
   forall ppool ppool' ptr,
     mpool_alloc ppool = Some (ppool', ptr) ->
     ~ mpool_contains ppool' ptr.
+Axiom mpool_alloc_contains_after_iff :
+  forall ppool ppool' ptr1 ptr2,
+    mpool_alloc ppool = Some (ppool', ptr1) ->
+    (mpool_contains ppool' ptr2 <->
+     if ptable_pointer_eq_dec ptr1 ptr2
+     then False
+     else mpool_contains ppool ptr2).
 
 (* If an mpool has a fallback, then allocating from it either means allocating
    from the fallback or not changing the fallback *)

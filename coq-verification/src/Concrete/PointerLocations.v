@@ -439,6 +439,16 @@ Section PointerLocations.
         destruct stage; cbv [root_ptable_matches_stage]; basics; constructor; solver.
       Qed.
 
+      Lemma index_sequences_has_location_alt ppool root_ptable ptr stage :
+        root_ptable_matches_stage root_ptable stage ->
+        index_sequences_to_pointer ptr root_ptable stage <> nil ->
+        (exists idxs, has_location ptr (table_loc ppool root_ptable idxs)).
+      Proof.
+        destruct stage; cbv [root_ptable_matches_stage]; basics;
+          match goal with H : ?ls <> nil |- _ => exists (hd nil ls) end;
+          constructor; eauto using hd_in.
+      Qed.
+
       Lemma has_location_index_sequences_not_nil ppool root_ptable idxs ptr stage :
         has_location ptr (table_loc ppool root_ptable idxs) ->
         ~ In hafnium_ptable (map vm_ptable vms) ->

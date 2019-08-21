@@ -70,19 +70,15 @@ Section Proofs.
            ((mode2 & MM_MODE_UNOWNED) =? 0))%N
         end).
 
-  (* Two concrete states are equivalent if a) any page lookup in any root page
-     table returns PTEs with equivalent attributes and b) the global page pools
-     have the same contents. *)
+  (* Two concrete states are equivalent if any page lookup in any root page
+     table returns PTEs with equivalent attributes. *)
   Definition concrete_state_equiv (conc1 conc2 : concrete_state) : Prop :=
-    (forall (addr : uintpaddr_t) root_ptable stage,
-        root_ptable_matches_stage root_ptable stage ->
-        address_wf addr stage ->
-        let attrs1 := page_attrs (ptable_deref conc1) root_ptable stage addr in
-        let attrs2 := page_attrs (ptable_deref conc2) root_ptable stage addr in
-        attrs_equiv attrs1 attrs2 stage)
-    /\ (forall ptr,
-           mpool_contains (api_page_pool conc1) ptr <->
-           mpool_contains (api_page_pool conc2) ptr).
+    forall (addr : uintpaddr_t) root_ptable stage,
+      root_ptable_matches_stage root_ptable stage ->
+      address_wf addr stage ->
+      let attrs1 := page_attrs (ptable_deref conc1) root_ptable stage addr in
+      let attrs2 := page_attrs (ptable_deref conc2) root_ptable stage addr in
+      attrs_equiv attrs1 attrs2 stage.
 
   (* if two concrete states are equivalent and an abstract state represents one
      of them, then it also represents the other. *)
@@ -141,11 +137,7 @@ Section Proofs.
     concrete_state_equiv conc1 conc2 ->
     concrete_state_equiv conc2 conc1.
   Proof.
-    cbv [concrete_state_equiv].
-    basics; try solver.
-    match goal with
-    | H : context [_ <-> _] |- _ => rewrite H; solver
-    end.
+    cbv [concrete_state_equiv]; basics; solver.
   Qed.
   Hint Resolve concrete_state_equiv_sym.
 
@@ -157,9 +149,6 @@ Section Proofs.
   Proof.
     cbv [concrete_state_equiv].
     basics; try solver; eauto using attrs_equiv_trans.
-    match goal with
-    | H : context [_ <-> _] |- _ => rewrite H; solver
-    end.
   Qed.
 
   (* [abstract_state_equiv] is reflexive *)
@@ -199,8 +188,7 @@ Section Proofs.
     concrete_state_equiv conc1 conc2.
   Proof.
     cbv [concrete_state_equiv page_attrs]; basics.
-    { erewrite page_lookup_proper; eauto. }
-    { match goal with H : _ |- _ => rewrite H; solver end. }
+    erewrite page_lookup_proper; eauto.
   Qed.
 
   (* if the new table is the same as the old, abstract state doesn't change *)
@@ -345,22 +333,24 @@ Section Proofs.
 
   Lemma index_sequences_update_deref'' deref ptr t level :
     forall root_ptr idxs,
-      In idxs (index_sequences_to_pointer'' deref ptr root_ptr level) ->
+      In idxs (index_sequences_to_pointer'' deref ptr root_ptr level) <->
       In idxs (index_sequences_to_pointer''
                  (update_deref deref ptr t) ptr root_ptr level).
   Proof.
     cbv [update_deref]; induction level; cbn [index_sequences_to_pointer'']; [ solver | basics ].
     repeat break_match; basics; try solver; [ ].
-    rewrite in_flat_map in *.
-    basics. eexists; split; [eassumption|].
-    repeat break_match; basics; try solver; [ ].
-    rewrite in_map_iff in *. basics.
-    eexists; eauto.
+    rewrite !in_flat_map in *.
+    split; basics;
+      eexists; (split; [eassumption|]);
+        repeat break_match; basics; try solver;
+          rewrite in_map_iff in *; basics;
+            eexists; split; eauto;
+              eapply IHlevel; eauto.
   Qed.
 
   Lemma index_sequences_update_deref' deref ptr t stage :
     forall root_ptrs i idxs,
-      In idxs (index_sequences_to_pointer' deref ptr i root_ptrs stage) ->
+      In idxs (index_sequences_to_pointer' deref ptr i root_ptrs stage) <->
       In idxs (index_sequences_to_pointer'
                  (update_deref deref ptr t) ptr i root_ptrs stage).
   Proof.
@@ -371,24 +361,30 @@ Section Proofs.
            | _ => rewrite in_map_iff in *
            | _ => rewrite in_cons_iff in *
            | _ => solver
-           | _ => left; eexists; split;
-                    solve [eauto using index_sequences_update_deref'']
+           | _ => left; eexists; split; eauto;
+                    apply index_sequences_update_deref''; solver
+           | H : In _ _ |- _ =>
+             left; eexists; split; eauto;
+               apply index_sequences_update_deref'' in H; solver
+           | _ => right; apply IHroot_ptrs; solver
+           | |- _ <-> _ => split
            end.
   Qed.
 
   Lemma index_sequences_update_deref deref ptr t root_ptable idxs stage :
-    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) ->
+    In idxs (index_sequences_to_pointer deref ptr root_ptable stage) <->
     In idxs (index_sequences_to_pointer
                (update_deref deref ptr t) ptr root_ptable stage).
   Proof.
-    cbv [index_sequences_to_pointer]; eauto using index_sequences_update_deref'.
+    split; cbv [index_sequences_to_pointer]; eapply index_sequences_update_deref'.
   Qed.
 
-  Lemma has_location_update_deref deref ppool ptr t root_ptable idxs :
-    has_location deref ptr (table_loc ppool root_ptable idxs) ->
-    has_location (update_deref deref ptr t) ptr (table_loc ppool root_ptable idxs).
+  Lemma has_location_update_deref deref ppool ptr t loc :
+    has_location (ppool:=ppool) deref ptr loc <->
+    has_location (ppool:=ppool) (update_deref deref ptr t) ptr loc.
   Proof.
-    inversion 1; basics; constructor; auto using index_sequences_update_deref.
+    split; inversion 1; basics; constructor; eauto;
+      rewrite <-?index_sequences_update_deref in *; solver.
   Qed.
 
   Fixpoint pointer_in_table
@@ -1600,51 +1596,68 @@ Section Proofs.
       (map vm_ptable vms)
     /\ addresses_under_pointer_in_range deref ptr hafnium_ptable begin end_ Stage1 = nil.
 
-  Lemma locations_exclusive_update_deref
-        deref ppool ppool' ptr t :
-    has_location deref ptr (mpool_loc ppool) ->
-    locations_exclusive deref ppool ->
-    mpool_alloc ppool = Some (ppool', ptr) ->
-    forall level,
-      Forall (fun pte =>
-                arch_mm_pte_is_table pte level = false) (entries t) ->
-    locations_exclusive (update_deref deref ptr t) ppool'.
+  (* if we just pulled a fresh pointer from the page pool, then we know that
+     updating it produces an equivalent concrete state; since the pointer
+     isn't anywhere in the root tables, no lookups will ever touch it. *)
+  Lemma reassign_pointer_fresh
+        ppool' conc ptr t:
+    mpool_alloc (api_page_pool conc) = Some (ppool', ptr) ->
+    locations_exclusive (ptable_deref conc) (api_page_pool conc) ->
+    concrete_state_equiv (reassign_pointer (update_page_pool conc ppool') ptr t)
+                         conc.
   Proof.
-    cbv [locations_exclusive]; basics.
-    invert H.
-    (* actually, there are no new pointers added here... *)
-    (* TODO *)
-  Admitted.
-
-  (* reassign_pointer is a no-op if there are no addresses in range *)
-  Lemma reassign_pointer_no_addresses
-        abst ppool ppool' conc ptr t:
-    has_location conc.(ptable_deref) ptr (mpool_loc ppool) ->
-    locations_exclusive conc.(ptable_deref) ppool ->
-    mpool_alloc ppool = Some (ppool', ptr) ->
-    represents abst conc ->
-    represents abst (reassign_pointer (update_page_pool conc ppool') ptr t).
-  Proof.
-    cbv [represents is_valid reassign_pointer update_page_pool].
+    cbv [is_valid reassign_pointer update_page_pool concrete_state_equiv].
     cbn [ptable_deref api_page_pool].
-    basics; process_represents; rewrite Forall_forall in *.
-  Admitted. (* TODO *)
+    basics; process_represents;
+      match goal with H : mpool_alloc _ = Some (_, ?ptr) |- _ =>
+                      pose proof (mpool_alloc_contains_before _ _ _ H);
+                        pose proof (has_mpool_loc (ptable_deref conc) ptr ltac:(solver));
+                        pose proof (mpool_alloc_contains_after _ _ _ H)
+      end;
+      repeat match goal with
+             | _ => progress basics
+             | _ => cbv [page_attrs]; erewrite page_lookup_proper;
+                      [ apply attrs_equiv_refl | ]
+             | _ => cbv [update_deref]; break_match; [ | solver ]
+             | H : _ <> nil |- _ =>
+               eapply index_sequences_has_location_alt with (ppool:=api_page_pool conc) in H;
+                 [ | solver .. ]
+             | _ => rewrite <-has_location_update_deref in *
+             | _ => solve [two_locations_contradiction]
+             | _ => solver
+             end.
+  Qed.
 
   (* if fallback unused, then ptr must have been in local ppool and therefore disjoint from tables *)
-  Lemma reassign_pointer_no_addresses_fallback_unused
-        abst ppool ppool' conc ptr t:
-    has_location conc.(ptable_deref) ptr (mpool_loc ppool) ->
+  Lemma reassign_pointer_fresh_fallback_unused
+        ppool ppool' conc ptr t:
     locations_exclusive conc.(ptable_deref) ppool ->
     mpool_alloc ppool = Some (ppool', ptr) ->
     mpool_fallback ppool = Some (api_page_pool conc) ->
     mpool_fallback ppool' = Some (api_page_pool conc) ->
-    represents abst conc ->
-    represents abst (reassign_pointer conc ptr t).
+    concrete_state_equiv (reassign_pointer conc ptr t) conc.
   Proof.
-    cbv [represents is_valid reassign_pointer update_page_pool].
+    cbv [is_valid reassign_pointer update_page_pool concrete_state_equiv].
     cbn [ptable_deref api_page_pool].
-    basics; process_represents; rewrite Forall_forall in *.
-  Admitted. (* TODO *)
+    basics; process_represents;
+      match goal with H : mpool_alloc _ = Some (_, ?ptr) |- _ =>
+                      pose proof (mpool_alloc_contains_before _ _ _ H);
+                        pose proof (has_mpool_loc (ptable_deref conc) ptr ltac:(solver));
+                        pose proof (mpool_alloc_contains_after _ _ _ H)
+      end;
+      repeat match goal with
+             | _ => progress basics
+             | _ => cbv [page_attrs]; erewrite page_lookup_proper;
+                      [ apply attrs_equiv_refl | ]
+             | _ => cbv [update_deref]; break_match; [ | solver ]
+             | H : _ <> nil |- _ =>
+               eapply index_sequences_has_location_alt with (ppool:=ppool) in H;
+                 [ | solver .. ]
+             | _ => rewrite <-has_location_update_deref in *
+             | _ => solve [two_locations_contradiction]
+             | _ => solver
+             end.
+  Qed.
 
   (* abstract_reassign_pointer is a no-op if the given tables don't have any
      addresses in range *)
@@ -1712,4 +1725,35 @@ Section Proofs.
     eapply abstract_state_equiv_trans; [ solver | ].
     auto using abstract_reassign_pointer_no_addresses.
   Qed.
+
+  Lemma reassign_pointer_proper conc1 conc2 ptr t :
+    concrete_state_equiv conc1 conc2 ->
+    concrete_state_equiv (reassign_pointer conc1 ptr t)
+                         (reassign_pointer conc2 ptr t).
+  Admitted.
+
+  Lemma is_valid_proper conc1 conc2 :
+    concrete_state_equiv conc1 conc2 ->
+    is_valid conc1 <-> is_valid conc2.
+  Admitted.
+
+  Lemma attrs_changed_in_range_proper
+        conc1 conc2 idxs old_table new_table level attrs begin end_ stage :
+    concrete_state_equiv conc1 conc2 ->
+    attrs_changed_in_range
+      (ptable_deref conc1) idxs old_table new_table level attrs begin end_ stage <->
+    attrs_changed_in_range
+      (ptable_deref conc2) idxs old_table new_table level attrs begin end_ stage.
+  Admitted.
+
+  Lemma index_sequences_to_pointer_proper conc1 conc2 ptr root_ptable stage :
+    concrete_state_equiv conc1 conc2 ->
+    index_sequences_to_pointer (ptable_deref conc1) ptr root_ptable stage =
+    index_sequences_to_pointer (ptable_deref conc2) ptr root_ptable stage.
+  Admitted.
 End Proofs.
+Hint Resolve represents_valid_concrete.
+Hint Resolve attrs_equiv_refl attrs_equiv_sym.
+Hint Resolve concrete_state_equiv_refl concrete_state_equiv_sym.
+Hint Resolve abstract_state_equiv_refl abstract_state_equiv_sym.
+Hint Resolve hafnium_ptable_nodup.
