@@ -1332,13 +1332,38 @@ Section Proofs.
     apply attrs_changed_in_range_level_end; solver.
   Qed.
 
-  (* TODO: make locations_exclusive take a list of mpools so we can include the
-     fact that the local pool doesn't overlap with active tables -- this will be
-     needed when we eventually call mpool_fini and add those locations to the
-     global freelist *)
-  (* states that mm_map_level returns a table such that *)
-  Lemma mm_map_level_locations_exclusive conc begin end_ pa attrs table level
-        flags ppool ptr :
+  Lemma mm_map_level_locations_mpool_exclusive conc begin end_ pa attrs table level
+        flags ppool:
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    mpool_fallback ppool = Some (api_page_pool conc) ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    mpool_exclusive ppool (api_page_pool conc) ->
+    level <= max_level (stage_from_flags flags) ->
+    mpool_exclusive ppool' (api_page_pool conc').
+  Admitted. (* TODO *)
+
+  Lemma mm_map_level_locations_exclusive_reassign_local
+        conc begin end_ pa attrs table level flags ppool ptr :
+    let ret :=
+        mm_map_level conc begin end_ pa attrs table level flags ppool in
+    let new_table := snd (fst (fst ret)) in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    conc.(ptable_deref) ptr = table ->
+    mpool_fallback ppool = Some (api_page_pool conc) ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    mpool_exclusive ppool (api_page_pool conc) ->
+    level <= max_level (stage_from_flags flags) ->
+    locations_exclusive
+      (ptable_deref (reassign_pointer conc' ptr new_table))
+      ppool'.
+  Admitted. (* TODO *)
+
+  Lemma mm_map_level_locations_exclusive_reassign_global
+        conc begin end_ pa attrs table level flags ppool ptr :
     let ret :=
         mm_map_level conc begin end_ pa attrs table level flags ppool in
     let success := fst (fst (fst ret)) in
@@ -1400,7 +1425,7 @@ Section Proofs.
       [ eapply reassign_pointer_proper, mm_map_level_equiv; solver | ].
     cbv [is_valid] in *; basics;
       cbn [api_page_pool reassign_pointer];
-      eauto using mm_map_level_locations_exclusive.
+      eauto using mm_map_level_locations_exclusive_reassign_global.
   Qed.
 
   Lemma mm_map_level_fallback level :
@@ -1745,13 +1770,14 @@ Section Proofs.
         apply mm_start_of_next_block_is_start;
           auto using mm_entry_size_power_two. }
       { (* locations_exclusive *)
-        admit. (* TODO : need to prove this about mm_map_level for the local pool *) }
+        apply mm_map_level_locations_exclusive_reassign_local; solver. }
       { (* mpool_fallback *)
         simplify; autorewrite with push_fallback.
         cbv [reassign_pointer]; cbn [api_page_pool].
         apply mm_map_level_fallback; auto. }
       { (* mpool_exclusive *)
-        admit. (* TODO : need to prove this about mm_map_level *) }
+        cbv [reassign_pointer]; cbn [api_page_pool].
+        apply mm_map_level_locations_mpool_exclusive; solver. }
       { (* index sequences don't change *)
         cbv [table_index_expression] in *; simplify; [ ].
         apply Forall_forall; intros.
@@ -1914,7 +1940,7 @@ Section Proofs.
                end. }
     Unshelve.
     all:apply ppool.
-  Admitted.
+  Qed.
 
   (* placeholder; later there will be actual expressions for the new abstract
      states *)
