@@ -83,6 +83,12 @@ Section Proofs.
            end.
   Ltac simplify := repeat simplify_step.
 
+  Ltac invert_is_valid :=
+    match goal with
+    | H : is_valid ?c |- _ =>
+      pose proof H; cbv [is_valid] in H
+    end.
+
   (*** shorthand definitions ***)
 
   Definition is_start_of_block (a : uintvaddr_t) (block_size : size_t) : Prop :=
@@ -575,6 +581,14 @@ Section Proofs.
     locations_exclusive (ptable_deref conc) ppool'.
   Admitted. (* TODO *)
 
+  Lemma mm_free_page_pte_mpool_exclusive conc pte level ppool ppool2 :
+    let ret := mm_free_page_pte conc pte level ppool in
+    let ppool' := snd ret in
+    locations_exclusive (ptable_deref conc) ppool2 ->
+    mpool_exclusive ppool ppool2 ->
+    mpool_exclusive ppool' ppool2.
+  Admitted. (* TODO *)
+
   (*** Proofs about [mm_replace_entry] ***)
 
   (* mm_replace_entry doesn't change the state (it does in C, but in the Coq
@@ -612,6 +626,19 @@ Section Proofs.
     locations_exclusive (ptable_deref conc) ppool'.
   Admitted. (* TODO *)
 
+  Lemma mm_replace_entry_mpool_exclusive
+        conc begin t pte_index new_pte level flags ppool ppool2 :
+    let ret := mm_replace_entry
+                 conc begin t pte_index new_pte level flags ppool in
+    let ppool' := snd ret in
+    (* if none of [ppool2]'s contents are in the page tables *)
+    locations_exclusive (ptable_deref conc) ppool2 ->
+    (* and they're also not in ppool *)
+    mpool_exclusive ppool ppool2 ->
+    (* then they're not in the new ppool either *)
+    mpool_exclusive ppool' ppool2.
+  Admitted. (* TODO *)
+
   (*** Proofs about [mm_populate_table_pte] ***)
 
   (* TODO : move *)
@@ -630,13 +657,14 @@ Section Proofs.
         (conc : concrete_state) begin t pte_index level flags ppool :
     mpool_fallback ppool = Some conc.(api_page_pool) ->
     locations_exclusive (ptable_deref conc) ppool ->
+    mpool_exclusive ppool (api_page_pool conc) ->
     is_valid conc ->
     concrete_state_equiv (snd (fst (mm_populate_table_pte
                                       conc begin t pte_index level flags ppool)))
                          conc.
   Proof.
-    cbv [mm_populate_table_pte
-           mm_alloc_page_tables is_valid]; basics.
+    cbv [mm_populate_table_pte mm_alloc_page_tables]; basics.
+    invert_is_valid.
     simplify;
       try match goal with
           | H : mpool_alloc ppool = Some _ |- _ =>
@@ -665,6 +693,7 @@ Section Proofs.
         begin t pte_index level flags ppool :
     mpool_fallback ppool = Some conc.(api_page_pool) ->
     locations_exclusive (ptable_deref conc) ppool ->
+    mpool_exclusive ppool (api_page_pool conc) ->
     represents abst conc ->
     represents abst
                (snd (fst (mm_populate_table_pte
@@ -699,6 +728,18 @@ Section Proofs.
       locations_exclusive (ptable_deref conc) fallback ->
       locations_exclusive (ptable_deref conc) ppool ->
       locations_exclusive (ptable_deref conc') ppool'.
+  Admitted. (* TODO *)
+
+  Lemma mm_populate_table_pte_mpool_exclusive
+        conc begin t pte_index level flags ppool :
+    let ret := mm_populate_table_pte
+                 conc begin t pte_index level flags ppool in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    mpool_fallback ppool = Some (api_page_pool conc) ->
+    locations_exclusive (ptable_deref conc) (api_page_pool conc) ->
+    mpool_exclusive ppool (api_page_pool conc) ->
+    mpool_exclusive ppool' (api_page_pool conc').
   Admitted. (* TODO *)
 
   (*** Proofs about [mm_map_level] ***)
@@ -777,19 +818,23 @@ Section Proofs.
     else attrs.
 
   Definition mm_map_level_loop_invariant
-        init_abst init_begin end_ idxs old_table level attrs flags
+        init_conc init_begin end_ idxs old_table level attrs flags
         (state : concrete_state * ptable_addr_t * paddr_t * mm_page_table * size_t * bool * mpool)
     : Prop :=
     let '(conc, begin, pa, new_table, pte_index, failed, ppool) := state in
     (* [begin] is either equal to its starting value or is the start
        of a block *)
     (is_begin_or_block_start init_begin begin level
-     (* ..and abstract state has remained unchanged *)
-     /\ represents init_abst conc
+     (* ..and concrete state is valid *)
+     /\ is_valid conc
+     (* ..and page attributes have not changed (although structure might have) *)
+     /\ concrete_state_equiv init_conc conc
      (* ...and the backup page pool is the api_page_pool *)
      /\ mpool_fallback ppool = Some (api_page_pool conc)
      (* ...and locations_exclusive holds with the local pool *)
      /\ locations_exclusive (ptable_deref conc) ppool
+     (* ...and the local and global pools don't overlap *)
+     /\ mpool_exclusive ppool (api_page_pool conc)
      (* ...and [begin] is greater than or equal to the initial value *)
      /\ (init_begin <= begin)%N
      (* ...and either we've reached the end of the level, or the address
@@ -853,12 +898,13 @@ Section Proofs.
   Qed.
 
   Lemma mm_map_level_loop_invariant_holds' level flags end_ attrs begin :
-    forall abst conc pa table ppool idxs,
+    forall conc pa table ppool idxs,
       (begin < end_)%N ->
-      represents abst conc ->
+      is_valid conc ->
       mpool_fallback ppool = Some (api_page_pool conc) ->
       locations_exclusive (ptable_deref conc) ppool ->
       S level = level_from_indices (stage_from_flags flags) idxs ->
+      mpool_exclusive ppool (api_page_pool conc) ->
       let end_capped := N.min (mm_level_end begin level) end_ in
       let cond := (fun '(_, begin, _, _, _, _, _) => (begin <? end_capped)%N) in
       let successful := (fun '(_, _, _, _, _, failed, _) => negb failed) in
@@ -866,14 +912,14 @@ Section Proofs.
                          conc begin end_ pa attrs table level flags ppool in
       is_while_loop_invariant
         (mm_map_level_loop_invariant
-           abst begin (N.min (mm_level_end begin level) end_) idxs table level
+           conc begin (N.min (mm_level_end begin level) end_) idxs table level
               attrs flags)
         successful (snd (fst (fst loop_args))) (snd loop_args) ->
       forall P : _ -> Prop,
         (forall state,
             (cond state = false \/ negb (snd (fst state)) = false) ->
             mm_map_level_loop_invariant
-              abst begin (N.min (mm_level_end begin level) end_) idxs table level
+              conc begin (N.min (mm_level_end begin level) end_) idxs table level
               attrs flags state ->
             P (let '(s, _, _, table, _, failed, ppool) := state in
                (negb failed, table, s, ppool))) ->
@@ -895,7 +941,7 @@ Section Proofs.
     eapply
       (while_loop_invariant_strong
          (mm_map_level_loop_invariant
-            abst begin (N.min (mm_level_end begin level) end_) idxs table level
+            conc begin (N.min (mm_level_end begin level) end_) idxs table level
             attrs flags)
          P
          (fun state => let '(_, _, _, _, _, failed, _) := state in
@@ -936,7 +982,7 @@ Section Proofs.
   Qed.
 
   Lemma mm_map_level_loop_invariant_is_invariant level :
-    forall abst conc begin end_ pa table attrs ppool idxs flags,
+    forall conc begin end_ pa table attrs ppool idxs flags,
       (begin < end_)%N ->
       S level = level_from_indices (stage_from_flags flags) idxs ->
       let end_capped := N.min (mm_level_end begin level) end_ in
@@ -945,7 +991,7 @@ Section Proofs.
                          conc begin end_ pa attrs table level flags ppool in
       is_while_loop_invariant
         (mm_map_level_loop_invariant
-           abst begin (N.min (mm_level_end begin level) end_) idxs table level
+          conc begin (N.min (mm_level_end begin level) end_) idxs table level
               attrs flags)
         successful (snd (fst (fst loop_args))) (snd loop_args).
   Proof.
@@ -962,11 +1008,7 @@ Section Proofs.
           pose proof (mm_start_of_next_block_le_level_end b level);
             pose proof (mm_start_of_next_block_lt b (mm_entry_size level) ltac:(solver))
         end;
-        (* concrete state is valid *)
-        match goal with
-        | H : represents _ ?c |- _ =>
-          assert (is_valid c) by eauto using represents_valid_concrete end;
-        cbv [is_valid] in *;
+        invert_is_valid;
         repeat match goal with
                | _ => progress basics
                (* prove the cases where the loop didn't fail *)
@@ -978,6 +1020,17 @@ Section Proofs.
                | H : context [end_of_level_or_index_matches] |- _ =>
                  cbv [end_of_level_or_index_matches] in H;
                    basics; [ repeat inversion_bool; solver | ]
+               (* solve the is_valid clause *)
+               | |- is_valid _ => eapply concrete_equiv_valid;
+                                    solve [eauto using mm_populate_table_pte_equiv]
+               (* solve the concrete_state_equiv clause *)
+               | |- concrete_state_equiv _ _ =>
+                 eapply concrete_state_equiv_trans; [ eassumption | ];
+                   solve [eauto using mm_populate_table_pte_equiv]
+               (* solve the mpool_exclusive clause *)
+               | |- mpool_exclusive _ _ =>
+                 solve [eauto using mm_replace_entry_mpool_exclusive,
+                        mm_populate_table_pte_mpool_exclusive]
                (* solve the is_begin_or_block_start clause *)
                | |- is_begin_or_block_start _ (mm_start_of_next_block _ _) _ =>
                  cbv [is_begin_or_block_start];
@@ -1040,11 +1093,7 @@ Section Proofs.
                  end
       end.
 
-      (* concrete state is valid *)
-      match goal with
-      | H : represents _ ?c |- _ =>
-        assert (is_valid c) by eauto using represents_valid_concrete
-      end; cbv [is_valid] in *;
+      invert_is_valid;
         repeat match goal with
                | H : _ /\ _ |- _ => destruct H
                end.
@@ -1057,25 +1106,27 @@ Section Proofs.
 
       (* use the inductive hypothesis to state that we can use the invariant for proofs about recursive calls *)
       match goal with
-      | H : mm_map_level_loop_invariant ?abst _ ?end_ _ _ _ ?attrs ?flags
+      | H : mm_map_level_loop_invariant _ _ ?end_ _ _ _ ?attrs ?flags
                                         (?c, ?begin, ?pa, ?new_table, ?pte_index, _, ?ppool) |- _ =>
         let Hinv := fresh in
         pose proof
-             (fun conc ppool table idxs Hrep Hfallback Hexcl Hlevel =>
-                mm_map_level_loop_invariant_holds' level flags end_ attrs begin abst conc pa table ppool idxs
+             (fun conc ppool table idxs Hvalid Hfallback Hexcl Hlevel Hmexcl =>
+                mm_map_level_loop_invariant_holds' level flags end_ attrs begin conc pa table ppool idxs
                                                    (ltac:(repeat inversion_bool; solver))
-                                                   Hrep Hfallback Hexcl Hlevel
+                                                   Hvalid Hfallback Hexcl Hlevel Hmexcl
                                                    (ltac:(apply IHlevel; repeat inversion_bool; solver)))
           as Hinv; clear IHlevel;
           (* specialize the invariant to the concrete state returned by mm_populate_table_pte *)
           let ret := constr:(mm_populate_table_pte c begin new_table pte_index (S level) flags ppool) in
+          assert (concrete_state_equiv (snd (fst ret)) c) by (eauto using mm_populate_table_pte_equiv);
           pose proof (fun i table =>
                         Hinv (snd (fst ret)) (snd ret) table (idxs ++ cons i nil)
-                                   (ltac:(eauto using mm_populate_table_pte_represents))
+                                   (ltac:(eauto using mm_populate_table_pte_equiv))
                                    (ltac:(eauto using mm_populate_table_pte_fallback))
                                    (ltac:(eauto using mm_populate_table_pte_exclusive))
                                    (ltac:(intros; cbv [level_from_indices] in *;
-                                          autorewrite with push_length in *; solver)))
+                                          autorewrite with push_length in *; solver))
+                                   (ltac:(eauto using mm_populate_table_pte_mpool_exclusive)))
             as Hinvariant; clear Hinv
       end.
 
@@ -1095,15 +1146,25 @@ Section Proofs.
             | |- is_begin_or_block_start _ _ _ =>
               repeat break_match; cbn [fst snd]; cbv [is_begin_or_block_start];
                 auto using mm_start_of_next_block_is_start
-            | |- represents _ _ =>
+            | |- is_valid _ =>
               (* specialize the invariant to make proofs more efficient *)
               pose proof (fun i table =>
                             Hinvariant i table
-                                       (fun ret => represents abst (snd (fst ret)))
+                                       (fun ret => is_valid (snd (fst ret)))
                                        (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
                 clear Hinvariant;
                 simplify; autorewrite with concrete_unchanged;
-                  solve [eauto using mm_populate_table_pte_represents]
+                  solve [eauto using mm_populate_table_pte_equiv]
+            | |- concrete_state_equiv ?init_conc _ =>
+              (* specialize the invariant to make proofs more efficient *)
+              pose proof (fun i table =>
+                            Hinvariant i table
+                                       (fun ret => concrete_state_equiv init_conc (snd (fst ret)))
+                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify;
+                                                eauto using concrete_state_equiv_trans)));
+                clear Hinvariant;
+                simplify; autorewrite with concrete_unchanged;
+                  solve [eauto using mm_populate_table_pte_equiv, concrete_state_equiv_trans]
             | |- mpool_fallback _ = _ =>
               (* specialize the invariant to make proofs more efficient *)
               pose proof (fun i table =>
@@ -1123,6 +1184,22 @@ Section Proofs.
                 simplify; autorewrite with concrete_unchanged;
                   solve [eauto using mm_replace_entry_exclusive,
                          mm_free_page_pte_exclusive, mm_populate_table_pte_exclusive]
+            | |- mpool_exclusive _ _ =>
+              (* specialize the invariant to make proofs more efficient *)
+              pose proof (fun i table =>
+                            Hinvariant i table
+                                       (fun ret => mpool_exclusive (snd ret) (api_page_pool (snd (fst ret))))
+                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
+              (* we also need locations_exclusive for the preconditions *)
+              pose proof (fun i table =>
+                            Hinvariant i table
+                                       (fun ret => locations_exclusive (ptable_deref (snd (fst ret)))
+                                                                       (api_page_pool (snd (fst ret))))
+                                       (ltac:(cbv [mm_map_level_loop_invariant is_valid]; simplify)));
+                clear Hinvariant;
+                simplify; autorewrite with concrete_unchanged;
+                  solve [eauto using mm_replace_entry_mpool_exclusive,
+                         mm_free_page_pte_mpool_exclusive, mm_populate_table_pte_mpool_exclusive]
             | |- end_of_level_or_index_matches _ _ _ _ =>
               simplify;
                 match goal with
@@ -1150,11 +1227,12 @@ Section Proofs.
   Admitted.
 
   Lemma mm_map_level_loop_invariant_holds level flags end_ attrs begin :
-    forall abst conc pa table ppool idxs,
+    forall conc pa table ppool idxs,
       (begin < end_)%N ->
-      represents abst conc ->
+      is_valid conc ->
       mpool_fallback ppool = Some (api_page_pool conc) ->
       locations_exclusive (ptable_deref conc) ppool ->
+      mpool_exclusive ppool (api_page_pool conc) ->
       S level = level_from_indices (stage_from_flags flags) idxs ->
       let end_capped := N.min (mm_level_end begin level) end_ in
       let cond := (fun '(_, begin, _, _, _, _, _) => (begin <? end_capped)%N) in
@@ -1162,7 +1240,7 @@ Section Proofs.
         (forall state,
             (cond state = false \/ negb (snd (fst state)) = false) ->
             mm_map_level_loop_invariant
-              abst begin (N.min (mm_level_end begin level) end_) idxs table level
+              conc begin (N.min (mm_level_end begin level) end_) idxs table level
               attrs flags state ->
             P (let '(s, _, _, table, _, failed, ppool) := state in
                (negb failed, table, s, ppool))) ->
@@ -1173,15 +1251,37 @@ Section Proofs.
     apply mm_map_level_loop_invariant_is_invariant; auto.
   Qed.
 
+  (* mm_map_level doesn't change the attributes of the page tables, although it
+     might change their structure*)
+  Lemma mm_map_level_equiv (conc : concrete_state) level :
+    forall begin end_ pa attrs table flags ppool,
+      (begin < end_)%N ->
+      is_valid conc ->
+      mpool_fallback ppool = Some (api_page_pool conc) ->
+      locations_exclusive (ptable_deref conc) ppool ->
+      mpool_exclusive ppool (api_page_pool conc) ->
+      level <= max_level (stage_from_flags flags) ->
+      concrete_state_equiv
+        (snd (fst (mm_map_level
+                     conc begin end_ pa attrs table level flags ppool)))
+        conc.
+  Proof.
+    basics.
+    eapply mm_map_level_loop_invariant_holds
+      with (idxs:=repeat 0 (max_level (stage_from_flags flags) - level + 1)); eauto.
+    { cbv [level_from_indices]; autorewrite with push_length; solver. }
+    { cbv [mm_map_level_loop_invariant]; simplify. }
+  Qed.
+
   (* mm_map_level doesn't change the *abstract* state; it is permitted to make
      tables where there used to be blocks and vice versa, but it is up to the
      caller to reassign the input table's old pointer to the new table *)
-  Lemma mm_map_level_represents
-        abst (conc : concrete_state) level :
+  Lemma mm_map_level_represents abst (conc : concrete_state) level :
     forall begin end_ pa attrs table flags ppool,
       (begin < end_)%N ->
       mpool_fallback ppool = Some (api_page_pool conc) ->
       locations_exclusive (ptable_deref conc) ppool ->
+      mpool_exclusive ppool (api_page_pool conc) ->
       level <= max_level (stage_from_flags flags) ->
       represents abst conc ->
       represents
@@ -1193,7 +1293,8 @@ Section Proofs.
     eapply mm_map_level_loop_invariant_holds
       with (idxs:=repeat 0 (max_level (stage_from_flags flags) - level + 1)); eauto.
     { cbv [level_from_indices]; autorewrite with push_length; solver. }
-    { cbv [mm_map_level_loop_invariant]; simplify. }
+    { cbv [mm_map_level_loop_invariant]; simplify;
+        eapply represents_proper; solver. }
   Qed.
 
   Lemma mm_map_level_table_attrs conc level :
@@ -1201,6 +1302,7 @@ Section Proofs.
       represents abst conc ->
       mpool_fallback ppool = Some (api_page_pool conc) ->
       locations_exclusive (ptable_deref conc) ppool ->
+      mpool_exclusive ppool (api_page_pool conc) ->
       conc.(ptable_deref) ptr = table ->
       S level = level_from_indices (stage_from_flags flags) idxs ->
       has_location_in_state conc ptr idxs ->
@@ -1210,8 +1312,9 @@ Section Proofs.
           mm_map_level conc begin end_ pa attrs table level flags ppool in
       let success := fst (fst (fst ret)) in
       let new_table := snd (fst (fst ret)) in
+      let conc' := snd (fst ret) in
       success = true ->
-      attrs_changed_in_range (ptable_deref conc) idxs table new_table (S level)
+      attrs_changed_in_range (ptable_deref conc') idxs table new_table (S level)
                              (new_attrs attrs flags) begin end_
                              (stage_from_flags flags).
   Proof.
@@ -1220,10 +1323,6 @@ Section Proofs.
     eapply mm_map_level_loop_invariant_holds; eauto.
     cbv [mm_map_level_loop_invariant]; simplify; repeat inversion_bool;
       try solver; [ ].
-   (* need to write a concrete_state_equiv that captures "owned and valid bits
-      the same" and use it everywhere, including proving attrs_changed_in_range
-      is proper over it *)
-    replace conc with c at 1 by admit.
     rewrite N.min_r in * by solver.
     match goal with H : context [N.min (mm_level_end ?x ?l) ?y] |- _ =>
                     destruct (N.lt_le_dec (mm_level_end x l) y);
@@ -1231,7 +1330,7 @@ Section Proofs.
                       [ | solver ]
     end.
     apply attrs_changed_in_range_level_end; solver.
-  Admitted.
+  Qed.
 
   (* TODO: make locations_exclusive take a list of mpools so we can include the
      fact that the local pool doesn't overlap with active tables -- this will be
@@ -1281,6 +1380,11 @@ Section Proofs.
 
   Lemma mm_map_level_reassign_pointer conc begin end_ pa attrs table level
         flags ppool ptr :
+    mpool_fallback ppool = Some (api_page_pool conc) ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    mpool_exclusive ppool (api_page_pool conc) ->
+    level <= max_level (stage_from_flags flags) ->
+    (begin < end_)%N ->
     let ret :=
         mm_map_level conc begin end_ pa attrs table level flags ppool in
     let success := fst (fst (fst ret)) in
@@ -1289,30 +1393,15 @@ Section Proofs.
     let ppool' := snd ret in
     conc.(ptable_deref) ptr = table ->
     is_valid conc ->
-    is_valid (reassign_pointer conc ptr new_table).
+    is_valid (reassign_pointer conc' ptr new_table).
   Proof.
-    cbv [is_valid]; basics;
+    cbv zeta; basics.
+    eapply is_valid_proper;
+      [ eapply reassign_pointer_proper, mm_map_level_equiv; solver | ].
+    cbv [is_valid] in *; basics;
       cbn [api_page_pool reassign_pointer];
       eauto using mm_map_level_locations_exclusive.
   Qed.
-
-  (* TODO: might want a nicer reasoning framework for this *)
-  (* mm_map_level doesn't alter the global locations of any pointers above the
-     level at which it operates *)
-  Lemma mm_map_level_index_sequences
-        c begin end_ pa attrs root_ptr ptr level flags ppool :
-    is_valid c ->
-    let ret := mm_map_level
-                 c begin end_ pa attrs (ptable_deref c ptr) level flags ppool in
-    let table := snd (fst (fst ret)) in
-    In ptr (mm_page_table_from_pa root_ptr) ->
-    forall ptr' root_ptable,
-      In ptr' (mm_page_table_from_pa root_ptr) ->
-      In root_ptable all_root_ptables ->
-      index_sequences_to_pointer c.(ptable_deref) ptr' root_ptable =
-      index_sequences_to_pointer
-        (reassign_pointer c ptr table).(ptable_deref) ptr' root_ptable.
-  Admitted. (* TODO *)
 
   Lemma mm_map_level_fallback level :
     forall conc begin end_ pa attrs table flags ppool,
@@ -1332,6 +1421,65 @@ Section Proofs.
   Qed.
 
   (*** Helpers for [mm_map_root] proofs ***)
+
+  (* TODO : move *)
+  (* if a pointer is in the root list, and the root page table is well-formed,
+     then there is exactly one index sequence and it has length 1 *)
+  Lemma index_sequences_to_root deref ptr root_ptable stage i :
+    root_ptable_matches_stage root_ptable stage ->
+    root_ptable_wf deref stage root_ptable ->
+    nth_error (mm_page_table_from_pa (root root_ptable)) i = Some ptr ->
+    index_sequences_to_pointer
+      deref ptr root_ptable stage = cons (cons i nil) nil.
+  Admitted. (* TODO *)
+
+  (* TODO : move *)
+  Lemma NoDup_nth_error_neq {A} (l : list A) i j x y :
+    NoDup l ->
+    nth_error l i = Some x ->
+    nth_error l j = Some y ->
+    i <> j ->
+    x <> y.
+  Admitted.
+
+  (* TODO : move *)
+  Lemma index_sequences_wrong_ptable deref ptr ppool root_ptable idxs stage :
+    has_location deref ptr (table_loc ppool root_ptable idxs) ->
+    forall root_ptable2,
+      root_ptable <> root_ptable2 ->
+      root_ptable_matches_stage root_ptable2 stage ->
+      index_sequences_to_pointer deref ptr root_ptable2 stage = nil.
+  Admitted.
+
+  (* TODO : move *)
+  Lemma is_valid_root_wf c root_ptable stage :
+    is_valid c ->
+    root_ptable_matches_stage root_ptable stage ->
+    root_ptable_wf (ptable_deref c) stage root_ptable.
+  Admitted. (* easy *)
+  Hint Resolve is_valid_root_wf.
+
+  (* TODO : move *)
+  (* this is basically another version of has_location_nth_default *)
+  Lemma root_pointer_has_location deref root_ptable root_ptr ppool i :
+    nth_error (mm_page_table_from_pa (root root_ptable)) i = Some root_ptr ->
+    has_location deref root_ptr (table_loc ppool root_ptable (cons i nil)).
+  Admitted.
+
+  (* TODO : move *)
+  Lemma root_ptable_matches_stage_In root_ptable stage :
+    root_ptable_matches_stage root_ptable stage ->
+    In root_ptable all_root_ptables.
+  Proof.
+    destruct stage;
+      cbv [root_ptable_matches_stage all_root_ptables]; basics; solver.
+  Qed.
+
+  (* TODO : move *)
+  Lemma nth_error_eq_default {A} (l : list A) i d :
+    i < length l ->
+    nth_error l i = Some (nth_default d l i).
+  Admitted. (* easy *)
 
   (* table pointers that come before the index of [begin] don't contain any
      addresses in the range [begin...end_) *)
@@ -1389,17 +1537,18 @@ Section Proofs.
       /\ is_begin_or_block_start start_begin begin root_level
       (* ...and the page tables and local page pool don't overlap *)
       /\ locations_exclusive (ptable_deref s) ppool
-      (* and the fallback of the local page pool is the global one *)
+      (* ...and the fallback of the local page pool is the global one *)
       /\ mpool_fallback ppool = Some (api_page_pool s)
+      (* ...and local and global pools don't overlap *)
+      /\ mpool_exclusive ppool (api_page_pool s)
       (* ...and we don't add/remove/change references to the root page tables  *)
       /\ (Forall (fun t_ptr =>
-                    Forall
-                      (fun root_ptable =>
-                         index_sequences_to_pointer
-                           start_conc.(ptable_deref) t_ptr root_ptable
-                         = index_sequences_to_pointer
-                             s.(ptable_deref) t_ptr root_ptable)
-                      all_root_ptables)
+                    forall root_ptable stage,
+                      root_ptable_matches_stage root_ptable stage ->
+                      index_sequences_to_pointer
+                        (ptable_deref start_conc) t_ptr root_ptable stage
+                      = index_sequences_to_pointer
+                          (ptable_deref s) t_ptr root_ptable stage)
                  t_ptrs)
       (* ...and our concrete state is represented by the abstract state that
          corresponds to processing the first [table_index] entries of the original list *)
@@ -1464,8 +1613,9 @@ Section Proofs.
     ptable_is_root t flags ->
     (* and that the page tables and local page pool don't overlap *)
     locations_exclusive (ptable_deref conc) ppool ->
-    (* and that the fallback of the local page pool is the global one *)
+    (* fallback of the local page pool is the global one; they don't overlap *)
     mpool_fallback ppool = Some (api_page_pool conc) ->
+    mpool_exclusive ppool (api_page_pool conc) ->
     (* and that [begin] and [end_ - 1] are on the same level *)
     mm_level_end begin root_level = mm_level_end (end_ - 1) root_level ->
     forall abst,
@@ -1579,17 +1729,13 @@ Section Proofs.
         { apply has_location_nth_default with (flags:=flags); eauto. }
         { apply represents_valid_concrete; eexists;
             eapply mm_map_level_represents; solver. }
-        { (* TODO : prove reassign_pointer and is_valid proper over concrete_state_equiv *)
-          match goal with |- context [reassign_pointer ?x] =>
-                          replace x with c by admit end.
-          apply mm_map_level_reassign_pointer; solver. }
+        { eapply mm_map_level_reassign_pointer; solver. }
         { cbv [level_from_indices]. cbv [length].
           match goal with |- context [?x + 2 - 1] =>
                           replace (x + 2 - 1) with (S x) by solver end.
           replace (root_level - 1) with (max_level (stage_from_flags flags)) by solver.
-         (* TODO : prove attrs_changed_in_range proper over concrete_state_equiv *)
-          match goal with |- context [attrs_changed_in_range (ptable_deref ?x)] =>
-                          replace x with c by admit end.
+          eapply attrs_changed_in_range_proper;
+            [ solve [eauto using mm_map_level_equiv, has_location_nth_default] .. | ].
           eapply mm_map_level_table_attrs;
             cbv [level_from_indices]; autorewrite with push_length;
               try apply Bool.negb_true_iff, N.eqb_neq;
@@ -1604,20 +1750,37 @@ Section Proofs.
         simplify; autorewrite with push_fallback.
         cbv [reassign_pointer]; cbn [api_page_pool].
         apply mm_map_level_fallback; auto. }
+      { (* mpool_exclusive *)
+        admit. (* TODO : need to prove this about mm_map_level *) }
       { (* index sequences don't change *)
         cbv [table_index_expression] in *; simplify; [ ].
         apply Forall_forall; intros.
-        apply Forall_forall; intros.
-        repeat match goal with
-               | H : Forall _ _ |- _ =>
-                 rewrite Forall_forall in H; specialize (H _ ltac:(eassumption));
-                   try rewrite H
-               end.
-        (* TODO : prove reassign_pointer and index_sequences_to_pointer proper over concrete_state_equiv *)
-          match goal with |- context [reassign_pointer ?x] =>
-                          replace x with c by admit end.
-        eapply mm_map_level_index_sequences; eauto; [ ].
-        apply In_nth_default; solver. }
+
+        (* use the nodup to turn Nat.eq_dec into a decider on the mm_ptables *)
+        match goal with
+          | H : ptable_is_root _ _ |- _ =>
+            pose proof H; apply ptable_is_root_In in H
+        end.
+        match goal with
+          | H : root_ptable_matches_stage _ _ |- _ =>
+            pose proof H; apply root_ptable_matches_stage_In in H
+        end.
+        repeat match goal with H : In ?x _ |- _ =>
+                               apply In_nth_error in H; destruct H end.
+        match goal with H1 : nth_error all_root_ptables ?i = Some ?x,
+                             H2 : nth_error all_root_ptables ?j = Some ?y |- _ =>
+                        destruct (Nat.eq_dec i j);
+                          [ basics; replace x with y in * by solver | ]
+        end;
+          [ | erewrite !index_sequences_wrong_ptable by
+                (try apply root_pointer_has_location; try solver;
+                 eauto using NoDup_nth_error_neq, no_duplicate_ptables);
+              reflexivity ].
+
+        erewrite index_sequences_to_root by solver.
+        erewrite index_sequences_to_root; try solver;
+          try apply is_valid_root_wf; try solver;
+            try apply mm_map_level_reassign_pointer; solver. }
       { (* represents step *)
         cbv [table_index_expression] in *; simplify; [ ].
 
@@ -1626,33 +1789,64 @@ Section Proofs.
         rewrite fold_left_app.
         cbn [fold_left].
 
-        (* TODO : prove reassign_pointer and represents proper over concrete_state_equiv *)
-          match goal with |- context [reassign_pointer ?x] =>
-                          replace x with c by admit end.
-
         (* swap out starting concrete state for current one *)
         match goal with
           |- represents (abstract_reassign_pointer _ ?conc _ _ _ _) (reassign_pointer ?c _ _) =>
           rewrite abstract_reassign_pointer_change_concrete with (conc':=c)
-            by
-              repeat match goal with
-                     | H : Forall _ _ |- _ => rewrite Forall_forall in H; apply H
-                     | _ => apply In_nth_default
-                     | _ => solver
-                     end
         end.
+        2: {
+          (* TODO: the below is a copy-paste of the index-sequences case above, factor into a sublemma *)
+          basics.
+
+          match goal with |- context [nth_default ?d ?l ?i] =>
+                          pose proof (nth_error_eq_default l i d ltac:(solver)) end.
+          (* use the nodup to turn Nat.eq_dec into a decider on the mm_ptables *)
+          match goal with
+          | H : ptable_is_root _ _ |- _ =>
+            pose proof H; apply ptable_is_root_In in H
+          end.
+          match goal with
+          | H : root_ptable_matches_stage _ _ |- _ =>
+            pose proof H; apply root_ptable_matches_stage_In in H
+          end.
+          repeat match goal with H : In ?x _ |- _ =>
+                                 apply In_nth_error in H; destruct H end.
+          match goal with H1 : nth_error all_root_ptables ?i = Some ?x,
+                               H2 : nth_error all_root_ptables ?j = Some ?y |- _ =>
+                          destruct (Nat.eq_dec i j);
+                            [ basics; replace x with y in * by solver | ]
+          end;
+            [ | erewrite !index_sequences_wrong_ptable by
+                  (try apply root_pointer_has_location; try solver;
+                   eauto using NoDup_nth_error_neq, no_duplicate_ptables);
+                reflexivity ].
+
+          erewrite index_sequences_to_root by solver.
+          erewrite index_sequences_to_root; try solver;
+            try apply is_valid_root_wf; try solver;
+              try apply mm_map_level_reassign_pointer; try solver.
+          eapply concrete_equiv_valid, mm_map_level_equiv; solver. }
 
         eapply reassign_pointer_represents with (level := S (root_level - 1));
           try apply has_location_nth_default with (flags:=flags);
           try apply mm_map_level_reassign_pointer;
+          try eapply concrete_equiv_valid, mm_map_level_equiv;
+          try (eapply represents_proper; [ | solver];
+               apply concrete_state_equiv_sym, mm_map_level_equiv);
           cbv [level_from_indices]; cbn [length]; try solver; [ ].
+        eapply attrs_changed_in_range_proper;
+          try apply mm_map_level_equiv;
+          try eapply has_location_nth_default;
+          try solver; [ ].
         destruct abst. (* so eauto doesn't insert abst where we don't want it *)
         match goal with
         | H : is_begin_or_block_start ?b ?x ?lvl |- _ =>
-          destruct H; [ subst; eapply mm_map_level_table_attrs;
-                        cbv [level_from_indices]; autorewrite with push_length;
-                        try apply Bool.negb_true_iff, N.eqb_neq; solver | ]
-        end.
+          destruct H
+        end;
+          [ subst;
+            eapply mm_map_level_table_attrs;
+            cbv [level_from_indices]; autorewrite with push_length;
+            try apply Bool.negb_true_iff, N.eqb_neq; solver | ].
         eapply attrs_changed_in_range_block_start;
           try (replace (S (root_level - 1)) with root_level by lia; solver); [ ].
         eapply mm_map_level_table_attrs;
@@ -1661,11 +1855,9 @@ Section Proofs.
 
     { (* Subgoal 2 : invariant holds at start *)
       right.
-      cbv [table_index_expression] in *; simplify; [ | | | ].
-      { eauto using represents_valid_concrete. }
+      cbv [table_index_expression] in *; simplify; [ | | ].
       { cbv [is_begin_or_block_start]; simplify. }
       { apply Forall_forall; intros.
-        apply Forall_forall; intros.
         reflexivity. }
       { eapply represents_proper_abstr; [|solver].
         apply abstract_reassign_pointer_low.
@@ -1720,6 +1912,8 @@ Section Proofs.
                | _ => eapply root_mm_index_out_of_range_high
                | _ => solver
                end. }
+    Unshelve.
+    all:apply ppool.
   Admitted.
 
   (* placeholder; later there will be actual expressions for the new abstract

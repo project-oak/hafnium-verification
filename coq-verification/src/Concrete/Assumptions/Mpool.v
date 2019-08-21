@@ -46,6 +46,13 @@ Axiom mpool_free : mpool -> ptable_pointer -> mpool.
 Axiom mpool_alloc_contiguous :
   mpool -> size_t -> size_t -> option (mpool * list ptable_pointer).
 
+(* TODO: the current axioms about mpool assume that, once a pointer is allocated
+   from the mpool, future allocations will not produce the same pointer (unless
+   it is freed in between). This is true if, every time a pointer is freed into
+   the pool, it does not already exist in the pool. This property needs to be
+   stated and tracked throughout all proofs (probably as part of
+   Concrete.State.is_valid). *)
+
 (* N.B. these are for proofs, not code; they are not part of the header file and
    exist purely conceptually *)
 Axiom mpool_contains : mpool -> ptable_pointer -> Prop.
