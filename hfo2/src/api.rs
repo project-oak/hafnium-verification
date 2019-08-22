@@ -46,14 +46,14 @@ const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
 struct VCpuLockedPair<'s> {
     outer: &'s VCpu,
-    inner: &'s mut VCpuState,
+    inner: &'s mut VCpuInner,
 }
 
 impl<'s> VCpuLockedPair<'s> {
     unsafe fn from_assuming(current: *mut VCpu) -> Self {
         Self {
             outer: &*current,
-            inner: (*current).state.get_mut_unchecked(),
+            inner: (*current).inner.get_mut_unchecked(),
         }
     }
 }
@@ -104,7 +104,7 @@ unsafe fn switch_to_primary(
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
     // TODO: next is not locked...
-    (*next).state.get_mut_unchecked().regs.set_retval(primary_ret.into_raw());
+    (*next).inner.get_mut_unchecked().regs.set_retval(primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
     current.inner.state = secondary_state;
@@ -252,7 +252,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
 /// and can therefore be used by other pcpus.
 #[no_mangle]
 pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
-    (*vcpu).state.unlock_unchecked();
+    (*vcpu).inner.unlock_unchecked();
 }
 
 /// Assuming that the arguments have already been checked by the caller, injects
@@ -272,7 +272,7 @@ unsafe fn internal_interrupt_inject(
     current: VCpuLockedPair,
     next: *mut *mut VCpu,
 ) -> i64 {
-    if let Some(_) = target_vcpu.interrupts.lock().inject(intid) {
+    if target_vcpu.interrupts.lock().inject(intid).is_some() {
         if (*current.outer.vm).id == HF_PRIMARY_VM_ID {
             // If the call came from the primary VM, let it know that it should
             // run or kick the target vCPU.
@@ -297,7 +297,7 @@ unsafe fn api_vcpu_prepare_run(
     vcpu: *mut VCpu,
     mut run_ret: HfVCpuRunReturn,
 ) -> Result<VCpuLockedPair, HfVCpuRunReturn> {
-    let mut vcpu_state = match (*vcpu).state.try_lock() {
+    let mut vcpu_state = match (*vcpu).inner.try_lock() {
         Some(guard) => guard,
         None => {
             // vCPU is running or prepared to run on another pCPU.
@@ -348,7 +348,7 @@ unsafe fn api_vcpu_prepare_run(
 
         // The timer expired so allow the interrupt to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            if arch_timer_pending(&vcpu_state.regs) =>
+            if vcpu_state.regs.timer_pending() =>
         {
             // break;
         }
@@ -356,8 +356,8 @@ unsafe fn api_vcpu_prepare_run(
         // The vCPU is not ready to run, return the appropriate code to the
         // primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
-            if arch_timer_enabled(&vcpu_state.regs) {
-                let ns = arch_timer_remaining_ns(&mut vcpu_state.regs);
+            if vcpu_state.regs.timer_enabled() {
+                let ns = vcpu_state.regs.timer_remaining_ns();
 
                 run_ret = if vcpu_state.state == VCpuStatus::BlockedMailbox {
                     HfVCpuRunReturn::WaitForMessage { ns }
@@ -427,7 +427,7 @@ pub unsafe extern "C" fn api_vcpu_run(
     // vcpu->regs here because api_vcpu_prepare_run already made sure that
     // regs_available was true (and then set it to false) before returning
     // true.
-    if arch_timer_pending(&mut vcpu.inner.regs) {
+    if vcpu.inner.regs.timer_pending() {
         // Make virtual timer interrupt pending.
         internal_interrupt_inject(vcpu.outer, HF_VIRTUAL_TIMER_INTID, 
             // TODO(HfO2): below is very stupid design. Change it.
@@ -440,7 +440,7 @@ pub unsafe extern "C" fn api_vcpu_run(
         // Ideally we wouldn't do this because it affects what the secondary
         // vcPU sees, but if we don't then we end up with a loop of the
         // interrupt firing each time we try to return to the secondary vCPU.
-        arch_timer_mask(&mut vcpu.inner.regs);
+        vcpu.inner.regs.timer_mask();
     }
 
     // Switch to the vcpu.

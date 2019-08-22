@@ -105,10 +105,10 @@ pub fn arch_cpu_module_init() {
     assert_eq!(offset_of!(Cpu, id), CPU_ID);
     assert_eq!(offset_of!(Cpu, stack_bottom), CPU_STACK_BOTTOM);
     assert_eq!(
-        offset_of!(VCpu, state)
+        offset_of!(VCpu, inner)
         + 8 // expected value of offset_of!(SpinLock<VCpuState>, data), but it
             // is not working. see Gilnaa/memoffset#21.
-        + offset_of!(VCpuState, regs),
+        + offset_of!(VCpuInner, regs),
         VCPU_REGS);
     assert_eq!(offset_of!(ArchRegs, lazy), REGS_LAZY);
     assert_eq!(offset_of!(ArchRegs, fp), REGS_FREGS);
