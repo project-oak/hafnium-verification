@@ -301,7 +301,7 @@ unsafe fn api_vcpu_prepare_run(
     vcpu: *mut VCpu,
     mut run_ret: HfVCpuRunReturn,
 ) -> Result<VCpuLockedPair, HfVCpuRunReturn> {
-    let mut vcpu_state = match (*vcpu).inner.try_lock() {
+    let mut vcpu_inner = match (*vcpu).inner.try_lock() {
         Some(guard) => guard,
         None => {
             // vCPU is running or prepared to run on another pCPU.
@@ -316,18 +316,18 @@ unsafe fn api_vcpu_prepare_run(
     };
 
     if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
-        if vcpu_state.state != VCpuStatus::Aborted {
+        if vcpu_inner.state != VCpuStatus::Aborted {
             dlog!(
                 "Aborting VM {} vCPU {}\n",
                 (*(*vcpu).vm).id,
                 vcpu_index(vcpu)
             );
-            vcpu_state.state = VCpuStatus::Aborted;
+            vcpu_inner.state = VCpuStatus::Aborted;
         }
         return Err(run_ret);
     }
 
-    match vcpu_state.state {
+    match vcpu_inner.state {
         VCpuStatus::Off | VCpuStatus::Aborted => {
             return Err(run_ret);
         }
@@ -340,7 +340,7 @@ unsafe fn api_vcpu_prepare_run(
         // dependencies in the common run case meaning the sensitive context
         // switch performance is consistent.
         VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read() => {
-            vcpu_state.regs.set_retval(SpciReturn::Success as uintreg_t);
+            vcpu_inner.regs.set_retval(SpciReturn::Success as uintreg_t);
         }
 
         // Allow virtual interrupts to be delivered.
@@ -352,7 +352,7 @@ unsafe fn api_vcpu_prepare_run(
 
         // The timer expired so allow the interrupt to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            if vcpu_state.regs.timer_pending() =>
+            if vcpu_inner.regs.timer_pending() =>
         {
             // break;
         }
@@ -360,10 +360,10 @@ unsafe fn api_vcpu_prepare_run(
         // The vCPU is not ready to run, return the appropriate code to the
         // primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
-            if vcpu_state.regs.timer_enabled() {
-                let ns = vcpu_state.regs.timer_remaining_ns();
+            if vcpu_inner.regs.timer_enabled() {
+                let ns = vcpu_inner.regs.timer_remaining_ns();
 
-                run_ret = if vcpu_state.state == VCpuStatus::BlockedMailbox {
+                run_ret = if vcpu_inner.state == VCpuStatus::BlockedMailbox {
                     HfVCpuRunReturn::WaitForMessage { ns }
                 } else {
                     HfVCpuRunReturn::WaitForInterrupt { ns }
@@ -379,10 +379,10 @@ unsafe fn api_vcpu_prepare_run(
     }
 
     // It has been decided that the vCPU should be run.
-    vcpu_state.cpu = current.inner.cpu;
+    vcpu_inner.cpu = current.inner.cpu;
 
     // We want to keep the lock of vcpu.state because we're going to run.
-    mem::forget(vcpu_state);
+    mem::forget(vcpu_inner);
     Ok(VCpuLockedPair::from_assuming(vcpu))
 }
 

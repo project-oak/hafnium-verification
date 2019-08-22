@@ -249,9 +249,8 @@ impl VCpuInner {
         self.state = VCpuStatus::Ready;
     }
 
-    /// Check whether the given vcpu_state is an off state, for the purpose of
-    /// turning vCPUs on and off. Note that aborted still counts as on in this
-    /// context.
+    /// Check whether self is an off state, for the purpose of turning vCPUs on
+    /// and off. Note that aborted still counts as on in this context.
     pub fn is_off(&self) -> bool {
         match self.state {
             VCpuStatus::Off => true,
@@ -499,7 +498,7 @@ pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts
     (*vcpu).interrupts.get_mut_unchecked()
 }
 
-/// Check whether the given vcpu_state is an off state, for the purpose of
+/// Check whether the given vcpu_inner is an off state, for the purpose of
 /// turning vCPUs on and off. Note that aborted still counts as on in this
 /// context.
 #[no_mangle]
