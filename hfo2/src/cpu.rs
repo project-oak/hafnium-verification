@@ -307,6 +307,11 @@ pub struct VCpuExecutionLocked {
     vcpu: *mut VCpu,
 }
 
+#[repr(C)]
+pub struct CpuInner {
+    is_on: bool,
+}
+
 // TODO: Update alignment such that cpus are in different cache lines.
 #[repr(C)]
 pub struct Cpu {
@@ -317,11 +322,11 @@ pub struct Cpu {
     /// `pub` here is only required by `arch_cpu_module_init`.
     pub stack_bottom: *mut c_void,
 
-    /// See api.c for the partial ordering on locks.
-    lock: RawSpinLock,
-
     /// Determines whether or not the cpu is currently on.
-    is_on: bool,
+    /// Note(HfO2): `CpuInner` currently only contains one boolean field, thus
+    /// can be replaced as `AtomicBool`. For extensibility, we use `SpinLock`
+    /// here.
+    inner: SpinLock<CpuInner>,
 }
 
 // unsafe impl Sync for Cpu {}
@@ -348,7 +353,6 @@ static mut cpu_count: u32 = 1;
 #[no_mangle]
 pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
     // TODO: Assumes that c is zeroed out already.
-    sl_init(&mut (*c).lock);
 }
 
 #[no_mangle]
@@ -405,11 +409,9 @@ pub unsafe extern "C" fn cpu_index(c: *mut Cpu) -> usize {
 #[no_mangle]
 pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
     let prev: bool;
-
-    sl_lock(&(*c).lock);
-    prev = (*c).is_on;
-    (*c).is_on = true;
-    sl_unlock(&(*c).lock);
+    let mut cpu_inner = (*c).inner.lock();
+    prev = cpu_inner.is_on;
+    cpu_inner.is_on = true;
 
     if !prev {
         let vm = vm_find(HF_PRIMARY_VM_ID);
@@ -424,9 +426,7 @@ pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) ->
 /// Prepares the CPU for turning itself off.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
-    sl_lock(&(*c).lock);
-    (*c).is_on = false;
-    sl_unlock(&(*c).lock);
+    (*c).inner.lock().is_on = false;
 }
 
 /// Searches for a CPU based on its id.
