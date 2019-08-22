@@ -15,6 +15,7 @@
  */
 
 use core::cell::UnsafeCell;
+use core::mem;
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
@@ -160,8 +161,10 @@ impl<'s, T> DerefMut for SpinLockGuard<'s, T> {
 }
 
 impl<'s, T> SpinLockGuard<'s, T> {
-    pub fn into_raw(self) -> usize {
-        self.lock as *const _ as usize
+    pub unsafe fn into_raw(self) -> usize {
+        let ret = self.lock as *const _ as usize;
+        mem::forget(self);
+        ret
     }
 
     pub unsafe fn from_raw(data: usize) -> Self {
