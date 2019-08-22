@@ -317,10 +317,6 @@ pub struct Cpu {
     /// `pub` here is only required by `arch_cpu_module_init`.
     pub stack_bottom: *mut c_void,
 
-    /// Enabling/disabling irqs are counted per-cpu. They are enabled when the count is zero, and
-    /// disabled when it's non-zero.
-    irq_disable_count: u32,
-
     /// See api.c for the partial ordering on locks.
     lock: RawSpinLock,
 
@@ -429,7 +425,7 @@ pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) ->
 #[no_mangle]
 pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
     sl_lock(&(*c).lock);
-    (*c).is_on = true;
+    (*c).is_on = false;
     sl_unlock(&(*c).lock);
 }
 
