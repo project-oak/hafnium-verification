@@ -55,7 +55,7 @@ extern "C" {
     ///
     /// This function must only be called on an arch_regs that is known not be in use
     /// by any other physical CPU.
-    pub fn arch_regs_set_retval(r: *mut ArchRegs, v: uintreg_t);
+    fn arch_regs_set_retval(r: *mut ArchRegs, v: uintreg_t);
 }
 
 const STACK_SIZE: usize = PAGE_SIZE;
@@ -199,6 +199,37 @@ impl Interrupts {
     }
 }
 
+impl ArchRegs {
+    /// Reset the register values other than the PC and argument which are set
+    /// with `arch_regs_set_pc_arg()`.
+    pub fn reset(&mut self, is_primary: bool, vm: &Vm, vcpu_id: cpu_id_t) {
+        unsafe {
+            arch_regs_reset(
+                self,
+                is_primary,
+                vm.id,
+                vcpu_id,
+                vm.get_ptable_raw(),
+            )
+        }
+    }
+
+    /// Updates the register holding the return value of a function.
+    pub fn set_retval(&mut self, v: uintreg_t) {
+        unsafe {
+            arch_regs_set_retval(self, v)
+        }
+    }
+
+    /// Updates the given registers so that when a vcpu runs, it starts off at
+    /// the given address (pc) with the given argument.
+    pub fn set_pc_arg(&mut self, pc: ipaddr_t, arg: uintreg_t) {
+        unsafe {
+            arch_regs_set_pc_arg(self, pc, arg)
+        }
+    }
+}
+
 #[repr(C)]
 pub struct VCpuFaultInfo {
     ipaddr: ipaddr_t,
@@ -221,7 +252,7 @@ impl VCpuState {
     /// VCpuStatus::Ready. The caller must hold the vCPU execution lock while
     /// calling this.
     pub fn on(&mut self, entry: ipaddr_t, arg: uintreg_t) {
-        unsafe { arch_regs_set_pc_arg(&mut self.regs, entry, arg); }
+        self.regs.set_pc_arg(entry, arg);
         self.state = VCpuStatus::Ready;
     }
 
@@ -498,9 +529,9 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
     entry: ipaddr_t,
     arg: uintreg_t,
 ) -> bool {
-    let vm = (*vcpu).vm;
+    let vm = &*(*vcpu).vm;
 
-    assert!((*vm).id != HF_PRIMARY_VM_ID);
+    assert!(vm.id != HF_PRIMARY_VM_ID);
 
     let mut state = (*vcpu).state.lock();
     let vcpu_was_off = state.is_off();
@@ -509,13 +540,7 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
         // is a secondary which can migrate between pCPUs, the ID of the
         // vCPU is defined as the index and does not match the ID of the
         // pCPU it is running on.
-        arch_regs_reset(
-            &mut state.regs,
-            false,
-            (*vm).id,
-            vcpu_index(vcpu) as cpu_id_t,
-            (*vm).get_ptable_raw(),
-        );
+        state.regs.reset(false, vm, vcpu_index(vcpu) as cpu_id_t);
         state.on(entry, arg);
     }
 

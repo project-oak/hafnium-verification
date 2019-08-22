@@ -90,7 +90,7 @@ unsafe fn api_switch_to_primary(
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
     // TODO: next is not locked...
-    arch_regs_set_retval(&mut (*next).state.get_mut_unchecked().regs, primary_ret.into_raw());
+    (*next).state.get_mut_unchecked().regs.set_retval(primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
     (*current).state.get_mut_unchecked().state = secondary_state;
@@ -312,7 +312,7 @@ unsafe fn api_vcpu_prepare_run(
         // dependencies in the common run case meaning the sensitive context
         // switch performance is consistent.
         VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read() => {
-            arch_regs_set_retval(&mut vcpu_state.regs, SpciReturn::Success as uintreg_t);
+            vcpu_state.regs.set_retval(SpciReturn::Success as uintreg_t);
         }
 
         // Allow virtual interrupts to be delivered.
