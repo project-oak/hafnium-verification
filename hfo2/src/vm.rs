@@ -153,7 +153,9 @@ impl Mailbox {
         let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
 
         // Map the send page as read-only in the hypervisor address space.
-        if hypervisor_ptable.identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool).is_some()
+        if hypervisor_ptable
+            .identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool)
+            .is_some()
         {
             self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
         } else {
@@ -165,7 +167,9 @@ impl Mailbox {
 
         // Map the receive page as writable in the hypervisor address space. On
         // failure, unmap the send page before returning.
-        if hypervisor_ptable.identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool).is_some()
+        if hypervisor_ptable
+            .identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool)
+            .is_some()
         {
             self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
         } else {
@@ -269,60 +273,55 @@ impl VmInner {
         let local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
 
         // Take memory ownership away from the VM and mark as shared.
-        self.ptable.identity_map(
-            pa_send_begin,
-            pa_send_end,
-            Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
-            &local_page_pool,
-        ).ok_or(())?;
+        self.ptable
+            .identity_map(
+                pa_send_begin,
+                pa_send_end,
+                Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
+                &local_page_pool,
+            )
+            .ok_or(())?;
 
-        if self.ptable.identity_map(
-            pa_recv_begin,
-            pa_recv_end,
-            Mode::UNOWNED | Mode::SHARED | Mode::R,
-            &local_page_pool,
-        ).is_none() {
+        if self
+            .ptable
+            .identity_map(
+                pa_recv_begin,
+                pa_recv_end,
+                Mode::UNOWNED | Mode::SHARED | Mode::R,
+                &local_page_pool,
+            )
+            .is_none()
+        {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
             self.ptable.defrag(&local_page_pool);
 
             assert!(self
                 .ptable
-                .identity_map(
-                    pa_send_begin,
-                    pa_send_end,
-                    orig_send_mode,
-                    &local_page_pool
-                )
+                .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
                 .is_some());
             return Err(());
         }
 
-        if self.mailbox.configure_stage1(
-            pa_send_begin,
-            pa_send_end,
-            pa_recv_begin,
-            pa_recv_end,
-            &local_page_pool,
-        ).is_err() {
+        if self
+            .mailbox
+            .configure_stage1(
+                pa_send_begin,
+                pa_send_end,
+                pa_recv_begin,
+                pa_recv_end,
+                &local_page_pool,
+            )
+            .is_err()
+        {
             assert!(self
                 .ptable
-                .identity_map(
-                    pa_recv_begin,
-                    pa_recv_end,
-                    orig_recv_mode,
-                    &local_page_pool
-                )
+                .identity_map(pa_recv_begin, pa_recv_end, orig_recv_mode, &local_page_pool)
                 .is_some());
 
             assert!(self
                 .ptable
-                .identity_map(
-                    pa_send_begin,
-                    pa_send_end,
-                    orig_send_mode,
-                    &local_page_pool
-                )
+                .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
                 .is_some());
 
             return Err(());
@@ -372,13 +371,15 @@ impl VmInner {
             .get_mode(send, ipa_add(send, PAGE_SIZE))
             .filter(|mode| mode.valid_owned_and_exclusive())
             .filter(|mode| mode.contains(Mode::R))
-            .filter(|mode| mode.contains(Mode::W)).ok_or(())?;
+            .filter(|mode| mode.contains(Mode::W))
+            .ok_or(())?;
 
         let orig_recv_mode = self
             .ptable
             .get_mode(recv, ipa_add(recv, PAGE_SIZE))
             .filter(|mode| mode.valid_owned_and_exclusive())
-            .filter(|mode| mode.contains(Mode::R)).ok_or(())?;
+            .filter(|mode| mode.contains(Mode::R))
+            .ok_or(())?;
 
         self.configure_pages(
             pa_send_begin,

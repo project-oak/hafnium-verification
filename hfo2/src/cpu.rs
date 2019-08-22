@@ -121,22 +121,20 @@ impl Interrupts {
         // If you change this logic make sure to update the need_vm_lock logic
         // above to match.
         let ret = {
-            if self.enabled[intid_index] & !self.pending[intid_index]
-               & intid_mask == 0
-            {
+            if self.enabled[intid_index] & !self.pending[intid_index] & intid_mask == 0 {
                 None
             } else {
                 // Increment the count.
                 self.enabled_and_pending_count += 1;
 
-                // Only need to update state if there was not already an 
+                // Only need to update state if there was not already an
                 // interrupt enabled and pending.
                 if self.enabled_and_pending_count != 1 {
                     None
                 } else {
                     Some(())
                 }
-            }            
+            }
         };
 
         // Either way, make it pending.
@@ -150,21 +148,13 @@ impl Interrupts {
 
         if enable {
             // If it is pending and was not enabled before, increment the count.
-            if (self.pending[intid_index]
-                & !self.enabled[intid_index]
-                & intid_mask)
-                != 0
-            {
+            if (self.pending[intid_index] & !self.enabled[intid_index] & intid_mask) != 0 {
                 self.enabled_and_pending_count += 1;
             }
             self.enabled[intid_index] |= intid_mask;
         } else {
             // If it is pending and was enabled before, decrement the count.
-            if (self.pending[intid_index]
-                & self.enabled[intid_index]
-                & intid_mask)
-                != 0
-            {
+            if (self.pending[intid_index] & self.enabled[intid_index] & intid_mask) != 0 {
                 self.enabled_and_pending_count -= 1;
             }
             self.enabled[intid_index] &= !intid_mask;
@@ -182,8 +172,7 @@ impl Interrupts {
         // Find the first enabled pending interrupt ID, returns it, and
         // deactive it.
         for i in 0..(HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS) {
-            let enabled_and_pending =
-                self.enabled[i] & self.pending[i];
+            let enabled_and_pending = self.enabled[i] & self.pending[i];
             if enabled_and_pending != 0 {
                 let bit_index = enabled_and_pending.trailing_zeros();
 
@@ -203,30 +192,18 @@ impl ArchRegs {
     /// Reset the register values other than the PC and argument which are set
     /// with `arch_regs_set_pc_arg()`.
     pub fn reset(&mut self, is_primary: bool, vm: &Vm, vcpu_id: cpu_id_t) {
-        unsafe {
-            arch_regs_reset(
-                self,
-                is_primary,
-                vm.id,
-                vcpu_id,
-                vm.get_ptable_raw(),
-            )
-        }
+        unsafe { arch_regs_reset(self, is_primary, vm.id, vcpu_id, vm.get_ptable_raw()) }
     }
 
     /// Updates the register holding the return value of a function.
     pub fn set_retval(&mut self, v: uintreg_t) {
-        unsafe {
-            arch_regs_set_retval(self, v)
-        }
+        unsafe { arch_regs_set_retval(self, v) }
     }
 
     /// Updates the given registers so that when a vcpu runs, it starts off at
     /// the given address (pc) with the given argument.
     pub fn set_pc_arg(&mut self, pc: ipaddr_t, arg: uintreg_t) {
-        unsafe {
-            arch_regs_set_pc_arg(self, pc, arg)
-        }
+        unsafe { arch_regs_set_pc_arg(self, pc, arg) }
     }
 
     pub fn timer_mask(&mut self) {
@@ -255,8 +232,8 @@ pub struct VCpuFaultInfo {
 }
 
 pub struct VCpuInner {
-    /// The state is only changed in the context of the vCPU being run. This 
-    /// ensures the scheduler can easily keep track of the vCPU state as 
+    /// The state is only changed in the context of the vCPU being run. This
+    /// ensures the scheduler can easily keep track of the vCPU state as
     /// transitions are indicated by the return code from the run call.
     pub state: VCpuStatus,
     pub cpu: *mut Cpu,
@@ -279,11 +256,10 @@ impl VCpuInner {
         match self.state {
             VCpuStatus::Off => true,
             _ =>
-            // Aborted still counts as ON for the purposes of PSCI,
-            // because according to the PSCI specification (section
-            // 5.7.1) a core is only considered to be off if it has
-            // been turned off with a CPU_OFF call or hasn't yet
-            // been turned on with a CPU_ON call.
+            // Aborted still counts as ON for the purposes of PSCI, because
+            // according to the PSCI specification (section 5.7.1) a core is
+            // only considered to be off if it has  been turned off with a
+            // CPU_OFF call or hasn't yet been turned on with a CPU_ON call.
             {
                 false
             }
@@ -457,7 +433,7 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
             guard.into_raw();
             *locked = VCpuExecutionLocked { vcpu };
             true
-        },
+        }
         None => false,
     }
 }

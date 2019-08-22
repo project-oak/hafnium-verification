@@ -20,8 +20,8 @@
 use core::mem;
 
 use crate::cpu::*;
-use crate::types::*;
 use crate::spinlock::*;
+use crate::types::*;
 
 const FLOAT_REG_BYTES: usize = 16;
 
@@ -109,7 +109,8 @@ pub fn arch_cpu_module_init() {
         + 8 // expected value of offset_of!(SpinLock<VCpuState>, data), but it
             // is not working. see Gilnaa/memoffset#21.
         + offset_of!(VCpuInner, regs),
-        VCPU_REGS);
+        VCPU_REGS
+    );
     assert_eq!(offset_of!(ArchRegs, lazy), REGS_LAZY);
     assert_eq!(offset_of!(ArchRegs, fp), REGS_FREGS);
     assert_eq!(offset_of!(ArchRegs, gic_ich_hcr_el2), REGS_GIC);
