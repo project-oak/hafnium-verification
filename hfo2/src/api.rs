@@ -104,7 +104,11 @@ unsafe fn switch_to_primary(
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
     // TODO: next is not locked...
-    (*next).inner.get_mut_unchecked().regs.set_retval(primary_ret.into_raw());
+    (*next)
+        .inner
+        .get_mut_unchecked()
+        .regs
+        .set_retval(primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
     current.inner.state = secondary_state;
@@ -305,7 +309,7 @@ unsafe fn api_vcpu_prepare_run(
             // It's ok not to return the sleep duration here because the other
             // physical CPU that is currently running this vCPU will return the
             // sleep duration if needed. The default return value is
-            // HfVCpuRunReturn::WaitForInterrupt, so no need to set it 
+            // HfVCpuRunReturn::WaitForInterrupt, so no need to set it
             // explicitly.
             return Err(run_ret);
         }
@@ -429,12 +433,16 @@ pub unsafe extern "C" fn api_vcpu_run(
     // true.
     if vcpu.inner.regs.timer_pending() {
         // Make virtual timer interrupt pending.
-        internal_interrupt_inject(vcpu.outer, HF_VIRTUAL_TIMER_INTID, 
+        internal_interrupt_inject(
+            vcpu.outer,
+            HF_VIRTUAL_TIMER_INTID,
             // TODO(HfO2): below is very stupid design. Change it.
             VCpuLockedPair {
                 outer: vcpu.outer,
                 inner: vcpu.inner,
-            }, ptr::null_mut());
+            },
+            ptr::null_mut(),
+        );
 
         // Set the mask bit so the hardware interrupt doesn't fire again.
         // Ideally we wouldn't do this because it affects what the secondary
@@ -916,7 +924,10 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
     //       mapping of the whole range. Such an approach will limit the
     //       changes to stage-1 tables and will allow only local invalidation.
 
-    if hypervisor_ptable.identity_map(begin, end, Mode::W, ppool).is_none() {
+    if hypervisor_ptable
+        .identity_map(begin, end, Mode::W, ppool)
+        .is_none()
+    {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         hypervisor_ptable.defrag(ppool);
