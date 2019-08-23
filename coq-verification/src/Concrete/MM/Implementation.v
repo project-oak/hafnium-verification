@@ -315,7 +315,7 @@ Definition mm_populate_table_pte
            (flags : int)
            (ppool : mpool)
   : mm_page_table (* new state of [parent] *)
-    * option mm_page_table (* newly created table, [None] = null pointer *)
+    * option ptable_pointer (* location of newly created table, [None] = NULL *)
     * concrete_state * mpool :=
 
   let pte := parent.(entries) [[ pte_index ]] in
@@ -335,7 +335,7 @@ Definition mm_populate_table_pte
     let t_ptr :=
         hd null_pointer
            (mm_page_table_from_pa (arch_mm_table_from_pte v level)) in
-    (parent, Some (s.(ptable_deref) t_ptr), s, ppool)
+    (parent, Some t_ptr, s, ppool)
   else
 
     (* /* Allocate a new table. */
@@ -418,7 +418,7 @@ Definition mm_populate_table_pte
             (arch_mm_table_pte level ntable_ptr) level flags ppool in
 
       (* return ntable; *)
-      (parent, Some ntable, s, ppool)
+      (parent, Some ntable_ptr, s, ppool)
     end.
 
 (*
@@ -461,10 +461,10 @@ Fixpoint mm_map_level
            (begin end_ : ptable_addr_t)
            (pa : paddr_t)
            (attrs : attributes)
-           (table : mm_page_table)
+           (table_ptr : ptable_pointer)
            (level : nat)
            (flags : int)
-           (ppool : mpool) : bool * mm_page_table * concrete_state * mpool :=
+           (ppool : mpool) : bool * concrete_state * mpool :=
 
   (* pte_t *pte = &table->entries[mm_index(begin, level)]; *)
   (* N.B. storing the index instead of a pointer *)
@@ -490,12 +490,13 @@ Fixpoint mm_map_level
 
   (* /* Fill each entry in the table. */
      while (begin < end) { *)
-  let '(s, begin, pa, table, pte_index, failed, ppool) :=
+  let '(s, begin, pa, pte_index, failed, ppool) :=
       while_loop
         (max_iterations := N.to_nat (end_ - begin))
-        (fun '(_,begin,_,_,_,_,_) => (begin <? end_)%N)
-        (s, begin, pa, table, pte_index, false, ppool)
-        (fun '(s, begin, pa, table, pte_index, failed, ppool) =>
+        (fun '(_,begin,_,_,_,_) => (begin <? end_)%N)
+        (s, begin, pa, pte_index, false, ppool)
+        (fun '(s, begin, pa, pte_index, failed, ppool) =>
+           let table := s.(ptable_deref) table_ptr in
            let pte := table.(entries) [[ pte_index ]] in
 
            (* if (unmap ? !arch_mm_pte_is_present( *pte, level)
@@ -519,7 +520,7 @@ Fixpoint mm_map_level
              let begin := mm_start_of_next_block begin entry_size in
              let pa := mm_pa_start_of_next_block pa entry_size in
              let pte_index := S pte_index in
-             (s, begin, pa, table, pte_index, failed, ppool, continue)
+             (s, begin, pa, pte_index, failed, ppool, continue)
            else
              (* } else if ((end - begin) >= entry_size &&
                   (unmap || arch_mm_is_block_allowed(level)) &&
@@ -548,6 +549,9 @@ Fixpoint mm_map_level
                         mm_replace_entry s begin table pte_index new_pte level flags ppool
                    else (table, s, ppool) in
 
+               (* update the parent table *)
+               let s := reassign_pointer s table_ptr table in
+
                (* done; continue to the next entry *)
                (* begin = mm_start_of_next_block(begin, entry_size);
                   pa = mm_pa_start_of_next_block(pa, entry_size);
@@ -555,7 +559,7 @@ Fixpoint mm_map_level
                let begin := mm_start_of_next_block begin entry_size in
                let pa := mm_pa_start_of_next_block pa entry_size in
                let pte_index := S pte_index in
-               (s, begin, pa, table, pte_index, failed, ppool, continue)
+               (s, begin, pa, pte_index, failed, ppool, continue)
              else
                (* /*
                    * If the entry is already a subtable get it; otherwise
@@ -563,18 +567,23 @@ Fixpoint mm_map_level
                    */
                   struct mm_page_table *nt = mm_populate_table_pte(
                           begin, pte, level, flags, ppool); *)
-               let '(table, nt, s, ppool) :=
+               let '(table, nt_ptr, s, ppool) :=
                    mm_populate_table_pte
                      s begin table pte_index level flags ppool in
+
+               (* Functional-program bookkeeping : update the parent table so it
+                  points to nt *)
+               let s := reassign_pointer s table_ptr table in
 
                (* if (nt == NULL) {
                           return false;
                   } *)
-               match nt with
+               match nt_ptr with
                | None =>
                  let failed := true in
-                 (s, begin, pa, table, pte_index, failed, ppool, break)
-               | Some nt =>
+                 (s, begin, pa, pte_index, failed, ppool, break)
+               | Some nt_ptr =>
+                 let nt := s.(ptable_deref) nt_ptr in
 
                  (* /*
                   * Recurse to map/unmap the appropriate entries within
@@ -589,13 +598,16 @@ Fixpoint mm_map_level
                    (* shouldn't happen; if we're at level 0, end_ can't be
                       partway through a block *)
                    let failed := true in
-                   (s, begin, pa, table, pte_index, failed, ppool, break)
+                   (s, begin, pa, pte_index, failed, ppool, break)
                  | S level_minus1 =>
-                   match mm_map_level s begin end_ pa attrs nt level_minus1 flags ppool with
-                   | (false, nt, s, ppool) =>
+                   match mm_map_level s begin end_ pa attrs nt_ptr level_minus1 flags ppool with
+                   | (false, s, ppool) =>
                      let failed := true in
-                     (s, begin, pa, table, pte_index, failed, ppool, break)
-                   | (true, nt, s, ppool) =>
+                     (s, begin, pa, pte_index, failed, ppool, break)
+                   | (true, s, ppool) =>
+
+                     (* fetch nt again, as it might have changed *)
+                     let nt := s.(ptable_deref) nt_ptr in
 
                     (* /*
                      * If the subtable is now empty, replace it with an
@@ -609,20 +621,19 @@ Fixpoint mm_map_level
                                 *pte = arch_mm_absent_pte(level);
                                 mm_free_page_pte(v, level, ppool);
                         } *)
-                     let '(pte, table, s, ppool) :=
+                     let '(pte, s, ppool) :=
                          if (commit && unmap &&
                                     mm_page_table_is_empty nt (level - 1))%bool
                          then
                            let v := pte in
-                          (* N.B. in functional programming we can't edit data under
-                             a pointer, so we need to construct a new table and pass
-                             it along. *)
-                          let table :=
-                              table.(mm_page_table_replace_entry)
-                                      (arch_mm_absent_pte level) pte_index in
-                          let '(s, ppool) := mm_free_page_pte s v level ppool in
-                          (pte, table, s, ppool)
-                        else (pte, table, s, ppool) in
+                           let table :=
+                               table.(mm_page_table_replace_entry)
+                                       (arch_mm_absent_pte level) pte_index in
+                           let s := reassign_pointer s table_ptr table in 
+                           let '(s, ppool) := mm_free_page_pte s v level ppool in
+                           (pte, s, ppool)
+                         else (pte, s, ppool) in
+
                     (* done; continue to the next entry *)
                     (* begin = mm_start_of_next_block(begin, entry_size);
                        pa = mm_pa_start_of_next_block(pa, entry_size);
@@ -630,13 +641,13 @@ Fixpoint mm_map_level
                     let begin := mm_start_of_next_block begin entry_size in
                     let pa := mm_pa_start_of_next_block pa entry_size in
                     let pte_index := S pte_index in
-                    (s, begin, pa, table, pte_index, failed, ppool, continue)
+                    (s, begin, pa, pte_index, failed, ppool, continue)
                   end end end) in
 
   (* return true; *)
   (* N.B. have to check here if the loop returned false partway through *)
   let success := (!failed)%bool in
-  (success, table, s, ppool).
+  (success, s, ppool).
 
 (*
 /**
@@ -680,27 +691,20 @@ Definition mm_map_root
                                   root_level - 1, flags, ppool)) {
                       return false;
               } *)
-           let '(map_level_success, table, s, ppool) :=
-               mm_map_level s begin end_ (pa_init begin) attrs table
+           let '(map_level_success, s, ppool) :=
+               mm_map_level s begin end_ (pa_init begin) attrs table_ptr
                             (root_level - 1) flags ppool in
-
-            (* Functional-program bookkeeping: the C code has edited the table under the
-                pointer. Since functional code can't do that, it has returned to us a new
-                table, so now we need to put that new table under the old pointer in the new
-                state that we return. *)
-           let s := s.(reassign_pointer) table_ptr table in
 
            if (!map_level_success)%bool
            then
              let failed := true in
              (s, begin, table_index, failed, ppool, break)
            else
-             (* begin = mm_start_of_next_block(begin, root_table_size); *)
+
+             (* begin = mm_start_of_next_block(begin, root_table_size);
+                table++; *)
              let begin := mm_start_of_next_block begin root_table_size in
-
-             (* table++; *)
              let table_index := S table_index in
-
              (s, begin, table_index, failed, ppool, continue)) in
 
   (* return true; *)
