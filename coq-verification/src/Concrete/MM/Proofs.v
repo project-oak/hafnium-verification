@@ -778,6 +778,26 @@ Section Proofs.
   Admitted. (* TODO *)
   Hint Resolve mm_populate_table_pte_reassign.
 
+  (* the new parent table state returned by mm_populate_table_pte is equivalent
+     to the old one in terms of attributes (albeit not structure), so replacing
+     the old parent table with the new one produces an equivalent state. *)
+  Lemma mm_populate_table_pte_reassign_equiv
+        conc begin parent_table_ptr pte_index level flags ppool :
+    let parent_table := ptable_deref conc parent_table_ptr in
+    let ret := mm_populate_table_pte conc begin parent_table pte_index level
+                                     flags ppool in
+    let new_parent_table := fst (fst (fst ret)) in
+    let conc' := snd (fst ret) in
+    let ppool' := snd ret in
+    is_valid conc ->
+    locations_exclusive (ptable_deref conc) ppool ->
+    mpool_fallback ppool = Some conc.(api_page_pool) ->
+    mpool_exclusive ppool (api_page_pool conc) ->
+    concrete_state_equiv
+      (reassign_pointer conc' parent_table_ptr new_parent_table)
+      conc.
+  Admitted. (* TODO *)
+
   Lemma mm_populate_table_pte_get_entry
         conc begin parent_table_ptr child_ptr pte_index level flags ppool :
     let parent_table := ptable_deref conc parent_table_ptr in
@@ -950,7 +970,7 @@ Section Proofs.
                   (page_attrs' deref a t2 level stage) stage.
 
   Definition mm_map_level_loop_invariant
-        init_conc init_begin end_ idxs level attrs flags table_ptr
+        init_abst init_conc init_begin level attrs flags table_ptr
         (state : concrete_state * ptable_addr_t * paddr_t * size_t * bool * mpool)
     : Prop :=
     let '(conc, begin, pa, pte_index, failed, ppool) := state in
@@ -972,19 +992,32 @@ Section Proofs.
      /\ end_of_level_or_index_matches init_begin begin level pte_index
      (* ...and we don't alter pointers at the level above *)
      /\ pointers_unchanged_above_level init_conc conc level
-     (* ...and either we failed, or... *)
-     /\ (failed = true \/
-         (* table attributes have changed in the given range *)
-         (if ((flags & MM_FLAG_COMMIT) != 0)%N
-          then attrs_changed_in_range
-                 (ptable_deref conc) idxs
-                 (ptable_deref init_conc table_ptr) (ptable_deref conc table_ptr)
-                 (S level) (new_attrs attrs flags) init_begin (N.min begin end_)
-                 (stage_from_flags flags)
-          else table_attributes_match
-                 (ptable_deref conc)
-                 (ptable_deref init_conc table_ptr) (ptable_deref conc table_ptr)
-                 level (stage_from_flags flags)))).
+     (* ...and the concrete state is represented by the correct abstract state *)
+     /\ (if ((flags & MM_FLAG_COMMIT) != 0)%N
+         then if failed
+              then
+                (* if COMMIT, but the loop failed, there must be some place in
+                   between the start address and the end of the block which the
+                   attribute-changes stopped *)
+                (exists end_,
+                       (init_begin <= end_)%N
+                       (* (init_begin <= end_ <= mm_start_of_next_block begin (mm_entry_size level))%N *)
+                       /\ represents
+                            (abstract_reassign_pointer
+                               init_abst init_conc table_ptr
+                               (new_attrs attrs flags) init_begin end_)
+                            conc)
+              else
+                (* if COMMIT and !failed, then the attributes have been changed
+                   up through the current value of [begin] *)
+                represents
+                  (abstract_reassign_pointer
+                     init_abst init_conc table_ptr
+                     (new_attrs attrs flags) init_begin begin)
+                  conc
+         else
+           (* if !COMMIT, abstract state hasn't changed *)
+           represents init_abst conc)).
 
   Definition mm_map_level_loop_arguments_sig
              conc begin end_ pa attrs table_ptr level flags ppool :
@@ -1166,12 +1199,12 @@ Section Proofs.
   Qed.
 
   Lemma mm_map_level_loop_invariant_holds' level flags end_ attrs begin :
-    forall conc pa table_ptr ppool idxs,
+    forall abst conc pa table_ptr ppool,
       (begin < end_)%N ->
       is_valid conc ->
+      represents abst conc ->
       mpool_fallback ppool = Some (api_page_pool conc) ->
       locations_exclusive (ptable_deref conc) ppool ->
-      S level = level_from_indices (stage_from_flags flags) idxs ->
       mpool_exclusive ppool (api_page_pool conc) ->
       has_location_at_level conc table_ptr level ->
       let end_capped := N.min (mm_level_end begin level) end_ in
@@ -1181,15 +1214,13 @@ Section Proofs.
                          conc begin end_ pa attrs table_ptr level flags ppool in
       is_while_loop_invariant
         (mm_map_level_loop_invariant
-           conc begin (N.min (mm_level_end begin level) end_) idxs level
-              attrs flags table_ptr)
+           abst conc begin level attrs flags table_ptr)
         successful (snd (fst (fst loop_args))) (snd loop_args) ->
       forall P : _ -> Prop,
         (forall state,
             (cond state = false \/ negb (snd (fst state)) = false) ->
             mm_map_level_loop_invariant
-              conc begin (N.min (mm_level_end begin level) end_) idxs level
-              attrs flags table_ptr state ->
+              abst conc begin level attrs flags table_ptr state ->
             P (let '(s, _, _, _, failed, ppool) := state in
                (negb failed, s, ppool))) ->
         P (mm_map_level conc begin end_ pa attrs table_ptr level flags ppool).
@@ -1210,8 +1241,7 @@ Section Proofs.
     eapply
       (while_loop_invariant_strong
          (mm_map_level_loop_invariant
-            conc begin (N.min (mm_level_end begin level) end_) idxs
-            level attrs flags table_ptr)
+            abst conc begin level attrs flags table_ptr)
          P
          (fun state => let '(_, _, _, _, failed, _) := state in
                        negb failed)
@@ -1239,10 +1269,9 @@ Section Proofs.
         simplify; cbv [is_begin_or_block_start
                          end_of_level_or_index_matches
                          pointers_unchanged_above_level];
-          try solver;
-          match goal with |- false = true \/ _ => right end;
-          basics; try rewrite N.min_l by solver;
-            cbv [table_attributes_match]; basics; solver. }
+          try solver.
+      all:eapply represents_proper_abstr;
+        try apply abstract_reassign_pointer_trivial; solver. }
     { (* invariant implies conclusion *)
       basics;
         match goal with
@@ -1254,10 +1283,10 @@ Section Proofs.
   Qed.
 
   Lemma mm_map_level_loop_invariant_is_invariant level :
-    forall conc begin end_ pa table_ptr attrs ppool idxs flags,
+    forall abst conc begin end_ pa table_ptr attrs ppool flags,
       (begin < end_)%N ->
       is_valid conc ->
-      S level = level_from_indices (stage_from_flags flags) idxs ->
+      represents abst conc ->
       has_location_at_level conc table_ptr level ->
       let end_capped := N.min (mm_level_end begin level) end_ in
       let successful := (fun '(_, _,  _, _, failed, _) => negb failed) in
@@ -1265,8 +1294,7 @@ Section Proofs.
                          conc begin end_ pa attrs table_ptr level flags ppool in
       is_while_loop_invariant
         (mm_map_level_loop_invariant
-          conc begin (N.min (mm_level_end begin level) end_) idxs level
-              attrs flags table_ptr)
+          abst conc begin level attrs flags table_ptr)
         successful (snd (fst (fst loop_args))) (snd loop_args).
   Proof.
      induction level; cbn [mm_map_level_loop_arguments].
@@ -1290,9 +1318,6 @@ Section Proofs.
         end;
         repeat match goal with
                | _ => progress basics
-               (* prove the cases where the loop didn't fail *)
-               | |- ?failed = true \/ _ =>
-                 case_eq failed; basics; [ left; solver | right; basics ]
                (* destruct end_of_level_or_index_matches and eliminate end-of-level
                   case (since it happens at the very end of the loop, it couldn't
                   have happened in the previous loop run) *)
@@ -1346,26 +1371,32 @@ Section Proofs.
                | |- locations_exclusive _ _ => eapply mm_populate_table_pte_exclusive; solver
                | |- represents _ _ => eapply mm_populate_table_pte_represents; solver
                | _ => progress autorewrite with push_concrete
+               | |- exists _, _ =>
+                 solve [eexists; basics;
+                          [ | eapply represents_proper;
+                                [ apply concrete_state_equiv_sym,
+                                  mm_populate_table_pte_reassign_equiv | ];
+                                solver ]; solver]
+               | |- exists _, _ =>
+                 solve [ eexists; basics; [ | solver]; solver]
+               | |- represents _ _ =>
+                 solve
+                     [eapply represents_proper;
+                        [ apply concrete_state_equiv_sym,
+                          mm_populate_table_pte_reassign_equiv | ]; solver ]
+               | |- represents _ _ =>
+                 solve
+                     [eapply represents_proper;
+                        [ apply concrete_state_equiv_sym,
+                          reassign_pointer_same | ]; solver ]
                | _ => simplify_step
                end.
-      { cbv [new_attrs] in *.
-        repeat break_match; try solver; [ ].
-        repeat inversion_bool.
-        rewrite N.min_l in * by solver.
-        let new_begin :=
-            match goal with
-              H : attrs_changed_in_range _ _ _ _ _ _ _ ?x _ |- _ => x end in
-        cbv [attrs_changed_in_range
-               has_uniform_attrs attrs_outside_range_unchanged] in *;
-          basics; try solver;
-            try match goal with H : _ |- _ => apply H; solver end; [ ];
-              let v :=
-                  match goal with |- context [va_init ?x] => x end in
-              destruct (N.lt_le_dec v new_begin); [ solver | ];
-                apply attrs_equiv_absent;
-                apply page_attrs'_absent;
-                rewrite mm_index_eq2 with (b:=new_begin);
-                solver. }
+      { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
+        admit. (* TODO *) }
+      { (* entire entry is in range and !UNMAP -- just replace it with new PTE *)
+        admit. (* TODO *) }
+      { (* absent but UNMAP *)
+        admit. (* TODO *) }
       { (* present but has the right attributes *)
         admit. (* TODO *) }
       { (* entire entry is in range and UNMAP -- just replace it with an empty PTE *)
@@ -1378,7 +1409,7 @@ Section Proofs.
 
       (* extract information from the loop invariant *)
       match goal with
-      | H : mm_map_level_loop_invariant _ _ _ _ _ _ _ _ _ |- _ =>
+      | H : mm_map_level_loop_invariant _ _ _ _ _ _ _ _ |- _ =>
         pose proof H; cbv [mm_map_level_loop_invariant] in H;
           repeat match goal with
                  | H : _ /\ _ |- _ => destruct H
@@ -1399,46 +1430,67 @@ Section Proofs.
       end.
 
       (* use the inductive hypothesis to state that we can use the invariant for proofs about recursive calls *)
+      let end_capped := constr:(N.min (mm_level_end begin (S level)) end_) in 
       match goal with
-      | H : mm_map_level_loop_invariant _ _ ?end_ _ _ ?attrs ?flags ?table_ptr
+      | H : mm_map_level_loop_invariant _ _ _ _ ?attrs ?flags ?table_ptr
                                         (?c, ?begin, ?pa, ?pte_index, _, ?ppool) |- _ =>
+        let Hinv' := fresh in
         let Hinv := fresh in
         pose proof
-             (fun conc ppool table_ptr idxs Hvalid Hfallback Hexcl Hlevel Hmexcl Hloc =>
-                mm_map_level_loop_invariant_holds' level flags end_ attrs begin conc pa table_ptr ppool idxs
-                                                   (ltac:(repeat inversion_bool; solver))
-                                                   Hvalid Hfallback Hexcl Hlevel Hmexcl Hloc
-                                                   (ltac:(apply IHlevel; repeat inversion_bool; solver)))
+             (fun conc ppool abst table_ptr =>
+                mm_map_level_loop_invariant_holds'
+                  level flags end_capped attrs begin abst conc pa table_ptr ppool
+                  (ltac:(repeat inversion_bool; solver))
+             ) as Hinv';
+          pose proof
+               (fun conc ppool abst table_ptr
+                    Hvalid Hrep Hfallback Hexcl Hmexcl Hloc
+                =>
+                  Hinv' conc ppool abst table_ptr
+                        Hvalid Hrep Hfallback Hexcl Hmexcl Hloc
+                        (ltac:(apply IHlevel; repeat inversion_bool; solver))
+               )
           as Hinv; clear IHlevel;
-          (* specialize the invariant to the concrete state and page pool used in the recursive call *)
-          let rec_c := lazymatch goal with |- context [mm_map_level ?x] => constr:(x) end in
-          let rec_p := lazymatch goal with |- context [mm_map_level _ _ _ _ _ _ _ _ ?x] => constr:(x) end in
-          specialize (Hinv rec_c rec_p); autorewrite with push_concrete in Hinv;
-            (* find the mm_populate_table_pte result and specialize the invariant to
-             the new-table argument it returns *)
-            let H:=fresh in
-            match goal with
-              |- context [mm_map_level (reassign_pointer
-                                          (snd (fst ?x)) ?ptr (fst (fst (fst ?x))))] =>
-              assert (forall p, snd (fst (fst x)) = Some p ->
-                                has_location_at_level
-                                  (reassign_pointer (snd (fst x)) ptr (fst (fst (fst x))))
-                                  p level) as H
-                  by (basics; apply mm_populate_table_pte_has_location;
-                      try eapply has_location_at_level_unchanged; solver)
-            end;
-              pose proof (fun i table_ptr (Hsome : snd (fst (fst _)) = Some _) =>
-                            Hinv table_ptr (idxs ++ cons i nil)
-                                 (ltac:(eauto using mm_populate_table_pte_equiv))
-                                 (ltac:(eauto using mm_populate_table_pte_fallback))
-                                 (ltac:(eauto using mm_populate_table_pte_exclusive))
-                                 (ltac:(intros; cbv [level_from_indices] in *;
-                                        autorewrite with push_length in *; solver))
-                                 (ltac:(eauto using mm_populate_table_pte_mpool_exclusive))
-                                 (H table_ptr Hsome)
-                         )
-              as Hinvariant; clear Hinv
+            (* specialize the invariant to the concrete state and page pool used in the recursive call *)
+            let rec_c := lazymatch goal with |- context [mm_map_level ?x] => constr:(x) end in
+            let rec_p := lazymatch goal with |- context [mm_map_level _ _ _ _ _ _ _ _ ?x] => constr:(x) end in
+            specialize (Hinv rec_c rec_p); autorewrite with push_concrete in Hinv;
+                pose proof (fun abst table_ptr (Hrep:represents abst _) =>
+                              Hinv abst table_ptr
+                                   (ltac:(eauto using mm_populate_table_pte_equiv))
+                                   Hrep
+                                   (ltac:(eauto using mm_populate_table_pte_fallback))
+                                   (ltac:(eauto using mm_populate_table_pte_exclusive))
+                                   (ltac:(eauto using mm_populate_table_pte_mpool_exclusive))
+                           )
+                as Hinvariant'; clear Hinv; clear Hinv'
       end.
+
+      (* find the mm_populate_table_pte result and specialize the invariant to
+         the new-table argument it returns *)
+      match goal with
+        |- context [mm_map_level (reassign_pointer
+                                    (snd (fst ?x)) ?ptr (fst (fst (fst ?x))))] =>
+        assert (forall p, snd (fst (fst x)) = Some p ->
+                          has_location_at_level
+                            (reassign_pointer (snd (fst x)) ptr (fst (fst (fst x))))
+                            p level) as Hloc
+            by (basics; apply mm_populate_table_pte_has_location;
+                try eapply has_location_at_level_unchanged; solver);
+          match goal with
+            H :  if _ then _ else represents _ ?c |- _ =>
+            assert (forall abst, represents abst c ->
+                                 represents abst
+                                            (reassign_pointer
+                                               (snd (fst x)) ptr (fst (fst (fst x)))))
+                   as Hrep
+              by (basics; eapply represents_proper;
+                  [ eapply concrete_state_equiv_sym; apply mm_populate_table_pte_reassign_equiv; solver | solver ])
+          end
+      end.
+      pose proof (fun abst table_ptr Hrep' Hloc' =>
+                    Hinvariant' abst table_ptr (Hrep _ Hrep') (Hloc _ Hloc')) as Hinvariant;
+        clear Hinvariant'; clear Hrep; clear Hloc.
 
       let x := lazymatch goal with |- context [mm_map_level ?x] => constr:(x) end in
       assert (has_location_at_level x table_ptr (S level))
@@ -1460,29 +1512,12 @@ Section Proofs.
 
       Time
         cbv [mm_map_level_loop_invariant]; simplify_no_break;
-        (* clear the [or] case from hypotheses to prevent case-splits *)
-        match goal with
-        | H : ?failed = true \/ _ |- _ =>
-          match goal with
-          | |- ?failed = true \/ _ => destruct H; [ solve [simplify] | ]
-          | _ => clear H
-          end
-        end;
         (* solve all the easy/bookkeeping clauses of the invariant immediately *)
         try lazymatch goal with
             | |- (begin <= _)%N => solve [simplify]
             | |- is_begin_or_block_start _ _ _ =>
               repeat break_match; cbn [fst snd]; cbv [is_begin_or_block_start];
                 auto using mm_start_of_next_block_is_start
-            | |- mpool_fallback _ = _ =>
-              (* specialize the invariant to make proofs more efficient *)
-              pose proof (fun i table Hloc =>
-                            Hinvariant i table Hloc
-                                       (fun ret => mpool_fallback (snd ret) = Some (api_page_pool (snd (fst ret))))
-                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
-                clear Hinvariant;
-                simplify; autorewrite with push_concrete push_fallback;
-                  solve [eauto using mm_populate_table_pte_represents]
             | |- end_of_level_or_index_matches _ _ _ _ =>
               simplify;
                 match goal with
@@ -1497,12 +1532,24 @@ Section Proofs.
                 end
             end.
       { (* is_valid clause *)
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+
+        (* this subproof doesn't need the detailed case analysis on the abstract
+           state; to prevent getting tons of subgoals, we simply prove that *some*
+           abstract state represents c and then remove the more detailed
+           hypothesis *)
+        match goal with
+        | H : if _ then _ else represents _ ?c |- _ =>
+          assert (exists abst, represents abst c) as Hrep
+            by (destruct abst; simplify; eexists; basics; solver);
+            clear H; destruct Hrep as [? Hrep]
+        end.
+
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => is_valid (snd (fst ret)))
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))) as Hvalid.
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => pointers_unchanged_above_level _ (snd (fst ret)) level)
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))) as Hptrs.
         clear Hinvariant;
@@ -1518,12 +1565,24 @@ Section Proofs.
         all:rewrite Hptrs; autorewrite with push_concrete; try solver;
           eauto using mm_populate_table_pte_has_location, has_location_at_level_unchanged. }
       { (* locations_exclusive clause *)
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+
+        (* this subproof doesn't need the detailed case analysis on the abstract
+           state; to prevent getting tons of subgoals, we simply prove that *some*
+           abstract state represents c and then remove the more detailed
+           hypothesis *)
+        match goal with
+        | H : if _ then _ else represents _ ?c |- _ =>
+          assert (exists abst, represents abst c) as Hrep
+            by (destruct abst; simplify; eexists; basics; solver);
+            clear H; destruct Hrep as [? Hrep]
+        end.
+
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => locations_exclusive (ptable_deref (snd (fst ret))) (snd ret))
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))) as Hexcl.
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => pointers_unchanged_above_level _ (snd (fst ret)) level)
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))) as Hptrs.
         clear Hinvariant;
@@ -1540,17 +1599,49 @@ Section Proofs.
           [ | repeat inversion_bool; basics; solver ].
         all:rewrite Hptrs; autorewrite with push_concrete; try solver;
           eauto using mm_populate_table_pte_has_location, has_location_at_level_unchanged. }
+      { (* mpool_fallback clause *)
+
+        (* this subproof doesn't need the detailed case analysis on the abstract
+           state; to prevent getting tons of subgoals, we simply prove that *some*
+           abstract state represents c and then remove the more detailed
+           hypothesis *)
+        match goal with
+        | H : if _ then _ else represents _ ?c |- _ =>
+          assert (exists abst, represents abst c) as Hrep
+            by (destruct abst; simplify; eexists; basics; solver);
+            clear H; destruct Hrep as [? Hrep]
+        end.
+
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
+                                       (fun ret => mpool_fallback (snd ret) = Some (api_page_pool (snd (fst ret))))
+                                       (ltac:(cbv [mm_map_level_loop_invariant]; simplify)));
+                clear Hinvariant;
+                simplify; autorewrite with push_concrete push_fallback;
+                  solve [eauto using mm_populate_table_pte_represents]. }
       { (* mpool_exclusive clause *)
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+
+        (* this subproof doesn't need the detailed case analysis on the abstract
+           state; to prevent getting tons of subgoals, we simply prove that *some*
+           abstract state represents c and then remove the more detailed
+           hypothesis *)
+        match goal with
+        | H : if _ then _ else represents _ ?c |- _ =>
+          assert (exists abst, represents abst c) as Hrep
+            by (destruct abst; simplify; eexists; basics; solver);
+            clear H; destruct Hrep as [? Hrep]
+        end.
+
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => mpool_exclusive (snd ret) (api_page_pool (snd (fst ret))))
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))).
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => pointers_unchanged_above_level _ (snd (fst ret)) level)
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))) as Hptrs.
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => locations_exclusive (ptable_deref (snd (fst ret)))
                                                                  (api_page_pool (snd (fst ret))))
                                  (ltac:(cbv [mm_map_level_loop_invariant is_valid]; simplify))) as Hexcl;
@@ -1568,8 +1659,20 @@ Section Proofs.
         all:rewrite Hptrs; autorewrite with push_concrete; try solver;
           eauto using mm_populate_table_pte_has_location, has_location_at_level_unchanged. }
       { (* pointers_unchanged_above_level clause *)
-        pose proof (fun i table Hloc =>
-                      Hinvariant i table Hloc
+
+        (* this subproof doesn't need the detailed case analysis on the abstract
+           state; to prevent getting tons of subgoals, we simply prove that *some*
+           abstract state represents c and then remove the more detailed
+           hypothesis *)
+        match goal with
+        | H : if _ then _ else represents _ ?c |- _ =>
+          assert (exists abst, represents abst c) as Hrep
+            by (destruct abst; simplify; eexists; basics; solver);
+            clear H; destruct Hrep as [? Hrep]
+        end.
+
+        pose proof (fun table Hloc =>
+                      Hinvariant _ table Hrep Hloc
                                  (fun ret => pointers_unchanged_above_level _ (snd (fst ret)) level)
                                  (ltac:(cbv [mm_map_level_loop_invariant]; simplify))) as Hptrs.
         clear Hinvariant;
@@ -1584,16 +1687,176 @@ Section Proofs.
                                 try solver; eapply has_location_at_level_unchanged; solver ]
                    | _ => solver
                    end. }
-      { (* attrs_changed_in_range clause *)
-        simplify; right; autorewrite with push_concrete;
-          try match goal with
-              | |- _ = _ =>
-                try solve [ repeat first [inversion_bool | progress basics | solver ] ]
-              end.
-        (* 4 cases same as level = 0 case *)
-        (* 4 cases requiring inductive reasoning *)
-        (* 6 cases about table_attributes_match for commit=false *)
-        1-14:admit. }
+      { (* represents clause *)
+
+        let P :=
+            match goal with
+            | H : if _ then if ?failed then _ else _ else represents ?init_abst ?c |- _ =>
+              let e := match type of H with ?P => P end in
+              let F := lazymatch (eval pattern failed in e) with
+                        | ?f _ => f end in
+              let F := lazymatch (eval pattern c in F) with
+                        | ?f _ => f end in
+              let F := lazymatch (eval pattern begin in F) with
+                        | ?f _ => f end in
+              let F := lazymatch (eval pattern table_ptr in F) with
+                        | ?f _ => f end in
+              let F := lazymatch (eval pattern conc in F) with
+                        | ?f _ => f end in
+              let F := lazymatch (eval pattern init_abst in F) with
+                        | ?f _ => f end in
+              constr:(F)
+            end in
+        idtac P;
+          let Hx := fresh in
+          let Hf := fresh in
+          match goal with
+          | H : if ?x then if ?failed then _ else _ else represents ?init_abst ?c |- _ =>
+            case_eq x; intro Hx;
+              case_eq failed; intro Hf;
+                rewrite !Hx in *;
+                rewrite !Hf in *
+          end;
+            let new_begin :=
+                match goal with H : is_begin_or_block_start _ ?x (S level) |- _ =>
+                                constr:(x) end in
+            repeat match goal with
+                   | H : exists _, _ |- _ => destruct H
+                   | H : _ /\ _ |- _ => destruct H
+                   end;
+            let Px := match type of Hx with ?P => P end in
+            let failed := match type of Hf with _ = ?b => b end in 
+            match goal with
+            | H : represents ?a c |- _ =>
+              pose proof (fun table Hloc =>
+                            Hinvariant _ table H Hloc
+                                       (fun ret =>
+                                          Px ->
+                                          (failed = true -> (fst (fst ret)) = true) ->
+                                          P a c table new_begin (snd (fst ret)) (fst (fst ret))));
+                clear Hinvariant
+            end.
+        { 
+          
+          assert (forall table,
+        (forall state : concrete_state * N * paddr_t * size_t * bool * mpool,
+         (let
+          '(_, begin0, _, _, _, _) := state in (begin0 <? N.min (mm_level_end p level) (N.min (mm_level_end begin (S level)) end_))%N) =
+         false \/ (! snd (fst state))%bool = false ->
+         mm_map_level_loop_invariant (abstract_reassign_pointer abst conc table_ptr (new_attrs attrs flags) begin x)
+           (reassign_pointer (snd (fst (mm_populate_table_pte c p (ptable_deref c table_ptr) (mm_index p (S level)) (S level) flags m)))
+              table_ptr
+              (fst (fst (fst (mm_populate_table_pte c p (ptable_deref c table_ptr) (mm_index p (S level)) (S level) flags m))))) p level
+           attrs flags table state ->
+         (fun ret : bool * concrete_state * mpool =>
+          ((flags & MM_FLAG_COMMIT) != 0)%N = true ->
+          (true = true -> fst (fst ret) = true) ->
+          (fun (a : abstract_state) (c : concrete_state) (p0 : ptable_pointer) (n : N) (c0 : concrete_state) (b : bool) =>
+           if ((flags & MM_FLAG_COMMIT) != 0)%N
+           then
+            if b
+            then exists end_ : N, (n <= end_)%N /\ represents (abstract_reassign_pointer a c p0 (new_attrs attrs flags) n end_) c0
+            else represents (abstract_reassign_pointer a c p0 (new_attrs attrs flags) n p) c0
+           else represents a c0) (abstract_reassign_pointer abst conc table_ptr (new_attrs attrs flags) begin x) c table p
+            (snd (fst ret)) (fst (fst ret))) (let '(s, _, _, _, failed, ppool) := state in ((! failed)%bool, s, ppool)))).
+          {
+
+              assert (forall abst conc1 conc2 ptr attrs begin end_,
+                         concrete_state_equiv conc1 conc2 ->
+                         (abstract_reassign_pointer abst conc1 ptr attrs begin end_)
+                         = (abstract_reassign_pointer abst conc2 ptr attrs begin end_)) as abstract_reassign_pointer_proper by admit.
+            cbv [mm_map_level_loop_invariant]; simplify; try (repeat inversion_bool; solver).
+            all:erewrite abstract_reassign_pointer_proper with (conc1:=reassign_pointer _ _ _) in *;
+              [ | eapply mm_populate_table_pte_reassign_equiv; solver ].
+            { eexists; basics; [ | solver]; solver. }
+            { match goal with H : true = true -> _ |- _ => specialize (H ltac:(solver)) end.
+              repeat inversion_bool; solver. }
+            { match goal with H : true = true -> _ |- _ => specialize (H ltac:(solver)) end.
+              repeat inversion_bool; solver. } }
+
+          (* TODO: make the above into an inline proof that you specialize the invariant with. Leave this proof here, and fix mm_map_root. *)
+          
+        destruct failed
+        end.
+        
+        let P :=
+            match goal with
+            | H : if _ then if ?failed then _ else _ else represents ?init_abst ?c |- _ =>
+              let e := match type of H with ?P => P end in
+              let Ff := lazymatch (eval pattern failed in e) with
+                        | ?f _ => f end in
+              let Fc := lazymatch (eval pattern c in Ff) with
+                        | ?f _ => f end in
+              let Fa := lazymatch (eval pattern init_abst in Fc) with
+                        | ?f _ => f end in
+              constr:(Fa)
+            end in
+        idtac P;
+        pose proof (fun abst table (Hrep : represents abst c) Hloc =>
+                      Hinvariant _ table Hrep Hloc
+                                 (fun ret =>
+                                    P abst (snd (fst ret)) (fst (fst ret)))).
+        assert (
+            forall abst0 table,
+              represents abst0 c ->
+        (forall state : concrete_state * N * paddr_t * size_t * bool * mpool,
+         (let
+          '(_, begin0, _, _, _, _) := state in (begin0 <? N.min (mm_level_end p level) (N.min (mm_level_end begin (S level)) end_))%N) =
+         false \/ (! snd (fst state))%bool = false ->
+         mm_map_level_loop_invariant abst
+           (reassign_pointer (snd (fst (mm_populate_table_pte c p (ptable_deref c table_ptr) (mm_index p (S level)) (S level) flags m)))
+              table_ptr
+              (fst (fst (fst (mm_populate_table_pte c p (ptable_deref c table_ptr) (mm_index p (S level)) (S level) flags m))))) p level
+           attrs flags table state ->
+         (fun ret : bool * concrete_state * mpool =>
+          (fun (a : abstract_state) (c : concrete_state) (b : bool) =>
+           if ((flags & MM_FLAG_COMMIT) != 0)%N
+           then
+            if b
+            then
+             exists end_ : N,
+               (end_ <= p)%N /\
+               is_begin_or_block_start begin end_ (S level) /\
+               represents (abstract_reassign_pointer a conc table_ptr (new_attrs attrs flags) begin end_) c
+            else represents (abstract_reassign_pointer a conc table_ptr (new_attrs attrs flags) begin p) c
+           else represents a c) abst (snd (fst ret)) (fst (fst ret)))
+           (let '(s, _, _, _, failed, ppool) := state in ((! failed)%bool, s, ppool)))).
+        { clear - H13.
+          cbv [mm_map_level_loop_invariant].
+          simplify; repeat inversion_bool; try solver.
+          3 : {
+            Search represents.
+            Search abstract_reassign_pointer.
+            apply represents_proper.
+          { Set Printing Implicit.
+            erewrite reassign_pointer_proper in H8.
+        
+                                 (ltac:(cbv [mm_map_level_loop_invariant]; basics; solver))) as Hptrs.
+        simplify; autorewrite with push_concrete;
+          try solve [ repeat first [inversion_bool | progress basics | solver ] ].
+        all:try match goal with
+                | |- exists _, _ =>
+                  solve [eexists; basics;
+                         [ | | eapply represents_proper;
+                               [ apply concrete_state_equiv_sym,
+                                 mm_populate_table_pte_reassign_equiv | ];
+                               solver ]; solver]
+                | |- exists _, _ =>
+                  solve [ eexists; basics; [ | | solver]; solver]
+                | |- represents _ _ =>
+                  solve
+                    [eapply represents_proper;
+                     [ apply concrete_state_equiv_sym,
+                       mm_populate_table_pte_reassign_equiv | ]; solver ]
+                | |- represents _ _ =>
+                  solve
+                    [eapply represents_proper;
+                     [ apply concrete_state_equiv_sym,
+                       reassign_pointer_same | ]; solver ]
+                end.
+        (* TODO : describe remaining subgoals and try to prove some *)
+        (* 20 subgoals for various cases *) 
+        1-20:admit. }
       Unshelve.
       all:apply null_pointer.
   Admitted.
