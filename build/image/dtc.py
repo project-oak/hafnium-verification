@@ -25,17 +25,22 @@ DTC = "dtc"
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_file")
-    parser.add_argument("output_file")
+    parser.add_argument("-i", "--input-file")
+    parser.add_argument("-o", "--output-file")
     args = parser.parse_args()
 
-    return subprocess.call([
-        DTC,
-        "-I", "dts", "-O", "dtb",
-        "-o", args.output_file,
-        "--out-version", "17",
-        args.input_file
-        ])
+    dtc_args = [
+            DTC,
+            "-I", "dts", "-O", "dtb",
+            "--out-version", "17",
+        ]
+
+    if args.output_file:
+        dtc_args += [ "-o", args.output_file ]
+    if args.input_file:
+        dtc_args += [ args.input_file ]
+
+    return subprocess.call(dtc_args)
 
 if __name__ == "__main__":
     sys.exit(main())
