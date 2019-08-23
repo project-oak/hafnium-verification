@@ -21,18 +21,22 @@ Require Import Coq.micromega.Lia.
 Ltac invert H := inversion H; subst; clear H.
 
 (* simplify the goal in some commonly desired ways *)
-Ltac basics :=
+Ltac basics_no_break :=
   repeat match goal with
          | _ => progress (intros; subst)
          | H : exists _, _ |- _ => destruct H
          | H : _ /\ _ |- _ => destruct H
-         | H : _ \/ _ |- _ => destruct H
          | H : ~ (_ \/ _) |- _ => apply Decidable.not_or in H
          | |- ~ (_ \/ _) => intro
          | |- _ /\ _ => split
          | H : Some _ = Some _ |- _ => invert H
          | H : inl _ = inl _ |- _ => invert H
          | H : inr _ = inr _ |- _ => invert H
+         end.
+Ltac basics :=
+  repeat match goal with
+         | _ => progress basics_no_break
+         | H : _ \/ _ |- _ => destruct H
          end.
 
 (* destruct tuples *)
