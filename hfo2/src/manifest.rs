@@ -222,8 +222,8 @@ impl Manifest {
 
 #[cfg(test)]
 mod test {
-    use core::mem;
     use super::*;
+    use core::mem;
 
     // DTB files compiled with:
     //   $ dtc -I dts -O dtb --out-version 17 test.dts | xxd -i

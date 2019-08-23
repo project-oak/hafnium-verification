@@ -31,7 +31,7 @@ typedef size_t rsize_t;
  * Only the safer versions of these functions are exposed to reduce the chance
  * of misusing the versions without bounds checking or null pointer checks.
  *
- * These functions don't return errno_t as per the specification and implicity
+ * These functions don't return errno_t as per the specification and implicitly
  * have a constraint handler that panics.
  */
 void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count);
