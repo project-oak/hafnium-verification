@@ -35,6 +35,8 @@ HFTEST_LOG_PREFIX = "[hftest] "
 HFTEST_LOG_FAILURE_PREFIX = "Failure:"
 HFTEST_LOG_FINISHED = "FINISHED"
 
+HF_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+DTC_SCRIPT = os.path.join(HF_ROOT, "build", "image", "dtc.py")
 
 def log_timeout_returncode(f, returncode):
     if returncode == 0:
@@ -45,7 +47,6 @@ def log_timeout_returncode(f, returncode):
     else:
         f.write("\r\n{}{} process return code {}\r\n".format(
             HFTEST_LOG_PREFIX, HFTEST_LOG_FAILURE_PREFIX, returncode))
-
 
 def qemu(image, initrd, args, log):
     qemu_args = [
@@ -75,10 +76,7 @@ def fvp(image, initrd, args, log):
     uart0_log = log + ".uart0"
     uart1_log = log + ".uart1"
     fdt = log + ".dtb"
-    dtc_args = [
-        "dtc", "-I", "dts", "-O", "dtb",
-        "-o", fdt,
-    ]
+    dtc_args = [ DTC_SCRIPT, "-o", fdt ]
     fvp_args = [
         "timeout", "--foreground", "40s",
         "../fvp/Base_RevC_AEMv8A_pkg/models/Linux64_GCC-4.9/FVP_Base_RevC-2xAEMv8A",
