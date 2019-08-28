@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, MaybeUninit};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ptr;
 
 use crate::addr::*;
@@ -266,9 +266,38 @@ pub struct VCpu {
 
 /// Encapsulates a vCPU whose lock is held.
 #[repr(C)]
-#[derive(Copy, Clone)]
 pub struct VCpuExecutionLocked {
     vcpu: *mut VCpu,
+}
+
+impl Drop for VCpuExecutionLocked {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.vcpu).inner.unlock_unchecked();
+        }
+    }
+}
+
+impl VCpuExecutionLocked {
+    pub unsafe fn from_raw(vcpu: *mut VCpu) -> Self {
+        Self { vcpu }
+    }
+
+    pub fn into_raw(self) -> *mut VCpu {
+        self.vcpu
+    }
+
+    pub fn get_vcpu(&self) -> &VCpu {
+        unsafe { &*self.vcpu }
+    }
+
+    pub fn get_inner(&self) -> &VCpuInner {
+        unsafe { (*self.vcpu).inner.get_unchecked() }
+    }
+
+    pub fn get_inner_mut(&mut self) -> &mut VCpuInner {
+        unsafe { (*self.vcpu).inner.get_mut_unchecked() }
+    }
 }
 
 // TODO: Update alignment such that cpus are in different cache lines.
@@ -413,7 +442,7 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
         .try_lock()
         .map(|guard| {
             guard.into_raw();
-            *locked = VCpuExecutionLocked { vcpu };
+            ptr::write(locked, VCpuExecutionLocked { vcpu });
         })
         .is_some()
 }
@@ -422,7 +451,7 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
 /// reflect the fact that the vCPU is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
-    (*(*locked).vcpu).inner.unlock_unchecked();
+    drop(ptr::read(locked));
     (*locked).vcpu = ptr::null_mut();
 }
 
@@ -438,7 +467,8 @@ pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
 /// calling this.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_on(vcpu: VCpuExecutionLocked, entry: ipaddr_t, arg: uintreg_t) {
-    (*vcpu.vcpu).inner.get_mut_unchecked().on(entry, arg);
+    let mut vcpu = ManuallyDrop::new(vcpu);
+    vcpu.get_inner_mut().on(entry, arg);
 }
 
 #[no_mangle]
@@ -484,7 +514,9 @@ pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts
 /// context.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
-    (*vcpu.vcpu).inner.get_mut_unchecked().is_off()
+    let vcpu = ManuallyDrop::new(vcpu);
+    let result = (*vcpu.vcpu).inner.get_mut_unchecked().is_off();
+    result
 }
 
 /// Starts a vCPU of a secondary VM.
