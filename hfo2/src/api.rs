@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, MaybeUninit};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ptr;
 use core::sync::atomic::Ordering;
 
@@ -45,20 +45,6 @@ use crate::vm::*;
 // of a page.
 const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
-struct VCpuLockedPair<'s> {
-    outer: &'s VCpu,
-    inner: &'s mut VCpuInner,
-}
-
-impl<'s> VCpuLockedPair<'s> {
-    unsafe fn from_assuming(current: *mut VCpu) -> Self {
-        Self {
-            outer: &*current,
-            inner: (*current).inner.get_mut_unchecked(),
-        }
-    }
-}
-
 /// A global page pool for sharing memories. Its mutability is needed only for
 /// initialization.
 static mut API_PAGE_POOL: MaybeUninit<MPool> = MaybeUninit::uninit();
@@ -78,12 +64,15 @@ pub unsafe extern "C" fn api_init(ppool: *const MPool) {
 /// VM to cause HF_VCPU_RUN to return and the primary VM to regain control of
 /// the cpu.
 unsafe fn switch_to_primary(
-    current: VCpuLockedPair,
+    current: &mut VCpuExecutionLocked,
     mut primary_ret: HfVCpuRunReturn,
     secondary_state: VCpuStatus,
 ) -> *mut VCpu {
     let primary = vm_find(HF_PRIMARY_VM_ID);
-    let next = vm_get_vcpu(primary, cpu_index(current.inner.cpu) as spci_vcpu_index_t);
+    let next = vm_get_vcpu(
+        primary,
+        cpu_index(current.get_inner().cpu) as spci_vcpu_index_t,
+    );
 
     // If the secondary is blocked but has a timer running, sleep until the
     // timer fires rather than indefinitely.
@@ -104,7 +93,10 @@ unsafe fn switch_to_primary(
     }
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
-    // TODO: next is not locked...
+    //
+    // The use of `get_mut_unchecked()` is safe because the currently running pCPU implicitly owns
+    // `next`. Notice that `next` is the vCPU of the primary VM that corresponds to the currently
+    // running pCPU.
     (*next)
         .inner
         .get_mut_unchecked()
@@ -112,7 +104,7 @@ unsafe fn switch_to_primary(
         .set_retval(primary_ret.into_raw());
 
     // Mark the current vcpu as waiting.
-    current.inner.state = secondary_state;
+    current.get_inner_mut().state = secondary_state;
 
     next
 }
@@ -120,29 +112,29 @@ unsafe fn switch_to_primary(
 /// Returns to the primary vm and signals that the vcpu still has work to do so.
 #[no_mangle]
 pub unsafe extern "C" fn api_preempt(current: *mut VCpu) -> *mut VCpu {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let ret = HfVCpuRunReturn::Preempted;
 
-    switch_to_primary(current, ret, VCpuStatus::Ready)
+    switch_to_primary(&mut current, ret, VCpuStatus::Ready)
 }
 
 /// Puts the current vcpu in wait for interrupt mode, and returns to the primary
 /// vm.
 #[no_mangle]
 pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *mut VCpu {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let ret = HfVCpuRunReturn::WaitForInterrupt {
         // `api_switch_to_primary` always initializes this variable.
         ns: HF_SLEEP_INDEFINITE,
     };
 
-    switch_to_primary(current, ret, VCpuStatus::BlockedInterrupt)
+    switch_to_primary(&mut current, ret, VCpuStatus::BlockedInterrupt)
 }
 
 /// Puts the current vCPU in off mode, and returns to the primary VM.
 #[no_mangle]
 pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let ret = HfVCpuRunReturn::WaitForInterrupt {
         // `api_switch_to_primary` always initializes this variable.
         ns: HF_SLEEP_INDEFINITE,
@@ -152,7 +144,7 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
     // based on it.
     arch_timer_disable_current();
 
-    switch_to_primary(current, ret, VCpuStatus::Off)
+    switch_to_primary(&mut current, ret, VCpuStatus::Off)
 }
 
 /// Returns to the primary vm to allow this cpu to be used for other tasks as
@@ -161,21 +153,21 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
 /// SpciReturn::Success.
 #[no_mangle]
 pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu) -> SpciReturn {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let ret = HfVCpuRunReturn::Yield;
 
-    if (*current.outer.vm).id == HF_PRIMARY_VM_ID {
+    if (*current.get_vcpu().vm).id == HF_PRIMARY_VM_ID {
         // Noop on the primary as it makes the scheduling decisions.
         return SpciReturn::Success;
     }
 
-    *next = switch_to_primary(current, ret, VCpuStatus::Ready);
+    *next = switch_to_primary(&mut current, ret, VCpuStatus::Ready);
 
     // SPCI_YIELD always returns SPCI_SUCCESS.
     SpciReturn::Success
 }
 
-unsafe fn wake_up(current: VCpuLockedPair, target_vcpu: &VCpu) -> *mut VCpu {
+unsafe fn wake_up(current: &mut VCpuExecutionLocked, target_vcpu: &VCpu) -> *mut VCpu {
     let ret = HfVCpuRunReturn::WakeUp {
         vm_id: (*target_vcpu.vm).id,
         vcpu: vcpu_index(target_vcpu),
@@ -188,32 +180,34 @@ unsafe fn wake_up(current: VCpuLockedPair, target_vcpu: &VCpu) -> *mut VCpu {
 /// it is already running on a different physical CPU.
 #[no_mangle]
 pub unsafe extern "C" fn api_wake_up(current: *mut VCpu, target_vcpu: *mut VCpu) -> *mut VCpu {
-    let current = VCpuLockedPair::from_assuming(current);
-    wake_up(current, &*target_vcpu)
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
+    wake_up(&mut current, &*target_vcpu)
 }
 
 /// Aborts the vCPU and triggers its VM to abort fully.
 #[no_mangle]
 pub unsafe extern "C" fn api_abort(current: *mut VCpu) -> *mut VCpu {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let ret = HfVCpuRunReturn::Aborted;
 
     dlog!(
         "Aborting VM {} vCPU {}\n",
-        (*current.outer.vm).id,
-        vcpu_index(current.outer)
+        (*current.get_vcpu().vm).id,
+        vcpu_index(current.get_vcpu())
     );
 
-    if (*current.outer.vm).id == HF_PRIMARY_VM_ID {
+    if (*current.get_vcpu().vm).id == HF_PRIMARY_VM_ID {
         // TODO: what to do when the primary aborts?
         spin_loop();
     }
 
-    (*current.outer.vm).aborting.store(true, Ordering::Relaxed);
+    (*current.get_vcpu().vm)
+        .aborting
+        .store(true, Ordering::Relaxed);
 
     // TODO: free resources once all vCPUs abort.
 
-    switch_to_primary(current, ret, VCpuStatus::Aborted)
+    switch_to_primary(&mut current, ret, VCpuStatus::Aborted)
 }
 
 /// Returns the ID of the VM.
@@ -272,15 +266,15 @@ pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
 unsafe fn internal_interrupt_inject(
     target_vcpu: &VCpu,
     intid: intid_t,
-    current: VCpuLockedPair,
+    current: &mut VCpuExecutionLocked,
     next: *mut *mut VCpu,
 ) -> i64 {
     if target_vcpu.interrupts.lock().inject(intid).is_ok() {
-        if (*current.outer.vm).id == HF_PRIMARY_VM_ID {
+        if (*current.get_vcpu().vm).id == HF_PRIMARY_VM_ID {
             // If the call came from the primary VM, let it know that it should
             // run or kick the target vCPU.
             return 1;
-        } else if current.outer as *const _ != target_vcpu as *const _ && !next.is_null() {
+        } else if current.get_vcpu() as *const _ != target_vcpu as *const _ && !next.is_null() {
             *next = wake_up(current, target_vcpu);
         }
     }
@@ -296,10 +290,10 @@ unsafe fn internal_interrupt_inject(
 ///  - true if it succeeds to prepare `vcpu` to run. In this case,
 ///    `vcpu.execution_lock` has acquired.
 unsafe fn api_vcpu_prepare_run(
-    current: VCpuLockedPair,
+    current: &VCpuExecutionLocked,
     vcpu: *mut VCpu,
     run_ret: HfVCpuRunReturn,
-) -> Result<VCpuLockedPair, HfVCpuRunReturn> {
+) -> Result<VCpuExecutionLocked, HfVCpuRunReturn> {
     let mut vcpu_inner = (*vcpu).inner.try_lock().ok_or_else(|| {
         // vCPU is running or prepared to run on another pCPU.
         //
@@ -375,11 +369,11 @@ unsafe fn api_vcpu_prepare_run(
     }
 
     // It has been decided that the vCPU should be run.
-    vcpu_inner.cpu = current.inner.cpu;
+    vcpu_inner.cpu = current.get_inner().cpu;
 
     // We want to keep the lock of vcpu.state because we're going to run.
     mem::forget(vcpu_inner);
-    Ok(VCpuLockedPair::from_assuming(vcpu))
+    Ok(VCpuExecutionLocked::from_raw(vcpu))
 }
 
 /// Runs the given vcpu of the given vm.
@@ -390,13 +384,13 @@ pub unsafe extern "C" fn api_vcpu_run(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> u64 {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let mut ret = HfVCpuRunReturn::WaitForInterrupt {
         ns: HF_SLEEP_INDEFINITE,
     };
 
     // Only the primary VM can switch vcpus.
-    if (*current.outer.vm).id != HF_PRIMARY_VM_ID {
+    if (*current.get_vcpu().vm).id != HF_PRIMARY_VM_ID {
         return ret.into_raw();
     }
 
@@ -418,8 +412,8 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // Update state if allowed.
     let vcpu = vm_get_vcpu(vm, vcpu_idx);
-    let vcpu = match api_vcpu_prepare_run(current, vcpu, ret) {
-        Ok(pair) => pair,
+    let mut vcpu_locked = match api_vcpu_prepare_run(&current, vcpu, ret) {
+        Ok(locked) => locked,
         Err(ret) => return ret.into_raw(),
     };
 
@@ -427,16 +421,12 @@ pub unsafe extern "C" fn api_vcpu_run(
     // vcpu->regs here because api_vcpu_prepare_run already made sure that
     // regs_available was true (and then set it to false) before returning
     // true.
-    if vcpu.inner.regs.timer_pending() {
+    if vcpu_locked.get_inner().regs.timer_pending() {
         // Make virtual timer interrupt pending.
         internal_interrupt_inject(
-            vcpu.outer,
+            &*vcpu,
             HF_VIRTUAL_TIMER_INTID,
-            // TODO(HfO2): below is very stupid design. Change it.
-            VCpuLockedPair {
-                outer: vcpu.outer,
-                inner: vcpu.inner,
-            },
+            &mut vcpu_locked,
             ptr::null_mut(),
         );
 
@@ -444,11 +434,11 @@ pub unsafe extern "C" fn api_vcpu_run(
         // Ideally we wouldn't do this because it affects what the secondary
         // vcPU sees, but if we don't then we end up with a loop of the
         // interrupt firing each time we try to return to the secondary vCPU.
-        vcpu.inner.regs.timer_mask();
+        vcpu_locked.get_inner_mut().regs.timer_mask();
     }
 
     // Switch to the vcpu.
-    *next = vcpu.outer as *const _ as usize as *mut _;
+    *next = vcpu_locked.into_raw() as *const _ as *mut _;
 
     // Set a placeholder return code to the scheduler. This will be overwritten
     // when the switch back to the primary occurs.
@@ -464,7 +454,7 @@ pub unsafe extern "C" fn api_vcpu_run(
 unsafe fn waiter_result(
     vm_id: spci_vm_id_t,
     vm_inner: &VmInner,
-    current: VCpuLockedPair,
+    current: &mut VCpuExecutionLocked,
     next: *mut *mut VCpu,
 ) -> i64 {
     let ret = HfVCpuRunReturn::NotifyWaiters;
@@ -502,8 +492,8 @@ pub unsafe extern "C" fn api_vm_configure(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> i64 {
-    let current = VCpuLockedPair::from_assuming(current);
-    let vm = current.outer.vm;
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
+    let vm = current.get_vcpu().vm;
 
     // The hypervisor's memory map must be locked for the duration of this
     // operation to ensure there will be sufficient memory to recover from
@@ -520,7 +510,7 @@ pub unsafe extern "C" fn api_vm_configure(
     }
 
     // Tell caller about waiters, if any.
-    waiter_result((*vm).id, &vm_inner, current, next)
+    waiter_result((*vm).id, &vm_inner, &mut current, next)
 }
 
 /// Copies data from the sender's send buffer to the recipient's receive buffer
@@ -534,8 +524,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> SpciReturn {
-    let current = VCpuLockedPair::from_assuming(current);
-    let from = current.outer.vm;
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
+    let from = current.get_vcpu().vm;
 
     // TODO: Refactor the control flow of this function, and make this variable
     // immutable.
@@ -665,7 +655,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     // Messages for the primary VM are delivered directly.
     if (*to).id == HF_PRIMARY_VM_ID {
         to_inner.set_read();
-        *next = switch_to_primary(current, primary_ret, VCpuStatus::Ready);
+        *next = switch_to_primary(&mut current, primary_ret, VCpuStatus::Ready);
         return ret;
     }
 
@@ -673,7 +663,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Return to the primary VM directly or with a switch.
     if (*from).id != HF_PRIMARY_VM_ID {
-        *next = switch_to_primary(current, primary_ret, VCpuStatus::Ready);
+        *next = switch_to_primary(&mut current, primary_ret, VCpuStatus::Ready);
     }
 
     return ret;
@@ -689,8 +679,8 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> SpciReturn {
-    let current = VCpuLockedPair::from_assuming(current);
-    let vm = &*current.outer.vm;
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
+    let vm = &*current.get_vcpu().vm;
     let return_code: SpciReturn;
     let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
@@ -719,7 +709,13 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 
     // Don't block if there are enabled and pending interrupts, to match
     // behaviour of wait_for_interrupt.
-    if current.outer.interrupts.lock().enabled_and_pending_count > 0 {
+    if current
+        .get_vcpu()
+        .interrupts
+        .lock()
+        .enabled_and_pending_count
+        > 0
+    {
         return return_code;
     }
 
@@ -730,7 +726,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
             ns: HF_SLEEP_INDEFINITE,
         };
 
-        *next = switch_to_primary(current, run_return, VCpuStatus::BlockedMailbox);
+        *next = switch_to_primary(&mut current, run_return, VCpuStatus::BlockedMailbox);
     }
 
     return return_code;
@@ -803,8 +799,8 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
 ///    hf_mailbox_waiter_get.
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
-    let current = VCpuLockedPair::from_assuming(current);
-    let vm = current.outer.vm;
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
+    let vm = current.get_vcpu().vm;
     let ret;
     let mut vm_inner = (*vm).inner.lock();
     match vm_inner.get_state() {
@@ -815,7 +811,7 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut V
             ret = -1;
         }
         MailboxState::Read => {
-            ret = waiter_result((*vm).id, &vm_inner, current, next);
+            ret = waiter_result((*vm).id, &vm_inner, &mut current, next);
             vm_inner.set_empty();
         }
     }
@@ -877,7 +873,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> i64 {
-    let current = VCpuLockedPair::from_assuming(current);
+    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let target_vm = vm_find(target_vm_id);
 
     if intid >= HF_NUM_INTIDS {
@@ -893,7 +889,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    if !is_injection_allowed(target_vm_id, current.outer) {
+    if !is_injection_allowed(target_vm_id, current.get_vcpu()) {
         return -1;
     }
 
@@ -904,10 +900,10 @@ pub unsafe extern "C" fn api_interrupt_inject(
         intid,
         target_vm_id,
         target_vcpu_idx,
-        (*current.outer.vm).id,
-        (*current.inner.cpu).id
+        (*current.get_vcpu().vm).id,
+        (*current.get_inner().cpu).id
     );
-    internal_interrupt_inject(&*target_vcpu, intid, current, next)
+    internal_interrupt_inject(&*target_vcpu, intid, &mut current, next)
 }
 
 /// Clears a region of physical memory by overwriting it with zeros. The data is
