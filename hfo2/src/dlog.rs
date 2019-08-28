@@ -17,7 +17,6 @@
 use core::fmt;
 
 use crate::spinlock::*;
-use crate::types::*;
 
 extern "C" {
     fn plat_console_putchar(c: u8);

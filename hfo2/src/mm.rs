@@ -120,6 +120,7 @@ bitflags! {
     ///  - !V !O !X : Invalid memory. Memory is unrelated to the VM.
     ///
     ///  Modes are selected so that owner of exclusive memory is the default.
+    #[repr(C)]
     pub struct Mode: u32 {
         /// Read
         const R       = 0b00000001;
@@ -163,10 +164,10 @@ bitflags! {
 }
 
 /// The type of addresses stored in the page table.
+#[allow(non_camel_case_types)]
 type ptable_addr_t = uintvaddr_t;
 
-/// For stage 2, the input is an intermediate physical addresses rather than a
-/// virtual address so:
+// For stage 2, the input is an intermediate physical addresses rather than a virtual address so:
 const_assert_eq!(addr_size_eq; mem::size_of::<ptable_addr_t>(), mem::size_of::<uintpaddr_t>());
 
 /// The hypervisor page table.

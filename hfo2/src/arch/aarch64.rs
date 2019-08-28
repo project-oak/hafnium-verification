@@ -20,7 +20,6 @@
 use core::mem;
 
 use crate::cpu::*;
-use crate::spinlock::*;
 use crate::types::*;
 
 const FLOAT_REG_BYTES: usize = 16;
