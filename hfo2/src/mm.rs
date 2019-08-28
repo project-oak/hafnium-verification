@@ -1015,7 +1015,7 @@ impl DerefMut for mm_stage1_locked {
 impl<'s> From<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
     fn from(guard: SpinLockGuard<'s, PageTable<Stage1>>) -> Self {
         Self {
-            plock: unsafe { guard.into_raw() },
+            plock: guard.into_raw(),
         }
     }
 }

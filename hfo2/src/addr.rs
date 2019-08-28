@@ -19,9 +19,6 @@ use core::fmt;
 use crate::arch::*;
 use crate::types::*;
 
-// TODO: Refactor type names and remove this.
-#[allow(non_camel_case_types)]
-
 // TODO: Some codes (mm.rs, mpool.rs, page.rs and etc.) treats memory address
 // with primitive types (usually usize.) Refactor them to use `*addr_t` types.
 
