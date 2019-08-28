@@ -161,7 +161,7 @@ impl<'s, T> DerefMut for SpinLockGuard<'s, T> {
 }
 
 impl<'s, T> SpinLockGuard<'s, T> {
-    pub unsafe fn into_raw(self) -> usize {
+    pub fn into_raw(self) -> usize {
         let ret = self.lock as *const _ as usize;
         mem::forget(self);
         ret

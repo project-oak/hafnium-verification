@@ -30,6 +30,7 @@ use crate::spci::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
+use crate::utils::*;
 use crate::vm::*;
 
 // To eliminate the risk of deadlocks, we define a partial order for the acquisition of locks held
@@ -205,9 +206,7 @@ pub unsafe extern "C" fn api_abort(current: *mut VCpu) -> *mut VCpu {
 
     if (*current.outer.vm).id == HF_PRIMARY_VM_ID {
         // TODO: what to do when the primary aborts?
-        loop {
-            // Do nothing.
-        }
+        spin_loop();
     }
 
     (*current.outer.vm).aborting.store(true, Ordering::Relaxed);
@@ -276,7 +275,7 @@ unsafe fn internal_interrupt_inject(
     current: VCpuLockedPair,
     next: *mut *mut VCpu,
 ) -> i64 {
-    if target_vcpu.interrupts.lock().inject(intid).is_some() {
+    if target_vcpu.interrupts.lock().inject(intid).is_ok() {
         if (*current.outer.vm).id == HF_PRIMARY_VM_ID {
             // If the call came from the primary VM, let it know that it should
             // run or kick the target vCPU.
@@ -299,21 +298,18 @@ unsafe fn internal_interrupt_inject(
 unsafe fn api_vcpu_prepare_run(
     current: VCpuLockedPair,
     vcpu: *mut VCpu,
-    mut run_ret: HfVCpuRunReturn,
+    run_ret: HfVCpuRunReturn,
 ) -> Result<VCpuLockedPair, HfVCpuRunReturn> {
-    let mut vcpu_inner = match (*vcpu).inner.try_lock() {
-        Some(guard) => guard,
-        None => {
-            // vCPU is running or prepared to run on another pCPU.
-            //
-            // It's ok not to return the sleep duration here because the other
-            // physical CPU that is currently running this vCPU will return the
-            // sleep duration if needed. The default return value is
-            // HfVCpuRunReturn::WaitForInterrupt, so no need to set it
-            // explicitly.
-            return Err(run_ret);
-        }
-    };
+    let mut vcpu_inner = (*vcpu).inner.try_lock().ok_or_else(|| {
+        // vCPU is running or prepared to run on another pCPU.
+        //
+        // It's ok not to return the sleep duration here because the other
+        // physical CPU that is currently running this vCPU will return the
+        // sleep duration if needed. The default return value is
+        // HfVCpuRunReturn::WaitForInterrupt, so no need to set it
+        // explicitly.
+        run_ret
+    })?;
 
     if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
         if vcpu_inner.state != VCpuStatus::Aborted {
@@ -360,16 +356,16 @@ unsafe fn api_vcpu_prepare_run(
         // The vCPU is not ready to run, return the appropriate code to the
         // primary which called vcpu_run.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
-            if vcpu_inner.regs.timer_enabled() {
+            let run_ret = if !vcpu_inner.regs.timer_enabled() {
+                run_ret
+            } else {
                 let ns = vcpu_inner.regs.timer_remaining_ns();
-
-                run_ret = if vcpu_inner.state == VCpuStatus::BlockedMailbox {
+                if vcpu_inner.state == VCpuStatus::BlockedMailbox {
                     HfVCpuRunReturn::WaitForMessage { ns }
                 } else {
                     HfVCpuRunReturn::WaitForInterrupt { ns }
-                };
-            }
-
+                }
+            };
             return Err(run_ret);
         }
 
@@ -836,9 +832,10 @@ pub unsafe extern "C" fn api_interrupt_enable(
     enable: bool,
     current: *mut VCpu,
 ) -> i64 {
-    match (*current).interrupts.lock().enable(intid, enable) {
-        Some(_) => 0,
-        None => -1,
+    if (*current).interrupts.lock().enable(intid, enable).is_ok() {
+        0
+    } else {
+        -1
     }
 }
 

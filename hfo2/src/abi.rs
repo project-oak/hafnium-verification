@@ -16,6 +16,7 @@
 
 use crate::types::*;
 
+#[derive(Clone, Copy)]
 pub enum HfVCpuRunReturn {
     /// The vCPU has been preempted but still has work to do. If the scheduling
     /// quantum has not expired, the scheduler MUST call `hf_vcpu_run` on the
