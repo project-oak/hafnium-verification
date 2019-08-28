@@ -25,7 +25,6 @@ use arrayvec::ArrayVec;
 use crate::addr::*;
 use crate::arch::*;
 use crate::cpu::*;
-use crate::dlog::*;
 use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -518,8 +517,8 @@ pub struct TwoVmLocked {
     pub vm2: VmLocked,
 }
 
-static mut vms: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
-static mut vm_count: spci_vm_count_t = 0;
+static mut VMS: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
+static mut VM_COUNT: spci_vm_count_t = 0;
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_init(
@@ -527,14 +526,13 @@ pub unsafe extern "C" fn vm_init(
     ppool: *mut MPool,
     new_vm: *mut *mut Vm,
 ) -> bool {
-    let i: i32;
     let vm: *mut Vm;
 
-    if vm_count as usize >= MAX_VMS {
+    if VM_COUNT as usize >= MAX_VMS {
         return false;
     }
 
-    vm = &mut vms.get_mut()[vm_count as usize];
+    vm = &mut VMS.get_mut()[VM_COUNT as usize];
 
     memset_s(
         vm as usize as _,
@@ -543,17 +541,20 @@ pub unsafe extern "C" fn vm_init(
         mem::size_of::<Vm>(),
     );
 
-    (*vm).id = vm_count;
+    (*vm).id = VM_COUNT;
     (*vm).vcpu_count = vcpu_count;
     (*vm).aborting = AtomicBool::new(false);
-    (*vm).inner.get_mut_unchecked().init(vm, &mut *ppool);
+    let result = (*vm).inner.get_mut_unchecked().init(vm, &mut *ppool);
+    if result.is_err() {
+        return false;
+    }
 
     // Do basic initialization of vcpus.
     for i in 0..vcpu_count {
         vcpu_init(vm_get_vcpu(vm, i), vm);
     }
 
-    vm_count += 1;
+    VM_COUNT += 1;
     *new_vm = vm;
 
     true
@@ -561,17 +562,17 @@ pub unsafe extern "C" fn vm_init(
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
-    vm_count
+    VM_COUNT
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
     // Ensure the VM is initialized.
-    if id >= vm_count {
+    if id >= VM_COUNT {
         return ptr::null_mut();
     }
 
-    &mut vms.get_mut()[id as usize]
+    &mut VMS.get_mut()[id as usize]
 }
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.

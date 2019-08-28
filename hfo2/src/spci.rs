@@ -51,6 +51,7 @@ pub enum SpciMemoryShare {
 bitflags! {
     /// For SpciMessage::flags
     /// flags[15:1] reserved(MBZ).
+    #[repr(C)]
     pub struct SpciMessageFlags: u16 {
         /// Architected message payload.
         const ARCHITECTED = 0b0000;

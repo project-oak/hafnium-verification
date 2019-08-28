@@ -304,7 +304,7 @@ extern "C" {
     static mut cpus: MaybeUninit<[Cpu; MAX_CPUS]>;
 }
 
-static mut cpu_count: u32 = 1;
+static mut CPU_COUNT: u32 = 1;
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
@@ -319,14 +319,14 @@ pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
 
     arch_cpu_module_init();
 
-    cpu_count = count as u32;
+    CPU_COUNT = count as u32;
 
     // Initialize CPUs with the IDs from the configuration passed in. The
     // CPUs after the boot CPU are initialized in reverse order. The boot
     // CPU is initialized when it is found or in place of the last CPU if it
     // is not found.
-    j = cpu_count;
-    for i in 0..cpu_count {
+    j = CPU_COUNT;
+    for i in 0..CPU_COUNT {
         let c: *mut Cpu;
         let id: cpu_id_t = *cpu_ids.offset(i as isize);
 
@@ -388,7 +388,7 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 /// Searches for a CPU based on its id.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
-    for i in 0usize..cpu_count as usize {
+    for i in 0usize..CPU_COUNT as usize {
         if cpus.get_ref()[i].id == id {
             return &mut cpus.get_mut()[i];
         }

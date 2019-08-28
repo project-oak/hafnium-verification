@@ -20,6 +20,7 @@ use core::ptr;
 
 /// An entry in an intrusive linked list.
 #[derive(Debug)]
+#[repr(C)]
 pub struct ListEntry {
     /// The next entry in the linked list.
     next: Cell<*const ListEntry>,
@@ -86,6 +87,7 @@ pub trait IsElement<T> {
 
 /// A lock-free, intrusive linked list of type `T`.
 #[derive(Debug)]
+#[repr(C)]
 pub struct List<T, C: IsElement<T> = T> {
     /// The head of the linked list.
     pub(crate) head: ListEntry,
