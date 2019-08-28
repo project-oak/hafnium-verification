@@ -111,7 +111,7 @@ pub unsafe extern "C" fn memmove_s(
 /// If `str` is a NULL pointer, it returns zero.
 /// If a NULL character is not found, it returns `strsz`.
 #[no_mangle]
-pub unsafe extern "C" fn strnlen_s(str: *const c_char, mut strsz: size_t) -> size_t {
+pub unsafe extern "C" fn strnlen_s(str: *const c_char, strsz: size_t) -> size_t {
     if str.is_null() {
         return 0;
     }

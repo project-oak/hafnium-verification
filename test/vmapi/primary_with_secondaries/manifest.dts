@@ -18,6 +18,7 @@
 
 / {
 	hypervisor {
+		compatible = "hafnium,hafnium";
 		vm1 {
 			debug_name = "primary";
 		};
