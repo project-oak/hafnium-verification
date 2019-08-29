@@ -24,3 +24,4 @@ static_assertions = "0.3.2"
 reduce = "0.1"
 arrayvec = { version = "0.4", default-features = false }
 memoffset = "0.5.1"
+scopeguard = { version = "1.0", default-features = false }
