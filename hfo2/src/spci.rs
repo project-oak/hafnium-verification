@@ -87,8 +87,8 @@ extern "C" {
     ) -> SpciReturn;
 
     pub fn spci_msg_check_transition(
-        to: *mut Vm,
-        from: *mut Vm,
+        to: *const Vm,
+        from: *const Vm,
         share: SpciMemoryShare,
         orig_from_mode: *mut Mode,
         begin: ipaddr_t,
