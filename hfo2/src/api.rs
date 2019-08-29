@@ -324,7 +324,7 @@ unsafe fn vcpu_prepare_run(
         // when it is going to be needed. This ensures there are no inter-vCPU
         // dependencies in the common run case meaning the sensitive context
         // switch performance is consistent.
-        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read() => {
+        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read().is_ok() => {
             vcpu_inner.regs.set_retval(SpciReturn::Success as uintreg_t);
         }
 
@@ -572,7 +572,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // Fail if the target isn't currently ready to receive data,
         // setting up for notification if requested.
         if notify {
-            from_inner.wait(&mut to_inner, (*to).id);
+            let _ = from_inner.wait(&mut to_inner, (*to).id);
         }
 
         return SpciReturn::Busy;
@@ -686,7 +686,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     let mut vm_inner = vm.inner.lock();
 
     // Return pending messages without blocking.
-    if vm_inner.try_read() {
+    if vm_inner.try_read().is_ok() {
         return SpciReturn::Success;
     }
 
@@ -901,7 +901,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
 
 /// Clears a region of physical memory by overwriting it with zeros. The data is
 /// flushed from the cache so the memory has been cleared across the system.
-fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
+fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
     let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
     let size = pa_difference(begin, end);
     let region = pa_addr(begin);
@@ -917,7 +917,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         hypervisor_ptable.defrag(ppool);
-        return false;
+        return Err(());
     }
 
     unsafe {
@@ -926,7 +926,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
     }
 
     hypervisor_ptable.unmap(begin, end, ppool).unwrap();
-    true
+    Ok(())
 }
 
 // TODO: Move function to spci_architectted_message.c. (How in Rust?)
@@ -1132,7 +1132,7 @@ fn share_memory(
         .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)?;
 
     // Clear the memory so no VM or device can see the previous contents.
-    if !clear_memory(pa_begin, pa_end, &local_page_pool) {
+    if clear_memory(pa_begin, pa_end, &local_page_pool).is_err() {
         assert!(from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
