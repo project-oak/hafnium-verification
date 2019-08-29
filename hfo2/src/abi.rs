@@ -94,8 +94,8 @@ impl HfVCpuRunReturn {
             Yield => 1,
             WaitForInterrupt { ns } => 2 | (ns << 8),
             WaitForMessage { ns } => 3 | (ns << 8),
-            WakeUp { vm_id, vcpu } => 4 | ((vm_id as u64) << 32) | ((vcpu as u64) << 16),
-            Message { vm_id } => 5 | ((vm_id as u64) << 8),
+            WakeUp { vm_id, vcpu } => 4 | (u64::from(vm_id) << 32) | (u64::from(vcpu) << 16),
+            Message { vm_id } => 5 | (u64::from(vm_id) << 8),
             NotifyWaiters => 6,
             Aborted => 7,
         }

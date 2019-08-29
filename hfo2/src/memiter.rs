@@ -35,8 +35,8 @@ fn is_space(c: u8) -> bool {
 }
 
 fn as_digit(c: u8) -> Option<u8> {
-    if '0' as u8 <= c && c <= '9' as u8 {
-        Some(c - '0' as u8)
+    if b'0' <= c && c <= b'9' {
+        Some(c - b'0')
     } else {
         None
     }
@@ -111,7 +111,7 @@ impl MemIter {
         let next = self.next;
         let mut value = 0;
         while let Some(d) = self.peek().and_then(as_digit) {
-            value = value * 10 + d as u64;
+            value = value * 10 + u64::from(d);
             self.next = self.next.add(1);
         }
 

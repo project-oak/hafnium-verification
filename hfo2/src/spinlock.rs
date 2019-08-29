@@ -79,7 +79,7 @@ impl<T> SpinLock<T> {
         self.data.into_inner()
     }
 
-    pub fn lock<'s>(&'s self) -> SpinLockGuard<'s, T> {
+    pub fn lock(&self) -> SpinLockGuard<T> {
         self.lock.lock();
         SpinLockGuard {
             lock: self,
@@ -87,7 +87,7 @@ impl<T> SpinLock<T> {
         }
     }
 
-    pub fn try_lock<'s>(&'s self) -> Option<SpinLockGuard<'s, T>> {
+    pub fn try_lock(&self) -> Option<SpinLockGuard<T>> {
         if self.lock.try_lock() {
             Some(SpinLockGuard {
                 lock: self,
@@ -110,6 +110,7 @@ impl<T> SpinLock<T> {
         unsafe { &mut *self.data.get() }
     }
 
+    #[allow(clippy::mut_from_ref)]
     pub unsafe fn get_mut_unchecked(&self) -> &mut T {
         &mut *self.data.get()
     }

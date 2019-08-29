@@ -52,7 +52,7 @@ pub const RSIZE_MAX: rsize_t = rsize_t::max_value() >> 1;
 pub const HF_NUM_INTIDS: intid_t = 64;
 
 /// Interrupt ID returned when there is no interrupt pending.
-pub const HF_INVALID_INTID: intid_t = 0xffffffff;
+pub const HF_INVALID_INTID: intid_t = 0xffff_ffff;
 
 /// The virtual interrupt ID used for the virtual timer.
 pub const HF_VIRTUAL_TIMER_INTID: intid_t = 3;
@@ -71,4 +71,4 @@ pub const HF_PRIMARY_VM_ID: spci_vm_id_t = 0;
 pub const HF_MAILBOX_SIZE: usize = PAGE_SIZE;
 
 /// Sleep value for an indefinite period of time.
-pub const HF_SLEEP_INDEFINITE: u64 = 0xffffffffffffff;
+pub const HF_SLEEP_INDEFINITE: u64 = 0xff_ffff_ffff_ffff;
