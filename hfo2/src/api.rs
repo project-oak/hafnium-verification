@@ -84,12 +84,7 @@ unsafe fn switch_to_primary(
                 HF_SLEEP_INDEFINITE
             };
         }
-
-        _ =>
-        /* Do nothing */
-        {
-            ()
-        }
+        _ => {}
     }
 
     // Set the return value for the primary VM's call to HF_VCPU_RUN.
@@ -289,7 +284,7 @@ unsafe fn internal_interrupt_inject(
 ///  - false if it fails to prepare `vcpu` to run.
 ///  - true if it succeeds to prepare `vcpu` to run. In this case,
 ///    `vcpu.execution_lock` has acquired.
-unsafe fn api_vcpu_prepare_run(
+unsafe fn vcpu_prepare_run(
     current: &VCpuExecutionLocked,
     vcpu: *mut VCpu,
     run_ret: HfVCpuRunReturn,
@@ -384,8 +379,8 @@ pub unsafe extern "C" fn api_vcpu_run(
     current: *mut VCpu,
     next: *mut *mut VCpu,
 ) -> u64 {
-    let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let mut ret = HfVCpuRunReturn::WaitForInterrupt {
+    let current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
+    let ret = HfVCpuRunReturn::WaitForInterrupt {
         ns: HF_SLEEP_INDEFINITE,
     };
 
@@ -412,13 +407,13 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // Update state if allowed.
     let vcpu = vm_get_vcpu(vm, vcpu_idx);
-    let mut vcpu_locked = match api_vcpu_prepare_run(&current, vcpu, ret) {
+    let mut vcpu_locked = match vcpu_prepare_run(&current, vcpu, ret) {
         Ok(locked) => locked,
         Err(ret) => return ret.into_raw(),
     };
 
     // Inject timer interrupt if timer has expired. It's safe to access
-    // vcpu->regs here because api_vcpu_prepare_run already made sure that
+    // vcpu->regs here because vcpu_prepare_run already made sure that
     // regs_available was true (and then set it to false) before returning
     // true.
     if vcpu_locked.get_inner().regs.timer_pending() {
@@ -442,9 +437,7 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // Set a placeholder return code to the scheduler. This will be overwritten
     // when the switch back to the primary occurs.
-    ret = HfVCpuRunReturn::Preempted;
-
-    return ret.into_raw();
+    HfVCpuRunReturn::Preempted.into_raw()
 }
 
 /// Determines the value to be returned by api_vm_configure and
@@ -593,7 +586,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // TODO: Buffer is temporarily in the stack.
         let mut message_buffer: [u8; mem::size_of::<SpciArchitectedMessageHeader>()
             + mem::size_of::<SpciMemoryRegionConstituent>()
-            + mem::size_of::<SpciMemoryRegion>()] = mem::uninitialized();
+            + mem::size_of::<SpciMemoryRegion>()] = MaybeUninit::uninit().assume_init();
 
         let architected_header = spci_get_architected_message_header(from_msg);
 
@@ -666,7 +659,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         *next = switch_to_primary(&mut current, primary_ret, VCpuStatus::Ready);
     }
 
-    return ret;
+    ret
 }
 
 /// Receives a message from the mailbox. If one isn't available, this function
@@ -729,7 +722,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
         *next = switch_to_primary(&mut current, run_return, VCpuStatus::BlockedMailbox);
     }
 
-    return return_code;
+    return_code
 }
 
 /// Retrieves the next VM whose mailbox became writable. For a VM to be notified
@@ -747,7 +740,7 @@ pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
     let mut vm_inner = (*vm).inner.lock();
 
     match vm_inner.dequeue_ready_list() {
-        Some(id) => id as i64,
+        Some(id) => i64::from(id),
         None => -1,
     }
 }
@@ -784,7 +777,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
         vm_inner.enqueue_ready_list(&mut *entry);
     }
 
-    (*waiting_vm).id as i64
+    i64::from((*waiting_vm).id)
 }
 
 /// Clears the caller's mailbox so that a new message can be received. The
@@ -983,9 +976,9 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // Check if the state transition is lawful for both VMs involved in the
     // memory exchange, ensure that all constituents of a memory region being
     // shared are at the same state.
-    let mut orig_from_mode = mem::uninitialized();
-    let mut from_mode = mem::uninitialized();
-    let mut to_mode = mem::uninitialized();
+    let mut orig_from_mode = MaybeUninit::uninit();
+    let mut from_mode = MaybeUninit::uninit();
+    let mut to_mode = MaybeUninit::uninit();
     let share = match share {
         0x2 => SpciMemoryShare::Donate,
         _ => return SpciReturn::InvalidParameters,
@@ -995,12 +988,12 @@ pub unsafe extern "C" fn api_spci_share_memory(
         to_locked.vm,
         from_locked.vm,
         share,
-        &mut orig_from_mode,
+        orig_from_mode.get_mut(),
         begin,
         end,
         memory_to_attributes,
-        &mut from_mode,
-        &mut to_mode,
+        from_mode.get_mut(),
+        to_mode.get_mut(),
     ) {
         return SpciReturn::InvalidParameters;
     }
@@ -1012,7 +1005,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // recipient.
     if from_inner
         .ptable
-        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
+        .identity_map(pa_begin, pa_end, from_mode.assume_init(), &local_page_pool)
         .is_none()
     {
         return SpciReturn::NoMemory;
@@ -1021,7 +1014,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // Complete the transfer by mapping the memory into the recipient.
     if to_inner
         .ptable
-        .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
+        .identity_map(pa_begin, pa_end, to_mode.assume_init(), &local_page_pool)
         .is_none()
     {
         // TODO: partial defrag of failed range.
@@ -1030,7 +1023,12 @@ pub unsafe extern "C" fn api_spci_share_memory(
 
         assert!(from_inner
             .ptable
-            .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
+            .identity_map(
+                pa_begin,
+                pa_end,
+                orig_from_mode.assume_init(),
+                &local_page_pool
+            )
             .is_some());
 
         return SpciReturn::NoMemory;

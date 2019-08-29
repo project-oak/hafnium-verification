@@ -123,32 +123,32 @@ bitflags! {
     #[repr(C)]
     pub struct Mode: u32 {
         /// Read
-        const R       = 0b00000001;
+        const R       = 0b0000_0001;
 
         /// Write
-        const W       = 0b00000010;
+        const W       = 0b0000_0010;
 
         /// Execute
-        const X       = 0b00000100;
+        const X       = 0b0000_0100;
 
         /// Device
-        const D       = 0b00001000;
+        const D       = 0b0000_1000;
 
         /// Invalid
-        const INVALID = 0b00010000;
+        const INVALID = 0b0001_0000;
 
         /// Unowned
-        const UNOWNED = 0b00100000;
+        const UNOWNED = 0b0010_0000;
 
         /// Shared
-        const SHARED  = 0b01000000;
+        const SHARED  = 0b0100_0000;
     }
 }
 
 impl Mode {
     /// Check that the mode indicates memory that is vaid, owned and exclusive.
-    pub fn valid_owned_and_exclusive(&self) -> bool {
-        (*self & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED)).is_empty()
+    pub fn valid_owned_and_exclusive(self) -> bool {
+        (self & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED)).is_empty()
     }
 }
 
@@ -1151,7 +1151,7 @@ pub unsafe extern "C" fn mm_identity_map(
     stage1_locked
         .identity_map(begin, end, mode, mpool)
         .map(|_| pa_addr(begin) as *mut _)
-        .unwrap_or_else(|| ptr::null_mut())
+        .unwrap_or_else(ptr::null_mut)
 }
 
 #[no_mangle]

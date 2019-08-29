@@ -90,7 +90,7 @@ pub const fn pa_difference(start: paddr_t, end: paddr_t) -> size_t {
 /// Initializes an intermediate physical address.
 #[inline]
 pub const fn ipa_init(ipa: uintpaddr_t) -> ipaddr_t {
-    ipaddr_t { ipa: ipa }
+    ipaddr_t { ipa }
 }
 
 /// Extracts the absolute intermediate physical address.

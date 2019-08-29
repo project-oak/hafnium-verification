@@ -95,12 +95,14 @@ impl Pool {
     /// Allocates a page.
     pub fn alloc(&mut self) -> Option<Page> {
         if let Some(entry) = unsafe { self.entry_list.pop() } {
+            #[allow(clippy::cast_ptr_alignment)]
             return Some(unsafe { Page::from_raw(entry as *mut RawPage) });
         }
 
         let chunk = unsafe { self.chunk_list.pop()? };
         let size = unsafe { (*chunk).size };
         assert_ne!(size, 0);
+        #[allow(clippy::cast_ptr_alignment)]
         let page = unsafe { Page::from_raw(chunk as *mut RawPage) };
 
         if size == 2 {
@@ -136,7 +138,7 @@ impl Pool {
                 let end = start + size * PAGE_SIZE;
 
                 if chunk_start <= start && start <= end && end <= chunk_end {
-                    return Some((chunk_start, chunk_end, start, end));
+                    Some((chunk_start, chunk_end, start, end))
                 } else {
                     None
                 }
@@ -341,7 +343,7 @@ pub unsafe extern "C" fn mpool_add_chunk(p: *mut MPool, begin: *mut c_void, size
 pub unsafe extern "C" fn mpool_alloc(p: *mut MPool) -> *mut c_void {
     (*p).alloc()
         .map(|page| page.into_raw() as *mut c_void)
-        .unwrap_or_else(|| ptr::null_mut())
+        .unwrap_or(ptr::null_mut())
 }
 
 #[no_mangle]
@@ -352,7 +354,7 @@ pub unsafe extern "C" fn mpool_alloc_contiguous(
 ) -> *mut c_void {
     (*p).alloc_pages(count as usize, align as usize)
         .map(|pages| pages.into_raw() as *mut c_void)
-        .unwrap_or_else(|| ptr::null_mut())
+        .unwrap_or(ptr::null_mut())
 }
 
 #[no_mangle]

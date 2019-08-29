@@ -338,7 +338,7 @@ extern "C" {
 static mut CPU_COUNT: u32 = 1;
 
 #[no_mangle]
-pub unsafe extern "C" fn cpu_init(c: *mut Cpu) {
+pub unsafe extern "C" fn cpu_init(_c: *mut Cpu) {
     // TODO: Assumes that c is zeroed out already.
 }
 
@@ -373,7 +373,7 @@ pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
         (*c).id = id;
         {
             let callstacks_i = callstacks.get_mut()[i as usize].as_mut_ptr();
-            (*c).stack_bottom = &mut *callstacks_i.offset(STACK_SIZE as isize) as *mut _ as _;
+            (*c).stack_bottom = &mut *callstacks_i.add(STACK_SIZE) as *mut _ as _;
 
             // Note: referencing callstacks.get_mut()[i as usize][STACK_SIZE] directly
             // causes 'index out of bounds' error on compile time.
@@ -517,8 +517,7 @@ pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
     let vcpu = ManuallyDrop::new(vcpu);
-    let result = (*vcpu.vcpu).inner.get_mut_unchecked().is_off();
-    result
+    vcpu.get_inner().is_off()
 }
 
 /// Starts a vCPU of a secondary VM.
@@ -542,7 +541,9 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
         // is a secondary which can migrate between pCPUs, the ID of the
         // vCPU is defined as the index and does not match the ID of the
         // pCPU it is running on.
-        state.regs.reset(false, vm, vcpu_index(vcpu) as cpu_id_t);
+        state
+            .regs
+            .reset(false, vm, cpu_id_t::from(vcpu_index(vcpu)));
         state.on(entry, arg);
     }
 

@@ -99,7 +99,7 @@ pub(crate) unsafe fn memcmp_rs(a: *const c_void, b: *const c_void, mut n: size_t
     while n > 0 {
         let cmp = *a - *b;
         if cmp != 0 {
-            return cmp as c_int;
+            return c_int::from(cmp);
         }
 
         a = a.add(1);
