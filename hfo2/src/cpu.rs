@@ -284,7 +284,9 @@ impl VCpuExecutionLocked {
     }
 
     pub fn into_raw(self) -> *mut VCpu {
-        self.vcpu
+        let ret = self.vcpu;
+        mem::forget(self);
+        ret
     }
 
     pub fn get_vcpu(&self) -> &VCpu {
@@ -429,7 +431,7 @@ pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
 /// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
-    (*vcpu).inner.lock().into_raw();
+    mem::forget((*vcpu).inner.lock());
 
     VCpuExecutionLocked { vcpu }
 }
@@ -441,7 +443,7 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
         .inner
         .try_lock()
         .map(|guard| {
-            guard.into_raw();
+            mem::forget(guard);
             ptr::write(locked, VCpuExecutionLocked { vcpu });
         })
         .is_some()
