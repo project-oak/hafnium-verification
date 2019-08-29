@@ -118,12 +118,12 @@ impl Mailbox {
 
     /// Checks whether there exists a pending message. If one exists, marks the
     /// mailbox read.
-    pub fn try_read(&mut self) -> bool {
+    pub fn try_read(&mut self) -> Result<(), ()> {
         if self.state == MailboxState::Received {
             self.state = MailboxState::Read;
-            true
+            Ok(())
         } else {
-            false
+            Err(())
         }
     }
 
@@ -237,7 +237,7 @@ impl VmInner {
 
     /// Checks whether there exists a pending message. If one exists, marks the
     /// mailbox read.
-    pub fn try_read(&mut self) -> bool {
+    pub fn try_read(&mut self) -> Result<(), ()> {
         self.mailbox.try_read()
     }
 
@@ -435,18 +435,18 @@ impl VmInner {
     /// Adds `self` into the waiter list of `target`, if `self` is not waiting
     /// for another now. Returns false if `self` is waiting for another.
     /// TODO: better name?
-    pub fn wait(&mut self, target: &mut Self, target_id: spci_vm_id_t) -> bool {
+    pub fn wait(&mut self, target: &mut Self, target_id: spci_vm_id_t) -> Result<(), ()> {
         let entry = &mut self.wait_entries[target_id as usize];
 
         // Append waiter only if it's not there yet.
         if unsafe { !list_empty(&(*entry).wait_links) } {
-            return false;
+            return Err(());
         }
 
         unsafe {
             list_append(&mut target.mailbox.waiter_list, &mut (*entry).wait_links);
         }
-        true
+        Ok(())
     }
 
     pub fn get_send_ptr(&self) -> *const SpciMessage {
