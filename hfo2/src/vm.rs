@@ -154,7 +154,7 @@ impl Mailbox {
         // Map the send page as read-only in the hypervisor address space.
         if hypervisor_ptable
             .identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool)
-            .is_some()
+            .is_ok()
         {
             self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
         } else {
@@ -168,7 +168,7 @@ impl Mailbox {
         // failure, unmap the send page before returning.
         if hypervisor_ptable
             .identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool)
-            .is_some()
+            .is_ok()
         {
             self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
         } else {
@@ -178,7 +178,7 @@ impl Mailbox {
             self.send = ptr::null();
             assert!(hypervisor_ptable
                 .unmap(pa_send_begin, pa_send_end, local_page_pool)
-                .is_some());
+                .is_ok());
 
             return Err(());
         }
@@ -272,14 +272,12 @@ impl VmInner {
         let local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
 
         // Take memory ownership away from the VM and mark as shared.
-        self.ptable
-            .identity_map(
-                pa_send_begin,
-                pa_send_end,
-                Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
-                &local_page_pool,
-            )
-            .ok_or(())?;
+        self.ptable.identity_map(
+            pa_send_begin,
+            pa_send_end,
+            Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
+            &local_page_pool,
+        )?;
 
         if self
             .ptable
@@ -289,7 +287,7 @@ impl VmInner {
                 Mode::UNOWNED | Mode::SHARED | Mode::R,
                 &local_page_pool,
             )
-            .is_none()
+            .is_err()
         {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
@@ -298,7 +296,7 @@ impl VmInner {
             assert!(self
                 .ptable
                 .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
-                .is_some());
+                .is_ok());
             return Err(());
         }
 
@@ -316,12 +314,12 @@ impl VmInner {
             assert!(self
                 .ptable
                 .identity_map(pa_recv_begin, pa_recv_end, orig_recv_mode, &local_page_pool)
-                .is_some());
+                .is_ok());
 
             assert!(self
                 .ptable
                 .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
-                .is_some());
+                .is_ok());
 
             return Err(());
         }
@@ -365,20 +363,19 @@ impl VmInner {
 
         // Ensure the pages are valid, owned and exclusive to the VM and that
         // the VM has the required access to the memory.
-        let orig_send_mode = self
-            .ptable
-            .get_mode(send, ipa_add(send, PAGE_SIZE))
-            .filter(|mode| mode.valid_owned_and_exclusive())
-            .filter(|mode| mode.contains(Mode::R))
-            .filter(|mode| mode.contains(Mode::W))
-            .ok_or(())?;
+        let orig_send_mode = self.ptable.get_mode(send, ipa_add(send, PAGE_SIZE))?;
 
-        let orig_recv_mode = self
-            .ptable
-            .get_mode(recv, ipa_add(recv, PAGE_SIZE))
-            .filter(|mode| mode.valid_owned_and_exclusive())
-            .filter(|mode| mode.contains(Mode::R))
-            .ok_or(())?;
+        if !(orig_send_mode.valid_owned_and_exclusive()
+            && orig_send_mode.contains(Mode::R | Mode::W))
+        {
+            return Err(());
+        }
+
+        let orig_recv_mode = self.ptable.get_mode(recv, ipa_add(recv, PAGE_SIZE))?;
+
+        if !(orig_recv_mode.valid_owned_and_exclusive() && orig_recv_mode.contains(Mode::R)) {
+            return Err(());
+        }
 
         self.configure_pages(
             pa_send_begin,

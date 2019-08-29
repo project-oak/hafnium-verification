@@ -289,7 +289,7 @@ unsafe fn vcpu_prepare_run(
     vcpu: *mut VCpu,
     run_ret: HfVCpuRunReturn,
 ) -> Result<VCpuExecutionLocked, HfVCpuRunReturn> {
-    let mut vcpu_inner = (*vcpu).inner.try_lock().ok_or_else(|| {
+    let mut vcpu_inner = (*vcpu).inner.try_lock().map_err(|_| {
         // vCPU is running or prepared to run on another pCPU.
         //
         // It's ok not to return the sleep duration here because the other
@@ -912,7 +912,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
 
     if hypervisor_ptable
         .identity_map(begin, end, Mode::W, ppool)
-        .is_none()
+        .is_err()
     {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
@@ -925,8 +925,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> bool {
         arch_mm_write_back_dcache(region as usize, size);
     }
 
-    hypervisor_ptable.unmap(begin, end, ppool);
-
+    hypervisor_ptable.unmap(begin, end, ppool).unwrap();
     true
 }
 
@@ -1006,7 +1005,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     if from_inner
         .ptable
         .identity_map(pa_begin, pa_end, from_mode.assume_init(), &local_page_pool)
-        .is_none()
+        .is_err()
     {
         return SpciReturn::NoMemory;
     }
@@ -1015,7 +1014,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     if to_inner
         .ptable
         .identity_map(pa_begin, pa_end, to_mode.assume_init(), &local_page_pool)
-        .is_none()
+        .is_err()
     {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
@@ -1029,7 +1028,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
                 orig_from_mode.assume_init(),
                 &local_page_pool
             )
-            .is_some());
+            .is_err());
 
         return SpciReturn::NoMemory;
     }
@@ -1101,20 +1100,20 @@ fn share_memory(
     // Also ensure the memory range is valid for the sender. If it isn't, the
     // sender has either shared it with another VM already or has no claim to
     // the memory.
-    let orig_from_mode = from_inner
-        .ptable
-        .get_mode(begin, end)
-        .filter(|mode| !mode.contains(Mode::INVALID))
-        .ok_or(())?;
+    let orig_from_mode = from_inner.ptable.get_mode(begin, end)?;
+
+    if orig_from_mode.contains(Mode::INVALID) {
+        return Err(());
+    }
 
     // The sender must own the memory and have exclusive access to it in order
     // to share it. Alternatively, it is giving memory back to the owning VM.
     if orig_from_mode.contains(Mode::UNOWNED) {
-        to_inner
-            .ptable
-            .get_mode(begin, end)
-            .filter(|mode| !mode.contains(Mode::UNOWNED))
-            .ok_or(())?;
+        let to_mode = to_inner.ptable.get_mode(begin, end)?;
+
+        if to_mode.contains(Mode::UNOWNED) {
+            return Err(());
+        }
 
         if share != HfShare::Give {
             return Err(());
@@ -1130,15 +1129,14 @@ fn share_memory(
     // recipient.
     from_inner
         .ptable
-        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
-        .ok_or(())?;
+        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)?;
 
     // Clear the memory so no VM or device can see the previous contents.
     if !clear_memory(pa_begin, pa_end, &local_page_pool) {
         assert!(from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
-            .is_some());
+            .is_ok());
 
         return Err(());
     }
@@ -1147,7 +1145,7 @@ fn share_memory(
     if to_inner
         .ptable
         .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
-        .is_none()
+        .is_err()
     {
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
@@ -1156,7 +1154,7 @@ fn share_memory(
         assert!(from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
-            .is_some());
+            .is_ok());
 
         return Err(());
     }
