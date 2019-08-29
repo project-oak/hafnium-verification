@@ -578,11 +578,8 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
 #[no_mangle]
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
-    let locked = VmLocked { vm };
-
-    (*vm).inner.lock().into_raw();
-
-    locked
+    mem::forget((*vm).inner.lock());
+    VmLocked { vm }
 }
 
 /// Locks two VMs ensuring that the locking order is according to the locks'
@@ -603,9 +600,7 @@ pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked
 /// the fact that the VM is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
-    let guard =
-        SpinLockGuard::<'static, VmInner>::from_raw(&(*(*locked).vm).inner as *const _ as usize);
-    mem::drop(guard);
+    (*(*locked).vm).inner.unlock_unchecked();
     (*locked).vm = ptr::null_mut();
 }
 
