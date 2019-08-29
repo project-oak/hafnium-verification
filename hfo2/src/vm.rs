@@ -16,11 +16,13 @@
 
 use core::mem;
 use core::mem::MaybeUninit;
+use core::ops::DerefMut;
 use core::ptr;
 use core::str;
 use core::sync::atomic::AtomicBool;
 
 use arrayvec::ArrayVec;
+use scopeguard::guard;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -150,39 +152,40 @@ impl Mailbox {
         local_page_pool: &MPool,
     ) -> Result<(), ()> {
         let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
+        let ptable = hypervisor_ptable.deref_mut() as *mut PageTable<Stage1>;
 
         // Map the send page as read-only in the hypervisor address space.
         if hypervisor_ptable
             .identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool)
-            .is_ok()
+            .is_err()
         {
-            self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
-        } else {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
             hypervisor_ptable.defrag(local_page_pool);
             return Err(());
         }
+        self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
+
+        let rollback_send = guard((), |_| unsafe {
+            (*ptable)
+                .unmap(pa_send_begin, pa_send_end, local_page_pool)
+                .unwrap();
+        });
 
         // Map the receive page as writable in the hypervisor address space. On
         // failure, unmap the send page before returning.
         if hypervisor_ptable
             .identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool)
-            .is_ok()
+            .is_err()
         {
-            self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
-        } else {
             // TODO: parital defrag of failed range.
             // Recover any memory consumed in failed mapping.
             hypervisor_ptable.defrag(local_page_pool);
-            self.send = ptr::null();
-            assert!(hypervisor_ptable
-                .unmap(pa_send_begin, pa_send_end, local_page_pool)
-                .is_ok());
-
             return Err(());
         }
+        self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
 
+        mem::forget(rollback_send);
         Ok(())
     }
 
@@ -255,7 +258,6 @@ impl VmInner {
     /// stage-1 page tables. Locking of the page tables combined with a local
     /// memory pool ensures there will always be enough memory to recover from
     /// any errors that arise.
-    /// TODO: Clean up this function using RAII.
     fn configure_pages(
         &mut self,
         pa_send_begin: paddr_t,
@@ -270,6 +272,7 @@ impl VmInner {
         // thread. This is to ensure the original mapping can be restored if
         // any stage of the process fails.
         let local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
+        let ptable = &mut self.ptable as *mut PageTable<Stage2>;
 
         // Take memory ownership away from the VM and mark as shared.
         self.ptable.identity_map(
@@ -279,51 +282,41 @@ impl VmInner {
             &local_page_pool,
         )?;
 
-        if self
-            .ptable
+        let rollback_send = guard((), |_| unsafe {
+            (*ptable)
+                .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
+                .unwrap();
+        });
+
+        self.ptable
             .identity_map(
                 pa_recv_begin,
                 pa_recv_end,
                 Mode::UNOWNED | Mode::SHARED | Mode::R,
                 &local_page_pool,
             )
-            .is_err()
-        {
-            // TODO: partial defrag of failed range.
-            // Recover any memory consumed in failed mapping.
-            self.ptable.defrag(&local_page_pool);
+            .map_err(|_| {
+                // TODO: partial defrag of failed range.
+                // Recover any memory consumed in failed mapping.
+                self.ptable.defrag(&local_page_pool);
+            })?;
 
-            assert!(self
-                .ptable
-                .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
-                .is_ok());
-            return Err(());
-        }
-
-        if self
-            .mailbox
-            .configure_stage1(
-                pa_send_begin,
-                pa_send_end,
-                pa_recv_begin,
-                pa_recv_end,
-                &local_page_pool,
-            )
-            .is_err()
-        {
-            assert!(self
-                .ptable
+        let rollback_recv = guard((), |_| unsafe {
+            (*ptable)
                 .identity_map(pa_recv_begin, pa_recv_end, orig_recv_mode, &local_page_pool)
-                .is_ok());
+                .unwrap();
+        });
 
-            assert!(self
-                .ptable
-                .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
-                .is_ok());
+        self.mailbox.configure_stage1(
+            pa_send_begin,
+            pa_send_end,
+            pa_recv_begin,
+            pa_recv_end,
+            &local_page_pool,
+        )?;
 
-            return Err(());
-        }
-
+        mem::forget(rollback_send);
+        mem::forget(rollback_recv);
         Ok(())
     }
 

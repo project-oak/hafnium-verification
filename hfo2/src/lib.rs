@@ -31,6 +31,7 @@ extern crate arrayvec;
 extern crate reduce;
 #[macro_use]
 extern crate memoffset;
+extern crate scopeguard;
 
 mod cpio;
 #[macro_use]
