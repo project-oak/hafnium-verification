@@ -17,11 +17,11 @@
 use core::sync::atomic::spin_loop_hint;
 
 #[macro_export]
-macro_rules! some_or_return {
+macro_rules! ok_or_return {
     ($e:expr, $err:expr) => {{
         match $e {
-            Some(r) => r,
-            None => return $err,
+            Ok(r) => r,
+            Err(_) => return $err,
         }
     }};
 }
@@ -52,27 +52,28 @@ pub fn round_down(a: usize, b: usize) -> usize {
     div_floor(a, b) * b
 }
 
-pub trait OptReduce<T> {
-    fn opt_reduce<F>(self, f: F) -> Option<T>
+pub trait ResReduce<T, E> {
+    fn res_reduce<F>(self, f: F) -> Result<T, E>
     where
         Self: Sized,
-        F: FnMut(T, T) -> Option<T>;
+        F: FnMut(T, T) -> Result<T, E>;
 }
 
-impl<T, I> OptReduce<T> for I
+impl<T, E, I> ResReduce<T, E> for I
 where
-    I: Iterator<Item = Option<T>>,
+    I: Iterator<Item = Result<T, E>>,
+    E: Default,
 {
     #[inline]
-    fn opt_reduce<F>(mut self, mut f: F) -> Option<T>
+    fn res_reduce<F>(mut self, mut f: F) -> Result<T, E>
     where
         Self: Sized,
-        F: FnMut(T, T) -> Option<T>,
+        F: FnMut(T, T) -> Result<T, E>,
     {
-        let mut acc = self.next()??;
+        let mut acc = self.next().ok_or_else(E::default)??;
         for val in self {
             acc = f(acc, val?)?;
         }
-        Some(acc)
+        Ok(acc)
     }
 }

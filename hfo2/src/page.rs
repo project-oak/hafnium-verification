@@ -106,17 +106,17 @@ impl Pages {
         Self { ptr, size }
     }
 
-    pub unsafe fn from_raw_u8(ptr: *mut u8, size: usize) -> Option<Self> {
+    pub unsafe fn from_raw_u8(ptr: *mut u8, size: usize) -> Result<Self, ()> {
         // Round begin address up, and end address down.
         let new_begin = round_up(ptr as usize, PAGE_SIZE);
         let new_end = round_down(ptr as usize + size, PAGE_SIZE);
 
         // No pages if there isn't enough room for an entry.
         if new_begin >= new_end || new_end - new_begin < PAGE_SIZE {
-            return None;
+            return Err(());
         }
 
-        Some(Self {
+        Ok(Self {
             ptr: new_begin as *mut RawPage,
             size: (new_end - new_begin) / PAGE_SIZE,
         })

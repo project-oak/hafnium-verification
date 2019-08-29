@@ -93,13 +93,13 @@ impl Pool {
     }
 
     /// Allocates a page.
-    pub fn alloc(&mut self) -> Option<Page> {
+    pub fn alloc(&mut self) -> Result<Page, ()> {
         if let Some(entry) = unsafe { self.entry_list.pop() } {
             #[allow(clippy::cast_ptr_alignment)]
-            return Some(unsafe { Page::from_raw(entry as *mut RawPage) });
+            return Ok(unsafe { Page::from_raw(entry as *mut RawPage) });
         }
 
-        let chunk = unsafe { self.chunk_list.pop()? };
+        let chunk = unsafe { self.chunk_list.pop().ok_or(())? };
         let size = unsafe { (*chunk).size };
         assert_ne!(size, 0);
         #[allow(clippy::cast_ptr_alignment)]
@@ -116,11 +116,11 @@ impl Pool {
             unsafe { self.chunk_list.push(new_chunk) };
         }
 
-        Some(page)
+        Ok(page)
     }
 
     /// Allocates a number of contiguous and aligned pages.
-    pub fn alloc_pages(&mut self, size: usize, align: usize) -> Option<Pages> {
+    pub fn alloc_pages(&mut self, size: usize, align: usize) -> Result<Pages, ()> {
         if size == 1 && align == 1 {
             return self
                 .alloc()
@@ -128,21 +128,23 @@ impl Pool {
         }
 
         let (chunk, (chunk_start, chunk_end, start, end)) = unsafe {
-            self.chunk_list.pop_if_some(|chunk| {
-                // Calculate where the new chunk would be if we consume the requested number of
-                // entries. Then check if this chunk is big enough to satisfy the request.
-                let chunk_size = (*chunk).size;
-                let chunk_start = chunk as *const _ as usize;
-                let chunk_end = chunk_start + chunk_size * PAGE_SIZE;
-                let start = round_up(chunk_start, align * PAGE_SIZE);
-                let end = start + size * PAGE_SIZE;
+            self.chunk_list
+                .pop_if_some(|chunk| {
+                    // Calculate where the new chunk would be if we consume the requested number of
+                    // entries. Then check if this chunk is big enough to satisfy the request.
+                    let chunk_size = (*chunk).size;
+                    let chunk_start = chunk as *const _ as usize;
+                    let chunk_end = chunk_start + chunk_size * PAGE_SIZE;
+                    let start = round_up(chunk_start, align * PAGE_SIZE);
+                    let end = start + size * PAGE_SIZE;
 
-                if chunk_start <= start && start <= end && end <= chunk_end {
-                    Some((chunk_start, chunk_end, start, end))
-                } else {
-                    None
-                }
-            })?
+                    if chunk_start <= start && start <= end && end <= chunk_end {
+                        Some((chunk_start, chunk_end, start, end))
+                    } else {
+                        None
+                    }
+                })
+                .ok_or(())?
         };
 
         // Adds `[chunk_start, start)` back to the pool.
@@ -159,7 +161,7 @@ impl Pool {
             unsafe { self.chunk_list.push(new_chunk) };
         }
 
-        Some(unsafe { Pages::from_raw(start as *mut RawPage, size) })
+        Ok(unsafe { Pages::from_raw(start as *mut RawPage, size) })
     }
 
     /// Frees a page back into the given page pool, making it available for reuse.
@@ -227,16 +229,16 @@ impl MPool {
 
     /// Allocates an entry from the given memory pool, if one is available. If there isn't one
     /// available, try and allocate from the fallback if there is one.
-    pub fn alloc(&self) -> Option<Page> {
-        if let Some(result) = self.pool.lock().alloc() {
-            return Some(result);
+    pub fn alloc(&self) -> Result<Page, ()> {
+        if let Ok(result) = self.pool.lock().alloc() {
+            return Ok(result);
         }
 
         if let Some(fallback) = unsafe { self.fallback.as_ref() } {
             return fallback.alloc();
         }
 
-        None
+        Err(())
     }
 
     /// Allocates a number of contiguous and aligned entries. This is a best-effort operation and
@@ -247,16 +249,16 @@ impl MPool {
     /// in bytes will be 4 * entry_size.
     ///
     /// The caller can enventually free the returned entries by calling mpool_add_chunk.
-    pub fn alloc_pages(&self, count: usize, align: usize) -> Option<Pages> {
-        if let Some(result) = self.pool.lock().alloc_pages(count, align) {
-            return Some(result);
+    pub fn alloc_pages(&self, count: usize, align: usize) -> Result<Pages, ()> {
+        if let Ok(result) = self.pool.lock().alloc_pages(count, align) {
+            return Ok(result);
         }
 
         if let Some(fallback) = unsafe { self.fallback.as_ref() } {
             return fallback.alloc_pages(count, align);
         }
 
-        None
+        Err(())
     }
 
     /// Frees an entry back into the memory pool, making it available for reuse.
@@ -336,7 +338,7 @@ pub unsafe extern "C" fn mpool_fini(p: *mut MPool) {
 pub unsafe extern "C" fn mpool_add_chunk(p: *mut MPool, begin: *mut c_void, size: size_t) -> bool {
     Pages::from_raw_u8(begin as *mut u8, size)
         .map(|pages| (*p).free_pages(pages))
-        .is_some()
+        .is_ok()
 }
 
 #[no_mangle]

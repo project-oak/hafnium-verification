@@ -24,9 +24,6 @@
 //!
 //! We assume that the stage 1 and stage 2 page table addresses are `usize`.  It looks like that
 //! assumption might not be holding so we need to check that everything is going to be okay.
-//!
-//! TODO(HfO2): Many functions return Option<()> to represent success or fail.
-//! Change them to return Result<(), ()> (#34.)
 
 use core::cmp;
 use core::marker::PhantomData;
@@ -349,11 +346,11 @@ impl PageTableEntry {
         unsafe { arch_mm_pte_attrs(self.inner, level) }
     }
 
-    fn as_block(&self, level: u8) -> Option<paddr_t> {
+    fn as_block(&self, level: u8) -> Result<paddr_t, ()> {
         if self.is_block(level) {
-            Some(unsafe { self.as_block_unchecked(level) })
+            Ok(unsafe { self.as_block_unchecked(level) })
         } else {
-            None
+            Err(())
         }
     }
 
@@ -361,20 +358,20 @@ impl PageTableEntry {
         arch_mm_block_from_pte(self.inner, level)
     }
 
-    fn as_table(&self, level: u8) -> Option<&RawPageTable> {
+    fn as_table(&self, level: u8) -> Result<&RawPageTable, ()> {
         if self.is_table(level) {
-            unsafe { Some(&*(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *const _)) }
+            unsafe { Ok(&*(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *const _)) }
         } else {
-            None
+            Err(())
         }
     }
 
-    fn as_table_mut(&mut self, level: u8) -> Option<&mut RawPageTable> {
+    fn as_table_mut(&mut self, level: u8) -> Result<&mut RawPageTable, ()> {
         unsafe {
             if arch_mm_pte_is_table(self.inner, level) {
-                Some(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _))
+                Ok(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _))
             } else {
-                None
+                Err(())
             }
         }
     }
@@ -386,7 +383,7 @@ impl PageTableEntry {
     ///
     /// After a page table entry is freed, it's value is undefined.
     unsafe fn free(&mut self, level: u8, mpool: &MPool) {
-        if let Some(table) = self.as_table_mut(level) {
+        if let Ok(table) = self.as_table_mut(level) {
             // Recursively free any subtables.
             for pte in table.iter_mut() {
                 pte.free(level - 1, mpool);
@@ -440,17 +437,16 @@ impl PageTableEntry {
         begin: ptable_addr_t,
         level: u8,
         mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         // Just return if it's already populated.
         if self.is_table(level) {
-            return Some(());
+            return Ok(());
         }
 
         // Allocate a new table.
         let mut page = mpool
             .alloc()
-            .ok_or_else(|| dlog!("Failed to allocate memory for page table\n"))
-            .ok()?;
+            .map_err(|_| dlog!("Failed to allocate memory for page table\n"))?;
 
         let table = unsafe { RawPageTable::deref_mut_page(&mut page) };
 
@@ -487,16 +483,16 @@ impl PageTableEntry {
         let table = unsafe { Self::table(level, page) };
         self.replace::<S>(table, begin, level, mpool);
 
-        Some(())
+        Ok(())
     }
 
     /// Defragments the given PTE by recursively replacing any tables with blocks or absent entries
     /// where possible.
-    fn defrag(&mut self, level: u8, mpool: &MPool) -> Option<u64> {
+    fn defrag(&mut self, level: u8, mpool: &MPool) -> Result<u64, ()> {
         let attrs = self.attrs(level);
 
         if self.is_block(level) {
-            return Some(attrs);
+            return Ok(attrs);
         }
 
         let table = self.as_table_mut(level)?;
@@ -507,20 +503,21 @@ impl PageTableEntry {
         let children_attrs = table
             .iter_mut()
             .map(|pte| pte.defrag(level - 1, mpool))
-            .reduce(|l, r| if l == r { l } else { None })??;
+            .reduce(|l, r| if l == r { l } else { Err(()) })
+            .ok_or(())??;
 
         // If the table's all the entries are absent, free the table and return an absent entry.
         unsafe {
             if !arch_mm_pte_is_present(children_attrs, level - 1) {
                 mpool.free(Page::from_raw(table as *mut _ as *mut _));
                 ptr::write(self, Self::absent(level));
-                return Some(self.attrs(level));
+                return Ok(self.attrs(level));
             }
         }
 
         // Bail out if block is not allowed in the current level.
         if unsafe { !arch_mm_is_block_allowed(level) } {
-            return None;
+            return Err(());
         }
 
         // Merge table into a single block with equivalent attributes.
@@ -535,7 +532,7 @@ impl PageTableEntry {
             );
         }
 
-        Some(combined_attrs)
+        Ok(combined_attrs)
     }
 }
 
@@ -636,7 +633,7 @@ impl RawPageTable {
         level: u8,
         flags: Flags,
         mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         let entry_size = addr::entry_size(level);
         let commit = !(flags & Flags::COMMIT).is_empty();
         let unmap = !(flags & Flags::UNMAP).is_empty();
@@ -696,7 +693,7 @@ impl RawPageTable {
             }
         }
 
-        Some(())
+        Ok(())
     }
 
     /// Gets the attributes applied to the given range of stage-2 addresses at the given level.
@@ -712,7 +709,7 @@ impl RawPageTable {
         begin: ptable_addr_t,
         end: ptable_addr_t,
         level: u8,
-    ) -> Option<u64> {
+    ) -> Result<u64, ()> {
         let ptes = self[addr::index(begin, level)..].iter();
         let begins = BlockIter::new(
             begin,
@@ -724,13 +721,13 @@ impl RawPageTable {
         // Check that each entry is owned.
         ptes.zip(begins)
             .map(|(pte, begin)| {
-                if let Some(table) = pte.as_table(level) {
+                if let Ok(table) = pte.as_table(level) {
                     table.get_attrs_level(begin, end, level - 1)
                 } else {
-                    Some(pte.attrs(level))
+                    Ok(pte.attrs(level))
                 }
             })
-            .opt_reduce(|l, r| if l == r { Some(l) } else { None })
+            .res_reduce(|l, r| if l == r { Ok(l) } else { Err(()) })
     }
 
     /// Writes the given table to the debug log, calling itself recursively to write sub-tables.
@@ -748,7 +745,7 @@ impl RawPageTable {
                 width = (4 * (max_level - level) as usize)
             );
 
-            if let Some(table) = pte.as_table(level) {
+            if let Ok(table) = pte.as_table(level) {
                 table.dump(level - 1, max_level);
             }
         }
@@ -775,7 +772,7 @@ impl<S: Stage> PageTable<S> {
     }
 
     /// Creates a new page table.
-    pub fn new(mpool: &MPool) -> Option<Self> {
+    pub fn new(mpool: &MPool) -> Result<Self, ()> {
         let root_table_count = S::root_table_count();
         let mut pages = mpool.alloc_pages(root_table_count as usize, root_table_count as usize)?;
 
@@ -788,7 +785,7 @@ impl<S: Stage> PageTable<S> {
         }
 
         // TODO: halloc could return a virtual or physical address if mm not enabled?
-        Some(Self {
+        Ok(Self {
             root: pa_init(pages.into_raw() as usize),
             _marker: PhantomData,
         })
@@ -850,7 +847,7 @@ impl<S: Stage> PageTable<S> {
         root_level: u8,
         flags: Flags,
         mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         let root_table_size = addr::entry_size(root_level);
 
         let tables = self.deref_mut()[addr::index(begin, root_level)..].iter_mut();
@@ -860,7 +857,7 @@ impl<S: Stage> PageTable<S> {
             table.map_level::<S>(begin, end, attrs, root_level - 1, flags, mpool)?;
         }
 
-        Some(())
+        Ok(())
     }
 
     /// Updates the given table such that the given physical address range is mapped or not mapped
@@ -872,7 +869,7 @@ impl<S: Stage> PageTable<S> {
         attrs: u64,
         flags: Flags,
         mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         let root_level = S::max_level() + 1;
         let ptable_end = S::root_table_count() as usize * addr::entry_size(root_level);
         let end = cmp::min(addr::round_up_to_page(pa_addr(end)), ptable_end);
@@ -887,7 +884,7 @@ impl<S: Stage> PageTable<S> {
         // Invalidate the tlb.
         S::invalidate_tlb(begin, end);
 
-        Some(())
+        Ok(())
     }
 
     /// Writes the given table to the debug log.
@@ -908,7 +905,7 @@ impl<S: Stage> PageTable<S> {
         // can be replaced by a block or an absent entry.
         for page_table in self.deref_mut().iter_mut() {
             for pte in page_table.iter_mut() {
-                pte.defrag(level, mpool);
+                let _ = pte.defrag(level, mpool);
             }
         }
     }
@@ -919,13 +916,13 @@ impl<S: Stage> PageTable<S> {
         end: paddr_t,
         mode: Mode,
         mpool: &MPool,
-    ) -> Option<()> {
+    ) -> Result<(), ()> {
         self.identity_update(begin, end, S::mode_to_attrs(mode), Flags::empty(), mpool)
     }
 
-    /// nUpdates the VM's table such that the given physical address range has no connection to the
+    /// Updates the VM's table such that the given physical address range has no connection to the
     /// VM.
-    pub fn unmap(&mut self, begin: paddr_t, end: paddr_t, mpool: &MPool) -> Option<()> {
+    pub fn unmap(&mut self, begin: paddr_t, end: paddr_t, mpool: &MPool) -> Result<(), ()> {
         self.identity_update(
             begin,
             end,
@@ -940,7 +937,7 @@ impl<S: Stage> PageTable<S> {
     /// The value returned in `attrs` is only valid if the function returns true.
     ///
     /// Returns true if the whole range has the same attributes and false otherwise.
-    pub fn get_attrs(&self, begin: ptable_addr_t, end: ptable_addr_t) -> Option<u64> {
+    pub fn get_attrs(&self, begin: ptable_addr_t, end: ptable_addr_t) -> Result<u64, ()> {
         let max_level = S::max_level();
         let root_level = max_level + 1;
         let root_table_size = addr::entry_size(root_level);
@@ -951,7 +948,7 @@ impl<S: Stage> PageTable<S> {
 
         // Fail if the addresses are out of range.
         if !(begin <= end && end <= ptable_end) {
-            return None;
+            return Err(());
         }
 
         let tables = self.deref()[addr::index(begin, root_level)..].iter();
@@ -960,16 +957,16 @@ impl<S: Stage> PageTable<S> {
         tables
             .zip(begins)
             .map(|(table, begin)| table.get_attrs_level(begin, end, max_level))
-            .opt_reduce(|l, r| if l == r { Some(l) } else { None })
+            .res_reduce(|l, r| if l == r { Ok(l) } else { Err(()) })
     }
 
     /// Gets the mode of the give range of intermediate physical addresses if they are mapped with
     /// the same mode.
     ///
     /// Returns true if the range is mapped with the same mode and false otherwise.}
-    pub fn get_mode(&self, begin: ipaddr_t, end: ipaddr_t) -> Option<Mode> {
+    pub fn get_mode(&self, begin: ipaddr_t, end: ipaddr_t) -> Result<Mode, ()> {
         let attrs = self.get_attrs(ipa_addr(begin), ipa_addr(end))?;
-        Some(S::attrs_to_mode(attrs))
+        Ok(S::attrs_to_mode(attrs))
     }
 }
 
@@ -1043,7 +1040,7 @@ pub unsafe extern "C" fn mm_vm_init(t: *mut PageTable<Stage2>, mpool: *const MPo
     let mpool = &*mpool;
     PageTable::new(mpool)
         .map(|table| ptr::write(t, table))
-        .is_some()
+        .is_ok()
 }
 
 #[no_mangle]
@@ -1070,7 +1067,7 @@ pub unsafe extern "C" fn mm_vm_identity_map(
                 ptr::write(ipa, ipa_from_pa(begin));
             }
         })
-        .is_some()
+        .is_ok()
 }
 
 #[no_mangle]
@@ -1089,7 +1086,7 @@ pub unsafe extern "C" fn mm_vm_unmap(
         Flags::UNMAP,
         mpool,
     )
-    .is_some()
+    .is_ok()
 }
 
 #[no_mangle]
@@ -1100,15 +1097,15 @@ pub unsafe extern "C" fn mm_vm_unmap_hypervisor(
     // TODO: If we add pages dynamically, they must be included here too.
     let t = &mut *t;
     let mpool = &*mpool;
-    some_or_return!(
+    ok_or_return!(
         t.unmap(layout_text_begin(), layout_text_end(), mpool),
         false
     );
-    some_or_return!(
+    ok_or_return!(
         t.unmap(layout_rodata_begin(), layout_rodata_end(), mpool),
         false
     );
-    some_or_return!(
+    ok_or_return!(
         t.unmap(layout_data_begin(), layout_data_end(), mpool),
         false
     );
@@ -1136,7 +1133,7 @@ pub unsafe extern "C" fn mm_vm_get_mode(
     mode: *mut Mode,
 ) -> bool {
     let t = &mut *t;
-    t.get_mode(begin, end).map(|m| *mode = m).is_some()
+    t.get_mode(begin, end).map(|m| *mode = m).is_ok()
 }
 
 #[no_mangle]
@@ -1151,7 +1148,7 @@ pub unsafe extern "C" fn mm_identity_map(
     stage1_locked
         .identity_map(begin, end, mode, mpool)
         .map(|_| pa_addr(begin) as *mut _)
-        .unwrap_or_else(ptr::null_mut)
+        .unwrap_or(ptr::null_mut())
 }
 
 #[no_mangle]
@@ -1162,7 +1159,7 @@ pub unsafe extern "C" fn mm_unmap(
     mpool: *const MPool,
 ) -> bool {
     let mpool = &*mpool;
-    stage1_locked.unmap(begin, end, mpool).is_some()
+    stage1_locked.unmap(begin, end, mpool).is_ok()
 }
 
 #[no_mangle]
@@ -1184,10 +1181,9 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     );
 
     let mpool = &*mpool;
-    let page_table = PageTable::new(mpool)
-        .ok_or_else(|| dlog!("Unable to allocate memory for page table.\n"))
-        .ok();
-    let page_table = some_or_return!(page_table, false);
+    let page_table =
+        PageTable::new(mpool).map_err(|_| dlog!("Unable to allocate memory for page table.\n"));
+    let page_table = ok_or_return!(page_table, false);
     let hypervisor_page_table = HYPERVISOR_PAGE_TABLE.get_mut_unchecked();
     ptr::write(hypervisor_page_table, page_table);
 
@@ -1199,14 +1195,20 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     // Let console driver map pages for itself.
     plat_console_mm_init(stage1_locked, mpool);
 
-    hypervisor_page_table.identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool);
-    hypervisor_page_table.identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool);
-    hypervisor_page_table.identity_map(
-        layout_data_begin(),
-        layout_data_end(),
-        Mode::R | Mode::W,
-        mpool,
-    );
+    hypervisor_page_table
+        .identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool)
+        .unwrap();
+    hypervisor_page_table
+        .identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool)
+        .unwrap();
+    hypervisor_page_table
+        .identity_map(
+            layout_data_begin(),
+            layout_data_end(),
+            Mode::R | Mode::W,
+            mpool,
+        )
+        .unwrap();
 
     arch_mm_init(hypervisor_page_table.root, true)
 }

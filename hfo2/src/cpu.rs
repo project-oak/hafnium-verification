@@ -446,7 +446,7 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
             mem::forget(guard);
             ptr::write(locked, VCpuExecutionLocked { vcpu });
         })
-        .is_some()
+        .is_ok()
 }
 
 /// Unlocks a vCPU previously locked with vcpu_lock, and updates `locked` to

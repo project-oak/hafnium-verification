@@ -87,14 +87,14 @@ impl<T> SpinLock<T> {
         }
     }
 
-    pub fn try_lock(&self) -> Option<SpinLockGuard<T>> {
+    pub fn try_lock(&self) -> Result<SpinLockGuard<T>, ()> {
         if self.lock.try_lock() {
-            Some(SpinLockGuard {
+            Ok(SpinLockGuard {
                 lock: self,
                 _marker: PhantomData,
             })
         } else {
-            None
+            Err(())
         }
     }
 
