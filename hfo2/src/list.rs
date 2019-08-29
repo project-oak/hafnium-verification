@@ -25,9 +25,9 @@
 // TODO: Refactor type names and remove this.
 #[allow(non_camel_case_types)]
 #[repr(C)]
-pub struct list_entry {
-    pub next: *mut list_entry,
-    pub prev: *mut list_entry,
+pub struct ListEntry {
+    next: *mut ListEntry,
+    prev: *mut ListEntry,
 }
 
 #[macro_export]
@@ -38,13 +38,13 @@ macro_rules! container_of {
 }
 
 #[inline]
-pub unsafe fn list_init(e: *mut list_entry) {
+pub unsafe fn list_init(e: *mut ListEntry) {
     (*e).next = e;
     (*e).prev = e;
 }
 
 #[inline]
-pub unsafe fn list_append(l: *mut list_entry, e: *mut list_entry) {
+pub unsafe fn list_append(l: *mut ListEntry, e: *mut ListEntry) {
     (*e).next = l;
     (*e).prev = (*l).prev;
 
@@ -53,7 +53,7 @@ pub unsafe fn list_append(l: *mut list_entry, e: *mut list_entry) {
 }
 
 #[inline]
-pub unsafe fn list_prepend(l: *mut list_entry, e: *mut list_entry) {
+pub unsafe fn list_prepend(l: *mut ListEntry, e: *mut ListEntry) {
     (*e).next = (*l).next;
     (*e).prev = l;
 
@@ -62,13 +62,20 @@ pub unsafe fn list_prepend(l: *mut list_entry, e: *mut list_entry) {
 }
 
 #[inline]
-pub unsafe fn list_empty(l: *const list_entry) -> bool {
+pub unsafe fn list_empty(l: *const ListEntry) -> bool {
     (*l).next as *const _ == l
 }
 
 #[inline]
-pub unsafe fn list_remove(e: *mut list_entry) {
+pub unsafe fn list_remove(e: *mut ListEntry) {
     (*(*e).prev).next = (*e).next;
     (*(*e).next).prev = (*e).prev;
     list_init(e);
+}
+
+#[inline]
+pub unsafe fn list_pop_front(l: &ListEntry) -> *mut ListEntry {
+    let result = l.next;
+    list_remove(result);
+    result
 }

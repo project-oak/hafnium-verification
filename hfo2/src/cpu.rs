@@ -85,14 +85,14 @@ pub enum VCpuStatus {
 #[repr(C)]
 pub struct Interrupts {
     /// Bitfield keeping track of which interrupts are enabled.
-    pub enabled: [u32; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
+    enabled: [u32; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
 
     /// Bitfield keeping track of which interrupts are pending.
-    pub pending: [u32; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
+    pending: [u32; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
 
     /// The number of interrupts which are currently both enabled and pending. i.e. the number of
     /// bits set in enabled & pending.
-    pub enabled_and_pending_count: u32,
+    enabled_and_pending_count: u32,
 }
 
 impl Interrupts {
@@ -160,6 +160,11 @@ impl Interrupts {
         }
 
         Ok(())
+    }
+
+    #[inline]
+    pub fn is_interrupted(&self) -> bool {
+        self.enabled_and_pending_count > 0
     }
 
     /// Returns the ID of the next pending interrupt for the calling vCPU, and

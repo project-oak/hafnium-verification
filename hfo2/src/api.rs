@@ -15,6 +15,7 @@
  */
 
 use core::mem::{self, ManuallyDrop, MaybeUninit};
+use core::ops::Deref;
 use core::ptr;
 use core::sync::atomic::Ordering;
 
@@ -22,7 +23,6 @@ use crate::abi::*;
 use crate::addr::*;
 use crate::arch::*;
 use crate::cpu::*;
-use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
@@ -330,7 +330,7 @@ unsafe fn vcpu_prepare_run(
 
         // Allow virtual interrupts to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            if (*vcpu).interrupts.lock().enabled_and_pending_count > 0 =>
+            if (*vcpu).interrupts.lock().is_interrupted() =>
         {
             // break;
         }
@@ -617,8 +617,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // TODO(HfO2): This code looks unsafe. Port spci_architected_message.c
         // and avoid creating VmLocked manually.
         ret = spci_msg_handle_architected_message(
-            VmLocked { vm: to },
-            VmLocked { vm: from },
+            VmLocked::from_raw(to),
+            VmLocked::from_raw(from),
             architected_message_replica,
             &mut from_msg_replica,
             to_msg,
@@ -702,13 +702,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 
     // Don't block if there are enabled and pending interrupts, to match
     // behaviour of wait_for_interrupt.
-    if current
-        .get_vcpu()
-        .interrupts
-        .lock()
-        .enabled_and_pending_count
-        > 0
-    {
+    if current.get_vcpu().interrupts.lock().is_interrupted() {
         return return_code;
     }
 
@@ -773,7 +767,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
     let waiting_vm = (*entry).waiting_vm;
 
     let mut vm_inner = (*waiting_vm).inner.lock();
-    if list_empty(&(*entry).ready_links) {
+    if !(*entry).is_in_ready_list() {
         vm_inner.enqueue_ready_list(&mut *entry);
     }
 
@@ -951,11 +945,11 @@ pub unsafe extern "C" fn api_spci_share_memory(
     memory_to_attributes: u32,
     share: usize,
 ) -> SpciReturn {
-    let to_inner = (*to_locked.vm).inner.get_mut_unchecked();
-    let from_inner = (*from_locked.vm).inner.get_mut_unchecked();
+    let to_inner = to_locked.inner.get_mut_unchecked();
+    let from_inner = from_locked.inner.get_mut_unchecked();
 
     // Disallow reflexive shares as this suggests an error in the VM.
-    if to_locked.vm == from_locked.vm {
+    if to_locked == from_locked {
         return SpciReturn::InvalidParameters;
     }
 
@@ -984,8 +978,8 @@ pub unsafe extern "C" fn api_spci_share_memory(
     };
 
     if !spci_msg_check_transition(
-        to_locked.vm,
-        from_locked.vm,
+        to_locked.deref(),
+        from_locked.deref(),
         share,
         orig_from_mode.get_mut(),
         begin,

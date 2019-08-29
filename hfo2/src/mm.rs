@@ -754,8 +754,7 @@ impl RawPageTable {
 
 /// Page table.
 pub struct PageTable<S: Stage> {
-    // TODO: Modify other codes not to read this directly, and make it private.
-    pub root: paddr_t,
+    root: paddr_t,
     _marker: PhantomData<S>,
 }
 

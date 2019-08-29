@@ -16,7 +16,7 @@
 
 use core::mem;
 use core::mem::MaybeUninit;
-use core::ops::DerefMut;
+use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::str;
 use core::sync::atomic::AtomicBool;
@@ -57,10 +57,17 @@ pub struct WaitEntry {
     pub waiting_vm: *const Vm,
 
     /// Links used to add entry to a VM's waiter_list. This is protected by the notifying VM's lock.
-    pub wait_links: list_entry,
+    wait_links: ListEntry,
 
     /// Links used to add entry to a VM's ready_list. This is protected by the waiting VM's lock.
-    pub ready_links: list_entry,
+    ready_links: ListEntry,
+}
+
+impl WaitEntry {
+    #[inline]
+    pub unsafe fn is_in_ready_list(&self) -> bool {
+        !list_empty(&self.ready_links)
+    }
 }
 
 #[repr(C)]
@@ -77,11 +84,11 @@ pub struct Mailbox {
     /// when the mailbox becomes writable. Once the mailbox does become
     /// writable, the entry is removed from this list and added to the waiting
     /// VM's ready_list.
-    waiter_list: list_entry,
+    waiter_list: ListEntry,
 
     /// List of wait_entry structs representing VMs whose mailboxes became
     /// writable since the owner of the mailbox registers for notification.
-    ready_list: list_entry,
+    ready_list: ListEntry,
 }
 
 impl Mailbox {
@@ -99,8 +106,6 @@ impl Mailbox {
     /// Retrieves the next waiter and removes it from the wait list if the VM's
     /// mailbox is in a writable state.
     pub unsafe fn fetch_waiter(&mut self) -> *mut WaitEntry {
-        let entry: *mut WaitEntry;
-
         if self.state != MailboxState::Empty || self.recv.is_null() || list_empty(&self.waiter_list)
         {
             // The mailbox is not writable or there are no waiters.
@@ -108,9 +113,7 @@ impl Mailbox {
         }
 
         // Remove waiter from the wait list.
-        entry = container_of!(self.waiter_list.next, WaitEntry, wait_links);
-        list_remove(&mut (*entry).wait_links);
-        entry
+        container_of!(list_pop_front(&self.waiter_list), WaitEntry, wait_links)
     }
 
     /// Checks if any waiters exists.
@@ -397,13 +400,9 @@ impl VmInner {
                 return None;
             }
 
-            let ret = {
-                let entry: *mut WaitEntry =
-                    container_of!(self.mailbox.ready_list.next, WaitEntry, ready_links);
-                list_remove(&mut (*entry).ready_links);
-                entry.offset_from(self.wait_entries.as_ptr()) as spci_vm_id_t
-            };
-
+            let list_entry = list_pop_front(&self.mailbox.ready_list);
+            let entry: *mut WaitEntry = container_of!(list_entry, WaitEntry, ready_links);
+            let ret = entry.offset_from(self.wait_entries.as_ptr()) as spci_vm_id_t;
             Some(ret)
         }
     }
@@ -495,16 +494,34 @@ impl Vm {
 }
 
 /// Encapsulates a VM whose lock is held.
+// TODO(HfO2): make it an RAII-style guard
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct VmLocked {
-    pub vm: *mut Vm,
+    vm: *mut Vm,
+}
+
+impl Deref for VmLocked {
+    type Target = Vm;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.vm }
+    }
+}
+
+impl VmLocked {
+    #[inline]
+    pub unsafe fn from_raw(vm: *mut Vm) -> Self {
+        Self { vm }
+    }
 }
 
 /// Container for two vm_locked structures.
+// TODO(HfO2): make it an RAII-style guard
 pub struct TwoVmLocked {
-    pub vm1: VmLocked,
-    pub vm2: VmLocked,
+    vm1: VmLocked,
+    vm2: VmLocked,
 }
 
 static mut VMS: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
@@ -576,14 +593,11 @@ pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
 /// addresses.
 #[no_mangle]
 pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked {
-    let dual_lock = TwoVmLocked {
+    SpinLock::lock_both(&(*vm1).inner, &(*vm2).inner);
+    TwoVmLocked {
         vm1: VmLocked { vm: vm1 },
         vm2: VmLocked { vm: vm2 },
-    };
-
-    SpinLock::lock_both(&(*vm1).inner, &(*vm2).inner);
-
-    dual_lock
+    }
 }
 
 /// Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
