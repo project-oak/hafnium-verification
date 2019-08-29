@@ -337,19 +337,77 @@ Definition is_while_loop_success {state} successful body : Prop :=
   (* the success metric never goes from false to true *)
   (forall s : state, successful s = false -> successful (fst (body s)) = false)
   (* ...and success implies that the loop continues *)
-  /\ (forall s : state, successful (fst (body s)) = true -> snd (body s) = continue).
+  /\ (forall s : state, successful (fst (body s)) = true -> snd (body s) = continue)
+  (* ...and failure implies that the loop breaks *)
+  /\ (forall s : state, successful s = true ->
+                        successful (fst (body s)) = false -> snd (body s) = break).
 
 Definition is_while_loop_invariant
            {state} (inv : state -> Prop) successful cond body : Prop :=
   (* the loop only breaks when the continuation condition or success condition
        is false anyway -- this guarantees that if successful = true, the loop
        completed *)
-  (forall s, cond s = true -> inv s ->
+  (forall s, cond s = true -> successful s = true -> inv s ->
              snd (body s) = continue
              \/ cond (fst (body s)) = false
              \/ successful (fst (body s)) = false)
   (* ...and invariant holds over loop *)
-  /\ (forall s : state, cond s = true -> inv s -> inv (fst (body s))).
+  /\ (forall s : state, cond s = true -> successful s = true ->
+                        inv s -> inv (fst (body s))).
+
+(* same as while_loop_invariant but includes success condition *)
+Lemma while_loop_invariant2 {state} (P : state -> Prop) (successful : state -> bool)
+      max_iterations cond body :
+  is_while_loop_success successful body ->
+  (forall s, cond s = true -> successful s = true -> P s -> P (fst (body s))) ->
+  forall start,
+    P start ->
+    successful start = true ->
+    P (@while_loop _ max_iterations cond start body).
+Proof.
+  cbv [while_loop while_loop' is_while_loop_success].
+  intros ? ?. repeat match goal with H : _ /\ _ |- _ => destruct H end.
+  assert (forall s, successful (fst (body s)) = true -> successful s = true).
+  { intro s.
+    repeat match goal with H : forall _ : state, _ |- _ => specialize (H s) end.
+    destruct (successful s); basics;
+      repeat match goal with H : ?x = ?x -> _ |- _ =>
+                             specialize (H ltac:(reflexivity)) end;
+      solver. }
+  generalize (seq 0 (S max_iterations)) as l.
+  induction l;
+    repeat match goal with
+           | _ => progress cbn [fold_right fst snd] in *
+           | _ => progress basics
+           | |- context [let '(_,_) := ?x in _] =>
+             rewrite (surjective_pairing x)
+           | H : ?p = (?x,?y) |- context [?x] =>
+             replace x with (fst p) in *
+               by (rewrite (surjective_pairing p) in *; invert H; solver);
+               clear H
+           | _ => break_match
+           | _ => inversion_bool
+           | _ => solver
+           end; [ ].
+  match goal with |- context [ fold_right ?F (?x, ?c) ?l] =>
+                  specialize (IHl x);
+                    remember (fold_right F (x,c) l) as p
+  end.
+  assert (snd p = break \/ successful (fst p) = true) as Hsuccess.
+  { subst p.
+    apply fold_right_invariant;
+      repeat match goal with
+             | _ => progress basics
+             | _ => progress cbv [break continue] in *
+             | _ => progress destruct_tuples
+             | _ => break_match
+             | _ => inversion_bool
+             | _ => solver
+             | |- context [successful ?x = _] =>
+               case_eq (successful x); solver
+             end. }
+  destruct Hsuccess; cbv [break continue] in *; solver.
+Qed.
 
 Lemma while_loop_invariant_strong
       {state} (inv P : state -> Prop) (successful : state -> bool)
@@ -362,13 +420,16 @@ Lemma while_loop_invariant_strong
   end_value - value start <= max_iterations ->
   (* invariant holds at start *)
   inv start ->
+  (* successful is true at start *)
+  successful start = true ->
   (* invariant implies conclusion *)
   (forall s, inv s -> (cond s = false \/ successful s = false) -> P s) ->
   P (while_loop (max_iterations:=max_iterations) cond start body).
 Proof.
   cbv [is_while_loop_value is_while_loop_success is_while_loop_invariant]; basics.
   match goal with H : _ |- _ => apply H end.
-  { apply while_loop_invariant; eauto. }
+  { eapply while_loop_invariant2; cbv [is_while_loop_success];
+      basics; solver. }
   { match goal with |- context [successful ?s] =>
                     case_eq (successful s); basics; try solver end.
     left. eapply while_loop_completed; eauto. }
