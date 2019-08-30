@@ -155,40 +155,43 @@ impl Mailbox {
         local_page_pool: &MPool,
     ) -> Result<(), ()> {
         let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
-        let ptable = hypervisor_ptable.deref_mut() as *mut PageTable<Stage1>;
+        let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
 
         // Map the send page as read-only in the hypervisor address space.
-        if hypervisor_ptable
+        if ptable
             .identity_map(pa_send_begin, pa_send_end, Mode::R, local_page_pool)
             .is_err()
         {
             // TODO: partial defrag of failed range.
             // Recover any memory consumed in failed mapping.
-            hypervisor_ptable.defrag(local_page_pool);
+            ptable.defrag(local_page_pool);
             return Err(());
         }
         self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
 
-        let rollback_send = guard((), |_| unsafe {
-            (*ptable)
+        let mut ptable = guard(ptable, |mut dropping_ptable| {
+            dropping_ptable
                 .unmap(pa_send_begin, pa_send_end, local_page_pool)
                 .unwrap();
         });
 
         // Map the receive page as writable in the hypervisor address space. On
         // failure, unmap the send page before returning.
-        if hypervisor_ptable
+        if ptable
             .identity_map(pa_recv_begin, pa_recv_end, Mode::W, local_page_pool)
             .is_err()
         {
             // TODO: parital defrag of failed range.
             // Recover any memory consumed in failed mapping.
-            hypervisor_ptable.defrag(local_page_pool);
+            ptable.defrag(local_page_pool);
             return Err(());
         }
         self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
 
-        mem::forget(rollback_send);
+        // Forgetting `ptable` only skips dropping the nested `ScopeGuard`s.
+        // `hypervisor_ptable` will be safely dropped and the lock will be
+        // released.
+        mem::forget(ptable);
         Ok(())
     }
 
@@ -275,23 +278,23 @@ impl VmInner {
         // thread. This is to ensure the original mapping can be restored if
         // any stage of the process fails.
         let local_page_pool: MPool = MPool::new_with_fallback(fallback_mpool);
-        let ptable = &mut self.ptable as *mut PageTable<Stage2>;
+        let mut ptable = guard(&mut self.ptable, |_| ());
 
         // Take memory ownership away from the VM and mark as shared.
-        self.ptable.identity_map(
+        ptable.identity_map(
             pa_send_begin,
             pa_send_end,
             Mode::UNOWNED | Mode::SHARED | Mode::R | Mode::W,
             &local_page_pool,
         )?;
 
-        let rollback_send = guard((), |_| unsafe {
-            (*ptable)
+        let mut ptable = guard(ptable, |mut ptable| {
+            ptable
                 .identity_map(pa_send_begin, pa_send_end, orig_send_mode, &local_page_pool)
                 .unwrap();
         });
 
-        self.ptable
+        ptable
             .identity_map(
                 pa_recv_begin,
                 pa_recv_end,
@@ -301,11 +304,11 @@ impl VmInner {
             .map_err(|_| {
                 // TODO: partial defrag of failed range.
                 // Recover any memory consumed in failed mapping.
-                self.ptable.defrag(&local_page_pool);
+                ptable.defrag(&local_page_pool);
             })?;
 
-        let rollback_recv = guard((), |_| unsafe {
-            (*ptable)
+        let ptable = guard(ptable, |mut ptable| {
+            ptable
                 .identity_map(pa_recv_begin, pa_recv_end, orig_recv_mode, &local_page_pool)
                 .unwrap();
         });
@@ -318,8 +321,7 @@ impl VmInner {
             &local_page_pool,
         )?;
 
-        mem::forget(rollback_send);
-        mem::forget(rollback_recv);
+        mem::forget(ptable);
         Ok(())
     }
 
