@@ -40,27 +40,9 @@
 /* clang-format on */
 
 static bool dlog_lock_enabled = false;
-static struct spinlock sl = SPINLOCK_INIT;
 
-/**
- * Takes the lock, if it is enabled.
- */
-static void lock(void)
-{
-	if (dlog_lock_enabled) {
-		sl_lock(&sl);
-	}
-}
-
-/**
- * Releases the lock, if it is enabled.
- */
-static void unlock(void)
-{
-	if (dlog_lock_enabled) {
-		sl_unlock(&sl);
-	}
-}
+extern void dlog_lock();
+extern void dlog_unlock();
 
 /**
  * Enables the lock protecting the serial device.
@@ -221,7 +203,10 @@ void vdlog(const char *fmt, va_list args)
 	int flags;
 	char buf[2];
 
-	lock();
+	/* Takes the lock, if it is enabled. */
+	if (dlog_lock_enabled) {
+		dlog_lock();
+	}
 
 	for (p = fmt; *p; p++) {
 		switch (*p) {
@@ -321,7 +306,10 @@ void vdlog(const char *fmt, va_list args)
 		}
 	}
 
-	unlock();
+	/* Releases the lock, if it is enabled. */
+	if (dlog_lock_enabled) {
+		dlog_unlock();
+	}
 }
 
 /**
