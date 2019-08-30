@@ -169,8 +169,8 @@ impl Mailbox {
         }
         self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
 
-        let mut ptable = guard(ptable, |mut dropping_ptable| {
-            dropping_ptable
+        let mut ptable = guard(ptable, |mut ptable| {
+            ptable
                 .unmap(pa_send_begin, pa_send_end, local_page_pool)
                 .unwrap();
         });
