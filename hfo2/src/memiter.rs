@@ -22,8 +22,8 @@ use crate::types::*;
 #[repr(C)]
 #[derive(Clone)]
 pub struct MemIter {
-    next: *const u8,
-    limit: *const u8,
+    pub next: *const u8,
+    pub limit: *const u8,
 }
 
 /// Determines if a character is a whitespace.
