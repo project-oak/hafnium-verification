@@ -36,6 +36,7 @@ use reduce::Reduce;
 
 use crate::addr::*;
 use crate::arch::*;
+use crate::layout::*;
 use crate::mpool::MPool;
 use crate::page::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
@@ -79,13 +80,6 @@ extern "C" {
     fn arch_mm_combine_table_entry_attrs(table_attrs: u64, block_attrs: u64) -> u64;
 
     fn plat_console_mm_init(stage1_locked: mm_stage1_locked, mpool: *const MPool);
-
-    fn layout_text_begin() -> paddr_t;
-    fn layout_text_end() -> paddr_t;
-    fn layout_rodata_begin() -> paddr_t;
-    fn layout_rodata_end() -> paddr_t;
-    fn layout_data_begin() -> paddr_t;
-    fn layout_data_end() -> paddr_t;
 }
 
 bitflags! {

@@ -29,8 +29,6 @@ hypervisor("hafnium") {
 # src targets will merge!
 source_set("src_not_testable_yet") {
   sources = [
-    "load.c",
-    "main.c",
     "plat.c",
   ]
   libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
