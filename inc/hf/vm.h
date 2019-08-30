@@ -91,18 +91,11 @@ struct vm_locked {
 	struct vm *vm;
 };
 
-/** Container for two vm_locked structures */
-struct two_vm_locked {
-	struct vm_locked vm1;
-	struct vm_locked vm2;
-};
-
 bool vm_init(spci_vcpu_count_t vcpu_count, struct mpool *ppool,
 	     struct vm **new_vm);
 spci_vm_count_t vm_get_count(void);
 struct vm *vm_find(spci_vm_id_t id);
 struct vm_locked vm_lock(struct vm *vm);
-struct two_vm_locked vm_lock_both(struct vm *vm1, struct vm *vm2);
 void vm_unlock(struct vm_locked *locked);
 struct vcpu *vm_get_vcpu(struct vm *vm, spci_vcpu_index_t vcpu_index);
 spci_vm_id_t vm_get_id(struct vm *vm);
