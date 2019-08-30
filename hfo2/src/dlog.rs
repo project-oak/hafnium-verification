@@ -15,6 +15,7 @@
  */
 
 use core::fmt;
+use core::mem;
 
 use crate::spinlock::*;
 
@@ -52,4 +53,14 @@ macro_rules! dlog {
 pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dlog_lock() {
+    mem::forget(WRITER.lock());
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dlog_unlock() {
+    WRITER.unlock_unchecked();
 }
