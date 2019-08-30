@@ -264,7 +264,7 @@ static bool smc_forwarder(const struct vcpu *vcpu_, smc_res_t *ret)
 	uint32_t client_id = vm_get_id(vcpu_get_vm(vcpu));
 
 	if (smc_check_client_privileges(vcpu)) {
-		*ret = smc64(func, vcpu_get_regs(vcpu)->r[1], vcpu_get_regs(vcpu)->r[2],
+		*ret = smc_forward(func, vcpu_get_regs(vcpu)->r[1], vcpu_get_regs(vcpu)->r[2],
 			     vcpu_get_regs(vcpu)->r[3], vcpu_get_regs(vcpu)->r[4], vcpu_get_regs(vcpu)->r[5],
 			     vcpu_get_regs(vcpu)->r[6], client_id);
 		return true;

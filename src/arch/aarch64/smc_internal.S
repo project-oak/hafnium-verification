@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-.section .text.smc, "ax"
-.global smc32_internal
-.global smc64_internal
+.section .text.smc_internal, "ax"
+.global smc_internal
 
-smc32_internal:
-smc64_internal:
+smc_internal:
 	str x8, [sp, #-16] ! /* AArch64 stack pointer alignment is 16 bytes */
 	smc #0
 	ldr x8, [sp], #16
