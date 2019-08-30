@@ -519,13 +519,6 @@ impl VmLocked {
     }
 }
 
-/// Container for two vm_locked structures.
-// TODO(HfO2): make it an RAII-style guard
-pub struct TwoVmLocked {
-    vm1: VmLocked,
-    vm2: VmLocked,
-}
-
 static mut VMS: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
 static mut VM_COUNT: spci_vm_count_t = 0;
 
@@ -589,17 +582,6 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
     mem::forget((*vm).inner.lock());
     VmLocked { vm }
-}
-
-/// Locks two VMs ensuring that the locking order is according to the locks'
-/// addresses.
-#[no_mangle]
-pub unsafe extern "C" fn vm_lock_both(vm1: *mut Vm, vm2: *mut Vm) -> TwoVmLocked {
-    SpinLock::lock_both(&(*vm1).inner, &(*vm2).inner);
-    TwoVmLocked {
-        vm1: VmLocked { vm: vm1 },
-        vm2: VmLocked { vm: vm2 },
-    }
 }
 
 /// Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
