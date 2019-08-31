@@ -115,3 +115,84 @@ impl TryFrom<usize> for HfShare {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    /// Encode a preempted response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_preemptd() {
+        let res = HfVCpuRunReturn::Preempted;
+        assert_eq!(res.into_raw(), 0);
+    }
+
+    /// Encode a yield response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_yield() {
+        let res = HfVCpuRunReturn::Yield;
+        assert_eq!(res.into_raw(), 1);
+    }
+
+    /// Encode wait-for-interrupt response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_wait_for_interrupt() {
+        let res = HfVCpuRunReturn::WaitForInterrupt {
+            ns: HF_SLEEP_INDEFINITE
+        };
+        assert_eq!(res.into_raw(), 0xffffffffffffff02);
+    }
+
+    /// Encoding wait-for-interrupt response with too large sleep duration will
+    /// drop the top octet.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_wait_for_interrupt_sleep_too_long() {
+        let res = HfVCpuRunReturn::WaitForInterrupt {
+            ns: 0xcc22888888888888,
+        };
+        assert_eq!(res.into_raw(), 0x2288888888888802);
+    }
+
+    /// Encode wait-for-message response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_wait_for_message() {
+        let res = HfVCpuRunReturn::WaitForMessage {
+            ns: HF_SLEEP_INDEFINITE,
+        };
+        assert_eq!(res.into_raw(), 0xffffffffffffff03);
+    }
+
+    /// Encoding wait-for-message response with too large sleep duration will
+    /// drop the top octet.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_wait_for_message_sleep_too_long() {
+        let res = HfVCpuRunReturn::WaitForMessage {
+            ns: 0xaa99777777777777,
+        };
+        assert_eq!(res.into_raw(), 0x9977777777777703);
+    }
+
+    /// Encode wake up response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_wake_up() {
+        let res = HfVCpuRunReturn::WakeUp {
+            vm_id: 0x1234,
+            vcpu: 0xabcd,
+        };
+        assert_eq!(res.into_raw(), 0x1234abcd0004);
+    }
+
+    /// Encode a 'notify waiters' response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_notify_waiters() {
+        let res = HfVCpuRunReturn::NotifyWaiters;
+        assert_eq!(res.into_raw(), 6);
+    }
+
+    /// Encode an aborted response without leaking.
+    #[test]
+    fn abi_hf_vcpu_run_return_encode_aborted() {
+        let res = HfVCpuRunReturn::Aborted;
+        assert_eq!(res.into_raw(), 7);
+    }
+}
