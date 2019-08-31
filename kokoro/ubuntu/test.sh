@@ -61,6 +61,8 @@ $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
   --gtest_output="xml:$OUT/kokoro_log/unit_tests/sponge_log.xml" \
   | tee $OUT/kokoro_log/unit_tests/sponge_log.log
 
+cd hfo2 && cargo test && cd ..
+
 $HFTEST arch_test
 $HFTEST hafnium --initrd test/vmapi/gicv3/gicv3_test
 $HFTEST hafnium --initrd test/vmapi/primary_only/primary_only_test
