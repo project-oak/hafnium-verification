@@ -47,6 +47,7 @@ mod arch;
 mod boot_params;
 mod cpu;
 mod fdt;
+mod fdt_handler;
 mod init;
 mod layout;
 mod load;

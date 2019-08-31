@@ -138,7 +138,7 @@ mod test {
     #[test]
     fn abi_hf_vcpu_run_return_encode_wait_for_interrupt() {
         let res = HfVCpuRunReturn::WaitForInterrupt {
-            ns: HF_SLEEP_INDEFINITE
+            ns: HF_SLEEP_INDEFINITE,
         };
         assert_eq!(res.into_raw(), 0xffffffffffffff02);
     }

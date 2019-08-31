@@ -40,34 +40,36 @@ use crate::vm::*;
 /// disabled. When switching to the partitions, the caching is initially
 /// disabled so the data must be available without the cache.
 unsafe fn copy_to_unmapped(
-    stage1_locked: mm_stage1_locked,
+    hypervisor_ptable: &mut PageTable<Stage1>,
     to: paddr_t,
     from: *const c_void,
     size: usize,
-    ppool: *mut MPool,
+    ppool: &mut MPool,
 ) -> bool {
     let to_end = pa_add(to, size);
 
-    let ptr = mm_identity_map(stage1_locked, to, to_end, Mode::W, ppool);
-    if ptr.is_null() {
+    if hypervisor_ptable
+        .identity_map(to, to_end, Mode::W, ppool)
+        .is_err()
+    {
         return false;
     }
 
-    memcpy_s(ptr as usize as *mut _, size, from, size);
-    arch_mm_write_back_dcache(ptr as usize, size);
+    memcpy_s(pa_addr(to) as *mut _, size, from, size);
+    arch_mm_write_back_dcache(pa_addr(to), size);
 
-    mm_unmap(stage1_locked, to, to_end, ppool);
+    hypervisor_ptable.unmap(to, to_end, ppool);
 
     true
 }
 
 /// Loads the primary VM.
 pub unsafe fn load_primary(
-    stage1_locked: mm_stage1_locked,
+    hypervisor_ptable: &mut PageTable<Stage1>,
     cpio: *const MemIter,
     kernel_arg: uintreg_t,
     initrd: *mut MemIter,
-    ppool: *mut MPool,
+    ppool: &mut MPool,
 ) -> bool {
     let mut it = mem::uninitialized();
     let primary_begin = layout_primary_begin();
@@ -82,7 +84,7 @@ pub unsafe fn load_primary(
         pa_addr(primary_begin) as *const u8
     );
     if !copy_to_unmapped(
-        stage1_locked,
+        hypervisor_ptable,
         primary_begin,
         it.next as usize as *mut _,
         it.limit.offset_from(it.next) as usize,
@@ -198,11 +200,11 @@ unsafe fn update_reserved_ranges(
 /// Loads all secondary VMs into the memory ranges from the given params.
 /// Memory reserved for the VMs is added to the `reserved_ranges` of `update`.
 pub unsafe fn load_secondary(
-    stage1_locked: mm_stage1_locked,
+    hypervisor_ptable: &mut PageTable<Stage1>,
     cpio: *const MemIter,
     params: *const BootParams,
     update: *mut BootParamsUpdate,
-    ppool: *mut MPool,
+    ppool: &mut MPool,
 ) -> bool {
     let mut mem_ranges_available: [MemRange; MAX_MEM_RANGES] = mem::uninitialized();
     // static_assert(
@@ -272,7 +274,7 @@ pub unsafe fn load_secondary(
         }
 
         if !copy_to_unmapped(
-            stage1_locked,
+            hypervisor_ptable,
             secondary_mem_begin,
             kernel.next as usize as *const _,
             kernel.limit.offset_from(kernel.next) as usize,

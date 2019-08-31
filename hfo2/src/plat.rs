@@ -14,13 +14,19 @@
  * limitations under the License.
  */
 
+//! TODO(HfO2): Functions here were denoted by `#pragma weak`, but no other
+//! definitions are in Hafnium C code. How can I denote this?
+
+use core::mem;
+
+use crate::addr::*;
+use crate::arch::*;
 use crate::boot_params::*;
+use crate::fdt::*;
+use crate::fdt_handler::*;
+use crate::layout::*;
 use crate::mm::*;
 use crate::mpool::*;
-use crate::addr::*;
-use crate::layout::*;
-use crate::arch::*;
-use crate::fdt::*;
 
 /// Default implementation assumes the FDT has been linked into the image.
 ///
@@ -34,8 +40,7 @@ fn plat_get_fdt_addr() -> paddr_t {
 ///
 /// This can be overridden e.g. to provide a fixed address or an address passed
 /// by the loader.
-fn plat_get_initrd_range(stage1_locked: mm_stage1_locked,
-    begin: &mut paddr_t, end: &mut paddr_t, ppool: &mut MPool) {
+fn plat_get_initrd_range(begin: &mut paddr_t, end: &mut paddr_t) {
     *begin = unsafe { layout_initrd_begin() };
     *end = unsafe { layout_initrd_end() };
 }
@@ -48,31 +53,30 @@ fn plat_get_kernel_arg() -> uintreg_t {
     pa_addr(plat_get_fdt_addr()) as uintreg_t
 }
 
-
 /// Default implementation extracts the boot parameters from the FDT but the
 /// initrd is provided separately.
-#[no_mangle]
 pub unsafe extern "C" fn plat_get_boot_params(
-    stage1_locked: mm_stage1_locked,
+    ptable: &mut PageTable<Stage1>,
     p: &mut BootParams,
     ppool: &mut MPool,
 ) -> bool {
     let mut ret = false;
-    let n;
+    let mut n = mem::uninitialized();
 
-    plat_get_initrd_range(stage1_locked, &mut p.initrd_begin, &mut p.initrd_end, ppool);
+    plat_get_initrd_range(&mut p.initrd_begin, &mut p.initrd_end);
     p.kernel_arg = plat_get_kernel_arg();
 
     // Get the memory map from the FDT.
-    let fdt = fdt_map(stage1_locked, plat_get_fdt_addr(), &n, ppool);
-    if fdt.is_null() {
+    let fdt = fdt_map(ptable, plat_get_fdt_addr(), &mut n, ppool);
+    if fdt.is_none() {
         return false;
     }
+    let fdt = fdt.unwrap().as_ptr();
 
-    if !fdt_find_child(&n, "") {
+    if n.find_child("\0".as_ptr()).is_none() {
         dlog!("Unable to find FDT root node.\n");
         // goto out_unmap_fdt;
-        if !fdt_unmap(stage1_locked, fdt, ppool) {
+        if fdt_unmap(ptable, fdt, ppool).is_err() {
             dlog!("Unable to unmap fdt.");
             return false;
         }
@@ -80,15 +84,15 @@ pub unsafe extern "C" fn plat_get_boot_params(
         return ret;
     }
 
-    fdt_find_cpus(&n, p.cpu_ids, p.cpu_count);
+    n.find_cpus(p.cpu_ids.as_mut_ptr(), &mut p.cpu_count);
 
     p.mem_ranges_count = 0;
-    fdt_find_memory_ranges(&n, p);
+    n.find_memory_ranges(p);
 
     ret = true;
 
     // out_unmap_fdt:
-    if !fdt_unmap(stage1_locked, fdt, ppool) {
+    if fdt_unmap(ptable, fdt, ppool).is_err() {
         dlog!("Unable to unmap fdt.");
         return false;
     }
@@ -102,12 +106,12 @@ pub unsafe extern "C" fn plat_get_boot_params(
 /// TODO: in future, each VM will declare whether it expects an argument passed
 /// and that will be static data e.g. it will provide its own FDT so there will
 /// be no FDT modification. This is done because each VM has a very different
-/// view of the system and we don't want to force VMs to require loader code 
+/// view of the system and we don't want to force VMs to require loader code
 /// when another loader can load the data for it.
-pub fn plat_update_boot_params(
-    stage1_locked: mm_stage1_locked,
+pub unsafe fn plat_update_boot_params(
+    ptable: &mut PageTable<Stage1>,
     p: &mut BootParamsUpdate,
     ppool: &mut MPool,
 ) -> bool {
-    fdt_patch(stage1_locked, plat_get_fdt_addr(), p, ppool);
+    fdt_patch(ptable, plat_get_fdt_addr(), p, ppool).is_ok()
 }
