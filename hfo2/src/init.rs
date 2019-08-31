@@ -41,7 +41,6 @@ static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit(
 
 /// Performs one-time initialisation of the hypervisor.
 unsafe fn one_time_init() {
-    let mut ppool = mem::uninitialized();
 
     // Make sure the console is initialised before calling dlog.
     plat_console_init();
@@ -50,7 +49,7 @@ unsafe fn one_time_init() {
 
     arch_one_time_init();
 
-    mpool_init(&mut ppool, PAGE_SIZE);
+    let mut ppool = MPool::new();
     mpool_add_chunk(
         &mut ppool,
         PTABLE_BUF.get_mut().as_mut_ptr() as usize as *mut _,
