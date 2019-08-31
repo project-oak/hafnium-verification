@@ -44,16 +44,3 @@ pub struct BootParamsUpdate {
     pub initrd_begin: paddr_t,
     pub initrd_end: paddr_t,
 }
-
-extern "C" {
-    pub fn plat_get_boot_params(
-        stage1_locked: mm_stage1_locked,
-        p: *mut BootParams,
-        ppool: *mut MPool,
-    ) -> bool;
-    pub fn plat_update_boot_params(
-        stage1_locked: mm_stage1_locked,
-        p: *mut BootParamsUpdate,
-        ppool: *mut MPool,
-    ) -> bool;
-}

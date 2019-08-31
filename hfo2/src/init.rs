@@ -25,6 +25,7 @@ use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
+use crate::plat::*;
 use crate::types::*;
 use crate::vm::*;
 
@@ -41,7 +42,6 @@ static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit(
 
 /// Performs one-time initialisation of the hypervisor.
 unsafe fn one_time_init() {
-
     // Make sure the console is initialised before calling dlog.
     plat_console_init();
 
@@ -64,10 +64,10 @@ unsafe fn one_time_init() {
     dlog_enable_lock();
     mpool_enable_locks();
 
-    let mut mm_stage1_locked = mm_lock_stage1();
+    let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
     let mut params = mem::uninitialized();
 
-    if !plat_get_boot_params(mm_stage1_locked, &mut params, &mut ppool) {
+    if !plat_get_boot_params(&mut hypervisor_ptable, &mut params, &mut ppool) {
         panic!("unable to retrieve boot params");
     }
 
@@ -88,21 +88,19 @@ unsafe fn one_time_init() {
     );
 
     // Map initrd in, and initialise cpio parser.
-    let initrd = mm_identity_map(
-        mm_stage1_locked,
-        params.initrd_begin,
-        params.initrd_end,
-        Mode::R,
-        &ppool,
-    );
-    if initrd.is_null() {
+    if hypervisor_ptable
+        .identity_map(params.initrd_begin, params.initrd_end, Mode::R, &ppool)
+        .is_err()
+    {
         panic!("unable to map initrd in");
     }
+
+    let initrd = pa_addr(params.initrd_begin) as *mut _;
 
     let mut cpio = mem::uninitialized();
     memiter_init(
         &mut cpio,
-        initrd as *mut _ as usize as *mut _,
+        initrd,
         pa_difference(params.initrd_begin, params.initrd_end),
     );
 
@@ -110,7 +108,7 @@ unsafe fn one_time_init() {
 
     // Load all VMs.
     if !load_primary(
-        mm_stage1_locked,
+        &mut hypervisor_ptable,
         &cpio,
         params.kernel_arg,
         &mut primary_initrd,
@@ -126,17 +124,22 @@ unsafe fn one_time_init() {
     update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next as usize as *const _));
     update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit as usize as *const _));
     update.reserved_ranges_count = 0;
-    if !load_secondary(mm_stage1_locked, &cpio, &params, &mut update, &mut ppool) {
+    if !load_secondary(
+        &mut hypervisor_ptable,
+        &cpio,
+        &params,
+        &mut update,
+        &mut ppool,
+    ) {
         panic!("unable to load secondary VMs");
     }
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    if !plat_update_boot_params(mm_stage1_locked, &mut update, &mut ppool) {
+    if !plat_update_boot_params(&mut hypervisor_ptable, &mut update, &mut ppool) {
         panic!("plat_update_boot_params failed");
     }
 
-    mm_defrag(mm_stage1_locked, &ppool);
-    mm_unlock_stage1(&mut mm_stage1_locked);
+    hypervisor_ptable.defrag(&ppool);
 
     // Initialise the API page pool. ppool will be empty from now on.
     api_init(&ppool);

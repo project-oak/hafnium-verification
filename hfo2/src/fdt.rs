@@ -19,8 +19,8 @@ use core::ptr;
 use core::slice;
 use core::str;
 
-use crate::utils::*;
 use crate::std::*;
+use crate::utils::*;
 
 use scopeguard::guard;
 
@@ -37,7 +37,7 @@ pub struct FdtNode {
 }
 
 #[repr(C)]
-struct FdtHeader {
+pub struct FdtHeader {
     magic: u32,
     totalsize: u32,
     off_dt_struct: u32,
@@ -85,7 +85,7 @@ impl FdtTokenizer {
         self.cur = round_up(self.cur as usize, 4) as _;
     }
 
-    fn u32(&mut self) -> Option<u32> {
+    unsafe fn u32(&mut self) -> Option<u32> {
         let next = self.cur.offset(mem::size_of::<u32>() as isize);
         if next > self.end {
             return None;
@@ -96,17 +96,17 @@ impl FdtTokenizer {
         Some(res)
     }
 
-    fn token(&mut self) -> Option<u32> {
+    unsafe fn token(&mut self) -> Option<u32> {
         while let Some(v) = self.u32() {
             if v != FdtToken::Nop as u32 {
-                return Some(v)
+                return Some(v);
             }
         }
 
         None
     }
 
-    fn bytes(&mut self, size: usize) -> Option<*const u8> {
+    unsafe fn bytes(&mut self, size: usize) -> Option<*const u8> {
         let next = self.cur.offset(size as isize);
 
         if next > self.end {
@@ -120,7 +120,7 @@ impl FdtTokenizer {
         Some(res)
     }
 
-    fn str(&mut self) -> Option<*const u8> {
+    unsafe fn str(&mut self) -> Option<*const u8> {
         let mut p = self.cur;
 
         while p < self.end {
@@ -129,14 +129,19 @@ impl FdtTokenizer {
                 let res = self.cur;
                 self.cur = p.offset(1);
                 self.align();
-                return Some(res)
+                return Some(res);
             }
         }
 
         None
     }
 
-    fn next_property(&mut self, name: &mut *const u8, buf: &mut *const u8, size: &mut u32) -> Option<()> {
+    unsafe fn next_property(
+        &mut self,
+        name: &mut *const u8,
+        buf: &mut *const u8,
+        size: &mut u32,
+    ) -> Option<()> {
         let token = self.token()?;
 
         if token != FdtToken::Prop as u32 {
@@ -145,7 +150,7 @@ impl FdtTokenizer {
             return None;
         }
 
-        let this = guard(self, |this| {
+        let mut this = guard(self, |this| {
             // Move cursor to the end so that caller won't get any new tokens.
             this.cur = this.end;
         });
@@ -161,7 +166,7 @@ impl FdtTokenizer {
         Some(())
     }
 
-    fn next_subnode(&mut self) -> Option<*const u8> {
+    unsafe fn next_subnode(&mut self) -> Option<*const u8> {
         let token = self.token()?;
         if token != FdtToken::BeginNode as u32 {
             // Rewind so that caller will get the same token.
@@ -172,7 +177,7 @@ impl FdtTokenizer {
         match self.str() {
             Some(name) => return Some(name),
             None => {
-                // Move cursor to the end so that caller won't get any new 
+                // Move cursor to the end so that caller won't get any new
                 // tokens.
                 self.cur = self.end;
                 return None;
@@ -180,14 +185,14 @@ impl FdtTokenizer {
         }
     }
 
-    fn skip_properties(&mut self) {
-        let mut name;
-        let mut buf;
-        let mut size;
+    unsafe fn skip_properties(&mut self) {
+        let mut name = mem::uninitialized();
+        let mut buf = mem::uninitialized();
+        let mut size = mem::uninitialized();
         while let Some(_) = self.next_property(&mut name, &mut buf, &mut size) {}
     }
 
-    fn skip_node(&mut self) -> Option<()> {
+    unsafe fn skip_node(&mut self) -> Option<()> {
         let mut pending = 1;
         self.skip_properties();
 
@@ -211,7 +216,7 @@ impl FdtTokenizer {
 }
 
 impl FdtNode {
-    pub fn new_root(hdr: &FdtHeader) -> Option<Self> {
+    pub unsafe fn new_root(hdr: &FdtHeader) -> Option<Self> {
         let begin = u32::from_be(hdr.off_dt_struct);
         let size = u32::from_be(hdr.size_dt_struct);
 
@@ -239,10 +244,14 @@ impl FdtNode {
         })
     }
 
-    pub unsafe fn read_property(&self, name: *const u8, buf: &mut *const u8, size: &mut u32) -> bool {
-
+    pub unsafe fn read_property(
+        &self,
+        name: *const u8,
+        buf: &mut *const u8,
+        size: &mut u32,
+    ) -> bool {
         let mut prop_name = ptr::null();
-        let t = FdtTokenizer::new(self.strs, self.begin, self.end);
+        let mut t = FdtTokenizer::new(self.strs, self.begin, self.end);
         while let Some(_) = t.next_property(&mut prop_name, buf, size) {
             if strcmp(prop_name, name) == 0 {
                 return true;
@@ -252,9 +261,9 @@ impl FdtNode {
         false
     }
 
-    pub fn first_child(&mut self) -> Option<*const u8> {
-        let t = FdtTokenizer::new(self.strs, self.begin, self.end);
-        
+    pub unsafe fn first_child(&mut self) -> Option<*const u8> {
+        let mut t = FdtTokenizer::new(self.strs, self.begin, self.end);
+
         t.skip_properties();
 
         let child_name = t.next_subnode()?;
@@ -263,8 +272,8 @@ impl FdtNode {
         Some(child_name)
     }
 
-    pub fn next_sibling(&mut self) -> Option<*const u8> {
-        let t = FdtTokenizer::new(self.strs, self.begin, self.end);
+    pub unsafe fn next_sibling(&mut self) -> Option<*const u8> {
+        let mut t = FdtTokenizer::new(self.strs, self.begin, self.end);
 
         t.skip_node()?;
         let sibling_name = t.next_subnode()?;
@@ -274,13 +283,13 @@ impl FdtNode {
     }
 
     pub unsafe fn find_child(&mut self, child: *const u8) -> Option<()> {
-        let t = FdtTokenizer::new(self.strs, self.begin, self.end);
+        let mut t = FdtTokenizer::new(self.strs, self.begin, self.end);
         t.skip_properties();
 
         while let Some(name) = t.next_subnode() {
             if strcmp(name, child) == 0 {
                 self.begin = t.cur;
-                return Some(())
+                return Some(());
             }
 
             t.skip_node();
@@ -292,9 +301,11 @@ impl FdtNode {
 
 impl FdtHeader {
     pub unsafe fn dump(&self) {
-        unsafe fn ascii_to_utf8(ptr: *const u8) -> &'static str {
+        unsafe fn asciz_to_utf8(ptr: *const u8) -> &'static str {
             let mut len = 0;
-            while *ptr.offset(len as isize) != 0u8 { len += 1; }
+            while *ptr.offset(len as isize) != 0u8 {
+                len += 1;
+            }
             let bytes = slice::from_raw_parts(ptr, len);
             str::from_utf8_unchecked(bytes)
         }
@@ -308,21 +319,34 @@ impl FdtHeader {
             }
         };
 
-        let t = FdtTokenizer::new(node.strs, node.begin, node.end);
-        let depth = 0;
+        let mut t = FdtTokenizer::new(node.strs, node.begin, node.end);
+        let mut depth = 0;
 
         loop {
             while let Some(name) = t.next_subnode() {
-                dlog!("{:1$}New node: \"{2}\"\n", "", 2 * depth, ascii_to_utf8(name));
+                dlog!(
+                    "{:1$}New node: \"{2}\"\n",
+                    "",
+                    2 * depth,
+                    asciz_to_utf8(name)
+                );
                 depth += 1;
                 let mut name = mem::uninitialized();
                 let mut buf = mem::uninitialized();
                 let mut size = mem::uninitialized();
                 while let Some(_) = t.next_property(&mut name, &mut buf, &mut size) {
-                    dlog!("{:1$}property: \"{2}\" (", "", 2 * depth, ascii_to_utf8(name));
+                    dlog!(
+                        "{:1$}property: \"{2}\" (",
+                        "",
+                        2 * depth,
+                        asciz_to_utf8(name)
+                    );
                     for i in 0..size {
-                        dlog!("{}{:02x}", if i == 0 { "" } else { " " },
-                            *buf.offset(i as isize));
+                        dlog!(
+                            "{}{:02x}",
+                            if i == 0 { "" } else { " " },
+                            *buf.offset(i as isize)
+                        );
                     }
                     dlog!(")\n");
                 }
@@ -340,13 +364,20 @@ impl FdtHeader {
             }
         }
 
-        dlog!("fdt: off_mem_rsvmap={}\n", u32::from_be(self.off_mem_rsvmap));
+        dlog!(
+            "fdt: off_mem_rsvmap={}\n",
+            u32::from_be(self.off_mem_rsvmap)
+        );
         {
             let e = self as *const _ as usize + u32::from_be(self.off_mem_rsvmap) as usize;
-            let entry = e as *const FdtReserveEntry;
+            let mut entry = e as *const FdtReserveEntry;
 
             while (*entry).address != 0 || (*entry).size != 0 {
-                dlog!("Entry: {:p} (0x{:x} bytes)\n", u64::from_be((*entry).address) as *const u8, u64::from_be((*entry).size));
+                dlog!(
+                    "Entry: {:p} (0x{:x} bytes)\n",
+                    u64::from_be((*entry).address) as *const u8,
+                    u64::from_be((*entry).size)
+                );
                 entry = entry.offset(1);
             }
         }
@@ -354,16 +385,24 @@ impl FdtHeader {
 
     pub unsafe fn add_mem_reservation(&mut self, addr: u64, len: u64) {
         // TODO: Clean this up.
-        let begin = (self as *const _ as usize as *const u8).offset(u32::from_be(self.off_mem_rsvmap) as isize);
-        let e = begin as *const FdtReserveEntry;
+        let begin = (self as *const _ as usize as *const u8)
+            .offset(u32::from_be(self.off_mem_rsvmap) as isize);
+        let e = begin as *mut FdtReserveEntry;
         let old_size = u32::from_be(self.totalsize) - u32::from_be(self.off_mem_rsvmap);
 
-        self.totalsize = (u32::from_be(self.totalsize) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
-        self.off_dt_struct = (u32::from_be(self.off_dt_struct) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
-        self.off_dt_strings = (u32::from_be(self.off_dt_strings) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
+        self.totalsize =
+            (u32::from_be(self.totalsize) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
+        self.off_dt_struct =
+            (u32::from_be(self.off_dt_struct) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
+        self.off_dt_strings =
+            (u32::from_be(self.off_dt_strings) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
 
-        memmove_s(begin.offset(mem::size_of::<FdtReserveEntry>() as isize) as usize as *mut _,
-            old_size as usize, begin as usize as *const _, old_size as usize);
+        memmove_s(
+            begin.offset(mem::size_of::<FdtReserveEntry>() as isize) as usize as *mut _,
+            old_size as usize,
+            begin as usize as *const _,
+            old_size as usize,
+        );
         (*e).address = addr.to_be();
         (*e).size = len.to_be();
     }
