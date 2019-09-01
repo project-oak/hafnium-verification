@@ -429,11 +429,10 @@ pub unsafe extern "C" fn fdt_dump(hdr: *mut FdtHeader) {
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_root_node(node: *mut FdtNode, hdr: *const FdtHeader) -> bool {
-    FdtNode::new_root(&*hdr)
-        .map_or(false, |n| {
-            ptr::write(node, n);
-            true
-        })
+    FdtNode::new_root(&*hdr).map_or(false, |n| {
+        ptr::write(node, n);
+        true
+    })
 }
 
 #[no_mangle]
@@ -450,7 +449,10 @@ pub unsafe extern "C" fn fdt_first_child(node: *mut FdtNode, child_name: *mut *c
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_next_sibling(node: *mut FdtNode, sibling_name: *mut *const u8) -> bool {
+pub unsafe extern "C" fn fdt_next_sibling(
+    node: *mut FdtNode,
+    sibling_name: *mut *const u8,
+) -> bool {
     (*node).next_sibling().map_or(false, |name| {
         ptr::write(sibling_name, name);
         true
@@ -458,7 +460,12 @@ pub unsafe extern "C" fn fdt_next_sibling(node: *mut FdtNode, sibling_name: *mut
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_read_property(node: *mut FdtNode, name: *const u8, buf: *mut *const u8, size: *mut u32) -> bool {
+pub unsafe extern "C" fn fdt_read_property(
+    node: *mut FdtNode,
+    name: *const u8,
+    buf: *mut *const u8,
+    size: *mut u32,
+) -> bool {
     (*node).read_property(name, &mut *buf, &mut *size)
 }
 

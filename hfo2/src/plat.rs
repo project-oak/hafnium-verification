@@ -22,8 +22,7 @@ use core::mem;
 use crate::addr::*;
 use crate::arch::*;
 use crate::boot_params::*;
-use crate::fdt::*;
-use crate::fdt_handler::*;
+use crate::fdt_handler;
 use crate::layout::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -67,7 +66,7 @@ pub unsafe extern "C" fn plat_get_boot_params(
     p.kernel_arg = plat_get_kernel_arg();
 
     // Get the memory map from the FDT.
-    let fdt = fdt_map(ptable, plat_get_fdt_addr(), &mut n, ppool);
+    let fdt = fdt_handler::map(ptable, plat_get_fdt_addr(), &mut n, ppool);
     if fdt.is_none() {
         return false;
     }
@@ -76,7 +75,7 @@ pub unsafe extern "C" fn plat_get_boot_params(
     if n.find_child("\0".as_ptr()).is_none() {
         dlog!("Unable to find FDT root node.\n");
         // goto out_unmap_fdt;
-        if fdt_unmap(ptable, fdt, ppool).is_err() {
+        if fdt_handler::unmap(ptable, fdt, ppool).is_err() {
             dlog!("Unable to unmap fdt.");
             return false;
         }
@@ -92,7 +91,7 @@ pub unsafe extern "C" fn plat_get_boot_params(
     ret = true;
 
     // out_unmap_fdt:
-    if fdt_unmap(ptable, fdt, ppool).is_err() {
+    if fdt_handler::unmap(ptable, fdt, ppool).is_err() {
         dlog!("Unable to unmap fdt.");
         return false;
     }
@@ -113,5 +112,5 @@ pub unsafe fn plat_update_boot_params(
     p: &mut BootParamsUpdate,
     ppool: &mut MPool,
 ) -> bool {
-    fdt_patch(ptable, plat_get_fdt_addr(), p, ppool).is_ok()
+    fdt_handler::patch(ptable, plat_get_fdt_addr(), p, ppool).is_ok()
 }
