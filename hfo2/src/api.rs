@@ -257,8 +257,6 @@ pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
 ///  - 0 on success if no further action is needed.
 ///  - 1 if it was called by the primary VM and the primary VM now needs to wake
 ///    up or kick the target vCPU.
-/// TODO: this function was using `goto` originally and it is just
-/// implemented as copy-paste in Rust.
 unsafe fn internal_interrupt_inject(
     target_vcpu: &VCpu,
     intid: intid_t,
@@ -568,7 +566,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // Fail if the target isn't currently ready to receive data,
         // setting up for notification if requested.
         if notify {
-            let _ = from_inner.wait(&mut to_inner, (*to).id);
+            let _ = from_inner.wait_for(&mut to_inner, (*to).id);
         }
 
         return SpciReturn::Busy;
@@ -989,15 +987,15 @@ pub unsafe extern "C" fn api_spci_share_memory(
         // Recover any memory consumed in failed mapping.
         from_inner.ptable.defrag(&local_page_pool);
 
-        assert!(from_inner
+        from_inner
             .ptable
             .identity_map(
                 pa_begin,
                 pa_end,
                 orig_from_mode.assume_init(),
-                &local_page_pool
+                &local_page_pool,
             )
-            .is_err());
+            .unwrap();
 
         return SpciReturn::NoMemory;
     }
@@ -1058,8 +1056,6 @@ fn share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    // TODO: So that's reason why Hafnium use local_page_pool! We need to verify
-    // this.
     let local_page_pool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
 
     let (mut from_inner, mut to_inner) = SpinLock::lock_both(&(*from).inner, &(*to).inner);
@@ -1102,10 +1098,10 @@ fn share_memory(
 
     // Clear the memory so no VM or device can see the previous contents.
     if clear_memory(pa_begin, pa_end, &local_page_pool).is_err() {
-        assert!(from_inner
+        from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
-            .is_ok());
+            .unwrap();
 
         return Err(());
     }
@@ -1119,11 +1115,10 @@ fn share_memory(
         // TODO: partial defrag of failed range.
         // Recover any memory consumed in failed mapping.
         from_inner.ptable.defrag(&local_page_pool);
-        // goto fail_return_to_sender;
-        assert!(from_inner
+        from_inner
             .ptable
             .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
-            .is_ok());
+            .unwrap();
 
         return Err(());
     }
