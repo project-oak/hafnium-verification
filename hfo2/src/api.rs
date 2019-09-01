@@ -521,10 +521,6 @@ pub unsafe extern "C" fn api_spci_msg_send(
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let from = current.get_vcpu().vm;
 
-    // TODO: Refactor the control flow of this function, and make this variable
-    // immutable.
-    let mut ret;
-
     let notify = attributes.contains(SpciMsgSendAttributes::NOTIFY);
 
     // Check that the sender has configured its send buffer. Copy the message
@@ -539,15 +535,15 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Note that the payload is not copied when the message header is.
     let mut from_msg_replica = ptr::read(from_msg);
+    let from_msg_payload_length = from_msg_replica.length as usize;
 
     // Ensure source VM id corresponds to the current VM.
     if from_msg_replica.source_vm_id != (*from).id {
         return SpciReturn::InvalidParameters;
     }
 
-    let size = from_msg_replica.length as usize;
     // Limit the size of transfer.
-    if size > SPCI_MSG_PAYLOAD_MAX {
+    if from_msg_payload_length > SPCI_MSG_PAYLOAD_MAX {
         return SpciReturn::InvalidParameters;
     }
 
@@ -589,26 +585,25 @@ pub unsafe extern "C" fn api_spci_msg_send(
             + mem::size_of::<SpciMemoryRegionConstituent>()
             + mem::size_of::<SpciMemoryRegion>()] = MaybeUninit::uninit().assume_init();
 
-        let architected_header = spci_get_architected_message_header(from_msg);
+        let architected_header = (*from_msg).get_architected_message_header();
 
-        if from_msg_replica.length as usize > message_buffer.len() {
+        if from_msg_payload_length > message_buffer.len() {
             return SpciReturn::InvalidParameters;
         }
 
-        if (from_msg_replica.length as usize) < mem::size_of::<SpciArchitectedMessageHeader>() {
+        if from_msg_payload_length < mem::size_of::<SpciArchitectedMessageHeader>() {
             return SpciReturn::InvalidParameters;
         }
 
         // Copy the architected message into an internal buffer.
-        memcpy_s(
-            message_buffer.as_mut_ptr() as _,
-            message_buffer.len(),
-            architected_header as _,
-            from_msg_replica.length as usize,
+        ptr::copy_nonoverlapping(
+            architected_header as *const _ as _,
+            message_buffer.as_mut_ptr(),
+            from_msg_payload_length,
         );
 
-        let architected_message_replica: *mut SpciArchitectedMessageHeader =
-            message_buffer.as_mut_ptr() as usize as *mut _;
+        let architected_message_replica =
+            &mut *(message_buffer.as_mut_ptr() as *mut SpciArchitectedMessageHeader);
 
         // Note that message_buffer is passed as the third parameter to
         // spci_msg_handle_architected_message. The execution flow commencing
@@ -617,7 +612,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // exclusively owned by Hf so that TOCTOU issues do not arise.
         // TODO(HfO2): This code looks unsafe. Port spci_architected_message.c
         // and avoid creating VmLocked manually.
-        ret = spci_msg_handle_architected_message(
+        let ret = spci_msg_handle_architected_message(
             VmLocked::from_raw(to),
             VmLocked::from_raw(from),
             architected_message_replica,
@@ -629,28 +624,22 @@ pub unsafe extern "C" fn api_spci_msg_send(
             return ret;
         }
     } else {
-        // Copy data.
-        memcpy_s(
-            &mut (*to_msg).payload as *mut _ as usize as _,
-            SPCI_MSG_PAYLOAD_MAX,
-            // HfO2: below was &(*(*from).mailbox.send).payload, but we can
-            // safely assume it is equal to &(*from_msg).payload, even though
-            // from_msg was defined before entering critical section. That's
-            // because we do not allow vm to be configured more than once.
-            &(*from_msg).payload as *const _ as usize as _,
-            size,
+        ptr::copy_nonoverlapping(
+            (*from_msg).payload.as_ptr(),
+            (*to_msg).payload.as_mut_ptr(),
+            from_msg_payload_length,
         );
+
         *to_msg = from_msg_replica;
     }
 
     let primary_ret = HfVCpuRunReturn::Message { vm_id: (*to).id };
-    ret = SpciReturn::Success;
 
     // Messages for the primary VM are delivered directly.
     if (*to).id == HF_PRIMARY_VM_ID {
         to_inner.set_read();
         *next = switch_to_primary(&mut current, primary_ret, VCpuStatus::Ready);
-        return ret;
+        return SpciReturn::Success;
     }
 
     to_inner.set_received();
@@ -660,7 +649,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         *next = switch_to_primary(&mut current, primary_ret, VCpuStatus::Ready);
     }
 
-    ret
+    SpciReturn::Success
 }
 
 /// Receives a message from the mailbox. If one isn't available, this function
@@ -904,7 +893,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
     }
 
     unsafe {
-        memset_s(region as usize as _, size, 0, size);
+        ptr::write_bytes(region as *mut u8, 0, size);
         arch_mm_write_back_dcache(region as usize, size);
     }
 
