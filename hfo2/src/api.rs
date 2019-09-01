@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use core::convert::TryFrom;
 use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::Deref;
 use core::ptr;
@@ -945,10 +946,10 @@ pub unsafe extern "C" fn api_spci_share_memory(
     let mut orig_from_mode = MaybeUninit::uninit();
     let mut from_mode = MaybeUninit::uninit();
     let mut to_mode = MaybeUninit::uninit();
-    let share = match share {
-        0x2 => SpciMemoryShare::Donate,
-        _ => return SpciReturn::InvalidParameters,
-    };
+    let share = ok_or_return!(
+        SpciMemoryShare::try_from(share),
+        SpciReturn::InvalidParameters
+    );
 
     if !spci_msg_check_transition(
         &to_locked,

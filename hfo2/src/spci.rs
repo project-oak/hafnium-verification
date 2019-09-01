@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+use core::convert::TryFrom;
 use core::mem;
 
 use crate::mm::*;
@@ -105,6 +106,18 @@ pub struct SpciMessage {
     /// not compatitable with `struct spci_message`.
     /// TODO: is here right place to use `Phantomdata`?
     pub payload: [u8; 0],
+}
+
+impl TryFrom<usize> for SpciMemoryShare {
+    type Error = ();
+
+    #[inline]
+    fn try_from(from: usize) -> Result<Self, ()> {
+        match from {
+            0x2 => Ok(Self::Donate),
+            _ => Err(()),
+        }
+    }
 }
 
 impl SpciMessage {
