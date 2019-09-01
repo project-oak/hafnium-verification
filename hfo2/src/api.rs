@@ -153,7 +153,7 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
 pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *mut VCpu) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
 
-    if (*current.get_vcpu().vm).id == HF_PRIMARY_VM_ID {
+    if (*current.vm).id == HF_PRIMARY_VM_ID {
         // Noop on the primary as it makes the scheduling decisions.
         return SpciReturn::Success;
     }
@@ -190,18 +190,16 @@ pub unsafe extern "C" fn api_abort(current: *mut VCpu) -> *mut VCpu {
 
     dlog!(
         "Aborting VM {} vCPU {}\n",
-        (*current.get_vcpu().vm).id,
-        vcpu_index(current.get_vcpu())
+        (*current.vm).id,
+        vcpu_index(current.deref().deref())
     );
 
-    if (*current.get_vcpu().vm).id == HF_PRIMARY_VM_ID {
+    if (*current.vm).id == HF_PRIMARY_VM_ID {
         // TODO: what to do when the primary aborts?
         spin_loop();
     }
 
-    (*current.get_vcpu().vm)
-        .aborting
-        .store(true, Ordering::Relaxed);
+    (*current.vm).aborting.store(true, Ordering::Relaxed);
 
     // TODO: free resources once all vCPUs abort.
 
@@ -268,11 +266,12 @@ unsafe fn internal_interrupt_inject(
     next: *mut *mut VCpu,
 ) -> i64 {
     if target_vcpu.interrupts.lock().inject(intid).is_ok() {
-        if (*current.get_vcpu().vm).id == HF_PRIMARY_VM_ID {
+        if (*current.vm).id == HF_PRIMARY_VM_ID {
             // If the call came from the primary VM, let it know that it should
             // run or kick the target vCPU.
             return 1;
-        } else if current.get_vcpu() as *const _ != target_vcpu as *const _ && !next.is_null() {
+        } else if current.deref().deref() as *const _ != target_vcpu as *const _ && !next.is_null()
+        {
             *next = wake_up(current, target_vcpu);
         }
     }
@@ -388,7 +387,7 @@ pub unsafe extern "C" fn api_vcpu_run(
     };
 
     // Only the primary VM can switch vcpus.
-    if (*current.get_vcpu().vm).id != HF_PRIMARY_VM_ID {
+    if (*current.vm).id != HF_PRIMARY_VM_ID {
         return ret.into_raw();
     }
 
@@ -487,7 +486,7 @@ pub unsafe extern "C" fn api_vm_configure(
     next: *mut *mut VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let vm = current.get_vcpu().vm;
+    let vm = current.vm;
 
     // The hypervisor's memory map must be locked for the duration of this
     // operation to ensure there will be sufficient memory to recover from
@@ -519,7 +518,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     next: *mut *mut VCpu,
 ) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let from = current.get_vcpu().vm;
+    let from = current.vm;
 
     let notify = attributes.contains(SpciMsgSendAttributes::NOTIFY);
 
@@ -610,11 +609,9 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // at spci_msg_handle_architected_message will make several accesses to
         // fields in message_buffer. The memory area message_buffer must be
         // exclusively owned by Hf so that TOCTOU issues do not arise.
-        // TODO(HfO2): This code looks unsafe. Port spci_architected_message.c
-        // and avoid creating VmLocked manually.
         let ret = spci_msg_handle_architected_message(
-            VmLocked::from_raw(to),
-            VmLocked::from_raw(from),
+            ManuallyDrop::new(VmLocked::from_raw(to)),
+            ManuallyDrop::new(VmLocked::from_raw(from)),
             architected_message_replica,
             &mut from_msg_replica,
             to_msg,
@@ -663,7 +660,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     next: *mut *mut VCpu,
 ) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let vm = &*current.get_vcpu().vm;
+    let vm = &*current.vm;
     let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
     // The primary VM will receive messages as a status code from running vcpus
@@ -689,7 +686,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     //
     // Block only if there are enabled and pending interrupts, to match behaviour of
     // wait_for_interrupt.
-    if !current.get_vcpu().interrupts.lock().is_interrupted() {
+    if !current.interrupts.lock().is_interrupted() {
         // Switch back to primary vm to block.
         *next = switch_to_primary(
             &mut current,
@@ -772,7 +769,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *mut VCpu) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let vm = current.get_vcpu().vm;
+    let vm = current.vm;
     let mut vm_inner = (*vm).inner.lock();
     match vm_inner.get_state() {
         MailboxState::Empty => 0,
@@ -854,7 +851,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    if !is_injection_allowed(target_vm_id, current.get_vcpu()) {
+    if !is_injection_allowed(target_vm_id, current.deref()) {
         return -1;
     }
 
@@ -865,7 +862,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         intid,
         target_vm_id,
         target_vcpu_idx,
-        (*current.get_vcpu().vm).id,
+        (*current.vm).id,
         (*current.get_inner().cpu).id
     );
     internal_interrupt_inject(&*target_vcpu, intid, &mut current, next)
