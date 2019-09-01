@@ -411,3 +411,58 @@ impl FdtHeader {
         u32::from_be(self.totalsize)
     }
 }
+
+#[no_mangle]
+pub extern "C" fn fdt_header_size() -> usize {
+    mem::size_of::<FdtHeader>()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_total_size(hdr: *mut FdtHeader) -> u32 {
+    (*hdr).total_size()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_dump(hdr: *mut FdtHeader) {
+    (*hdr).dump()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_root_node(node: *mut FdtNode, hdr: *const FdtHeader) -> bool {
+    FdtNode::new_root(&*hdr)
+        .map_or(false, |n| {
+            ptr::write(node, n);
+            true
+        })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_find_child(node: *mut FdtNode, child: *const u8) -> bool {
+    (*node).find_child(child).is_some()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_first_child(node: *mut FdtNode, child_name: *mut *const u8) -> bool {
+    (*node).first_child().map_or(false, |name| {
+        ptr::write(child_name, name);
+        true
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_next_sibling(node: *mut FdtNode, sibling_name: *mut *const u8) -> bool {
+    (*node).next_sibling().map_or(false, |name| {
+        ptr::write(sibling_name, name);
+        true
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_read_property(node: *mut FdtNode, name: *const u8, buf: *mut *const u8, size: *mut u32) -> bool {
+    (*node).read_property(name, &mut *buf, &mut *size)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_add_mem_reserveation(hdr: *mut FdtHeader, addr: u64, len: u64) {
+    (*hdr).add_mem_reservation(addr, len)
+}
