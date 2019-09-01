@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
+use core::convert::TryFrom;
+
 use crate::types::*;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum HfVCpuRunReturn {
     /// The vCPU has been preempted but still has work to do. If the scheduling
     /// quantum has not expired, the scheduler MUST call `hf_vcpu_run` on the
@@ -69,19 +71,18 @@ pub enum HfVCpuRunReturn {
     Aborted,
 }
 
-#[repr(C)]
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum HfShare {
     /// Relinquish ownership and access to the memory and pass them to the
     /// recipient.
-    Give,
+    Give = 0,
 
     /// Retain ownership of the memory but relinquish access to the recipient.
-    Lend,
+    Lend = 1,
 
     /// Retain ownership and access but additionally allow access to the
     /// recipient.
-    Share,
+    Share = 2,
 }
 
 impl HfVCpuRunReturn {
@@ -98,6 +99,19 @@ impl HfVCpuRunReturn {
             Message { vm_id } => 5 | (u64::from(vm_id) << 8),
             NotifyWaiters => 6,
             Aborted => 7,
+        }
+    }
+}
+
+impl TryFrom<usize> for HfShare {
+    type Error = ();
+
+    fn try_from(from: usize) -> Result<Self, Self::Error> {
+        match from {
+            0 => Ok(Self::Give),
+            1 => Ok(Self::Lend),
+            2 => Ok(Self::Share),
+            _ => Err(()),
         }
     }
 }

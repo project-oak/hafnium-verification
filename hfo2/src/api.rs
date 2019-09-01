@@ -574,14 +574,14 @@ pub unsafe extern "C" fn api_spci_msg_send(
         return SpciReturn::Busy;
     }
 
-    let to_msg = to_inner.get_recv_ptr();
+    let to_msg = &mut *to_inner.get_recv_ptr();
 
     // Handle architected messages.
     if from_msg_replica.flags.contains(SpciMessageFlags::IMPDEF) {
         *to_msg = from_msg_replica;
         ptr::copy_nonoverlapping(
             (*from_msg).payload.as_ptr(),
-            (*to_msg).payload.as_mut_ptr(),
+            to_msg.payload.as_mut_ptr(),
             from_msg_payload_length,
         );
     } else {
@@ -609,7 +609,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         );
 
         let architected_message_replica =
-            &*(message_buffer.as_ptr() as *mut SpciArchitectedMessageHeader);
+            &*(message_buffer.as_ptr() as *const SpciArchitectedMessageHeader);
 
         // Note that message_buffer is passed as the third parameter to
         // spci_msg_handle_architected_message. The execution flow commencing
@@ -621,7 +621,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
             &ManuallyDrop::new(VmLocked::from_raw(from)),
             architected_message_replica,
             &from_msg_replica,
-            &mut *to_msg,
+            to_msg,
         );
 
         if ret != SpciReturn::Success {
@@ -897,6 +897,7 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
     Ok(())
 }
 
+// TODO: Move function to spci_architectted_message.c.
 /// Shares memory from the calling VM with another. The memory can be shared in different modes.
 ///
 /// This function requires the calling context to hold the <to> and <from> locks.
@@ -982,27 +983,6 @@ pub fn spci_share_memory(
     }
 
     SpciReturn::Success
-}
-
-/// Shares memory from the calling VM with another. The memory can be shared in different modes.
-#[no_mangle]
-pub unsafe extern "C" fn api_spci_share_memory(
-    to_locked: ManuallyDrop<VmLocked>,
-    from_locked: ManuallyDrop<VmLocked>,
-    memory_region: *const SpciMemoryRegion,
-    memory_to_attributes: u32,
-    share: usize,
-) -> SpciReturn {
-    spci_share_memory(
-        &to_locked,
-        &from_locked,
-        &*memory_region,
-        Mode::from_bits_truncate(memory_to_attributes),
-        ok_or_return!(
-            SpciMemoryShare::try_from(share),
-            SpciReturn::InvalidParameters
-        ),
-    )
 }
 
 /// Shares memory from the calling VM with another. The memory can be shared in
@@ -1136,15 +1116,8 @@ pub unsafe extern "C" fn api_share_memory(
     current: *const VCpu,
 ) -> i64 {
     // Convert the sharing request to memory management modes.
-    let share = match share {
-        0 => HfShare::Give,
-        1 => HfShare::Lend,
-        2 => HfShare::Share,
-        _ => {
-            // The input is untrusted so might not be a valid value.
-            return -1;
-        }
-    };
+    // The input is untrusted so might not be a valid value.
+    let share = ok_or_return!(HfShare::try_from(share), -1);
 
     match share_memory(vm_id, addr, size, share, &*current) {
         Ok(_) => 0,

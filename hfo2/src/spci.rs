@@ -112,7 +112,7 @@ impl TryFrom<usize> for SpciMemoryShare {
     type Error = ();
 
     #[inline]
-    fn try_from(from: usize) -> Result<Self, ()> {
+    fn try_from(from: usize) -> Result<Self, Self::Error> {
         match from {
             0x2 => Ok(Self::Donate),
             _ => Err(()),
