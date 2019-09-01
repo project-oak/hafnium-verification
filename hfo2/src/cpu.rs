@@ -15,6 +15,7 @@
  */
 
 use core::mem::{self, ManuallyDrop, MaybeUninit};
+use core::ops::Deref;
 use core::ptr;
 
 use crate::addr::*;
@@ -283,25 +284,34 @@ impl Drop for VCpuExecutionLocked {
     }
 }
 
+impl Deref for VCpuExecutionLocked {
+    type Target = VCpu;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.vcpu }
+    }
+}
+
 impl VCpuExecutionLocked {
+    #[inline]
     pub unsafe fn from_raw(vcpu: *mut VCpu) -> Self {
         Self { vcpu }
     }
 
+    #[inline]
     pub fn into_raw(self) -> *mut VCpu {
         let ret = self.vcpu;
         mem::forget(self);
         ret
     }
 
-    pub fn get_vcpu(&self) -> &VCpu {
-        unsafe { &*self.vcpu }
-    }
-
+    #[inline]
     pub fn get_inner(&self) -> &VCpuInner {
         unsafe { (*self.vcpu).inner.get_unchecked() }
     }
 
+    #[inline]
     pub fn get_inner_mut(&mut self) -> &mut VCpuInner {
         unsafe { (*self.vcpu).inner.get_mut_unchecked() }
     }
@@ -437,7 +447,6 @@ pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
     mem::forget((*vcpu).inner.lock());
-
     VCpuExecutionLocked { vcpu }
 }
 

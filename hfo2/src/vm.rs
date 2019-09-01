@@ -493,11 +493,18 @@ impl Vm {
 }
 
 /// Encapsulates a VM whose lock is held.
-// TODO(HfO2): make it an RAII-style guard
 #[repr(C)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct VmLocked {
     vm: *mut Vm,
+}
+
+impl Drop for VmLocked {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.vm).inner.unlock_unchecked();
+        }
+    }
 }
 
 impl Deref for VmLocked {
@@ -513,6 +520,23 @@ impl VmLocked {
     #[inline]
     pub unsafe fn from_raw(vm: *mut Vm) -> Self {
         Self { vm }
+    }
+
+    #[inline]
+    pub fn into_raw(self) -> *mut Vm {
+        let ret = self.vm;
+        mem::forget(self);
+        ret
+    }
+
+    #[inline]
+    pub fn get_inner(&self) -> &VmInner {
+        unsafe { (*self.vm).inner.get_unchecked() }
+    }
+
+    #[inline]
+    pub fn get_inner_mut(&mut self) -> &mut VmInner {
+        unsafe { (*self.vm).inner.get_mut_unchecked() }
     }
 }
 
@@ -585,7 +609,7 @@ pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
 /// the fact that the VM is no longer locked.
 #[no_mangle]
 pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
-    (*(*locked).vm).inner.unlock_unchecked();
+    drop(ptr::read(locked));
     (*locked).vm = ptr::null_mut();
 }
 

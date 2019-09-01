@@ -15,6 +15,7 @@
  */
 
 use core::mem;
+use core::mem::ManuallyDrop;
 
 use crate::addr::*;
 use crate::mm::*;
@@ -78,8 +79,8 @@ pub const SPCI_MSG_PAYLOAD_MAX: usize = HF_MAILBOX_SIZE - mem::size_of::<SpciMes
 // from inc/hf/spci_internal.h.
 extern "C" {
     pub fn spci_msg_handle_architected_message(
-        to_locked: VmLocked,
-        from_locked: VmLocked,
+        to_locked: ManuallyDrop<VmLocked>,
+        from_locked: ManuallyDrop<VmLocked>,
         architected_message_replica: *const SpciArchitectedMessageHeader,
         from_message_replica: *mut SpciMessage,
         to_msg: *mut SpciMessage,
