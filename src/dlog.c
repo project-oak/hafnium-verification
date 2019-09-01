@@ -19,7 +19,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "hf/plat/console.h"
 #include "hf/spinlock.h"
 #include "hf/std.h"
 #include "hf/vm.h"
@@ -39,18 +38,10 @@
 
 /* clang-format on */
 
-static bool dlog_lock_enabled = false;
-
+extern void dlog_enable_lock();
 extern void dlog_lock();
 extern void dlog_unlock();
-
-/**
- * Enables the lock protecting the serial device.
- */
-void dlog_enable_lock(void)
-{
-	dlog_lock_enabled = true;
-}
+extern void dlog_putchar(char c);
 
 /**
  * Prints a raw string to the debug log and returns its length.
@@ -60,7 +51,7 @@ static size_t print_raw_string(const char *str)
 	const char *c = str;
 
 	while (*c != '\0') {
-		plat_console_putchar(*c++);
+		dlog_putchar(*c++);
 	}
 
 	return c - str;
@@ -82,14 +73,14 @@ static void print_string(const char *str, const char *suffix, size_t width,
 
 	/* Print the string up to the beginning of the suffix. */
 	while (str != suffix) {
-		plat_console_putchar(*str++);
+		dlog_putchar(*str++);
 	}
 
 	if (flags & FLAG_MINUS) {
 		/* Left-aligned. Print suffix, then print padding if needed. */
 		len += print_raw_string(suffix);
 		while (len < width) {
-			plat_console_putchar(' ');
+			dlog_putchar(' ');
 			len++;
 		}
 		return;
@@ -98,7 +89,7 @@ static void print_string(const char *str, const char *suffix, size_t width,
 	/* Fill until we reach the desired length. */
 	len += strnlen_s(suffix, DLOG_MAX_STRING_LENGTH);
 	while (len < width) {
-		plat_console_putchar(fill);
+		dlog_putchar(fill);
 		len++;
 	}
 
@@ -204,14 +195,12 @@ void vdlog(const char *fmt, va_list args)
 	char buf[2];
 
 	/* Takes the lock, if it is enabled. */
-	if (dlog_lock_enabled) {
-		dlog_lock();
-	}
+	dlog_lock();
 
 	for (p = fmt; *p; p++) {
 		switch (*p) {
 		default:
-			plat_console_putchar(*p);
+			dlog_putchar(*p);
 			break;
 
 		case '%':
@@ -299,7 +288,7 @@ void vdlog(const char *fmt, va_list args)
 				break;
 
 			default:
-				plat_console_putchar('%');
+				dlog_putchar('%');
 			}
 
 			break;
@@ -307,9 +296,7 @@ void vdlog(const char *fmt, va_list args)
 	}
 
 	/* Releases the lock, if it is enabled. */
-	if (dlog_lock_enabled) {
-		dlog_unlock();
-	}
+	dlog_unlock();
 }
 
 /**
