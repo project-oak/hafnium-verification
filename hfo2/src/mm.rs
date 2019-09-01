@@ -144,8 +144,9 @@ bitflags! {
 
 impl Mode {
     /// Check that the mode indicates memory that is vaid, owned and exclusive.
-    pub fn valid_owned_and_exclusive(self) -> bool {
-        (self & (Mode::INVALID | Mode::UNOWNED | Mode::SHARED)).is_empty()
+    #[inline]
+    pub fn valid_owned_exclusive(self) -> bool {
+        !self.intersects(Mode::INVALID | Mode::UNOWNED | Mode::SHARED)
     }
 }
 
@@ -635,8 +636,8 @@ impl RawPageTable {
         mpool: &MPool,
     ) -> Result<(), ()> {
         let entry_size = addr::entry_size(level);
-        let commit = !(flags & Flags::COMMIT).is_empty();
-        let unmap = !(flags & Flags::UNMAP).is_empty();
+        let commit = flags.contains(Flags::COMMIT);
+        let unmap = flags.contains(Flags::UNMAP);
 
         let ptes = self[addr::index(begin, level)..].iter_mut();
         let begins = BlockIter::new(

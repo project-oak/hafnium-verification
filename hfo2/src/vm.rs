@@ -167,7 +167,6 @@ impl Mailbox {
             ptable.defrag(local_page_pool);
             return Err(());
         }
-        self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
 
         let mut ptable = guard(ptable, |mut ptable| {
             ptable
@@ -186,12 +185,13 @@ impl Mailbox {
             ptable.defrag(local_page_pool);
             return Err(());
         }
-        self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
 
         // Forgetting `ptable` only skips dropping the nested `ScopeGuard`s.
         // `hypervisor_ptable` will be safely dropped and the lock will be
         // released.
         mem::forget(ptable);
+        self.send = pa_addr(pa_send_begin) as usize as *const SpciMessage;
+        self.recv = pa_addr(pa_recv_begin) as usize as *mut SpciMessage;
         Ok(())
     }
 
@@ -264,6 +264,7 @@ impl VmInner {
     /// stage-1 page tables. Locking of the page tables combined with a local
     /// memory pool ensures there will always be enough memory to recover from
     /// any errors that arise.
+    #[inline]
     fn configure_pages(
         &mut self,
         pa_send_begin: paddr_t,
@@ -362,16 +363,12 @@ impl VmInner {
         // Ensure the pages are valid, owned and exclusive to the VM and that
         // the VM has the required access to the memory.
         let orig_send_mode = self.ptable.get_mode(send, ipa_add(send, PAGE_SIZE))?;
-
-        if !(orig_send_mode.valid_owned_and_exclusive()
-            && orig_send_mode.contains(Mode::R | Mode::W))
-        {
+        if !(orig_send_mode.valid_owned_exclusive() && orig_send_mode.contains(Mode::R | Mode::W)) {
             return Err(());
         }
 
         let orig_recv_mode = self.ptable.get_mode(recv, ipa_add(recv, PAGE_SIZE))?;
-
-        if !(orig_recv_mode.valid_owned_and_exclusive() && orig_recv_mode.contains(Mode::R)) {
+        if !(orig_recv_mode.valid_owned_exclusive() && orig_recv_mode.contains(Mode::R)) {
             return Err(());
         }
 

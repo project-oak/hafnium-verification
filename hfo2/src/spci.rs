@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use core::marker::PhantomData;
 use core::mem;
 
 use crate::addr::*;
@@ -123,12 +122,25 @@ pub struct SpciMessage {
 
     /// This field is originally a flexible array member in the C version code,
     /// but Rust has no corresponding representation of it. Declaring this as
-    /// `payload: [u8]` makes any reference (even raw pointer) of SpciMessage
+    /// `payload: [u8; 0]` makes any reference (even raw pointer) of SpciMessage
     /// being fat.
     /// Thus, don't make a variable with type `SpciMessage`. Usually that'll be
     /// not compatitable with `struct spci_message`.
     /// TODO: is here right place to use `Phantomdata`?
-    pub payload: PhantomData<[u8; 0]>,
+    pub payload: [u8; 0],
+}
+
+impl SpciMessage {
+    /// Obtain a pointer to the architected header in the spci_message.
+    ///
+    /// Note: the argument "message" has const qualifier. This qualifier is meant to forbid changes
+    /// in information enclosed in the struct SpciMessage. The SpciArchitectedMessageHeader, for
+    /// which a pointer is returned in this function, is not part of SpciMessage. Its information is
+    /// meant to be changed and hence the returned pointer does not have const type qualifier.
+    #[inline]
+    pub fn get_architected_message_header(&self) -> &SpciArchitectedMessageHeader {
+        unsafe { &*(&self.payload as *const _ as usize as *const _) }
+    }
 }
 
 #[repr(C)]
@@ -138,7 +150,7 @@ pub struct SpciArchitectedMessageHeader {
     // TODO: Padding is present to ensure that the field payload is aligned on
     // a 64B boundary. SPCI spec must be updated to reflect this.
     reserved: [u16; 3],
-    payload: PhantomData<[u8; 0]>,
+    payload: [u8; 0],
 }
 
 #[repr(C)]
@@ -152,19 +164,5 @@ pub struct SpciMemoryRegionConstituent {
 pub struct SpciMemoryRegion {
     handle: spci_memory_handle_t,
     count: u32,
-    pub constituents: PhantomData<[SpciMemoryRegionConstituent; 0]>,
-}
-
-/// Obtain a pointer to the architected header in the spci_message.
-///
-/// Note: the argument "message" has const qualifier. This qualifier is meant
-/// to forbid changes in information enclosed in the struct SpciMessage. The
-/// SpciArchitectedMessageHeader, for which a pointer is returned in this
-/// function, is not part of SpciMessage. Its information is meant to be
-/// changed and hence the returned pointer does not have const type qualifier.
-#[inline]
-pub unsafe fn spci_get_architected_message_header(
-    message: *const SpciMessage,
-) -> *mut SpciArchitectedMessageHeader {
-    &(*message).payload as *const _ as usize as *mut SpciArchitectedMessageHeader
+    pub constituents: [SpciMemoryRegionConstituent; 0],
 }
