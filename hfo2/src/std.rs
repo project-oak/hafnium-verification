@@ -57,7 +57,7 @@ pub unsafe extern "C" fn memcpy_s(
 
     // TODO: consider wrapping?
 
-    ptr::copy(src as *const u8, dest as *mut u8, count);
+    ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, count);
 }
 
 #[no_mangle]
@@ -72,8 +72,6 @@ pub unsafe extern "C" fn memmove_s(
         panic!("memmove_s failure");
     }
 
-    // FIXME(@jeehoonkang): `ptr::copy_nonoverlapping()` is more appropriate here, but using it
-    // makes Hafnium crash at boot.
     ptr::copy(src as *const u8, dest as *mut u8, count);
 }
 

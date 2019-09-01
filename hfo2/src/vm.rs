@@ -93,7 +93,7 @@ pub struct Mailbox {
 
 impl Mailbox {
     /// Initializes the mailbox.
-    /// TODO: Refactor `vm_init` and make `Mailbox::new()` instead of this.
+    /// TODO(HfO2): Refactor `vm_init` and make `Mailbox::new()` instead of this.
     pub unsafe fn init(&mut self) {
         self.state = MailboxState::Empty;
         self.recv = ptr::null_mut();
@@ -425,8 +425,7 @@ impl VmInner {
 
     /// Adds `self` into the waiter list of `target`, if `self` is not waiting
     /// for another now. Returns false if `self` is waiting for another.
-    /// TODO: better name?
-    pub fn wait(&mut self, target: &mut Self, target_id: spci_vm_id_t) -> Result<(), ()> {
+    pub fn wait_for(&mut self, target: &mut Self, target_id: spci_vm_id_t) -> Result<(), ()> {
         let entry = &mut self.wait_entries[target_id as usize];
 
         // Append waiter only if it's not there yet.
