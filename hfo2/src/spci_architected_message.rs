@@ -63,34 +63,29 @@ pub fn spci_msg_handle_architected_message(
     from_msg_replica: &SpciMessage,
     to_msg: &mut SpciMessage,
 ) -> SpciReturn {
-    // int64_t ret;
     let from_msg_payload_length = from_msg_replica.length as usize;
 
     let message_type = (*architected_message_replica).r#type;
-    let ret = match message_type {
-        SpciMemoryShare::Donate => {
-            let memory_region = unsafe {
-                &*((*architected_message_replica).payload.as_ptr() as *const SpciMemoryRegion)
-            };
-            let memory_share_size =
-                from_msg_payload_length - mem::size_of::<SpciArchitectedMessageHeader>();
-            // TODO: Add memory attributes.
-            let to_mode = Mode::R | Mode::W | Mode::X;
+    if message_type != SpciMemoryShare::Donate {
+        dlog!("Invalid memory sharing message.");
+        return SpciReturn::InvalidParameters;
+    }
 
-            spci_validate_call_share_memory(
-                to_locked,
-                from_locked,
-                memory_region,
-                memory_share_size,
-                to_mode,
-                message_type,
-            )
-        }
-        _ => {
-            dlog!("Invalid memory sharing message.");
-            return SpciReturn::InvalidParameters;
-        }
-    };
+    let memory_region =
+        unsafe { &*((*architected_message_replica).payload.as_ptr() as *const SpciMemoryRegion) };
+    let memory_share_size =
+        from_msg_payload_length - mem::size_of::<SpciArchitectedMessageHeader>();
+    // TODO: Add memory attributes.
+    let to_mode = Mode::R | Mode::W | Mode::X;
+
+    let ret = spci_validate_call_share_memory(
+        to_locked,
+        from_locked,
+        memory_region,
+        memory_share_size,
+        to_mode,
+        message_type,
+    );
 
     // Copy data to the destination Rx.
     //
@@ -120,7 +115,6 @@ pub fn spci_msg_handle_architected_message(
 /// # Returns
 ///
 /// The error code -1 indicates that a state transition was not found.  Success is indicated by 0.
-#[inline]
 fn spci_msg_get_next_state(
     transitions: &[SpciMemTransitions],
     memory_to_attributes: Mode,
@@ -159,7 +153,6 @@ fn spci_msg_get_next_state(
 ///  3) The beginning and end IPAs are not page aligned;
 ///  4) The requested share type was not handled.
 /// Success is indicated by true.
-#[inline]
 pub fn spci_msg_check_transition(
     to_locked: &VmLocked,
     from_locked: &VmLocked,
