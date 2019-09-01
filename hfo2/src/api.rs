@@ -121,7 +121,6 @@ pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *mut VCpu
     switch_to_primary(
         &mut current,
         HfVCpuRunReturn::WaitForInterrupt {
-            // `api_switch_to_primary` always initializes this variable.
             ns: HF_SLEEP_INDEFINITE,
         },
         VCpuStatus::BlockedInterrupt,
@@ -140,7 +139,6 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *mut VCpu {
     switch_to_primary(
         &mut current,
         HfVCpuRunReturn::WaitForInterrupt {
-            // `api_switch_to_primary` always initializes this variable.
             ns: HF_SLEEP_INDEFINITE,
         },
         VCpuStatus::Off,
@@ -608,6 +606,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
             from_msg_payload_length,
         );
 
+        #[allow(clippy::cast_ptr_alignment)]
         let architected_message_replica =
             &*(message_buffer.as_ptr() as *const SpciArchitectedMessageHeader);
 
@@ -690,7 +689,6 @@ pub unsafe extern "C" fn api_spci_msg_recv(
         *next = switch_to_primary(
             &mut current,
             HfVCpuRunReturn::WaitForMessage {
-                // `api_switch_to_primary` always initializes this variable.
                 ns: HF_SLEEP_INDEFINITE,
             },
             VCpuStatus::BlockedMailbox,
