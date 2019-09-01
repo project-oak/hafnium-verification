@@ -128,7 +128,7 @@ pub struct SpciMessage {
     /// Thus, don't make a variable with type `SpciMessage`. Usually that'll be
     /// not compatitable with `struct spci_message`.
     /// TODO: is here right place to use `Phantomdata`?
-    pub payload: PhantomData<[u8]>,
+    pub payload: PhantomData<[u8; 0]>,
 }
 
 #[repr(C)]
@@ -138,7 +138,7 @@ pub struct SpciArchitectedMessageHeader {
     // TODO: Padding is present to ensure that the field payload is aligned on
     // a 64B boundary. SPCI spec must be updated to reflect this.
     reserved: [u16; 3],
-    payload: PhantomData<[u8]>,
+    payload: PhantomData<[u8; 0]>,
 }
 
 #[repr(C)]
@@ -152,7 +152,7 @@ pub struct SpciMemoryRegionConstituent {
 pub struct SpciMemoryRegion {
     handle: spci_memory_handle_t,
     count: u32,
-    pub constituents: PhantomData<[SpciMemoryRegionConstituent]>,
+    pub constituents: PhantomData<[SpciMemoryRegionConstituent; 0]>,
 }
 
 /// Obtain a pointer to the architected header in the spci_message.

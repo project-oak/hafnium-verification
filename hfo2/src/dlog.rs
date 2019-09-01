@@ -16,6 +16,7 @@
 
 use core::fmt;
 use core::mem;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::spinlock::*;
 
@@ -43,6 +44,7 @@ impl fmt::Write for Writer {
 }
 
 static WRITER: SpinLock<Writer> = SpinLock::new(Writer::new());
+static DLOG_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
 
 #[macro_export]
 macro_rules! dlog {
@@ -55,12 +57,27 @@ pub fn _print(args: fmt::Arguments) {
     WRITER.lock().write_fmt(args).unwrap();
 }
 
+/// Enables the lock protecting the serial device.
+#[no_mangle]
+pub unsafe extern "C" fn dlog_enable_lock() {
+    DLOG_LOCK_ENABLED.store(true, Ordering::Relaxed);
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn dlog_lock() {
-    mem::forget(WRITER.lock());
+    if DLOG_LOCK_ENABLED.load(Ordering::Relaxed) {
+        mem::forget(WRITER.lock());
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn dlog_unlock() {
-    WRITER.unlock_unchecked();
+    if DLOG_LOCK_ENABLED.load(Ordering::Relaxed) {
+        WRITER.unlock_unchecked();
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn dlog_putchar(c: u8) {
+    plat_console_putchar(c);
 }
