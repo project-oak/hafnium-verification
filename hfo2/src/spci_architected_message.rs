@@ -25,35 +25,6 @@ use crate::spci::*;
 use crate::std::*;
 use crate::vm::*;
 
-/// Check if the message length and the number of memory region constituents match, if the check is
-/// correct call the memory sharing routine.
-fn spci_validate_call_share_memory(
-    to_locked: &VmLocked,
-    from_locked: &VmLocked,
-    memory_region: &SpciMemoryRegion,
-    memory_share_size: usize,
-    memory_to_attributes: Mode,
-    share: SpciMemoryShare,
-) -> SpciReturn {
-    let max_count = memory_region.count as usize;
-
-    // Ensure the number of constituents are within the memory bounds.
-    if memory_share_size
-        != mem::size_of::<SpciMemoryRegion>()
-            + mem::size_of::<SpciMemoryRegionConstituent>() * max_count
-    {
-        return SpciReturn::InvalidParameters;
-    }
-
-    spci_share_memory(
-        to_locked,
-        from_locked,
-        memory_region,
-        memory_to_attributes,
-        share,
-    )
-}
-
 /// Performs initial architected message information parsing. Calls the corresponding api functions
 /// implementing the functionality requested in the architected message.
 pub fn spci_msg_handle_architected_message(
@@ -71,6 +42,7 @@ pub fn spci_msg_handle_architected_message(
         return SpciReturn::InvalidParameters;
     }
 
+    #[allow(clippy::cast_ptr_alignment)]
     let memory_region =
         unsafe { &*((*architected_message_replica).payload.as_ptr() as *const SpciMemoryRegion) };
     let memory_share_size =
@@ -78,14 +50,18 @@ pub fn spci_msg_handle_architected_message(
     // TODO: Add memory attributes.
     let to_mode = Mode::R | Mode::W | Mode::X;
 
-    let ret = spci_validate_call_share_memory(
-        to_locked,
-        from_locked,
-        memory_region,
-        memory_share_size,
-        to_mode,
-        message_type,
-    );
+    // Check if the message length and the number of memory region constituents match.
+    // Ensure the number of constituents are within the memory bounds.
+    let max_count = memory_region.count as usize;
+    if memory_share_size
+        != mem::size_of::<SpciMemoryRegion>()
+            + mem::size_of::<SpciMemoryRegionConstituent>() * max_count
+    {
+        return SpciReturn::InvalidParameters;
+    }
+
+    // Call the memory sharing routine.
+    let ret = spci_share_memory(to_locked, from_locked, memory_region, to_mode, message_type);
 
     // Copy data to the destination Rx.
     //
@@ -96,6 +72,7 @@ pub fn spci_msg_handle_architected_message(
     if ret == SpciReturn::Success {
         assert!(from_msg_payload_length <= SPCI_MSG_PAYLOAD_MAX);
         unsafe {
+            #[allow(clippy::cast_ptr_alignment)]
             ptr::copy_nonoverlapping(
                 architected_message_replica,
                 (*to_msg).payload.as_mut_ptr() as *mut _,

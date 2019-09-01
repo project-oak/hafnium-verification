@@ -61,12 +61,14 @@ bitflags! {
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct SpciMsgRecvAttributes: u32 {
         const BLOCK = 0b0001;
     }
 }
 
 bitflags! {
+    #[repr(C)]
     pub struct SpciMsgSendAttributes: u32 {
         const NOTIFY = 0b0001;
     }
@@ -129,6 +131,7 @@ impl SpciMessage {
     /// meant to be changed and hence the returned pointer does not have const type qualifier.
     #[inline]
     pub fn get_architected_message_header(&self) -> &SpciArchitectedMessageHeader {
+        #[allow(clippy::cast_ptr_alignment)]
         unsafe { &*(self.payload.as_ptr() as *const _) }
     }
 }
