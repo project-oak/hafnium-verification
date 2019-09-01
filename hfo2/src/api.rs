@@ -617,8 +617,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // fields in message_buffer. The memory area message_buffer must be
         // exclusively owned by Hf so that TOCTOU issues do not arise.
         let ret = spci_msg_handle_architected_message(
-            ManuallyDrop::new(VmLocked::from_raw(to)),
-            ManuallyDrop::new(VmLocked::from_raw(from)),
+            &ManuallyDrop::new(VmLocked::from_raw(to)),
+            &ManuallyDrop::new(VmLocked::from_raw(from)),
             architected_message_replica,
             &from_msg_replica,
             &mut *to_msg,
@@ -897,12 +897,9 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
     Ok(())
 }
 
-// TODO: Move function to spci_architectted_message.c. (How in Rust?)
-/// Shares memory from the calling VM with another. The memory can be shared in
-/// different modes.
+/// Shares memory from the calling VM with another. The memory can be shared in different modes.
 ///
-/// This function requires the calling context to hold the <to> and <from>
-/// locks.
+/// This function requires the calling context to hold the <to> and <from> locks.
 ///
 /// Returns:
 ///  In case of error one of the following values is returned:
@@ -911,16 +908,15 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
 ///   2) SPCI_NO_MEMORY - Hf did not have sufficient memory to complete
 ///     the request.
 ///  Success is indicated by SPCI_SUCCESS.
-#[no_mangle]
-pub unsafe extern "C" fn api_spci_share_memory(
-    to_locked: ManuallyDrop<VmLocked>,
-    from_locked: ManuallyDrop<VmLocked>,
-    memory_region: *const SpciMemoryRegion,
-    memory_to_attributes: u32,
-    share: usize,
+pub fn spci_share_memory(
+    to_locked: &VmLocked,
+    from_locked: &VmLocked,
+    memory_region: &SpciMemoryRegion,
+    memory_to_attributes: Mode,
+    share: SpciMemoryShare,
 ) -> SpciReturn {
-    let to_inner = to_locked.inner.get_mut_unchecked();
-    let from_inner = from_locked.inner.get_mut_unchecked();
+    let to_inner = unsafe { to_locked.inner.get_mut_unchecked() };
+    let from_inner = unsafe { from_locked.inner.get_mut_unchecked() };
 
     // Disallow reflexive shares as this suggests an error in the VM.
     if to_locked == from_locked {
@@ -930,40 +926,29 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let local_page_pool: MPool = MPool::new_with_fallback(API_PAGE_POOL.get_ref());
+    let local_page_pool: MPool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
 
     // Obtain the single contiguous set of pages from the memory_region.
     // TODO: Add support for multiple constituent regions.
-    let constituent =
-        &(*memory_region).constituents as *const _ as usize as *const SpciMemoryRegionConstituent;
-    let size = (*constituent).page_count as usize * PAGE_SIZE;
-    let begin = ipa_init((*constituent).address as usize);
+    let constituent = unsafe { &*((*memory_region).constituents.as_ptr()) };
+    let size = constituent.page_count as usize * PAGE_SIZE;
+    let begin = ipa_init(constituent.address as usize);
     let end = ipa_add(begin, size as usize);
 
     // Check if the state transition is lawful for both VMs involved in the
     // memory exchange, ensure that all constituents of a memory region being
     // shared are at the same state.
-    let mut orig_from_mode = MaybeUninit::uninit();
-    let mut from_mode = MaybeUninit::uninit();
-    let mut to_mode = MaybeUninit::uninit();
-    let share = ok_or_return!(
-        SpciMemoryShare::try_from(share),
+    let (orig_from_mode, from_mode, to_mode) = ok_or_return!(
+        spci_msg_check_transition(
+            &to_locked,
+            &from_locked,
+            share,
+            begin,
+            end,
+            memory_to_attributes,
+        ),
         SpciReturn::InvalidParameters
     );
-
-    if !spci_msg_check_transition(
-        &to_locked,
-        &from_locked,
-        share,
-        orig_from_mode.get_mut(),
-        begin,
-        end,
-        Mode::from_bits_truncate(memory_to_attributes),
-        from_mode.get_mut(),
-        to_mode.get_mut(),
-    ) {
-        return SpciReturn::InvalidParameters;
-    }
 
     let pa_begin = pa_from_ipa(begin);
     let pa_end = pa_from_ipa(end);
@@ -972,7 +957,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // recipient.
     if from_inner
         .ptable
-        .identity_map(pa_begin, pa_end, from_mode.assume_init(), &local_page_pool)
+        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
         .is_err()
     {
         return SpciReturn::NoMemory;
@@ -981,7 +966,7 @@ pub unsafe extern "C" fn api_spci_share_memory(
     // Complete the transfer by mapping the memory into the recipient.
     if to_inner
         .ptable
-        .identity_map(pa_begin, pa_end, to_mode.assume_init(), &local_page_pool)
+        .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
         .is_err()
     {
         // TODO: partial defrag of failed range.
@@ -990,18 +975,34 @@ pub unsafe extern "C" fn api_spci_share_memory(
 
         from_inner
             .ptable
-            .identity_map(
-                pa_begin,
-                pa_end,
-                orig_from_mode.assume_init(),
-                &local_page_pool,
-            )
+            .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
             .unwrap();
 
         return SpciReturn::NoMemory;
     }
 
     SpciReturn::Success
+}
+
+/// Shares memory from the calling VM with another. The memory can be shared in different modes.
+#[no_mangle]
+pub unsafe extern "C" fn api_spci_share_memory(
+    to_locked: ManuallyDrop<VmLocked>,
+    from_locked: ManuallyDrop<VmLocked>,
+    memory_region: *const SpciMemoryRegion,
+    memory_to_attributes: u32,
+    share: usize,
+) -> SpciReturn {
+    spci_share_memory(
+        &to_locked,
+        &from_locked,
+        &*memory_region,
+        Mode::from_bits_truncate(memory_to_attributes),
+        ok_or_return!(
+            SpciMemoryShare::try_from(share),
+            SpciReturn::InvalidParameters
+        ),
+    )
 }
 
 /// Shares memory from the calling VM with another. The memory can be shared in

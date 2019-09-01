@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, ManuallyDrop};
+use core::mem;
 use core::ptr;
 
 use crate::addr::*;
@@ -28,8 +28,8 @@ use crate::vm::*;
 /// Check if the message length and the number of memory region constituents match, if the check is
 /// correct call the memory sharing routine.
 fn spci_validate_call_share_memory(
-    to_locked: ManuallyDrop<VmLocked>,
-    from_locked: ManuallyDrop<VmLocked>,
+    to_locked: &VmLocked,
+    from_locked: &VmLocked,
     memory_region: &SpciMemoryRegion,
     memory_share_size: usize,
     memory_to_attributes: Mode,
@@ -45,22 +45,20 @@ fn spci_validate_call_share_memory(
         return SpciReturn::InvalidParameters;
     }
 
-    unsafe {
-        api_spci_share_memory(
-            to_locked,
-            from_locked,
-            memory_region,
-            memory_to_attributes.bits(),
-            share as usize,
-        )
-    }
+    spci_share_memory(
+        to_locked,
+        from_locked,
+        memory_region,
+        memory_to_attributes,
+        share,
+    )
 }
 
 /// Performs initial architected message information parsing. Calls the corresponding api functions
 /// implementing the functionality requested in the architected message.
 pub fn spci_msg_handle_architected_message(
-    to_locked: ManuallyDrop<VmLocked>,
-    from_locked: ManuallyDrop<VmLocked>,
+    to_locked: &VmLocked,
+    from_locked: &VmLocked,
     architected_message_replica: &SpciArchitectedMessageHeader,
     from_msg_replica: &SpciMessage,
     to_msg: &mut SpciMessage,
@@ -122,14 +120,13 @@ pub fn spci_msg_handle_architected_message(
 /// # Returns
 ///
 /// The error code -1 indicates that a state transition was not found.  Success is indicated by 0.
+#[inline]
 fn spci_msg_get_next_state(
     transitions: &[SpciMemTransitions],
     memory_to_attributes: Mode,
     orig_from_mode: Mode,
     orig_to_mode: Mode,
-    from_mode: &mut Mode,
-    to_mode: &mut Mode,
-) -> bool {
+) -> Result<(Mode, Mode, Mode), ()> {
     let state_mask = Mode::INVALID | Mode::UNOWNED | Mode::SHARED;
     let orig_from_state = orig_from_mode & state_mask;
     let orig_to_state = orig_to_mode & state_mask;
@@ -139,14 +136,15 @@ fn spci_msg_get_next_state(
         let table_orig_to_mode = transition.orig_to_mode;
 
         if orig_from_state == table_orig_from_mode && orig_to_state == table_orig_to_mode {
-            *to_mode = transition.to_mode | memory_to_attributes;
-            // TODO: Change access permission assignment to cater for the lend case.
-            *from_mode = transition.from_mode;
-
-            return true;
+            return Ok((
+                orig_from_mode,
+                // TODO: Change access permission assignment to cater for the lend case.
+                transition.from_mode,
+                transition.to_mode | memory_to_attributes,
+            ));
         }
     }
-    false
+    Err(())
 }
 
 /// Verify that all pages have the same mode, that the starting mode constitutes a valid state and
@@ -161,17 +159,15 @@ fn spci_msg_get_next_state(
 ///  3) The beginning and end IPAs are not page aligned;
 ///  4) The requested share type was not handled.
 /// Success is indicated by true.
+#[inline]
 pub fn spci_msg_check_transition(
-    to_locked: &ManuallyDrop<VmLocked>,
-    from_locked: &ManuallyDrop<VmLocked>,
+    to_locked: &VmLocked,
+    from_locked: &VmLocked,
     share: SpciMemoryShare,
-    orig_from_mode: &mut Mode,
     begin: ipaddr_t,
     end: ipaddr_t,
     memory_to_attributes: Mode,
-    from_mode: &mut Mode,
-    to_mode: &mut Mode,
-) -> bool {
+) -> Result<(Mode, Mode, Mode), ()> {
     // TODO: Transition table does not currently consider the multiple shared case.
     let donate_transitions: [SpciMemTransitions; 4] = [
         // 1) {O-EA, !O-NA} -> {!O-NA, O-EA}
@@ -210,23 +206,21 @@ pub fn spci_msg_check_transition(
 
     // Fail if addresses are not page-aligned.
     if !is_aligned(ipa_addr(begin), PAGE_SIZE) || !is_aligned(ipa_addr(end), PAGE_SIZE) {
-        return false;
+        return Err(());
     }
 
     // Ensure that the memory range is mapped with the same mode.
-    *orig_from_mode = ok_or_return!(from_locked.get_inner().ptable.get_mode(begin, end), false);
-    let orig_to_mode = ok_or_return!(to_locked.get_inner().ptable.get_mode(begin, end), false);
+    let orig_from_mode = from_locked.get_inner().ptable.get_mode(begin, end)?;
+    let orig_to_mode = to_locked.get_inner().ptable.get_mode(begin, end)?;
 
     if share != SpciMemoryShare::Donate {
-        return false;
+        return Err(());
     }
 
     spci_msg_get_next_state(
         &donate_transitions,
         memory_to_attributes,
-        *orig_from_mode,
+        orig_from_mode,
         orig_to_mode,
-        from_mode,
-        to_mode,
     )
 }
