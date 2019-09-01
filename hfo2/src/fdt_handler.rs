@@ -15,7 +15,7 @@
  */
 
 use core::mem;
-use core::ptr::NonNull;
+use core::ptr::{self, NonNull};
 
 use crate::addr::*;
 use crate::arch::*;
@@ -228,7 +228,7 @@ impl FdtNode {
     }
 }
 
-pub unsafe fn fdt_map(
+pub unsafe fn map(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt_addr: paddr_t,
     node: &mut FdtNode,
@@ -282,7 +282,7 @@ pub unsafe fn fdt_map(
     NonNull::new(fdt)
 }
 
-pub unsafe fn fdt_unmap(
+pub unsafe fn unmap(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt: *mut FdtHeader,
     ppool: &mut MPool,
@@ -296,7 +296,7 @@ pub unsafe fn fdt_unmap(
     )
 }
 
-pub unsafe fn fdt_patch(
+pub unsafe fn patch(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt_addr: paddr_t,
     p: &mut BootParamsUpdate,
@@ -422,4 +422,39 @@ pub unsafe fn fdt_patch(
     }
 
     Ok(())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_map(stage1_locked: mm_stage1_locked,
+    fdt_addr: paddr_t, n: *mut FdtNode, ppool: *mut MPool) -> *mut FdtHeader {
+    match map(&mut stage1_locked, fdt_addr, &mut *n, &mut *ppool) {
+        Some(ret) => ret.as_ptr(),
+        None => ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_unmap(stage1_locked: mm_stage1_locked,
+    fdt: *mut FdtHeader, ppool: *mut MPool) -> bool {
+    unmap(&mut stage1_locked, &mut *fdt, &mut *ppool).is_ok()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_find_cpus(root: *const FdtNode, cpu_ids: *mut cpu_id_t, cpu_count: *mut usize) {
+    (*root).find_cpus(cpu_ids, &mut *cpu_count);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_find_memory_ranges(root: *const FdtNode, p: *mut BootParams) {
+    (*root).find_memory_ranges(&mut *p);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_find_initrd(n: *mut FdtNode, begin: *mut paddr_t, end: *mut paddr_t) -> bool {
+    (*n).find_initrd(&mut *begin, &mut *end)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn fdt_patch(stage1_locked: mm_stage1_locked, fdt_addr: paddr_t, p: *mut BootParamsUpdate, ppool: *mut MPool) -> bool {
+    patch(&mut stage1_locked, fdt_addr, &mut *p, &mut *ppool).is_ok()
 }
