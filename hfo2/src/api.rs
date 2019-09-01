@@ -27,6 +27,7 @@ use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
 use crate::spci::*;
+use crate::spci_architected_message::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
@@ -531,7 +532,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     }
 
     // Note that the payload is not copied when the message header is.
-    let mut from_msg_replica = ptr::read(from_msg);
+    let from_msg_replica = ptr::read(from_msg);
     let from_msg_payload_length = from_msg_replica.length as usize;
 
     // Ensure source VM id corresponds to the current VM.
@@ -575,7 +576,14 @@ pub unsafe extern "C" fn api_spci_msg_send(
     let to_msg = to_inner.get_recv_ptr();
 
     // Handle architected messages.
-    if !from_msg_replica.flags.contains(SpciMessageFlags::IMPDEF) {
+    if from_msg_replica.flags.contains(SpciMessageFlags::IMPDEF) {
+        *to_msg = from_msg_replica;
+        ptr::copy_nonoverlapping(
+            (*from_msg).payload.as_ptr(),
+            (*to_msg).payload.as_mut_ptr(),
+            from_msg_payload_length,
+        );
+    } else {
         // Buffer holding the internal copy of the shared memory regions.
         // TODO: Buffer is temporarily in the stack.
         let mut message_buffer: [u8; mem::size_of::<SpciArchitectedMessageHeader>()
@@ -600,7 +608,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         );
 
         let architected_message_replica =
-            &mut *(message_buffer.as_mut_ptr() as *mut SpciArchitectedMessageHeader);
+            &*(message_buffer.as_ptr() as *mut SpciArchitectedMessageHeader);
 
         // Note that message_buffer is passed as the third parameter to
         // spci_msg_handle_architected_message. The execution flow commencing
@@ -611,21 +619,13 @@ pub unsafe extern "C" fn api_spci_msg_send(
             ManuallyDrop::new(VmLocked::from_raw(to)),
             ManuallyDrop::new(VmLocked::from_raw(from)),
             architected_message_replica,
-            &mut from_msg_replica,
-            to_msg,
+            &from_msg_replica,
+            &mut *to_msg,
         );
 
         if ret != SpciReturn::Success {
             return ret;
         }
-    } else {
-        ptr::copy_nonoverlapping(
-            (*from_msg).payload.as_ptr(),
-            (*to_msg).payload.as_mut_ptr(),
-            from_msg_payload_length,
-        );
-
-        *to_msg = from_msg_replica;
     }
 
     let primary_ret = HfVCpuRunReturn::Message { vm_id: (*to).id };
@@ -912,9 +912,9 @@ fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
 ///  Success is indicated by SPCI_SUCCESS.
 #[no_mangle]
 pub unsafe extern "C" fn api_spci_share_memory(
-    to_locked: VmLocked,
-    from_locked: VmLocked,
-    memory_region: *mut SpciMemoryRegion,
+    to_locked: ManuallyDrop<VmLocked>,
+    from_locked: ManuallyDrop<VmLocked>,
+    memory_region: *const SpciMemoryRegion,
     memory_to_attributes: u32,
     share: usize,
 ) -> SpciReturn {
@@ -951,13 +951,13 @@ pub unsafe extern "C" fn api_spci_share_memory(
     };
 
     if !spci_msg_check_transition(
-        to_locked.deref(),
-        from_locked.deref(),
+        &to_locked,
+        &from_locked,
         share,
         orig_from_mode.get_mut(),
         begin,
         end,
-        memory_to_attributes,
+        Mode::from_bits_truncate(memory_to_attributes),
         from_mode.get_mut(),
         to_mode.get_mut(),
     ) {

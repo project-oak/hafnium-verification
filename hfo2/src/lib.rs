@@ -52,6 +52,7 @@ mod page;
 mod panic;
 mod slist;
 mod spci;
+mod spci_architected_message;
 mod spinlock;
 mod std;
 mod types;

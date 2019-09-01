@@ -49,7 +49,6 @@ source_set("src_testable") {
   sources = [
     "cpu.c",
     "panic.c",
-    "spci_architected_message.c",
   ]
 
   deps = [
