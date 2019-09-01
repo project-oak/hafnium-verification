@@ -15,12 +15,9 @@
  */
 
 use core::mem;
-use core::mem::ManuallyDrop;
 
-use crate::addr::*;
 use crate::mm::*;
 use crate::types::*;
-use crate::vm::*;
 
 pub const SPCI_VERSION_MAJOR: i32 = 0x0;
 pub const SPCI_VERSION_MINOR: i32 = 0x9;
@@ -29,7 +26,7 @@ pub const SPCI_VERSION_MAJOR_OFFSET: usize = 16;
 /// Return type of SPCI functions.
 /// TODO: Reuse `SpciReturn` type on all SPCI functions declarations.
 #[repr(i32)]
-#[derive(PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum SpciReturn {
     Success = 0,
     NotSupported = -1,
@@ -42,7 +39,8 @@ pub enum SpciReturn {
 }
 
 /// Architected memory sharing message IDs.
-#[repr(C)]
+#[repr(u16)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum SpciMemoryShare {
     Donate = 0x2,
 }
@@ -76,31 +74,9 @@ bitflags! {
 /// The maximum length possible for a single message.
 pub const SPCI_MSG_PAYLOAD_MAX: usize = HF_MAILBOX_SIZE - mem::size_of::<SpciMessage>();
 
-// from inc/hf/spci_internal.h.
-extern "C" {
-    pub fn spci_msg_handle_architected_message(
-        to_locked: ManuallyDrop<VmLocked>,
-        from_locked: ManuallyDrop<VmLocked>,
-        architected_message_replica: *const SpciArchitectedMessageHeader,
-        from_message_replica: *mut SpciMessage,
-        to_msg: *mut SpciMessage,
-    ) -> SpciReturn;
-
-    pub fn spci_msg_check_transition(
-        to: *const Vm,
-        from: *const Vm,
-        share: SpciMemoryShare,
-        orig_from_mode: *mut Mode,
-        begin: ipaddr_t,
-        end: ipaddr_t,
-        memory_to_attributes: u32,
-        from_mode: *mut Mode,
-        to_mode: *mut Mode,
-    ) -> bool;
-}
-
 /// SPCI common message header.
 #[repr(C)]
+#[derive(Clone)]
 pub struct SpciMessage {
     // TODO: version is part of SPCI alpha2 but will be
     // removed in the next spec revision hence we are not
@@ -140,18 +116,18 @@ impl SpciMessage {
     /// meant to be changed and hence the returned pointer does not have const type qualifier.
     #[inline]
     pub fn get_architected_message_header(&self) -> &SpciArchitectedMessageHeader {
-        unsafe { &*(&self.payload as *const _ as usize as *const _) }
+        unsafe { &*(self.payload.as_ptr() as *const _) }
     }
 }
 
 #[repr(C)]
 pub struct SpciArchitectedMessageHeader {
-    r#type: u16,
+    pub r#type: SpciMemoryShare,
 
     // TODO: Padding is present to ensure that the field payload is aligned on
     // a 64B boundary. SPCI spec must be updated to reflect this.
     reserved: [u16; 3],
-    payload: [u8; 0],
+    pub payload: [u8; 0],
 }
 
 #[repr(C)]
@@ -164,6 +140,13 @@ pub struct SpciMemoryRegionConstituent {
 #[repr(C)]
 pub struct SpciMemoryRegion {
     handle: spci_memory_handle_t,
-    count: u32,
+    pub count: u32,
     pub constituents: [SpciMemoryRegionConstituent; 0],
+}
+
+pub struct SpciMemTransitions {
+    pub orig_from_mode: Mode,
+    pub orig_to_mode: Mode,
+    pub from_mode: Mode,
+    pub to_mode: Mode,
 }
