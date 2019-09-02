@@ -143,25 +143,43 @@
 	b.ne slow_sync_lower
 
 	/*
+	 * Make room for hvc_handler_return on stack, and point x8 (the indirect
+	 * result location register in the AAPCS64 standard) to it.
+	 * hvc_handler_return is returned this way according to paragraph
+	 * 5.4.2.B.3 and section 5.5 because it is larger than 16 bytes.
+	 */
+	stp xzr, xzr, [sp, #-16]!
+	stp xzr, xzr, [sp, #-16]!
+	stp xzr, xzr, [sp, #-16]!
+	mov x8, sp
+
+	/*
 	 * Save x29 and x30, which are not saved by the callee, then jump to
 	 * HVC handler.
 	 */
 	stp x29, x30, [sp, #-16]!
 	bl hvc_handler
 	ldp x29, x30, [sp], #16
-	cbnz x1, sync_lower_switch
 
-	/* Zero out all volatile registers (except x0) and return. */
+	/* Get the hvc_handler_return back off the stack. */
+	ldp x0, x1, [sp], #16
+	ldp x2, x3, [sp], #16
+	ldr x4, [sp], #16
+
+	cbnz x4, sync_lower_switch
+
+	/*
+	 * Zero out volatile registers (except x0-x3, which contain results) and
+	 * return.
+	 */
 	stp xzr, xzr, [sp, #-16]!
-	ldp x1, x2, [sp]
-	ldp x3, x4, [sp]
-	ldp x5, x6, [sp]
-	ldp x7, x8, [sp]
-	ldp x9, x10, [sp]
-	ldp x11, x12, [sp]
-	ldp x13, x14, [sp]
-	ldp x15, x16, [sp], #16
-	mov x17, xzr
+	ldp x4, x5, [sp]
+	ldp x6, x7, [sp]
+	ldp x8, x9, [sp]
+	ldp x10, x11, [sp]
+	ldp x12, x13, [sp]
+	ldp x14, x15, [sp]
+	ldp x16, x17, [sp], #16
 
 	/* Restore x18, which was saved on the stack. */
 	ldr x18, [sp], #16
@@ -261,9 +279,9 @@ sync_lower_switch:
 	/* We'll have to switch, so save volatile state before doing so. */
 	mrs x18, tpidr_el2
 
-	/* Store zeroes in volatile register storage, except x0. */
-	stp x0, xzr, [x18, #VCPU_REGS + 8 * 0]
-	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 2]
+	/* Store zeroes in volatile register storage, except x0-x3. */
+	stp x0, x1, [x18, #VCPU_REGS + 8 * 0]
+	stp x2, x3, [x18, #VCPU_REGS + 8 * 2]
 	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 4]
 	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 6]
 	stp xzr, xzr, [x18, #VCPU_REGS + 8 * 8]
@@ -283,7 +301,7 @@ sync_lower_switch:
 	stp x2, x3, [x18, #VCPU_REGS + 8 * 31]
 
 	/* Save lazy state, then switch to new vcpu. */
-	mov x0, x1
+	mov x0, x4
 
 	/* Intentional fallthrough. */
 /**

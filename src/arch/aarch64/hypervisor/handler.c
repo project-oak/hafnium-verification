@@ -50,7 +50,7 @@
 #define GET_NEXT_PC_INC(esr) (((esr) & (1u << 25)) ? 4 : 2)
 
 struct hvc_handler_return {
-	uintreg_t user_ret;
+	smc_res_t user_ret;
 	struct vcpu *new;
 };
 
@@ -366,75 +366,76 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	ret.new = NULL;
 
-	if (psci_handler(current(), arg0, arg1, arg2, arg3, &ret.user_ret,
+	if (psci_handler(current(), arg0, arg1, arg2, arg3, &ret.user_ret.res0,
 			 &ret.new)) {
 		return ret;
 	}
 
-	if (spci_handler(arg0, arg1, arg2, arg3, &ret.user_ret, &ret.new)) {
+	if (spci_handler(arg0, arg1, arg2, arg3, &ret.user_ret.res0,
+			 &ret.new)) {
 		update_vi(ret.new);
 		return ret;
 	}
 
 	switch ((uint32_t)arg0) {
 	case HF_VM_GET_ID:
-		ret.user_ret = api_vm_get_id(current());
+		ret.user_ret.res0 = api_vm_get_id(current());
 		break;
 
 	case HF_VM_GET_COUNT:
-		ret.user_ret = api_vm_get_count();
+		ret.user_ret.res0 = api_vm_get_count();
 		break;
 
 	case HF_VCPU_GET_COUNT:
-		ret.user_ret = api_vcpu_get_count(arg1, current());
+		ret.user_ret.res0 = api_vcpu_get_count(arg1, current());
 		break;
 
 	case HF_VCPU_RUN:
-		ret.user_ret = api_vcpu_run(arg1, arg2, current(), &ret.new);
+		ret.user_ret.res0 = api_vcpu_run(arg1, arg2, current(), &ret.new);
 		break;
 
 	case HF_VM_CONFIGURE:
-		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2),
-						current(), &ret.new);
+		ret.user_ret.res0 = api_vm_configure(
+			ipa_init(arg1), ipa_init(arg2), current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_CLEAR:
-		ret.user_ret = api_mailbox_clear(current(), &ret.new);
+		ret.user_ret.res0 = api_mailbox_clear(current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_WRITABLE_GET:
-		ret.user_ret = api_mailbox_writable_get(current());
+		ret.user_ret.res0 = api_mailbox_writable_get(current());
 		break;
 
 	case HF_MAILBOX_WAITER_GET:
-		ret.user_ret = api_mailbox_waiter_get(arg1, current());
+		ret.user_ret.res0 = api_mailbox_waiter_get(arg1, current());
 		break;
 
 	case HF_INTERRUPT_ENABLE:
-		ret.user_ret = api_interrupt_enable(arg1, arg2, current());
+		ret.user_ret.res0 = api_interrupt_enable(arg1, arg2, current());
 		break;
 
 	case HF_INTERRUPT_GET:
-		ret.user_ret = api_interrupt_get(current());
+		ret.user_ret.res0 = api_interrupt_get(current());
 		break;
 
 	case HF_INTERRUPT_INJECT:
-		ret.user_ret = api_interrupt_inject(arg1, arg2, arg3, current(),
-						    &ret.new);
+		ret.user_ret.res0 = api_interrupt_inject(arg1, arg2, arg3,
+							 current(), &ret.new);
 		break;
 
 	case HF_SHARE_MEMORY:
-		ret.user_ret =
+		ret.user_ret.res0 =
 			api_share_memory(arg1 >> 32, ipa_init(arg2), arg3,
 					 arg1 & 0xffffffff, current());
 		break;
 
 	case HF_DEBUG_LOG:
-		ret.user_ret = api_debug_log(arg1, current());
+		ret.user_ret.res0 = api_debug_log(arg1, current());
 		break;
 
 	default:
-		ret.user_ret = -1;
+		ret.user_ret.res0 = -1;
 	}
 
 	update_vi(ret.new);
