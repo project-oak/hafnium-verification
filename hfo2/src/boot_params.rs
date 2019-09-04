@@ -86,10 +86,7 @@ extern "C" {
     ) -> bool;
 }
 
-pub fn get(
-    ptable: &mut SpinLockGuard<PageTable<Stage1>>,
-    ppool: &mut MPool,
-) -> Option<BootParams> {
+pub fn get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> Option<BootParams> {
     unsafe {
         let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
 
@@ -105,6 +102,10 @@ pub fn update(
     ptable: &mut SpinLockGuard<PageTable<Stage1>>,
     p: &mut BootParamsUpdate,
     ppool: &mut MPool,
-) -> bool {
-    unsafe { plat_update_boot_params(mm_stage1_locked::from_ref(ptable), p, ppool) }
+) -> Result<(), ()> {
+    if unsafe { plat_update_boot_params(mm_stage1_locked::from_ref(ptable), p, ppool) } {
+        Ok(())
+    } else {
+        Err(())
+    }
 }
