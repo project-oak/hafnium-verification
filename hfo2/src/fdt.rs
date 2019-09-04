@@ -159,7 +159,7 @@ impl FdtTokenizer {
 
         *size = this.u32()?;
         let nameoff = this.u32()?;
-        let buf = this.bytes(*size as usize)?;
+        *buf = this.bytes(*size as usize)?;
 
         //TODO: Need to verify the strings.
         *name = this.strs.add(nameoff as usize);
