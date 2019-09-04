@@ -101,38 +101,31 @@ unsafe fn one_time_init() {
         pa_difference(params.initrd_begin, params.initrd_end),
     );
 
-    let mut primary_initrd = mem::uninitialized();
-
     // Load all VMs.
-    if !load_primary(
-        &mut hypervisor_ptable,
-        &cpio,
-        params.kernel_arg,
-        &mut primary_initrd,
-        &mut ppool,
-    ) {
-        panic!("unable to load primary VM");
-    }
+    let primary_initrd = load_primary(&mut hypervisor_ptable, &cpio, params.kernel_arg, &mut ppool)
+        .unwrap_or_else(|_| panic!("unable to load primary VM"));
 
     // load_secondary will add regions assigned to the secondary VMs from
     // mem_ranges to reserved_ranges.
     let mut update: BootParamsUpdate = BootParamsUpdate::new(
         pa_from_va(va_from_ptr(primary_initrd.next as usize as *const _)),
-        pa_from_va(va_from_ptr(primary_initrd.limit as usize as *const _))
+        pa_from_va(va_from_ptr(primary_initrd.limit as usize as *const _)),
     );
 
-    if !load_secondary(
+    if load_secondary(
         &mut hypervisor_ptable,
         &cpio,
         &params,
         &mut update,
         &mut ppool,
-    ) {
+    )
+    .is_err()
+    {
         panic!("unable to load secondary VMs");
     }
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    if !boot_params::update(&mut hypervisor_ptable, &mut update, &mut ppool) {
+    if boot_params::update(&mut hypervisor_ptable, &mut update, &mut ppool).is_err() {
         panic!("plat_update_boot_params failed");
     }
 

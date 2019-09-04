@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::ptr;
 use core::slice;
 
@@ -68,15 +68,14 @@ pub unsafe fn load_primary(
     hypervisor_ptable: &mut PageTable<Stage1>,
     cpio: *const MemIter,
     kernel_arg: uintreg_t,
-    initrd: *mut MemIter,
     ppool: &mut MPool,
-) -> bool {
+) -> Result<MemIter, ()> {
     let mut it = mem::uninitialized();
     let primary_begin = layout_primary_begin();
 
     if !cpio_find_file(cpio, "vmlinuz\0".as_ptr(), &mut it) {
         dlog!("Unable to find vmlinuz\n");
-        return false;
+        return Err(());
     }
 
     dlog!(
@@ -91,24 +90,27 @@ pub unsafe fn load_primary(
         ppool,
     ) {
         dlog!("Unable to relocate kernel for primary vm.\n");
-        return false;
+        return Err(());
     }
 
-    if !cpio_find_file(cpio, "initrd.img\0".as_ptr(), initrd) {
+    let mut initrd = MaybeUninit::uninit();
+    if !cpio_find_file(cpio, "initrd.img\0".as_ptr(), initrd.get_mut()) {
         dlog!("Unable to find initrd.img\n");
-        return false;
+        return Err(());
     }
+
+    let initrd = initrd.assume_init();
 
     {
         let mut vm = mem::uninitialized();
         if !vm_init(MAX_CPUS as u16, ppool, &mut vm) {
             dlog!("Unable to initialise primary vm\n");
-            return false;
+            return Err(());
         }
 
         if (*vm).id != HF_PRIMARY_VM_ID {
             dlog!("Primary vm was not given correct id\n");
-            return false;
+            return Err(());
         }
 
         // Map the 1TB of memory.
@@ -122,12 +124,12 @@ pub unsafe fn load_primary(
             ppool,
         ) {
             dlog!("Unable to initialise memory for primary vm\n");
-            return false;
+            return Err(());
         }
 
         if !mm_vm_unmap_hypervisor(&mut (*vm).inner.get_mut_unchecked().ptable, ppool) {
             dlog!("Unable to unmap hypervisor from primary vm\n");
-            return false;
+            return Err(());
         }
 
         (*vm_get_vcpu(vm, 0))
@@ -136,7 +138,7 @@ pub unsafe fn load_primary(
             .on(ipa_from_pa(primary_begin), kernel_arg);
     }
 
-    true
+    Ok(initrd)
 }
 
 /// Try to find a memory range of the given size within the given ranges, and
@@ -177,7 +179,7 @@ unsafe fn update_reserved_ranges(
     before: *const MemRange,
     after: *const MemRange,
     mem_ranges_count: usize,
-) -> bool {
+) -> Result<(), ()> {
     let after = slice::from_raw_parts(after, mem_ranges_count);
     let before = slice::from_raw_parts(before, mem_ranges_count);
 
@@ -185,7 +187,7 @@ unsafe fn update_reserved_ranges(
         if pa_addr(after.begin) > pa_addr(before.begin) {
             if (*update).reserved_ranges_count >= MAX_MEM_RANGES {
                 dlog!("Too many reserved ranges after loading secondary VMs.\n");
-                return false;
+                return Err(());
             }
 
             (*update).reserved_ranges[(*update).reserved_ranges_count].begin = after.end;
@@ -194,7 +196,7 @@ unsafe fn update_reserved_ranges(
         }
     }
 
-    true
+    Ok(())
 }
 
 /// Loads all secondary VMs into the memory ranges from the given params.
@@ -205,7 +207,7 @@ pub unsafe fn load_secondary(
     params: *const BootParams,
     update: *mut BootParamsUpdate,
     ppool: &mut MPool,
-) -> bool {
+) -> Result<(), ()> {
     let mut mem_ranges_available: [MemRange; MAX_MEM_RANGES] = mem::uninitialized();
     // static_assert(
     //  sizeof(mem_ranges_available) == sizeof(params->mem_ranges),
@@ -219,7 +221,7 @@ pub unsafe fn load_secondary(
 
     if !cpio_find_file(cpio, "vms.txt\0".as_ptr(), &mut it) {
         dlog!("vms.txt is missing\n");
-        return true;
+        return Ok(());
     }
 
     // Round the last addresses down to the page size.
@@ -313,7 +315,7 @@ pub unsafe fn load_secondary(
             ppool,
         ) {
             dlog!("Unable to unmap secondary VM from primary VM\n");
-            return false;
+            return Err(());
         }
 
         dlog!(
