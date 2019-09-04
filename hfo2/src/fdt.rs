@@ -86,7 +86,7 @@ impl FdtTokenizer {
     }
 
     unsafe fn u32(&mut self) -> Option<u32> {
-        let next = self.cur.offset(mem::size_of::<u32>() as isize);
+        let next = self.cur.add(mem::size_of::<u32>());
         if next > self.end {
             return None;
         }
@@ -107,7 +107,7 @@ impl FdtTokenizer {
     }
 
     unsafe fn bytes(&mut self, size: usize) -> Option<*const u8> {
-        let next = self.cur.offset(size as isize);
+        let next = self.cur.add(size);
 
         if next > self.end {
             return None;
@@ -124,13 +124,15 @@ impl FdtTokenizer {
         let mut p = self.cur;
 
         while p < self.end {
-            if *p != 0 {
+            if *p == 0 {
                 // Found the end of the string.
                 let res = self.cur;
-                self.cur = p.offset(1);
+                self.cur = p.add(1);
                 self.align();
                 return Some(res);
             }
+
+            p = p.add(1);
         }
 
         None
@@ -146,7 +148,7 @@ impl FdtTokenizer {
 
         if token != FdtToken::Prop as u32 {
             // Rewind so that caller will get the same token.
-            self.cur = self.cur.offset(-(mem::size_of::<u32>() as isize));
+            self.cur = self.cur.sub(mem::size_of::<u32>());
             return None;
         }
 
@@ -160,7 +162,7 @@ impl FdtTokenizer {
         let buf = this.bytes(*size as usize)?;
 
         //TODO: Need to verify the strings.
-        *name = this.strs.offset(nameoff as isize);
+        *name = this.strs.add(nameoff as usize);
 
         mem::forget(this);
         Some(())
@@ -170,7 +172,7 @@ impl FdtTokenizer {
         let token = self.token()?;
         if token != FdtToken::BeginNode as u32 {
             // Rewind so that caller will get the same token.
-            self.cur = self.cur.offset(-(mem::size_of::<u32>() as isize));
+            self.cur = self.cur.sub(mem::size_of::<u32>());
             return None;
         }
 
@@ -238,9 +240,9 @@ impl FdtNode {
         // TODO: Verify strings as well.
         Some(Self {
             hdr: ptr::null(),
-            begin: hdr_ptr.offset(begin as isize),
-            end: hdr_ptr.offset((begin + size) as isize),
-            strs: hdr_ptr.offset(u32::from_be(hdr.off_dt_strings) as isize),
+            begin: hdr_ptr.add(begin as usize),
+            end: hdr_ptr.add((begin + size) as usize),
+            strs: hdr_ptr.add(u32::from_be(hdr.off_dt_strings) as usize),
         })
     }
 
@@ -303,7 +305,7 @@ impl FdtHeader {
     pub unsafe fn dump(&self) {
         unsafe fn asciz_to_utf8(ptr: *const u8) -> &'static str {
             let mut len = 0;
-            while *ptr.offset(len as isize) != 0u8 {
+            while *ptr.add(len) != 0u8 {
                 len += 1;
             }
             let bytes = slice::from_raw_parts(ptr, len);
@@ -341,11 +343,11 @@ impl FdtHeader {
                         2 * depth,
                         asciz_to_utf8(name)
                     );
-                    for i in 0..size {
+                    for i in 0..size as usize {
                         dlog!(
                             "{}{:02x}",
                             if i == 0 { "" } else { " " },
-                            *buf.offset(i as isize)
+                            *buf.add(i)
                         );
                     }
                     dlog!(")\n");
@@ -378,7 +380,7 @@ impl FdtHeader {
                     u64::from_be((*entry).address) as *const u8,
                     u64::from_be((*entry).size)
                 );
-                entry = entry.offset(1);
+                entry = entry.add(1);
             }
         }
     }
@@ -386,7 +388,7 @@ impl FdtHeader {
     pub unsafe fn add_mem_reservation(&mut self, addr: u64, len: u64) {
         // TODO: Clean this up.
         let begin = (self as *const _ as usize as *const u8)
-            .offset(u32::from_be(self.off_mem_rsvmap) as isize);
+            .add(u32::from_be(self.off_mem_rsvmap) as usize);
         let e = begin as *mut FdtReserveEntry;
         let old_size = u32::from_be(self.totalsize) - u32::from_be(self.off_mem_rsvmap);
 
@@ -398,7 +400,7 @@ impl FdtHeader {
             (u32::from_be(self.off_dt_strings) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
 
         memmove_s(
-            begin.offset(mem::size_of::<FdtReserveEntry>() as isize) as usize as *mut _,
+            begin.add(mem::size_of::<FdtReserveEntry>()) as usize as *mut _,
             old_size as usize,
             begin as usize as *const _,
             old_size as usize,
