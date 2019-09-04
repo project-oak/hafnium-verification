@@ -18,14 +18,13 @@ use core::mem::{self, MaybeUninit};
 
 use crate::addr::*;
 use crate::api::*;
-use crate::boot_params::*;
+use crate::boot_params::{self, BootParamsUpdate};
 use crate::cpu::*;
 use crate::load::*;
 use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
-use crate::plat::*;
 use crate::types::*;
 use crate::vm::*;
 
@@ -65,11 +64,9 @@ unsafe fn one_time_init() {
     mpool_enable_locks();
 
     let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
-    let mut params = mem::uninitialized();
 
-    if !plat_get_boot_params(&mut hypervisor_ptable, &mut params, &mut ppool) {
-        panic!("unable to retrieve boot params");
-    }
+    let mut params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
+        .unwrap_or_else(|| panic!("unable to retrieve boot params"));
 
     cpu_module_init(&mut params.cpu_ids[0], params.cpu_count);
 
@@ -117,13 +114,13 @@ unsafe fn one_time_init() {
         panic!("unable to load primary VM");
     }
 
-    let mut update: BootParamsUpdate = mem::uninitialized();
-
     // load_secondary will add regions assigned to the secondary VMs from
     // mem_ranges to reserved_ranges.
-    update.initrd_begin = pa_from_va(va_from_ptr(primary_initrd.next as usize as *const _));
-    update.initrd_end = pa_from_va(va_from_ptr(primary_initrd.limit as usize as *const _));
-    update.reserved_ranges_count = 0;
+    let mut update: BootParamsUpdate = BootParamsUpdate::new(
+        pa_from_va(va_from_ptr(primary_initrd.next as usize as *const _)),
+        pa_from_va(va_from_ptr(primary_initrd.limit as usize as *const _))
+    );
+
     if !load_secondary(
         &mut hypervisor_ptable,
         &cpio,
@@ -135,7 +132,7 @@ unsafe fn one_time_init() {
     }
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    if !plat_update_boot_params(&mut hypervisor_ptable, &mut update, &mut ppool) {
+    if !boot_params::update(&mut hypervisor_ptable, &mut update, &mut ppool) {
         panic!("plat_update_boot_params failed");
     }
 

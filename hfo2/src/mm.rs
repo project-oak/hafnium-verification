@@ -984,6 +984,12 @@ pub struct mm_stage1_locked {
     plock: usize,
 }
 
+impl mm_stage1_locked {
+    pub fn from_ref(guard: &mut SpinLockGuard<PageTable<Stage1>>) -> Self {
+        Self { plock: guard.raw() }
+    }
+}
+
 impl Deref for mm_stage1_locked {
     type Target = PageTable<Stage1>;
 

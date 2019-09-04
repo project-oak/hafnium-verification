@@ -299,7 +299,7 @@ pub unsafe fn unmap(
 pub unsafe fn patch(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt_addr: paddr_t,
-    p: &mut BootParamsUpdate,
+    p: &BootParamsUpdate,
     ppool: &mut MPool,
 ) -> Result<(), ()> {
     // Map the fdt header in.
@@ -473,8 +473,8 @@ pub unsafe extern "C" fn fdt_find_initrd(
 pub unsafe extern "C" fn fdt_patch(
     mut stage1_locked: mm_stage1_locked,
     fdt_addr: paddr_t,
-    p: *mut BootParamsUpdate,
+    p: *const BootParamsUpdate,
     ppool: *mut MPool,
 ) -> bool {
-    patch(&mut stage1_locked, fdt_addr, &mut *p, &mut *ppool).is_ok()
+    patch(&mut stage1_locked, fdt_addr, &*p, &mut *ppool).is_ok()
 }

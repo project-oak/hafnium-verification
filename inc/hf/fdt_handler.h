@@ -33,4 +33,4 @@ bool fdt_find_initrd(struct fdt_node *n, paddr_t *begin, paddr_t *end);
 
 /** Apply an update to the FDT. */
 bool fdt_patch(struct mm_stage1_locked stage1_locked, paddr_t fdt_addr,
-	       struct boot_params_update *p, struct mpool *ppool);
+	       const struct boot_params_update *p, struct mpool *ppool);
