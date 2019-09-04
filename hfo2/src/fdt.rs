@@ -18,6 +18,7 @@ use core::mem;
 use core::ptr;
 use core::slice;
 use core::str;
+use core::convert::{TryFrom, TryInto};
 
 use crate::std::*;
 use crate::utils::*;
@@ -55,12 +56,30 @@ struct FdtReserveEntry {
     size: u64,
 }
 
+#[derive(PartialEq)]
 enum FdtToken {
     BeginNode = 1,
     EndNode = 2,
     Prop = 3,
     Nop = 4,
     End = 9,
+}
+
+impl TryFrom<u32> for FdtToken {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        use FdtToken::*;
+
+        match value {
+            1 => Ok(BeginNode),
+            2 => Ok(EndNode),
+            3 => Ok(Prop),
+            4 => Ok(Nop),
+            9 => Ok(End),
+            _ => Err(()),
+        }
+    }
 }
 
 struct FdtTokenizer {
@@ -96,10 +115,11 @@ impl FdtTokenizer {
         Some(res)
     }
 
-    unsafe fn token(&mut self) -> Option<u32> {
+    unsafe fn token(&mut self) -> Option<FdtToken> {
         while let Some(v) = self.u32() {
-            if v != FdtToken::Nop as u32 {
-                return Some(v);
+            let token = v.try_into().unwrap();
+            if token != FdtToken::Nop {
+                return Some(token);
             }
         }
 
@@ -138,15 +158,10 @@ impl FdtTokenizer {
         None
     }
 
-    unsafe fn next_property(
-        &mut self,
-        name: &mut *const u8,
-        buf: &mut *const u8,
-        size: &mut u32,
-    ) -> Option<()> {
+    unsafe fn next_property(&mut self) -> Option<(*const u8, *const u8, u32)> {
         let token = self.token()?;
 
-        if token != FdtToken::Prop as u32 {
+        if token != FdtToken::Prop {
             // Rewind so that caller will get the same token.
             self.cur = self.cur.sub(mem::size_of::<u32>());
             return None;
@@ -157,20 +172,20 @@ impl FdtTokenizer {
             this.cur = this.end;
         });
 
-        *size = this.u32()?;
+        let size = this.u32()?;
         let nameoff = this.u32()?;
-        *buf = this.bytes(*size as usize)?;
+        let buf = this.bytes(size as usize)?;
 
         //TODO: Need to verify the strings.
-        *name = this.strs.add(nameoff as usize);
+        let name = this.strs.add(nameoff as usize);
 
         mem::forget(this);
-        Some(())
+        Some((name, buf, size))
     }
 
     unsafe fn next_subnode(&mut self) -> Option<*const u8> {
         let token = self.token()?;
-        if token != FdtToken::BeginNode as u32 {
+        if token != FdtToken::BeginNode {
             // Rewind so that caller will get the same token.
             self.cur = self.cur.sub(mem::size_of::<u32>());
             return None;
@@ -188,10 +203,7 @@ impl FdtTokenizer {
     }
 
     unsafe fn skip_properties(&mut self) {
-        let mut name = mem::uninitialized();
-        let mut buf = mem::uninitialized();
-        let mut size = mem::uninitialized();
-        while let Some(_) = self.next_property(&mut name, &mut buf, &mut size) {}
+        while self.next_property().is_some() {}
     }
 
     unsafe fn skip_node(&mut self) -> Option<()> {
@@ -205,7 +217,7 @@ impl FdtTokenizer {
             }
 
             let token = self.token()?;
-            if token != FdtToken::EndNode as u32 {
+            if token != FdtToken::EndNode {
                 self.cur = self.end;
                 return None;
             }
@@ -249,18 +261,15 @@ impl FdtNode {
     pub unsafe fn read_property(
         &self,
         name: *const u8,
-        buf: &mut *const u8,
-        size: &mut u32,
-    ) -> bool {
-        let mut prop_name = ptr::null();
+    ) -> Result<(*const u8, u32), ()> {
         let mut t = FdtTokenizer::new(self.strs, self.begin, self.end);
-        while let Some(_) = t.next_property(&mut prop_name, buf, size) {
+        while let Some((prop_name, buf, size)) = t.next_property() {
             if strcmp(prop_name, name) == 0 {
-                return true;
+                return Ok((buf, size));
             }
         }
 
-        false
+        Err(())
     }
 
     pub unsafe fn first_child(&mut self) -> Option<*const u8> {
@@ -333,10 +342,7 @@ impl FdtHeader {
                     asciz_to_utf8(name)
                 );
                 depth += 1;
-                let mut name = mem::uninitialized();
-                let mut buf = mem::uninitialized();
-                let mut size = mem::uninitialized();
-                while let Some(_) = t.next_property(&mut name, &mut buf, &mut size) {
+                while let Some((name, buf, size)) = t.next_property() {
                     dlog!(
                         "{:1$}property: \"{2}\" (",
                         "",
@@ -354,10 +360,9 @@ impl FdtHeader {
                 }
             }
 
-            let token = match t.token().filter(|t| *t != FdtToken::EndNode as u32) {
-                Some(token) => token,
-                None => return,
-            };
+            if t.token().filter(|t| *t != FdtToken::EndNode).is_none() {
+                return;
+            }
 
             depth -= 1;
 
@@ -468,7 +473,14 @@ pub unsafe extern "C" fn fdt_read_property(
     buf: *mut *const u8,
     size: *mut u32,
 ) -> bool {
-    (*node).read_property(name, &mut *buf, &mut *size)
+    match (*node).read_property(name) {
+        Ok((prop_buf, prop_size)) => {
+            *buf = prop_buf;
+            *size = prop_size;
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 #[no_mangle]
