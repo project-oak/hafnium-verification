@@ -141,6 +141,12 @@ pub struct SpinLockGuard<'s, T> {
 unsafe impl<'s, T> Send for SpinLockGuard<'s, T> {}
 unsafe impl<'s, T: Send + Sync> Sync for SpinLockGuard<'s, T> {}
 
+impl<'s, T> SpinLockGuard<'s, T> {
+    pub fn raw(&mut self) -> usize {
+        self.lock as *const _ as usize
+    }
+}
+
 impl<'s, T> Drop for SpinLockGuard<'s, T> {
     fn drop(&mut self) {
         self.lock.lock.unlock();
