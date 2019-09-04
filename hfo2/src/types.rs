@@ -57,13 +57,20 @@ pub const HF_INVALID_INTID: intid_t = 0xffff_ffff;
 /// The virtual interrupt ID used for the virtual timer.
 pub const HF_VIRTUAL_TIMER_INTID: intid_t = 3;
 
-// These constants are originally from build scripts. Fortunately most
-// testing environments have same conditions (HEAP_PAGES=60, MAX_CPUS=8,
-// MAX_VMS=16.) And only one environment (host_fake) doesn't but it's for the
-// unit test, so works fine under this settting (See
+// These constants are originally from build scripts. (See
 // //project/reference/BUILD.gn.)
 pub const HEAP_PAGES: usize = 60;
+
+#[cfg(target_arch = "x86_64")]
+pub const MAX_CPUS: usize = 4;
+
+#[cfg(target_arch = "aarch64")]
 pub const MAX_CPUS: usize = 8;
+
+#[cfg(target_arch = "x86_64")]
+pub const MAX_VMS: usize = 6;
+
+#[cfg(target_arch = "aarch64")]
 pub const MAX_VMS: usize = 16;
 
 /// The ID of the primary VM which is responsible for scheduling.
