@@ -120,6 +120,7 @@ impl FdtNode {
 
         node.first_child()?;
 
+        // TODO(HfO2): this loop was do-while in C. Make an interator for this.
         loop {
             let mut data = mem::uninitialized();
             let mut size = mem::uninitialized();
@@ -131,9 +132,13 @@ impl FdtNode {
                     "cpu\0".as_ptr() as usize as *const _,
                     "cpu\0".len(),
                 ) != 0
-                || !node.read_property("reg".as_ptr(), &mut data, &mut size)
+                || !node.read_property("reg\0".as_ptr(), &mut data, &mut size)
             {
-                continue;
+                if node.next_sibling().is_none() {
+                    break;
+                } else {
+                    continue;
+                }
             }
 
             // Get all entries for this CPU.
@@ -179,6 +184,7 @@ impl FdtNode {
         node.first_child()?;
         let mut mem_range_index = 0;
 
+        // TODO(HfO2): this loop was do-while in C. Make an interator for this.
         loop {
             let mut data = mem::uninitialized();
             let mut size = mem::uninitialized();
@@ -192,7 +198,11 @@ impl FdtNode {
                 ) != 0
                 || !node.read_property("reg\0".as_ptr(), &mut data, &mut size)
             {
-                continue;
+                if node.next_sibling().is_none() {
+                    break;
+                } else {
+                    continue;
+                }
             }
 
             // Traverse all memory ranges within this node.
