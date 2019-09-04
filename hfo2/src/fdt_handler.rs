@@ -39,27 +39,18 @@ unsafe fn convert_number(data: *const u8, size: u32) -> u64 {
 }
 
 impl FdtNode {
-    unsafe fn read_number(&mut self, name: *const u8) -> Option<u64> {
-        let mut data = mem::uninitialized();
-        let mut size = mem::uninitialized();
-
-        if !self.read_property(name, &mut data, &mut size) {
-            return None;
-        }
+    unsafe fn read_number(&mut self, name: *const u8) -> Result<u64, ()> {
+        let (data, size) = self.read_property(name)?;
 
         match size {
-            4 | 8 => Some(convert_number(data, size)),
-            _ => None,
+            4 | 8 => Ok(convert_number(data, size)),
+            _ => Err(()),
         }
     }
 
-    unsafe fn write_number(&mut self, name: *const u8, value: u64) -> bool {
-        let mut data = mem::uninitialized();
-        let mut size = mem::uninitialized();
+    unsafe fn write_number(&mut self, name: *const u8, value: u64) -> Result<(), ()> {
 
-        if !self.read_property(name, &mut data, &mut size) {
-            return false;
-        }
+        let (data, size) = self.read_property(name)?;
 
         match size {
             4 => {
@@ -68,10 +59,10 @@ impl FdtNode {
             8 => {
                 *(data as *mut u64) = u64::from_be(value);
             }
-            _ => return false,
+            _ => return Err(()),
         }
 
-        true
+        Ok(())
     }
 
     /// Finds the memory region where initrd is stored, and updates the fdt node
@@ -83,16 +74,16 @@ impl FdtNode {
         }
 
         let initrd_begin = match self.read_number("linux,initrd-start\0".as_ptr()) {
-            Some(initrd_begin) => initrd_begin,
-            None => {
+            Ok(initrd_begin) => initrd_begin,
+            Err(_) => {
                 dlog!("Unable to read linux,initrd-start\n");
                 return false;
             }
         };
 
         let initrd_end = match self.read_number("linux,initrd-end\0".as_ptr()) {
-            Some(initrd_end) => initrd_end,
-            None => {
+            Ok(initrd_end) => initrd_end,
+            Err(_) => {
                 dlog!("Unable to read linux,initrd-end\n");
                 return false;
             }
@@ -122,24 +113,32 @@ impl FdtNode {
 
         // TODO(HfO2): this loop was do-while in C. Make an interator for this.
         loop {
-            let mut data = mem::uninitialized();
-            let mut size = mem::uninitialized();
-
-            if !node.read_property("device_type\0".as_ptr(), &mut data, &mut size)
-                || size != "cpu\0".len() as u32
-                || memcmp_rs(
-                    data as usize as *const _,
+            if node
+                .read_property("device_type\0".as_ptr())
+                .ok()
+                .filter(|(_, size)| *size == "cpu\0".len() as u32)
+                .filter(|(data, _)| memcmp_rs(
+                    *data as usize as *const _,
                     "cpu\0".as_ptr() as usize as *const _,
                     "cpu\0".len(),
-                ) != 0
-                || !node.read_property("reg\0".as_ptr(), &mut data, &mut size)
-            {
+                ) == 0).is_none() {
                 if node.next_sibling().is_none() {
                     break;
                 } else {
                     continue;
                 }
             }
+
+            let (mut data, mut size) = if let Ok((data, size)) = node.read_property("reg\0".as_ptr())
+            {
+                (data, size)
+            } else {
+                if node.next_sibling().is_none() {
+                    break;
+                } else {
+                    continue;
+                }
+            };
 
             // Get all entries for this CPU.
             while size as usize >= address_size {
@@ -186,24 +185,30 @@ impl FdtNode {
 
         // TODO(HfO2): this loop was do-while in C. Make an interator for this.
         loop {
-            let mut data = mem::uninitialized();
-            let mut size = mem::uninitialized();
-
-            if !node.read_property("device_type\0".as_ptr(), &mut data, &mut size)
-                || size as usize != "memory\0".len()
-                || memcmp_rs(
-                    data as usize as *const _,
+            if node
+                .read_property("device_type\0".as_ptr())
+                .ok()
+                .filter(|(_, size)| *size as usize == "memory\0".len())
+                .filter(|(data, _)| memcmp_rs(
+                    *data as usize as *const _,
                     "memory\0".as_ptr() as usize as *const _,
                     "memory\0".len(),
-                ) != 0
-                || !node.read_property("reg\0".as_ptr(), &mut data, &mut size)
-            {
+                ) == 0).is_none() {
                 if node.next_sibling().is_none() {
                     break;
                 } else {
                     continue;
                 }
             }
+            let (mut data, mut size) = if let Ok((data, size)) = node.read_property("reg\0".as_ptr()) {
+                (data, size)
+            } else {
+                if node.next_sibling().is_none() {
+                    break;
+                } else {
+                    continue;
+                }
+            };
 
             // Traverse all memory ranges within this node.
             while size as usize >= entry_size {
@@ -378,15 +383,15 @@ pub unsafe fn patch(
     }
 
     // Patch FDT to point to new ramdisk.
-    if !node.write_number(
+    if node.write_number(
         "linux,initrd-start\0".as_ptr(),
         pa_addr(p.initrd_begin) as u64,
-    ) {
+    ).is_err() {
         dlog!("Unable to write linux,initrd-start\n");
         return Err(());
     }
 
-    if !node.write_number("linux,initrd-end\0".as_ptr(), pa_addr(p.initrd_end) as u64) {
+    if node.write_number("linux,initrd-end\0".as_ptr(), pa_addr(p.initrd_end) as u64).is_err() {
         dlog!("Unable to write linux,initrd-end\n");
         return Err(());
     }
