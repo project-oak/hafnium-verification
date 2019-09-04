@@ -153,15 +153,15 @@ unsafe fn carve_out_mem_range(
 ) -> bool {
     // TODO(b/116191358): Consider being cleverer about how we pack VMs
     // together, with a non-greedy algorithm.
-    for i in 0..mem_ranges_count as isize {
+    for i in 0..mem_ranges_count {
         if size_to_find
-            <= pa_difference((*mem_ranges.offset(i)).begin, (*mem_ranges.offset(i)).end) as u64
+            <= pa_difference((*mem_ranges.add(i)).begin, (*mem_ranges.add(i)).end) as u64
         {
             // This range is big enough, take some of it from the end and reduce
             // its size accordingly.
-            *found_end = (*mem_ranges.offset(i)).end;
-            *found_begin = pa_init(pa_addr((*mem_ranges.offset(i)).end) - size_to_find as usize);
-            (*mem_ranges.offset(i)).end = *found_begin;
+            *found_end = (*mem_ranges.add(i)).end;
+            *found_begin = pa_init(pa_addr((*mem_ranges.add(i)).end) - size_to_find as usize);
+            (*mem_ranges.add(i)).end = *found_begin;
             return true;
         }
     }
@@ -242,7 +242,7 @@ pub unsafe fn load_secondary(
         let mut p = name.next;
         while p != name.limit {
             dlog!("{}", *p as char);
-            p = p.offset(1);
+            p = p.add(1);
         }
         dlog!("\n");
 

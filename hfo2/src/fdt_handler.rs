@@ -118,7 +118,7 @@ impl FdtNode {
             .map(|size| size as usize * mem::size_of::<u32>())
             .unwrap_or(mem::size_of::<u32>());
 
-        let mut name = node.first_child()?;
+        node.first_child()?;
 
         loop {
             let mut data = mem::uninitialized();
@@ -143,17 +143,15 @@ impl FdtNode {
                     return None;
                 }
 
-                *cpu_ids.offset(*cpu_count as isize) =
+                *cpu_ids.add(*cpu_count) =
                     convert_number(data, address_size as u32) as cpu_id_t;
                 *cpu_count += 1;
 
                 size -= address_size as u32;
-                data = data.offset(address_size as isize);
+                data = data.add(address_size);
             }
 
-            if let Some(sibling_name) = node.next_sibling() {
-                name = sibling_name;
-            } else {
+            if node.next_sibling().is_none() {
                 break;
             }
         }
@@ -178,7 +176,7 @@ impl FdtNode {
         let entry_size = address_size + size_size;
 
         // Look for nodes with the device_type set to "memory".
-        let mut name = node.first_child()?;
+        node.first_child()?;
         let mut mem_range_index = 0;
 
         loop {
@@ -201,7 +199,7 @@ impl FdtNode {
             while size as usize >= entry_size {
                 let addr = convert_number(data, address_size as u32) as usize;
                 let len =
-                    convert_number(data.offset(address_size as isize), size_size as u32) as usize;
+                    convert_number(data.add(address_size), size_size as u32) as usize;
 
                 if mem_range_index < MAX_MEM_RANGES {
                     p.mem_ranges[mem_range_index].begin = pa_init(addr);
@@ -213,12 +211,10 @@ impl FdtNode {
                 }
 
                 size -= entry_size as u32;
-                data = data.offset(entry_size as isize);
+                data = data.add(entry_size);
             }
 
-            if let Some(sibling_name) = node.next_sibling() {
-                name = sibling_name;
-            } else {
+            if node.next_sibling().is_none() {
                 break;
             }
         }
