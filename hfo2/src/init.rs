@@ -101,6 +101,8 @@ unsafe fn one_time_init() {
         pa_difference(params.initrd_begin, params.initrd_end),
     );
 
+    VM_MANAGER = MaybeUninit::new(VmManager::new());
+
     // Load all VMs.
     let primary_initrd = load_primary(&mut hypervisor_ptable, &cpio, params.kernel_arg, &mut ppool)
         .unwrap_or_else(|_| panic!("unable to load primary VM"));

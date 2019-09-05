@@ -219,7 +219,7 @@ pub struct VmInner {
 
 impl VmInner {
     /// Initializes VmInner.
-    pub unsafe fn init(&mut self, vm: *mut Vm, ppool: &mut MPool) -> Result<(), ()> {
+    pub unsafe fn init(&mut self, vm: *mut Vm, ppool: &MPool) -> Result<(), ()> {
         self.mailbox.init();
 
         if !mm_vm_init(&mut self.ptable, ppool) {
@@ -480,6 +480,26 @@ pub struct Vm {
 }
 
 impl Vm {
+    pub fn init(
+        &mut self,
+        id: spci_vm_id_t,
+        vcpu_count: spci_vcpu_count_t,
+        ppool: &MPool,
+    ) -> Result<(), ()> {
+        self.id = id;
+        self.vcpu_count = vcpu_count;
+        self.aborting = AtomicBool::new(false);
+        unsafe {
+            let self_ptr = self as *mut _;
+            self.inner.get_mut().init(self_ptr, ppool);
+
+            for i in 0..vcpu_count {
+                vcpu_init(vm_get_vcpu(self, i), self);
+            }
+        }
+        Ok(())
+    }
+
     /// Returns the root address of the page table of this VM. It is safe not to
     /// lock `self.inner` because the value of `ptable.as_raw()` doesn't change
     /// after `ptable` is initialized. Of course, actual page table may vary
@@ -542,8 +562,34 @@ impl VmLocked {
     }
 }
 
-static mut VMS: MaybeUninit<[Vm; MAX_VMS]> = MaybeUninit::uninit();
-static mut VM_COUNT: spci_vm_count_t = 0;
+pub struct VmManager {
+    vms: ArrayVec<[Vm; MAX_VMS]>,
+}
+
+impl VmManager {
+    pub fn new() -> Self {
+        Self {
+            vms: ArrayVec::new(),
+        }
+    }
+
+    pub fn new_vm(&mut self, vcpu_count: spci_vcpu_count_t, ppool: &MPool) -> Option<&mut Vm> {
+        if self.vms.is_full() {
+            return None;
+        }
+
+        let id = self.vms.len();
+        let vm = unsafe { self.vms.get_unchecked_mut(id) };
+
+        vm.init(id as u16, vcpu_count, ppool).ok()?;
+
+        unsafe {
+            self.vms.set_len(id + 1);
+        }
+
+        Some(&mut self.vms[id])
+    }
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_init(
@@ -551,53 +597,28 @@ pub unsafe extern "C" fn vm_init(
     ppool: *mut MPool,
     new_vm: *mut *mut Vm,
 ) -> bool {
-    let vm: *mut Vm;
-
-    if VM_COUNT as usize >= MAX_VMS {
-        return false;
+    match VM_MANAGER.get_mut().new_vm(vcpu_count, &mut *ppool) {
+        Some(vm) => {
+            *new_vm = vm as *mut _;
+            true
+        }
+        None => false,
     }
-
-    vm = &mut VMS.get_mut()[VM_COUNT as usize];
-
-    memset_s(
-        vm as usize as _,
-        mem::size_of::<Vm>(),
-        0,
-        mem::size_of::<Vm>(),
-    );
-
-    (*vm).id = VM_COUNT;
-    (*vm).vcpu_count = vcpu_count;
-    (*vm).aborting = AtomicBool::new(false);
-    let result = (*vm).inner.get_mut_unchecked().init(vm, &mut *ppool);
-    if result.is_err() {
-        return false;
-    }
-
-    // Do basic initialization of vcpus.
-    for i in 0..vcpu_count {
-        vcpu_init(vm_get_vcpu(vm, i), vm);
-    }
-
-    VM_COUNT += 1;
-    *new_vm = vm;
-
-    true
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
-    VM_COUNT
+    VM_MANAGER.get_ref().vms.len() as spci_vm_count_t
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
-    // Ensure the VM is initialized.
-    if id >= VM_COUNT {
-        return ptr::null_mut();
-    }
-
-    &mut VMS.get_mut()[id as usize]
+    VM_MANAGER
+        .get_mut()
+        .vms
+        .get_mut(id as usize)  // Ensure the VM is initialized.
+        .map(|vm| vm as *mut _)
+        .unwrap_or(ptr::null_mut())
 }
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
