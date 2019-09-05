@@ -34,10 +34,10 @@
 /* The stack to be used by the CPUs. */
 extern char callstacks[MAX_CPUS][STACK_SIZE];
 
-/* State of all supported CPUs. The stack of the first one is initialized. */
-struct cpu cpus[MAX_CPUS] = {
-	{
-		.is_on = 1,
-		.stack_bottom = &callstacks[0][STACK_SIZE],
-	},
+/**
+ * A temporal variable for one-time booting sequence. The booting CPU will
+ * refer this.
+ */
+struct cpu boot_cpu = {
+	.stack_bottom = &callstacks[0][STACK_SIZE],
 };

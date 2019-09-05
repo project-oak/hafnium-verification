@@ -72,7 +72,10 @@ unsafe fn switch_to_primary(
     secondary_state: VCpuStatus,
 ) -> *mut VCpu {
     let primary = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
-    let next = primary.vcpus.get(cpu_index(current.get_inner().cpu)).unwrap();
+    let next = primary
+        .vcpus
+        .get(cpu_index(&*current.get_inner().cpu))
+        .unwrap();
 
     // If the secondary is blocked but has a timer running, sleep until the
     // timer fires rather than indefinitely.
@@ -92,8 +95,7 @@ unsafe fn switch_to_primary(
     // The use of `get_mut_unchecked()` is safe because the currently running pCPU implicitly owns
     // `next`. Notice that `next` is the vCPU of the primary VM that corresponds to the currently
     // running pCPU.
-    next
-        .inner
+    next.inner
         .get_mut_unchecked()
         .regs
         .set_retval(primary_ret.into_raw());
@@ -295,11 +297,7 @@ unsafe fn vcpu_prepare_run(
 
     if (*vcpu.vm).aborting.load(Ordering::Relaxed) {
         if vcpu_inner.state != VCpuStatus::Aborted {
-            dlog!(
-                "Aborting VM {} vCPU {}\n",
-                (*vcpu.vm).id,
-                vcpu_index(vcpu)
-            );
+            dlog!("Aborting VM {} vCPU {}\n", (*vcpu.vm).id, vcpu_index(vcpu));
             vcpu_inner.state = VCpuStatus::Aborted;
         }
         return Err(run_ret);
@@ -389,7 +387,6 @@ pub unsafe extern "C" fn api_vcpu_run(
 
     // The requested VM must exist.
     let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), ret.into_raw());
-
 
     // The requested vcpu must exist.
     let vcpu = ok_or_return!(vm.vcpus.get(vcpu_idx as usize).ok_or(()), ret.into_raw());
@@ -538,7 +535,13 @@ pub unsafe extern "C" fn api_spci_msg_send(
     }
 
     // Ensure the target VM exists.
-    let to = ok_or_return!(VM_MANAGER.get_ref().get(from_msg_replica.target_vm_id).ok_or(()), SpciReturn::InvalidParameters);
+    let to = ok_or_return!(
+        VM_MANAGER
+            .get_ref()
+            .get(from_msg_replica.target_vm_id)
+            .ok_or(()),
+        SpciReturn::InvalidParameters
+    );
 
     // Hf needs to hold the lock on `to` before the mailbox state is checked.
     // The lock on `to` must be held until the information is copied to `to` Rx
