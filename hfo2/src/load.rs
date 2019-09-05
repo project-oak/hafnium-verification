@@ -16,7 +16,6 @@
 
 use core::mem::{self, MaybeUninit};
 use core::ptr;
-use core::slice;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -180,7 +179,7 @@ unsafe fn update_reserved_ranges(
 
     for (before, after) in before.iter().zip(after.iter()) {
         if pa_addr(after.begin) > pa_addr(before.begin) {
-            if (*update).reserved_ranges_count >= MAX_MEM_RANGES {
+            if update.reserved_ranges_count >= MAX_MEM_RANGES {
                 dlog!("Too many reserved ranges after loading secondary VMs.\n");
                 return Err(());
             }
@@ -198,8 +197,8 @@ unsafe fn update_reserved_ranges(
 /// Memory reserved for the VMs is added to the `reserved_ranges` of `update`.
 pub unsafe fn load_secondary(
     hypervisor_ptable: &mut PageTable<Stage1>,
-    cpio: *const MemIter,
-    params: *const BootParams,
+    cpio: &MemIter,
+    params: &BootParams,
     update: &mut BootParamsUpdate,
     ppool: &mut MPool,
 ) -> Result<(), ()> {
@@ -209,8 +208,9 @@ pub unsafe fn load_secondary(
     //  "mem_range arrays must be the same size for memcpy.");
 
     const_assert!(mem::size_of::<MemRange>() * MAX_MEM_RANGES < 500);
-    mem_ranges_available.clone_from_slice(&(*params).mem_ranges);
-    mem_ranges_available.truncate((*params).mem_ranges_count);
+    mem_ranges_available.set_len(MAX_MEM_RANGES);
+    mem_ranges_available.clone_from_slice(&params.mem_ranges);
+    mem_ranges_available.truncate(params.mem_ranges_count);
 
     let primary = vm_find(HF_PRIMARY_VM_ID);
     let mut it = mem::uninitialized();
@@ -329,7 +329,7 @@ pub unsafe fn load_secondary(
     // smaller.
     update_reserved_ranges(
         update,
-        &(*params).mem_ranges[0..(*params).mem_ranges_count],
+        &params.mem_ranges[0..params.mem_ranges_count],
         &mem_ranges_available,
     )
 }
