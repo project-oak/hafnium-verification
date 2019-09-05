@@ -159,12 +159,15 @@ pub unsafe extern "C" fn cpu_main(c: *mut Cpu) -> *mut VCpu {
         panic!("mm_cpu_init failed");
     }
 
-    let vcpu = vm_get_vcpu(vm_find(HF_PRIMARY_VM_ID), cpu_index(c) as spci_vcpu_index_t);
-    let vm = (*vcpu).vm;
-    vcpu_set_cpu(vcpu, c);
+    // TODO(HfO2): primary and vcpu are borrowed exclusively, which is safe but
+    // discouraged. Move this code into one_time_init().
+    let primary = VM_MANAGER.get_mut().get_mut(HF_PRIMARY_VM_ID).unwrap();
+    let vcpu = primary.vcpus.get_mut(cpu_index(c)).unwrap();
+    let vm = vcpu.vm;
+    vcpu.set_cpu(c);
 
     // Reset the registers to give a clean start for the primary's vCPU.
-    (*vcpu)
+    vcpu
         .inner
         .get_mut_unchecked()
         .regs

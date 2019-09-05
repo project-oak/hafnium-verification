@@ -71,11 +71,8 @@ unsafe fn switch_to_primary(
     mut primary_ret: HfVCpuRunReturn,
     secondary_state: VCpuStatus,
 ) -> *mut VCpu {
-    let primary = vm_find(HF_PRIMARY_VM_ID);
-    let next = vm_get_vcpu(
-        primary,
-        cpu_index(current.get_inner().cpu) as spci_vcpu_index_t,
-    );
+    let primary = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
+    let next = primary.vcpus.get(cpu_index(current.get_inner().cpu)).unwrap();
 
     // If the secondary is blocked but has a timer running, sleep until the
     // timer fires rather than indefinitely.
@@ -95,7 +92,7 @@ unsafe fn switch_to_primary(
     // The use of `get_mut_unchecked()` is safe because the currently running pCPU implicitly owns
     // `next`. Notice that `next` is the vCPU of the primary VM that corresponds to the currently
     // running pCPU.
-    (*next)
+    next
         .inner
         .get_mut_unchecked()
         .regs
@@ -104,7 +101,7 @@ unsafe fn switch_to_primary(
     // Mark the current vcpu as waiting.
     current.get_inner_mut().state = secondary_state;
 
-    next
+    next as *const _ as usize as *mut _
 }
 
 /// Returns to the primary vm and signals that the vcpu still has work to do so.
@@ -226,19 +223,14 @@ pub unsafe extern "C" fn api_vcpu_get_count(
     vm_id: spci_vm_id_t,
     current: *const VCpu,
 ) -> spci_vcpu_count_t {
-    let vm;
-
     // Only the primary VM needs to know about vcpus for scheduling.
     if (*(*current).vm).id != HF_PRIMARY_VM_ID {
         return 0;
     }
 
-    vm = vm_find(vm_id);
-    if vm.is_null() {
-        return 0;
-    }
+    let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), 0);
 
-    (*vm).vcpus.len() as spci_vcpu_count_t
+    vm.vcpus.len() as spci_vcpu_count_t
 }
 
 /// This function is called by the architecture-specific context switching
@@ -287,7 +279,7 @@ unsafe fn internal_interrupt_inject(
 ///    `vcpu.execution_lock` has acquired.
 unsafe fn vcpu_prepare_run(
     current: &VCpuExecutionLocked,
-    vcpu: *mut VCpu,
+    vcpu: &VCpu,
     run_ret: HfVCpuRunReturn,
 ) -> Result<VCpuExecutionLocked, HfVCpuRunReturn> {
     let mut vcpu_inner = (*vcpu).inner.try_lock().map_err(|_| {
@@ -301,11 +293,11 @@ unsafe fn vcpu_prepare_run(
         run_ret
     })?;
 
-    if (*(*vcpu).vm).aborting.load(Ordering::Relaxed) {
+    if (*vcpu.vm).aborting.load(Ordering::Relaxed) {
         if vcpu_inner.state != VCpuStatus::Aborted {
             dlog!(
                 "Aborting VM {} vCPU {}\n",
-                (*(*vcpu).vm).id,
+                (*vcpu.vm).id,
                 vcpu_index(vcpu)
             );
             vcpu_inner.state = VCpuStatus::Aborted;
@@ -325,13 +317,13 @@ unsafe fn vcpu_prepare_run(
         // when it is going to be needed. This ensures there are no inter-vCPU
         // dependencies in the common run case meaning the sensitive context
         // switch performance is consistent.
-        VCpuStatus::BlockedMailbox if (*(*vcpu).vm).inner.lock().try_read().is_ok() => {
+        VCpuStatus::BlockedMailbox if (*vcpu.vm).inner.lock().try_read().is_ok() => {
             vcpu_inner.regs.set_retval(SpciReturn::Success as uintreg_t);
         }
 
         // Allow virtual interrupts to be delivered.
         VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-            if (*vcpu).interrupts.lock().is_interrupted() =>
+            if vcpu.interrupts.lock().is_interrupted() =>
         {
             // break;
         }
@@ -396,18 +388,13 @@ pub unsafe extern "C" fn api_vcpu_run(
     }
 
     // The requested VM must exist.
-    let vm = vm_find(vm_id);
-    if vm.is_null() {
-        return ret.into_raw();
-    }
+    let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), ret.into_raw());
+
 
     // The requested vcpu must exist.
-    if vcpu_idx as usize >= (*vm).vcpus.len() {
-        return ret.into_raw();
-    }
+    let vcpu = ok_or_return!(vm.vcpus.get(vcpu_idx as usize).ok_or(()), ret.into_raw());
 
     // Update state if allowed.
-    let vcpu = vm_get_vcpu(vm, vcpu_idx);
     let mut vcpu_locked = match vcpu_prepare_run(&current, vcpu, ret) {
         Ok(locked) => locked,
         Err(ret) => return ret.into_raw(),
@@ -551,10 +538,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     }
 
     // Ensure the target VM exists.
-    let to = vm_find(from_msg_replica.target_vm_id);
-    if to.is_null() {
-        return SpciReturn::InvalidParameters;
-    }
+    let to = ok_or_return!(VM_MANAGER.get_ref().get(from_msg_replica.target_vm_id).ok_or(()), SpciReturn::InvalidParameters);
 
     // Hf needs to hold the lock on `to` before the mailbox state is checked.
     // The lock on `to` must be held until the information is copied to `to` Rx
@@ -617,7 +601,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // fields in message_buffer. The memory area message_buffer must be
         // exclusively owned by Hf so that TOCTOU issues do not arise.
         let ret = spci_msg_handle_architected_message(
-            &ManuallyDrop::new(VmLocked::from_raw(to)),
+            &ManuallyDrop::new(VmLocked::from_raw(to as *const _ as usize as *mut _)),
             &ManuallyDrop::new(VmLocked::from_raw(from)),
             architected_message_replica,
             &from_msg_replica,
@@ -731,10 +715,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
         return -1;
     }
 
-    let vm = vm_find(vm_id);
-    if vm.is_null() {
-        return -1;
-    }
+    let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), -1);
 
     // Check if there are outstanding notifications from given vm.
     let entry = (*vm).inner.lock().fetch_waiter();
@@ -834,18 +815,9 @@ pub unsafe extern "C" fn api_interrupt_inject(
     next: *mut *mut VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let target_vm = vm_find(target_vm_id);
+    let target_vm = ok_or_return!(VM_MANAGER.get_ref().get(target_vm_id).ok_or(()), -1);
 
     if intid >= HF_NUM_INTIDS {
-        return -1;
-    }
-
-    if target_vm.is_null() {
-        return -1;
-    }
-
-    if target_vcpu_idx as usize >= (*target_vm).vcpus.len() {
-        // The requested vcpu must exist.
         return -1;
     }
 
@@ -853,7 +825,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    let target_vcpu = vm_get_vcpu(target_vm, target_vcpu_idx);
+    let target_vcpu = ok_or_return!(target_vm.vcpus.get(target_vcpu_idx as usize).ok_or(()), -1);
 
     dlog!(
         "Injecting IRQ {} for VM {} VCPU {} from VM {} VCPU {}\n",
@@ -1007,12 +979,7 @@ fn share_memory(
     }
 
     // Ensure the target VM exists.
-    let to = unsafe { vm_find(vm_id) };
-    if to.is_null() {
-        return Err(());
-    }
-
-    let to = unsafe { &*to };
+    let to = unsafe { VM_MANAGER.get_ref() }.get(vm_id).ok_or(())?;
 
     let begin = addr;
     let end = ipa_add(addr, size);
