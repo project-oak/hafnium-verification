@@ -15,7 +15,6 @@
  */
 
 use core::mem::{self, MaybeUninit};
-use core::ptr;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -219,7 +218,7 @@ pub unsafe fn load_secondary(
     mem_ranges_available.clone_from_slice(&params.mem_ranges);
     mem_ranges_available.truncate(params.mem_ranges_count);
 
-    let primary = vm_find(HF_PRIMARY_VM_ID);
+    let primary = VM_MANAGER.get_mut().get_mut(HF_PRIMARY_VM_ID).ok_or(())?;
     let mut it = mem::uninitialized();
 
     if !cpio_find_file(cpio, "vms.txt\0".as_ptr(), &mut it) {
@@ -283,34 +282,38 @@ pub unsafe fn load_secondary(
             continue;
         }
 
-        let mut vm = mem::uninitialized();
-        if !vm_init(cpu as spci_vcpu_count_t, ppool, &mut vm) {
-            dlog!("Unable to initialise VM\n");
-            continue;
-        }
+        // TODO(HfO2): This should be rejected by borrowck, IMO. (by defining
+        // primary, VM_MANAGER is borrowed exclusively before.) Maybe unsafe
+        // static mut confused borrowck?
+        let vm = match VM_MANAGER
+            .get_mut()
+            .new_vm(cpu as spci_vcpu_count_t, ppool) {
+            Some(vm) => vm,
+            None => {
+                dlog!("Unable to initialise VM\n");
+                continue;
+            }
+        };
 
-        let mut secondary_entry = mem::uninitialized();
+        let secondary_entry = ipa_from_pa(secondary_mem_begin);
 
         // Grant the VM access to the memory.
-        if !mm_vm_identity_map(
-            &mut (*vm).inner.get_mut_unchecked().ptable,
+        if vm.inner.get_mut().ptable.identity_map(
             secondary_mem_begin,
             secondary_mem_end,
             Mode::R | Mode::W | Mode::X,
-            &mut secondary_entry,
             ppool,
-        ) {
+        ).is_err() {
             dlog!("Unable to initialise memory\n");
             continue;
         }
 
         // Deny the primary VM access to this memory.
-        if !mm_vm_unmap(
-            &mut (*primary).inner.get_mut_unchecked().ptable,
+        if primary.inner.get_mut().ptable.unmap(
             secondary_mem_begin,
             secondary_mem_end,
             ppool,
-        ) {
+        ).is_err() {
             dlog!("Unable to unmap secondary VM from primary VM\n");
             return Err(());
         }
@@ -321,9 +324,8 @@ pub unsafe fn load_secondary(
             pa_addr(secondary_mem_begin)
         );
 
-        let vcpu = vm_get_vcpu(vm, 0);
         vcpu_secondary_reset_and_start(
-            vcpu,
+            &mut vm.vcpus[0],
             secondary_entry,
             pa_difference(secondary_mem_begin, secondary_mem_end) as uintreg_t,
         );
