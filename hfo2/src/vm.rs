@@ -589,6 +589,14 @@ impl VmManager {
 
         Some(&mut self.vms[id])
     }
+
+    pub fn get(&self, id: spci_vm_id_t) -> Option<&Vm> {
+        self.vms.get(id as usize)
+    }
+
+    pub fn get_mut(&mut self, id: spci_vm_id_t) -> Option<&mut Vm> {
+        self.vms.get_mut(id as usize)
+    }
 }
 
 #[no_mangle]
