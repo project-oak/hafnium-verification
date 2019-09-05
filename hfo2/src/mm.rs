@@ -265,7 +265,7 @@ impl Stage for Stage2 {
 
     fn invalidate_tlb(begin: usize, end: usize) {
         if unsafe { MEMORY_MANAGER.get_ref() }
-            .STAGE2_INVALIDATE
+            .stage2_invalidate
             .load(Ordering::Relaxed)
         {
             unsafe {
@@ -1023,10 +1023,10 @@ impl<'s> Into<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
 
 pub struct MemoryManager {
     /// The hypervisor page table.
-    pub HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>>,
+    pub hypervisor_ptable: SpinLock<PageTable<Stage1>>,
 
     /// Is stage2 invalidation enabled?
-    pub STAGE2_INVALIDATE: AtomicBool,
+    pub stage2_invalidate: AtomicBool,
 }
 
 impl MemoryManager {
@@ -1090,8 +1090,8 @@ impl MemoryManager {
         }
 
         Some(Self {
-            HYPERVISOR_PAGE_TABLE: page_table,
-            STAGE2_INVALIDATE: AtomicBool::new(false),
+            hypervisor_ptable: page_table,
+            stage2_invalidate: AtomicBool::new(false),
         })
     }
 }
@@ -1106,7 +1106,7 @@ impl MemoryManager {
 pub unsafe extern "C" fn mm_vm_enable_invalidation() {
     MEMORY_MANAGER
         .get_ref()
-        .STAGE2_INVALIDATE
+        .stage2_invalidate
         .store(true, Ordering::Relaxed);
 }
 
@@ -1251,7 +1251,7 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
     let raw_ptable = MEMORY_MANAGER
         .get_ref()
-        .HYPERVISOR_PAGE_TABLE
+        .hypervisor_ptable
         .get_mut_unchecked()
         .root;
     arch_mm_init(raw_ptable, false)
@@ -1265,7 +1265,7 @@ pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
-    let ptable = &MEMORY_MANAGER.get_ref().HYPERVISOR_PAGE_TABLE;
+    let ptable = &MEMORY_MANAGER.get_ref().hypervisor_ptable;
     ptable.lock().into()
 }
 

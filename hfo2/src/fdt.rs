@@ -89,7 +89,7 @@ struct FdtTokenizer {
 }
 
 const FDT_VERSION: u32 = 17;
-const FDT_MAGIC: u32 = 0xd00dfeed;
+const FDT_MAGIC: u32 = 0xd00d_feed;
 
 impl FdtTokenizer {
     fn new(strs: *const u8, begin: *const u8, end: *const u8) -> Self {
@@ -192,12 +192,12 @@ impl FdtTokenizer {
         }
 
         match self.str() {
-            Some(name) => return Some(name),
+            Some(name) => Some(name),
             None => {
                 // Move cursor to the end so that caller won't get any new
                 // tokens.
                 self.cur = self.end;
-                return None;
+                None
             }
         }
     }
