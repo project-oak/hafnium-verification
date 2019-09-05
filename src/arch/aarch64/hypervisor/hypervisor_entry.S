@@ -23,8 +23,8 @@ image_entry:
 	bl plat_entry
 
 	/* Get pointer to first cpu. */
-	adrp x0, cpus
-	add x0, x0, :lo12:cpus
+	adrp x0, boot_cpu
+	add x0, x0, :lo12:boot_cpu
 
 	/* Set the ID of this cpu from the affinity bits of mpidr. */
 	mrs x30, mpidr_el1

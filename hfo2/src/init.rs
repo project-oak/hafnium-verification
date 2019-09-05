@@ -15,6 +15,7 @@
  */
 
 use core::mem::{self, MaybeUninit};
+use core::slice;
 
 use crate::addr::*;
 use crate::api::*;
@@ -65,10 +66,11 @@ unsafe fn one_time_init() {
 
     let mut hypervisor_ptable = MEMORY_MANAGER.get_ref().hypervisor_ptable.lock();
 
-    let mut params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
+    let params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
         .unwrap_or_else(|| panic!("unable to retrieve boot params"));
 
-    cpu_module_init(&mut params.cpu_ids[0], params.cpu_count);
+    let cpu_manager = cpu_module_init(&params.cpu_ids[..params.cpu_count]);
+    CPU_MANAGER = MaybeUninit::new(cpu_manager);
 
     for i in 0..params.mem_ranges_count {
         dlog!(
@@ -150,7 +152,7 @@ static mut INITED: bool = false;
 pub unsafe extern "C" fn cpu_main(c: *mut Cpu) -> *mut VCpu {
     // Do global one-time initialisation just once. We avoid using atomics by
     // only touching the variable from cpu 0.
-    if cpu_index(c) == 0 && !INITED {
+    if cpu_index(&*c) == 0 && !INITED {
         INITED = true;
         one_time_init();
     }
@@ -162,13 +164,12 @@ pub unsafe extern "C" fn cpu_main(c: *mut Cpu) -> *mut VCpu {
     // TODO(HfO2): primary and vcpu are borrowed exclusively, which is safe but
     // discouraged. Move this code into one_time_init().
     let primary = VM_MANAGER.get_mut().get_mut(HF_PRIMARY_VM_ID).unwrap();
-    let vcpu = primary.vcpus.get_mut(cpu_index(c)).unwrap();
+    let vcpu = primary.vcpus.get_mut(cpu_index(&*c)).unwrap();
     let vm = vcpu.vm;
     vcpu.set_cpu(c);
 
     // Reset the registers to give a clean start for the primary's vCPU.
-    vcpu
-        .inner
+    vcpu.inner
         .get_mut_unchecked()
         .regs
         .reset(true, &*vm, (*c).id);

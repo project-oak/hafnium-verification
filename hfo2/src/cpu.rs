@@ -22,11 +22,13 @@ use crate::addr::*;
 use crate::arch::*;
 use crate::mm::*;
 use crate::page::*;
+use crate::singleton::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
 use crate::vm::*;
-use crate::singleton::*;
+
+use arrayvec::ArrayVec;
 
 /// From inc/hf/arch/cpu.h.
 extern "C" {
@@ -375,6 +377,16 @@ pub struct Cpu {
     is_on: SpinLock<bool>,
 }
 
+impl Cpu {
+    pub fn new(id: cpu_id_t, stack_bottom: usize) -> Self {
+        Self {
+            id,
+            stack_bottom: stack_bottom as *mut _,
+            is_on: SpinLock::new(false),
+        }
+    }
+}
+
 // unsafe impl Sync for Cpu {}
 
 /// The stack to be used by the CPUs.
@@ -390,83 +402,79 @@ static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::
 /// Initializing static variables with pointers in Rust failed here. We left
 /// the initialization code of `cpus` in `src/cpu.c`.
 extern "C" {
-    #[no_mangle]
-    static mut cpus: MaybeUninit<[Cpu; MAX_CPUS]>;
+    static boot_cpu: Cpu;
 }
 
-static mut CPU_COUNT: u32 = 1;
-
-#[no_mangle]
-pub unsafe extern "C" fn cpu_init(_c: *mut Cpu) {
-    // TODO: Assumes that c is zeroed out already.
+pub struct CpuManager {
+    cpus: ArrayVec<[Cpu; MAX_CPUS]>,
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn cpu_module_init(cpu_ids: *mut cpu_id_t, count: usize) {
-    let mut j: u32;
-    let boot_cpu_id: cpu_id_t = cpus.get_ref()[0].id;
-    let mut found_boot_cpu: bool = false;
+impl CpuManager {
+    pub fn new(
+        cpu_ids: &[cpu_id_t],
+        boot_cpu_id: cpu_id_t,
+        stacks: &[[u8; STACK_SIZE]; MAX_CPUS],
+    ) -> Self {
+        arch_cpu_module_init();
+        let mut cpus: ArrayVec<[Cpu; MAX_CPUS]> = ArrayVec::new();
 
-    arch_cpu_module_init();
+        // Initialize boot CPU.
+        let boot_stack = stacks[0].as_ptr() as usize;
+        cpus.push(Cpu::new(boot_cpu_id, boot_stack + STACK_SIZE));
+        cpus[0].id = boot_cpu_id;
+        *cpus[0].is_on.get_mut() = true;
 
-    CPU_COUNT = count as u32;
+        let cpu_ids_iter = cpu_ids.iter().filter(|id| boot_cpu_id != **id);
+        let stacks_iter = stacks.iter().skip(1);
 
-    // Initialize CPUs with the IDs from the configuration passed in. The
-    // CPUs after the boot CPU are initialized in reverse order. The boot
-    // CPU is initialized when it is found or in place of the last CPU if it
-    // is not found.
-    j = CPU_COUNT;
-    for i in 0..CPU_COUNT {
-        let c: *mut Cpu;
-        let id: cpu_id_t = *cpu_ids.offset(i as isize);
-
-        if found_boot_cpu || id != boot_cpu_id {
-            j -= 1;
-            c = &mut cpus.get_mut()[j as usize];
-        } else {
-            found_boot_cpu = true;
-            c = &mut cpus.get_mut()[0];
+        for (cpu_id, stack) in cpu_ids_iter.zip(stacks_iter) {
+            cpus.push(Cpu::new(*cpu_id, stack.as_ptr() as usize + STACK_SIZE));
         }
 
-        cpu_init(c);
-        (*c).id = id;
-        {
-            let callstacks_i = callstacks.get_mut()[i as usize].as_mut_ptr();
-            (*c).stack_bottom = &mut *callstacks_i.add(STACK_SIZE) as *mut _ as _;
-
-            // Note: referencing callstacks.get_mut()[i as usize][STACK_SIZE] directly
-            // causes 'index out of bounds' error on compile time.
-        }
+        Self { cpus }
     }
 
-    if !found_boot_cpu {
-        // Boot CPU was initialized but with wrong ID.
-        dlog!("Boot CPU's ID not found in config.");
-        cpus.get_mut()[0].id = boot_cpu_id;
+    pub unsafe fn cpu_index(&self, c: &Cpu) -> usize {
+        (c as *const Cpu).offset_from(self.cpus.as_ptr()) as usize
+    }
+
+    pub unsafe fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
+        let prev = mem::replace::<bool>(&mut c.is_on.lock(), true);
+
+        if !prev {
+            let vm = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
+            let vcpu = vm.vcpus.get(self.cpu_index(c)).unwrap();
+
+            vcpu.inner.lock().on(entry, arg);
+        }
+
+        prev
+    }
+
+    pub fn cpu_find(&self, id: cpu_id_t) -> Option<&Cpu> {
+        for cpu in self.cpus.iter() {
+            if cpu.id == id {
+                return Some(cpu);
+            }
+        }
+
+        None
     }
 }
 
+pub fn cpu_module_init(cpu_ids: &[cpu_id_t]) -> CpuManager {
+    unsafe { CpuManager::new(cpu_ids, boot_cpu.id, callstacks.get_ref()) }
+}
+
 #[no_mangle]
-pub unsafe extern "C" fn cpu_index(c: *mut Cpu) -> usize {
-    c.offset_from(cpus.get_ref().as_ptr()) as usize
+pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
+    CPU_MANAGER.get_ref().cpu_index(&*c)
 }
 
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
-    let prev: bool;
-    let mut is_on = (*c).is_on.lock();
-    prev = *is_on;
-    *is_on = true;
-
-    if !prev {
-        let vm = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
-        let vcpu = vm.vcpus.get(cpu_index(c)).unwrap();
-
-        vcpu.inner.lock().on(entry, arg);
-    }
-
-    prev
+    CPU_MANAGER.get_ref().cpu_on(&*c, entry, arg)
 }
 
 /// Prepares the CPU for turning itself off.
@@ -478,13 +486,11 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 /// Searches for a CPU based on its id.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
-    for i in 0usize..CPU_COUNT as usize {
-        if cpus.get_ref()[i].id == id {
-            return &mut cpus.get_mut()[i];
-        }
-    }
-
-    ptr::null_mut()
+    CPU_MANAGER
+        .get_ref()
+        .cpu_find(id)
+        .map(|cpu| cpu as *const _ as usize as *mut _)
+        .unwrap_or(ptr::null_mut())
 }
 
 /// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
@@ -513,13 +519,6 @@ pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecuti
 pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
     drop(ptr::read(locked));
     (*locked).vcpu = ptr::null_mut();
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn vcpu_init(vcpu: *mut VCpu, vm: *mut Vm) {
-    memset_s(vcpu as _, mem::size_of::<VCpu>(), 0, mem::size_of::<VCpu>());
-    (*vcpu).vm = vm;
-    (*vcpu).inner.get_mut_unchecked().state = VCpuStatus::Off;
 }
 
 /// Initialise the registers for the given vCPU and set the state to
