@@ -15,7 +15,6 @@
  */
 
 use core::mem;
-use core::mem::MaybeUninit;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::str;
@@ -604,7 +603,7 @@ pub unsafe extern "C" fn vm_init(
     ppool: *mut MPool,
     new_vm: *mut *mut Vm,
 ) -> bool {
-    match VM_MANAGER.get_mut().new_vm(vcpu_count, &mut *ppool) {
+    match VM_MANAGER.get_mut().new_vm(vcpu_count, &*ppool) {
         Some(vm) => {
             *new_vm = vm as *mut _;
             true
@@ -623,7 +622,7 @@ pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
     VM_MANAGER
         .get_mut()
         .vms
-        .get_mut(id as usize)  // Ensure the VM is initialized.
+        .get_mut(id as usize) // Ensure the VM is initialized.
         .map(|vm| vm as *mut _)
         .unwrap_or(ptr::null_mut())
 }

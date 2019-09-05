@@ -22,7 +22,6 @@
 
 #include "vmapi/hf/call.h"
 
-void api_init(struct mpool *ppool);
 spci_vm_id_t api_vm_get_id(const struct vcpu *current);
 spci_vm_count_t api_vm_get_count(void);
 spci_vcpu_count_t api_vcpu_get_count(spci_vm_id_t vm_id,

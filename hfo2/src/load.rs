@@ -30,7 +30,6 @@ use crate::singleton::*;
 use crate::std::*;
 use crate::types::*;
 use crate::utils::*;
-use crate::vm::*;
 
 use arrayvec::ArrayVec;
 
@@ -102,48 +101,46 @@ pub unsafe fn load_primary(
 
     let initrd = initrd.assume_init();
 
-    {
-        let vm = VM_MANAGER
-            .get_mut()
-            .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
-            .ok_or_else(|| {
-                dlog!("Unable to initialise primary vm\n");
-                (())
-            })?;
+    let vm = VM_MANAGER
+        .get_mut()
+        .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
+        .ok_or_else(|| {
+            dlog!("Unable to initialise primary vm\n");
+            (())
+        })?;
 
-        if vm.id != HF_PRIMARY_VM_ID {
-            dlog!("Primary vm was not given correct id\n");
-            return Err(());
-        }
-
-        // Map the 1TB of memory.
-        // TODO: We should do a whitelist rather than blacklist.
-        if vm
-            .inner
-            .get_mut()
-            .ptable
-            .identity_map(
-                pa_init(0),
-                pa_init(1024usize * 1024 * 1024 * 1024),
-                Mode::R | Mode::W | Mode::X,
-                ppool,
-            )
-            .is_err()
-        {
-            dlog!("Unable to initialise memory for primary vm\n");
-            return Err(());
-        }
-
-        if !mm_vm_unmap_hypervisor(&mut (*vm).inner.get_mut_unchecked().ptable, ppool) {
-            dlog!("Unable to unmap hypervisor from primary vm\n");
-            return Err(());
-        }
-
-        vm.vcpus[0]
-            .inner
-            .lock() // TODO(HfO2): We can safely use get_mut() here
-            .on(ipa_from_pa(primary_begin), kernel_arg);
+    if vm.id != HF_PRIMARY_VM_ID {
+        dlog!("Primary vm was not given correct id\n");
+        return Err(());
     }
+
+    // Map the 1TB of memory.
+    // TODO: We should do a whitelist rather than blacklist.
+    if vm
+        .inner
+        .get_mut()
+        .ptable
+        .identity_map(
+            pa_init(0),
+            pa_init(1024usize * 1024 * 1024 * 1024),
+            Mode::R | Mode::W | Mode::X,
+            ppool,
+        )
+        .is_err()
+    {
+        dlog!("Unable to initialise memory for primary vm\n");
+        return Err(());
+    }
+
+    if !mm_vm_unmap_hypervisor(&mut (*vm).inner.get_mut_unchecked().ptable, ppool) {
+        dlog!("Unable to unmap hypervisor from primary vm\n");
+        return Err(());
+    }
+
+    vm.vcpus[0]
+        .inner
+        .lock() // TODO(HfO2): We can safely use get_mut() here
+        .on(ipa_from_pa(primary_begin), kernel_arg);
 
     Ok(initrd)
 }
@@ -285,9 +282,7 @@ pub unsafe fn load_secondary(
         // TODO(HfO2): This should be rejected by borrowck, IMO. (by defining
         // primary, VM_MANAGER is borrowed exclusively before.) Maybe unsafe
         // static mut confused borrowck?
-        let vm = match VM_MANAGER
-            .get_mut()
-            .new_vm(cpu as spci_vcpu_count_t, ppool) {
+        let vm = match VM_MANAGER.get_mut().new_vm(cpu as spci_vcpu_count_t, ppool) {
             Some(vm) => vm,
             None => {
                 dlog!("Unable to initialise VM\n");
@@ -298,22 +293,30 @@ pub unsafe fn load_secondary(
         let secondary_entry = ipa_from_pa(secondary_mem_begin);
 
         // Grant the VM access to the memory.
-        if vm.inner.get_mut().ptable.identity_map(
-            secondary_mem_begin,
-            secondary_mem_end,
-            Mode::R | Mode::W | Mode::X,
-            ppool,
-        ).is_err() {
+        if vm
+            .inner
+            .get_mut()
+            .ptable
+            .identity_map(
+                secondary_mem_begin,
+                secondary_mem_end,
+                Mode::R | Mode::W | Mode::X,
+                ppool,
+            )
+            .is_err()
+        {
             dlog!("Unable to initialise memory\n");
             continue;
         }
 
         // Deny the primary VM access to this memory.
-        if primary.inner.get_mut().ptable.unmap(
-            secondary_mem_begin,
-            secondary_mem_end,
-            ppool,
-        ).is_err() {
+        if primary
+            .inner
+            .get_mut()
+            .ptable
+            .unmap(secondary_mem_begin, secondary_mem_end, ppool)
+            .is_err()
+        {
             dlog!("Unable to unmap secondary VM from primary VM\n");
             return Err(());
         }

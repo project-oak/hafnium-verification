@@ -48,17 +48,17 @@ use crate::vm::*;
 // of a page.
 const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
-/// A global page pool for sharing memories. Its mutability is needed only for
-/// initialization.
-static mut API_PAGE_POOL: MaybeUninit<MPool> = MaybeUninit::uninit();
+pub struct ApiManager {
+    /// A global page pool for sharing memories.
+    ppool: MPool,
+}
 
-/// Initialises the API page pool by taking ownership of the contents of the
-/// given page pool.
-/// TODO(HfO2): The ownership of `ppool` is actually moved from `one_time_init`
-/// to here. Refactor this function like `Api::new(ppool: MPool) -> Api`. (#31)
-#[no_mangle]
-pub unsafe extern "C" fn api_init(ppool: *const MPool) {
-    API_PAGE_POOL = MaybeUninit::new(MPool::new_from(&*ppool));
+impl ApiManager {
+    /// Initialises the API page pool by taking ownership of the contents of the
+    /// given page pool.
+    pub fn new(ppool: MPool) -> Self {
+        Self { ppool }
+    }
 }
 
 /// Switches the physical CPU back to the corresponding vcpu of the primary VM.
@@ -495,7 +495,7 @@ pub unsafe extern "C" fn api_vm_configure(
     //       to keep a single unlock point.
     let mut vm_inner = (*vm).inner.lock();
     if vm_inner
-        .configure(send, recv, API_PAGE_POOL.get_ref())
+        .configure(send, recv, &API_MANAGER.get_ref().ppool)
         .is_err()
     {
         return -1;
@@ -926,7 +926,7 @@ pub fn spci_share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let local_page_pool: MPool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
+    let local_page_pool: MPool = MPool::new_with_fallback(unsafe { &API_MANAGER.get_ref().ppool });
 
     // Obtain the single contiguous set of pages from the memory_region.
     // TODO: Add support for multiple constituent regions.
@@ -1037,7 +1037,7 @@ fn share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let local_page_pool = MPool::new_with_fallback(unsafe { API_PAGE_POOL.get_ref() });
+    let local_page_pool = MPool::new_with_fallback(unsafe { &API_MANAGER.get_ref().ppool });
 
     let (mut from_inner, mut to_inner) = SpinLock::lock_both(&(*from).inner, &(*to).inner);
 

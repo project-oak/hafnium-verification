@@ -202,7 +202,12 @@ impl ArchRegs {
         let mut ret;
         unsafe {
             ret = MaybeUninit::uninit().assume_init();
-            memset_s(&mut ret as *mut _ as usize as *mut _, mem::size_of_val(&ret), 0, mem::size_of_val(&ret));
+            memset_s(
+                &mut ret as *mut _ as usize as *mut _,
+                mem::size_of_val(&ret),
+                0,
+                mem::size_of_val(&ret),
+            );
         }
         ret
     }
