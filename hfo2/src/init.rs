@@ -63,7 +63,7 @@ unsafe fn one_time_init() {
     dlog_enable_lock();
     mpool_enable_locks();
 
-    let mut hypervisor_ptable = MEMORY_MANAGER.get_ref().HYPERVISOR_PAGE_TABLE.lock();
+    let mut hypervisor_ptable = MEMORY_MANAGER.get_ref().hypervisor_ptable.lock();
 
     let mut params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
         .unwrap_or_else(|| panic!("unable to retrieve boot params"));

@@ -33,6 +33,8 @@ use crate::types::*;
 use crate::utils::*;
 use crate::vm::*;
 
+use arrayvec::ArrayVec;
+
 /// Copies data to an unmapped location by mapping it for write, copying the
 /// data, then unmapping it.
 ///
@@ -58,7 +60,7 @@ unsafe fn copy_to_unmapped(
     memcpy_s(pa_addr(to) as *mut _, size, from, size);
     arch_mm_write_back_dcache(pa_addr(to), size);
 
-    hypervisor_ptable.unmap(to, to_end, ppool);
+    hypervisor_ptable.unmap(to, to_end, ppool).unwrap();
 
     true
 }
@@ -144,29 +146,24 @@ pub unsafe fn load_primary(
 /// Try to find a memory range of the given size within the given ranges, and
 /// remove it from them. Return true on success, or false if no large enough
 /// contiguous range is found.
-unsafe fn carve_out_mem_range(
-    mem_ranges: *mut MemRange,
-    mem_ranges_count: usize,
+fn carve_out_mem_range(
+    mem_ranges: &mut [MemRange],
     size_to_find: u64,
-    found_begin: *mut paddr_t,
-    found_end: *mut paddr_t,
-) -> bool {
+) -> Result<(paddr_t, paddr_t), ()> {
     // TODO(b/116191358): Consider being cleverer about how we pack VMs
     // together, with a non-greedy algorithm.
-    for i in 0..mem_ranges_count {
-        if size_to_find
-            <= pa_difference((*mem_ranges.add(i)).begin, (*mem_ranges.add(i)).end) as u64
-        {
+    for mem_range in mem_ranges.iter_mut() {
+        if size_to_find <= pa_difference(mem_range.begin, mem_range.end) as u64 {
             // This range is big enough, take some of it from the end and reduce
             // its size accordingly.
-            *found_end = (*mem_ranges.add(i)).end;
-            *found_begin = pa_init(pa_addr((*mem_ranges.add(i)).end) - size_to_find as usize);
-            (*mem_ranges.add(i)).end = *found_begin;
-            return true;
+            let found_end = mem_range.end;
+            let found_begin = pa_init(pa_addr(mem_range.end) - size_to_find as usize);
+            mem_range.end = found_begin;
+            return Ok((found_begin, found_end));
         }
     }
 
-    false
+    Err(())
 }
 
 /// Given arrays of memory ranges before and after memory was removed for
@@ -175,13 +172,11 @@ unsafe fn carve_out_mem_range(
 /// MAX_MEM_RANGES reserved ranges after adding the new ones.
 /// `before` and `after` must be arrays of exactly `mem_ranges_count` elements.
 unsafe fn update_reserved_ranges(
-    update: *mut BootParamsUpdate,
-    before: *const MemRange,
-    after: *const MemRange,
-    mem_ranges_count: usize,
+    update: &mut BootParamsUpdate,
+    before: &[MemRange],
+    after: &[MemRange],
 ) -> Result<(), ()> {
-    let after = slice::from_raw_parts(after, mem_ranges_count);
-    let before = slice::from_raw_parts(before, mem_ranges_count);
+    assert_eq!(before.len(), after.len());
 
     for (before, after) in before.iter().zip(after.iter()) {
         if pa_addr(after.begin) > pa_addr(before.begin) {
@@ -190,9 +185,9 @@ unsafe fn update_reserved_ranges(
                 return Err(());
             }
 
-            (*update).reserved_ranges[(*update).reserved_ranges_count].begin = after.end;
-            (*update).reserved_ranges[(*update).reserved_ranges_count].end = before.end;
-            (*update).reserved_ranges_count += 1;
+            update.reserved_ranges[update.reserved_ranges_count].begin = after.end;
+            update.reserved_ranges[update.reserved_ranges_count].end = before.end;
+            update.reserved_ranges_count += 1;
         }
     }
 
@@ -205,16 +200,17 @@ pub unsafe fn load_secondary(
     hypervisor_ptable: &mut PageTable<Stage1>,
     cpio: *const MemIter,
     params: *const BootParams,
-    update: *mut BootParamsUpdate,
+    update: &mut BootParamsUpdate,
     ppool: &mut MPool,
 ) -> Result<(), ()> {
-    let mut mem_ranges_available: [MemRange; MAX_MEM_RANGES] = mem::uninitialized();
+    let mut mem_ranges_available: ArrayVec<[MemRange; MAX_MEM_RANGES]> = ArrayVec::new();
     // static_assert(
     //  sizeof(mem_ranges_available) == sizeof(params->mem_ranges),
     //  "mem_range arrays must be the same size for memcpy.");
 
     const_assert!(mem::size_of::<MemRange>() * MAX_MEM_RANGES < 500);
     mem_ranges_available.clone_from_slice(&(*params).mem_ranges);
+    mem_ranges_available.truncate((*params).mem_ranges_count);
 
     let primary = vm_find(HF_PRIMARY_VM_ID);
     let mut it = mem::uninitialized();
@@ -225,9 +221,8 @@ pub unsafe fn load_secondary(
     }
 
     // Round the last addresses down to the page size.
-    for i in 0..(*params).mem_ranges_count {
-        mem_ranges_available[i].end =
-            pa_init(round_down(pa_addr(mem_ranges_available[i].end), PAGE_SIZE));
+    for mem_range in mem_ranges_available.iter_mut() {
+        mem_range.end = pa_init(round_down(pa_addr(mem_range.end), PAGE_SIZE));
     }
 
     let mut mem = mem::uninitialized();
@@ -261,19 +256,14 @@ pub unsafe fn load_secondary(
             continue;
         }
 
-        let mut secondary_mem_begin = mem::uninitialized();
-        let mut secondary_mem_end = mem::uninitialized();
-
-        if !carve_out_mem_range(
-            mem_ranges_available.as_mut_ptr(),
-            (*params).mem_ranges_count,
-            mem,
-            &mut secondary_mem_begin,
-            &mut secondary_mem_end,
-        ) {
-            dlog!("Not enough memory ({} bytes)\n", mem);
-            continue;
-        }
+        let (secondary_mem_begin, secondary_mem_end) =
+            match carve_out_mem_range(&mut mem_ranges_available, mem as u64) {
+                Ok(range) => range,
+                Err(_) => {
+                    dlog!("Not enough memory ({} bytes)\n", mem);
+                    continue;
+                }
+            };
 
         if !copy_to_unmapped(
             hypervisor_ptable,
@@ -339,8 +329,7 @@ pub unsafe fn load_secondary(
     // smaller.
     update_reserved_ranges(
         update,
-        (*params).mem_ranges.as_ptr(),
-        mem_ranges_available.as_ptr(),
-        (*params).mem_ranges_count,
+        &(*params).mem_ranges[0..(*params).mem_ranges_count],
+        &mem_ranges_available,
     )
 }
