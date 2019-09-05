@@ -31,11 +31,11 @@ use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
+use crate::singleton::*;
 use crate::spci::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
-use crate::singleton::*;
 
 const LOG_BUFFER_SIZE: usize = 256;
 
@@ -157,7 +157,9 @@ impl Mailbox {
     ) -> Result<(), ()> {
         // TODO(HfO2): Acquring the singleton here is not recommended. Get the
         // hypervisor ptable from callee (API module.)
-        let mut hypervisor_ptable = unsafe { MEMORY_MANAGER.get_ref() }.HYPERVISOR_PAGE_TABLE.lock();
+        let mut hypervisor_ptable = unsafe { MEMORY_MANAGER.get_ref() }
+            .HYPERVISOR_PAGE_TABLE
+            .lock();
         let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
 
         // Map the send page as read-only in the hypervisor address space.

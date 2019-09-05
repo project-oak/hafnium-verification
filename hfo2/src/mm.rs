@@ -39,10 +39,10 @@ use crate::arch::*;
 use crate::layout::*;
 use crate::mpool::MPool;
 use crate::page::*;
+use crate::singleton::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
-use crate::singleton::*;
 
 extern "C" {
     fn arch_mm_absent_pte(level: u8) -> pte_t;
@@ -264,7 +264,10 @@ impl Stage for Stage2 {
     }
 
     fn invalidate_tlb(begin: usize, end: usize) {
-        if unsafe { MEMORY_MANAGER.get_ref() }.STAGE2_INVALIDATE.load(Ordering::Relaxed) {
+        if unsafe { MEMORY_MANAGER.get_ref() }
+            .STAGE2_INVALIDATE
+            .load(Ordering::Relaxed)
+        {
             unsafe {
                 arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
             }
@@ -1044,8 +1047,9 @@ impl MemoryManager {
             pa_addr(unsafe { layout_data_end() })
         );
 
-        let page_table =
-            PageTable::new(mpool).map_err(|_| dlog!("Unable to allocate memory for page table.\n")).ok()?;
+        let page_table = PageTable::new(mpool)
+            .map_err(|_| dlog!("Unable to allocate memory for page table.\n"))
+            .ok()?;
 
         // A fake lock.
         // TODO(HfO2): IMO, mm_stage1_locked is better to hold a reference to
@@ -1057,7 +1061,7 @@ impl MemoryManager {
         let stage1_locked = mm_stage1_locked {
             plock: &page_table as *const _ as usize,
         };
-        
+
         unsafe {
             // Let console driver map pages for itself.
             plat_console_mm_init(stage1_locked, mpool);
@@ -1100,7 +1104,10 @@ impl MemoryManager {
 /// This function should not be invoked concurrently with other memory management functions.
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_enable_invalidation() {
-    MEMORY_MANAGER.get_ref().STAGE2_INVALIDATE.store(true, Ordering::Relaxed);
+    MEMORY_MANAGER
+        .get_ref()
+        .STAGE2_INVALIDATE
+        .store(true, Ordering::Relaxed);
 }
 
 #[no_mangle]
@@ -1242,7 +1249,11 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
-    let raw_ptable = MEMORY_MANAGER.get_ref().HYPERVISOR_PAGE_TABLE.get_mut_unchecked().root;
+    let raw_ptable = MEMORY_MANAGER
+        .get_ref()
+        .HYPERVISOR_PAGE_TABLE
+        .get_mut_unchecked()
+        .root;
     arch_mm_init(raw_ptable, false)
 }
 
