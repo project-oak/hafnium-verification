@@ -49,7 +49,6 @@ impl FdtNode {
     }
 
     unsafe fn write_number(&mut self, name: *const u8, value: u64) -> Result<(), ()> {
-
         let (data, size) = self.read_property(name)?;
 
         match size {
@@ -117,11 +116,15 @@ impl FdtNode {
                 .read_property("device_type\0".as_ptr())
                 .ok()
                 .filter(|(_, size)| *size == "cpu\0".len() as u32)
-                .filter(|(data, _)| memcmp_rs(
-                    *data as usize as *const _,
-                    "cpu\0".as_ptr() as usize as *const _,
-                    "cpu\0".len(),
-                ) == 0).is_none() {
+                .filter(|(data, _)| {
+                    memcmp_rs(
+                        *data as usize as *const _,
+                        "cpu\0".as_ptr() as usize as *const _,
+                        "cpu\0".len(),
+                    ) == 0
+                })
+                .is_none()
+            {
                 if node.next_sibling().is_none() {
                     break;
                 } else {
@@ -129,16 +132,16 @@ impl FdtNode {
                 }
             }
 
-            let (mut data, mut size) = if let Ok((data, size)) = node.read_property("reg\0".as_ptr())
-            {
-                (data, size)
-            } else {
-                if node.next_sibling().is_none() {
-                    break;
+            let (mut data, mut size) =
+                if let Ok((data, size)) = node.read_property("reg\0".as_ptr()) {
+                    (data, size)
                 } else {
-                    continue;
-                }
-            };
+                    if node.next_sibling().is_none() {
+                        break;
+                    } else {
+                        continue;
+                    }
+                };
 
             // Get all entries for this CPU.
             while size as usize >= address_size {
@@ -147,8 +150,7 @@ impl FdtNode {
                     return None;
                 }
 
-                *cpu_ids.add(*cpu_count) =
-                    convert_number(data, address_size as u32) as cpu_id_t;
+                *cpu_ids.add(*cpu_count) = convert_number(data, address_size as u32) as cpu_id_t;
                 *cpu_count += 1;
 
                 size -= address_size as u32;
@@ -189,32 +191,36 @@ impl FdtNode {
                 .read_property("device_type\0".as_ptr())
                 .ok()
                 .filter(|(_, size)| *size as usize == "memory\0".len())
-                .filter(|(data, _)| memcmp_rs(
-                    *data as usize as *const _,
-                    "memory\0".as_ptr() as usize as *const _,
-                    "memory\0".len(),
-                ) == 0).is_none() {
+                .filter(|(data, _)| {
+                    memcmp_rs(
+                        *data as usize as *const _,
+                        "memory\0".as_ptr() as usize as *const _,
+                        "memory\0".len(),
+                    ) == 0
+                })
+                .is_none()
+            {
                 if node.next_sibling().is_none() {
                     break;
                 } else {
                     continue;
                 }
             }
-            let (mut data, mut size) = if let Ok((data, size)) = node.read_property("reg\0".as_ptr()) {
-                (data, size)
-            } else {
-                if node.next_sibling().is_none() {
-                    break;
+            let (mut data, mut size) =
+                if let Ok((data, size)) = node.read_property("reg\0".as_ptr()) {
+                    (data, size)
                 } else {
-                    continue;
-                }
-            };
+                    if node.next_sibling().is_none() {
+                        break;
+                    } else {
+                        continue;
+                    }
+                };
 
             // Traverse all memory ranges within this node.
             while size as usize >= entry_size {
                 let addr = convert_number(data, address_size as u32) as usize;
-                let len =
-                    convert_number(data.add(address_size), size_size as u32) as usize;
+                let len = convert_number(data.add(address_size), size_size as u32) as usize;
 
                 if mem_range_index < MAX_MEM_RANGES {
                     p.mem_ranges[mem_range_index].begin = pa_init(addr);
@@ -383,15 +389,21 @@ pub unsafe fn patch(
     }
 
     // Patch FDT to point to new ramdisk.
-    if node.write_number(
-        "linux,initrd-start\0".as_ptr(),
-        pa_addr(p.initrd_begin) as u64,
-    ).is_err() {
+    if node
+        .write_number(
+            "linux,initrd-start\0".as_ptr(),
+            pa_addr(p.initrd_begin) as u64,
+        )
+        .is_err()
+    {
         dlog!("Unable to write linux,initrd-start\n");
         return Err(());
     }
 
-    if node.write_number("linux,initrd-end\0".as_ptr(), pa_addr(p.initrd_end) as u64).is_err() {
+    if node
+        .write_number("linux,initrd-end\0".as_ptr(), pa_addr(p.initrd_end) as u64)
+        .is_err()
+    {
         dlog!("Unable to write linux,initrd-end\n");
         return Err(());
     }

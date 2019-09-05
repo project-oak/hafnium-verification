@@ -34,6 +34,7 @@ use crate::std::*;
 use crate::types::*;
 use crate::utils::*;
 use crate::vm::*;
+use crate::singleton::*;
 
 // To eliminate the risk of deadlocks, we define a partial order for the acquisition of locks held
 // concurrently by the same physical CPU. Our current ordering requirements are as follows:
@@ -868,7 +869,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
 /// Clears a region of physical memory by overwriting it with zeros. The data is
 /// flushed from the cache so the memory has been cleared across the system.
 fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
-    let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
+    let mut hypervisor_ptable = unsafe { MEMORY_MANAGER.get_ref() }.HYPERVISOR_PAGE_TABLE.lock();
     let size = pa_difference(begin, end);
     let region = pa_addr(begin);
 

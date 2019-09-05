@@ -56,6 +56,7 @@ mod mm;
 mod mpool;
 mod page;
 mod panic;
+mod singleton;
 mod slist;
 mod spci;
 mod spci_architected_message;

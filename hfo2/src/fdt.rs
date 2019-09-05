@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
+use core::convert::{TryFrom, TryInto};
 use core::mem;
 use core::ptr;
 use core::slice;
 use core::str;
-use core::convert::{TryFrom, TryInto};
 
 use crate::std::*;
 use crate::utils::*;
@@ -258,10 +258,7 @@ impl FdtNode {
         })
     }
 
-    pub unsafe fn read_property(
-        &self,
-        name: *const u8,
-    ) -> Result<(*const u8, u32), ()> {
+    pub unsafe fn read_property(&self, name: *const u8) -> Result<(*const u8, u32), ()> {
         let mut t = FdtTokenizer::new(self.strs, self.begin, self.end);
         while let Some((prop_name, buf, size)) = t.next_property() {
             if strcmp(prop_name, name) == 0 {
@@ -350,11 +347,7 @@ impl FdtHeader {
                         asciz_to_utf8(name)
                     );
                     for i in 0..size as usize {
-                        dlog!(
-                            "{}{:02x}",
-                            if i == 0 { "" } else { " " },
-                            *buf.add(i)
-                        );
+                        dlog!("{}{:02x}", if i == 0 { "" } else { " " }, *buf.add(i));
                     }
                     dlog!(")\n");
                 }
