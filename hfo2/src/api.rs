@@ -238,7 +238,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
         return 0;
     }
 
-    (*vm).vcpu_count
+    (*vm).vcpus.len() as spci_vcpu_count_t
 }
 
 /// This function is called by the architecture-specific context switching
@@ -402,7 +402,7 @@ pub unsafe extern "C" fn api_vcpu_run(
     }
 
     // The requested vcpu must exist.
-    if vcpu_idx >= (*vm).vcpu_count {
+    if vcpu_idx as usize >= (*vm).vcpus.len() {
         return ret.into_raw();
     }
 
@@ -844,7 +844,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    if target_vcpu_idx >= (*target_vm).vcpu_count {
+    if target_vcpu_idx as usize >= (*target_vm).vcpus.len() {
         // The requested vcpu must exist.
         return -1;
     }

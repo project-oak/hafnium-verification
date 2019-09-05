@@ -464,7 +464,6 @@ impl VmInner {
 
 pub struct Vm {
     pub id: spci_vm_id_t,
-    pub vcpu_count: spci_vcpu_count_t,
 
     /// VCpus of this vm.
     /// Note: This field is regarded as a kind of mutable states of Vm, but is
@@ -472,7 +471,7 @@ pub struct Vm {
     ///   1. Mutable inner fields are contained in VCpuState.
     ///   2. VCpuState has higher lock order than one of Vm. It is nonsense to
     ///      lock VmInner to acquire VCpuState.
-    pub vcpus: [VCpu; MAX_CPUS],
+    pub vcpus: ArrayVec<[VCpu; MAX_CPUS]>,
 
     /// See api.c for the partial ordering on locks.
     pub inner: SpinLock<VmInner>,
@@ -487,14 +486,14 @@ impl Vm {
         ppool: &MPool,
     ) -> Result<(), ()> {
         self.id = id;
-        self.vcpu_count = vcpu_count;
+        self.vcpus = ArrayVec::new();
         self.aborting = AtomicBool::new(false);
         unsafe {
             let self_ptr = self as *mut _;
-            self.inner.get_mut().init(self_ptr, ppool);
+            self.inner.get_mut().init(self_ptr, ppool)?;
 
-            for i in 0..vcpu_count {
-                vcpu_init(vm_get_vcpu(self, i), self);
+            for _ in 0..vcpu_count {
+                self.vcpus.push(VCpu::new(self_ptr));
             }
         }
         Ok(())
@@ -648,7 +647,7 @@ pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
 /// This assumes the index is valid, i.e. less than vm->vcpu_count.
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_vcpu(vm: *mut Vm, vcpu_index: spci_vcpu_index_t) -> *mut VCpu {
-    assert!(vcpu_index < (*vm).vcpu_count);
+    assert!((vcpu_index as usize) < (*vm).vcpus.len());
     &mut (*vm).vcpus[vcpu_index as usize]
 }
 
@@ -669,5 +668,5 @@ pub unsafe extern "C" fn vm_get_arch(vm: *mut Vm) -> *mut ArchVm {
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_vcpu_count(vm: *const Vm) -> spci_vcpu_count_t {
-    (*vm).vcpu_count
+    (*vm).vcpus.len() as spci_vcpu_count_t
 }

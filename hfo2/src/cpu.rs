@@ -97,6 +97,13 @@ pub struct Interrupts {
 }
 
 impl Interrupts {
+    pub fn new() -> Self {
+        Self {
+            enabled: [0; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
+            pending: [0; HF_NUM_INTIDS as usize / INTERRUPT_REGISTER_BITS],
+            enabled_and_pending_count: 0,
+        }
+    }
     pub fn id_to_index(intid: intid_t) -> Result<(usize, u32), ()> {
         if intid >= HF_NUM_INTIDS {
             return Err(());
@@ -191,6 +198,15 @@ impl Interrupts {
 }
 
 impl ArchRegs {
+    pub fn new() -> Self {
+        let mut ret;
+        unsafe {
+            ret = MaybeUninit::uninit().assume_init();
+            memset_s(&mut ret as *mut _ as usize as *mut _, mem::size_of_val(&ret), 0, mem::size_of_val(&ret));
+        }
+        ret
+    }
+
     /// Reset the register values other than the PC and argument which are set
     /// with `arch_regs_set_pc_arg()`.
     pub fn reset(&mut self, is_primary: bool, vm: &Vm, vcpu_id: cpu_id_t) {
@@ -243,6 +259,14 @@ pub struct VCpuInner {
 }
 
 impl VCpuInner {
+    pub fn new() -> Self {
+        Self {
+            state: VCpuStatus::Off,
+            cpu: ptr::null_mut(),
+            regs: ArchRegs::new(),
+        }
+    }
+
     /// Initialise the registers for the given vCPU and set the state to
     /// VCpuStatus::Ready. The caller must hold the vCPU execution lock while
     /// calling this.
@@ -268,6 +292,16 @@ pub struct VCpu {
     /// If a vCPU is running, its lock is logically held by the running pCPU.
     pub inner: SpinLock<VCpuInner>,
     pub interrupts: SpinLock<Interrupts>,
+}
+
+impl VCpu {
+    pub fn new(vm: *mut Vm) -> Self {
+        Self {
+            vm,
+            inner: SpinLock::new(VCpuInner::new()),
+            interrupts: SpinLock::new(Interrupts::new()),
+        }
+    }
 }
 
 /// Encapsulates a vCPU whose lock is held.
