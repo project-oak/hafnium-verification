@@ -33,5 +33,7 @@
 use core::mem::MaybeUninit;
 
 use crate::mm::MemoryManager;
+use crate::vm::VmManager;
 
 pub static mut MEMORY_MANAGER: MaybeUninit<MemoryManager> = MaybeUninit::uninit();
+pub static mut VM_MANAGER: MaybeUninit<VmManager> = MaybeUninit::uninit();

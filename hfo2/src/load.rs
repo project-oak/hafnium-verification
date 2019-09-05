@@ -27,6 +27,7 @@ use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
+use crate::singleton::*;
 use crate::std::*;
 use crate::types::*;
 use crate::utils::*;
@@ -45,7 +46,7 @@ unsafe fn copy_to_unmapped(
     to: paddr_t,
     from: *const c_void,
     size: usize,
-    ppool: &mut MPool,
+    ppool: &MPool,
 ) -> bool {
     let to_end = pa_add(to, size);
 
@@ -67,9 +68,9 @@ unsafe fn copy_to_unmapped(
 /// Loads the primary VM.
 pub unsafe fn load_primary(
     hypervisor_ptable: &mut PageTable<Stage1>,
-    cpio: *const MemIter,
+    cpio: &MemIter,
     kernel_arg: uintreg_t,
-    ppool: &mut MPool,
+    ppool: &MPool,
 ) -> Result<MemIter, ()> {
     let mut it = mem::uninitialized();
     let primary_begin = layout_primary_begin();
@@ -103,27 +104,33 @@ pub unsafe fn load_primary(
     let initrd = initrd.assume_init();
 
     {
-        let mut vm = mem::uninitialized();
-        if !vm_init(MAX_CPUS as u16, ppool, &mut vm) {
-            dlog!("Unable to initialise primary vm\n");
-            return Err(());
-        }
+        let vm = VM_MANAGER
+            .get_mut()
+            .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
+            .ok_or_else(|| {
+                dlog!("Unable to initialise primary vm\n");
+                (())
+            })?;
 
-        if (*vm).id != HF_PRIMARY_VM_ID {
+        if vm.id != HF_PRIMARY_VM_ID {
             dlog!("Primary vm was not given correct id\n");
             return Err(());
         }
 
         // Map the 1TB of memory.
         // TODO: We should do a whitelist rather than blacklist.
-        if !mm_vm_identity_map(
-            &mut (*vm).inner.get_mut_unchecked().ptable,
-            pa_init(0),
-            pa_init(1024usize * 1024 * 1024 * 1024),
-            Mode::R | Mode::W | Mode::X,
-            ptr::null_mut(),
-            ppool,
-        ) {
+        if vm
+            .inner
+            .get_mut()
+            .ptable
+            .identity_map(
+                pa_init(0),
+                pa_init(1024usize * 1024 * 1024 * 1024),
+                Mode::R | Mode::W | Mode::X,
+                ppool,
+            )
+            .is_err()
+        {
             dlog!("Unable to initialise memory for primary vm\n");
             return Err(());
         }
@@ -133,9 +140,9 @@ pub unsafe fn load_primary(
             return Err(());
         }
 
-        (*vm_get_vcpu(vm, 0))
+        vm.vcpus[0]
             .inner
-            .lock()
+            .lock() // TODO(HfO2): We can safely use get_mut() here
             .on(ipa_from_pa(primary_begin), kernel_arg);
     }
 
@@ -170,7 +177,7 @@ fn carve_out_mem_range(
 /// update. Return true on success, or false if there would be more than
 /// MAX_MEM_RANGES reserved ranges after adding the new ones.
 /// `before` and `after` must be arrays of exactly `mem_ranges_count` elements.
-unsafe fn update_reserved_ranges(
+fn update_reserved_ranges(
     update: &mut BootParamsUpdate,
     before: &[MemRange],
     after: &[MemRange],
