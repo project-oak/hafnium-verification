@@ -26,6 +26,7 @@ use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
 use crate::vm::*;
+use crate::singleton::*;
 
 /// From inc/hf/arch/cpu.h.
 extern "C" {
@@ -307,12 +308,16 @@ impl VCpu {
             interrupts: SpinLock::new(Interrupts::new()),
         }
     }
+
+    pub fn set_cpu(&mut self, cpu: *mut Cpu) {
+        self.inner.get_mut().cpu = cpu;
+    }
 }
 
 /// Encapsulates a vCPU whose lock is held.
 #[repr(C)]
 pub struct VCpuExecutionLocked {
-    vcpu: *mut VCpu,
+    vcpu: *const VCpu,
 }
 
 impl Drop for VCpuExecutionLocked {
@@ -334,12 +339,12 @@ impl Deref for VCpuExecutionLocked {
 
 impl VCpuExecutionLocked {
     #[inline]
-    pub unsafe fn from_raw(vcpu: *mut VCpu) -> Self {
+    pub unsafe fn from_raw(vcpu: *const VCpu) -> Self {
         Self { vcpu }
     }
 
     #[inline]
-    pub fn into_raw(self) -> *mut VCpu {
+    pub fn into_raw(self) -> *const VCpu {
         let ret = self.vcpu;
         mem::forget(self);
         ret
@@ -455,10 +460,10 @@ pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) ->
     *is_on = true;
 
     if !prev {
-        let vm = vm_find(HF_PRIMARY_VM_ID);
-        let vcpu = vm_get_vcpu(vm, cpu_index(c) as u16);
+        let vm = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
+        let vcpu = vm.vcpus.get(cpu_index(c)).unwrap();
 
-        (*vcpu).inner.lock().on(entry, arg);
+        vcpu.inner.lock().on(entry, arg);
     }
 
     prev
@@ -552,11 +557,6 @@ pub unsafe extern "C" fn vcpu_get_vm(vcpu: *mut VCpu) -> *mut Vm {
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *mut VCpu) -> *mut Cpu {
     (*vcpu).inner.get_mut_unchecked().cpu
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn vcpu_set_cpu(vcpu: *mut VCpu, cpu: *mut Cpu) {
-    (*vcpu).inner.get_mut_unchecked().cpu = cpu;
 }
 
 #[no_mangle]

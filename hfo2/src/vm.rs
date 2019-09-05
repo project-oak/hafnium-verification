@@ -617,16 +617,6 @@ pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
     VM_MANAGER.get_ref().vms.len() as spci_vm_count_t
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn vm_find(id: spci_vm_id_t) -> *mut Vm {
-    VM_MANAGER
-        .get_mut()
-        .vms
-        .get_mut(id as usize) // Ensure the VM is initialized.
-        .map(|vm| vm as *mut _)
-        .unwrap_or(ptr::null_mut())
-}
-
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
 #[no_mangle]
 pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
