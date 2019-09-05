@@ -132,7 +132,9 @@ impl SpciMessage {
     #[inline]
     pub fn get_architected_message_header(&self) -> &SpciArchitectedMessageHeader {
         #[allow(clippy::cast_ptr_alignment)]
-        unsafe { &*(self.payload.as_ptr() as *const _) }
+        unsafe {
+            &*(self.payload.as_ptr() as *const _)
+        }
     }
 }
 

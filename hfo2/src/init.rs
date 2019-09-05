@@ -104,7 +104,7 @@ unsafe fn one_time_init() {
     VM_MANAGER = MaybeUninit::new(VmManager::new());
 
     // Load all VMs.
-    let primary_initrd = load_primary(&mut hypervisor_ptable, &cpio, params.kernel_arg, &mut ppool)
+    let primary_initrd = load_primary(&mut hypervisor_ptable, &cpio, params.kernel_arg, &ppool)
         .unwrap_or_else(|_| panic!("unable to load primary VM"));
 
     // load_secondary will add regions assigned to the secondary VMs from
@@ -134,7 +134,7 @@ unsafe fn one_time_init() {
     hypervisor_ptable.defrag(&ppool);
 
     // Initialise the API page pool. ppool will be empty from now on.
-    api_init(&ppool);
+    API_MANAGER = MaybeUninit::new(ApiManager::new(ppool));
 
     // Enable TLB invalidation for VM page table updates.
     mm_vm_enable_invalidation();
