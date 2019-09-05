@@ -27,7 +27,7 @@
 
 use core::cmp;
 use core::marker::PhantomData;
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::ops::*;
 use core::ptr;
 use core::slice;
@@ -42,6 +42,7 @@ use crate::page::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
+use crate::singleton::*;
 
 extern "C" {
     fn arch_mm_absent_pte(level: u8) -> pte_t;
@@ -162,13 +163,6 @@ type ptable_addr_t = uintvaddr_t;
 // For stage 2, the input is an intermediate physical addresses rather than a virtual address so:
 const_assert_eq!(addr_size_eq; mem::size_of::<ptable_addr_t>(), mem::size_of::<uintpaddr_t>());
 
-/// The hypervisor page table.
-pub static HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>> =
-    SpinLock::new(unsafe { PageTable::null() });
-
-/// Is stage2 invalidation enabled?
-pub static STAGE2_INVALIDATE: AtomicBool = AtomicBool::new(false);
-
 /// Utility functions for address manipulation.
 mod addr {
     use super::ptable_addr_t;
@@ -270,7 +264,7 @@ impl Stage for Stage2 {
     }
 
     fn invalidate_tlb(begin: usize, end: usize) {
-        if STAGE2_INVALIDATE.load(Ordering::Relaxed) {
+        if unsafe { MEMORY_MANAGER.get_ref() }.STAGE2_INVALIDATE.load(Ordering::Relaxed) {
             unsafe {
                 arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
             }
@@ -1024,6 +1018,80 @@ impl<'s> Into<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
     }
 }
 
+pub struct MemoryManager {
+    /// The hypervisor page table.
+    pub HYPERVISOR_PAGE_TABLE: SpinLock<PageTable<Stage1>>,
+
+    /// Is stage2 invalidation enabled?
+    pub STAGE2_INVALIDATE: AtomicBool,
+}
+
+impl MemoryManager {
+    pub fn new(mpool: &MPool) -> Option<Self> {
+        dlog!(
+            "text: {:#x} - {:#x}\n",
+            pa_addr(unsafe { layout_text_begin() }),
+            pa_addr(unsafe { layout_text_end() })
+        );
+        dlog!(
+            "rodata: {:#x} - {:#x}\n",
+            pa_addr(unsafe { layout_rodata_begin() }),
+            pa_addr(unsafe { layout_rodata_end() })
+        );
+        dlog!(
+            "data: {:#x} - {:#x}\n",
+            pa_addr(unsafe { layout_data_begin() }),
+            pa_addr(unsafe { layout_data_end() })
+        );
+
+        let page_table =
+            PageTable::new(mpool).map_err(|_| dlog!("Unable to allocate memory for page table.\n")).ok()?;
+
+        // A fake lock.
+        // TODO(HfO2): IMO, mm_stage1_locked is better to hold a reference to
+        // PageTable<Stage1> rather than SpinLockGuard<PageTable<Stage1>>, like
+        // other similar structures (VmLocked, VCpuExecutionLocked etc.) In that
+        // case we can delay creating a SpinLock here, and more directly show
+        // the meaning of unlocked but safe exclusive access of the page table.
+        let page_table = SpinLock::new(page_table);
+        let stage1_locked = mm_stage1_locked {
+            plock: &page_table as *const _ as usize,
+        };
+        
+        unsafe {
+            // Let console driver map pages for itself.
+            plat_console_mm_init(stage1_locked, mpool);
+
+            page_table
+                .get_mut_unchecked()
+                .identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool)
+                .unwrap();
+            page_table
+                .get_mut_unchecked()
+                .identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool)
+                .unwrap();
+            page_table
+                .get_mut_unchecked()
+                .identity_map(
+                    layout_data_begin(),
+                    layout_data_end(),
+                    Mode::R | Mode::W,
+                    mpool,
+                )
+                .unwrap();
+
+            if !arch_mm_init(page_table.get_unchecked().root, true) {
+                return None;
+            }
+        }
+
+        Some(Self {
+            HYPERVISOR_PAGE_TABLE: page_table,
+            STAGE2_INVALIDATE: AtomicBool::new(false),
+        })
+    }
+}
+
 /// After calling this function, modifications to stage-2 page tables will use break-before-make and
 /// invalidate the TLB for the affected range.
 ///
@@ -1032,7 +1100,7 @@ impl<'s> Into<SpinLockGuard<'s, PageTable<Stage1>>> for mm_stage1_locked {
 /// This function should not be invoked concurrently with other memory management functions.
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_enable_invalidation() {
-    STAGE2_INVALIDATE.store(true, Ordering::Relaxed);
+    MEMORY_MANAGER.get_ref().STAGE2_INVALIDATE.store(true, Ordering::Relaxed);
 }
 
 #[no_mangle]
@@ -1162,61 +1230,20 @@ pub unsafe extern "C" fn mm_unmap(
     stage1_locked.unmap(begin, end, mpool).is_ok()
 }
 
+/// This function is only used in one unit test (fdt/find_memory_ranges.)
+/// Unsafety doesn't really matter.
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
-    dlog!(
-        "text: {:#x} - {:#x}\n",
-        pa_addr(layout_text_begin()),
-        pa_addr(layout_text_end())
-    );
-    dlog!(
-        "rodata: {:#x} - {:#x}\n",
-        pa_addr(layout_rodata_begin()),
-        pa_addr(layout_rodata_end())
-    );
-    dlog!(
-        "data: {:#x} - {:#x}\n",
-        pa_addr(layout_data_begin()),
-        pa_addr(layout_data_end())
-    );
+    let mm = ok_or_return!(MemoryManager::new(&*mpool).ok_or(()), false);
+    MEMORY_MANAGER = MaybeUninit::new(mm);
 
-    let mpool = &*mpool;
-    let page_table =
-        PageTable::new(mpool).map_err(|_| dlog!("Unable to allocate memory for page table.\n"));
-    let page_table = ok_or_return!(page_table, false);
-    let hypervisor_page_table = HYPERVISOR_PAGE_TABLE.get_mut_unchecked();
-    ptr::write(hypervisor_page_table, page_table);
-
-    // A fake lock.
-    let stage1_locked = mm_stage1_locked {
-        plock: &HYPERVISOR_PAGE_TABLE as *const _ as usize,
-    };
-
-    // Let console driver map pages for itself.
-    plat_console_mm_init(stage1_locked, mpool);
-
-    hypervisor_page_table
-        .identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool)
-        .unwrap();
-    hypervisor_page_table
-        .identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool)
-        .unwrap();
-    hypervisor_page_table
-        .identity_map(
-            layout_data_begin(),
-            layout_data_end(),
-            Mode::R | Mode::W,
-            mpool,
-        )
-        .unwrap();
-
-    arch_mm_init(hypervisor_page_table.root, true)
+    true
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
-    let ptable = HYPERVISOR_PAGE_TABLE.get_mut_unchecked().root;
-    arch_mm_init(ptable, false)
+    let raw_ptable = MEMORY_MANAGER.get_ref().HYPERVISOR_PAGE_TABLE.get_mut_unchecked().root;
+    arch_mm_init(raw_ptable, false)
 }
 
 #[no_mangle]
@@ -1227,7 +1254,8 @@ pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
-    HYPERVISOR_PAGE_TABLE.lock().into()
+    let ptable = &MEMORY_MANAGER.get_ref().HYPERVISOR_PAGE_TABLE;
+    ptable.lock().into()
 }
 
 #[no_mangle]

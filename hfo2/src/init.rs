@@ -25,6 +25,7 @@ use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
+use crate::singleton::*;
 use crate::types::*;
 use crate::vm::*;
 
@@ -55,15 +56,14 @@ unsafe fn one_time_init() {
         mem::size_of_val(PTABLE_BUF.get_ref()),
     );
 
-    if !mm_init(&mut ppool) {
-        panic!("mm_init failed");
-    }
+    let memory_manager = MemoryManager::new(&ppool).expect("mm_init failed");
+    MEMORY_MANAGER = MaybeUninit::new(memory_manager);
 
     // Enable locks now that mm is initialised.
     dlog_enable_lock();
     mpool_enable_locks();
 
-    let mut hypervisor_ptable = HYPERVISOR_PAGE_TABLE.lock();
+    let mut hypervisor_ptable = MEMORY_MANAGER.get_ref().HYPERVISOR_PAGE_TABLE.lock();
 
     let mut params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
         .unwrap_or_else(|| panic!("unable to retrieve boot params"));
