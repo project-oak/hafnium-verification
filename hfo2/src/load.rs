@@ -30,6 +30,7 @@ use crate::singleton::*;
 use crate::std::*;
 use crate::types::*;
 use crate::utils::*;
+use crate::vm::*;
 
 use arrayvec::ArrayVec;
 
@@ -65,6 +66,7 @@ unsafe fn copy_to_unmapped(
 
 /// Loads the primary VM.
 pub unsafe fn load_primary(
+    vm_manager: &mut VmManager,
     hypervisor_ptable: &mut PageTable<Stage1>,
     cpio: &MemIter,
     kernel_arg: uintreg_t,
@@ -101,8 +103,7 @@ pub unsafe fn load_primary(
 
     let initrd = initrd.assume_init();
 
-    let vm = VM_MANAGER
-        .get_mut()
+    let vm = vm_manager
         .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
         .ok_or_else(|| {
             dlog!("Unable to initialise primary vm\n");
@@ -199,6 +200,7 @@ fn update_reserved_ranges(
 /// Loads all secondary VMs into the memory ranges from the given params.
 /// Memory reserved for the VMs is added to the `reserved_ranges` of `update`.
 pub unsafe fn load_secondary(
+    vm_manager: &mut VmManager,
     hypervisor_ptable: &mut PageTable<Stage1>,
     cpio: &MemIter,
     params: &BootParams,
@@ -215,7 +217,7 @@ pub unsafe fn load_secondary(
     mem_ranges_available.clone_from_slice(&params.mem_ranges);
     mem_ranges_available.truncate(params.mem_ranges_count);
 
-    let primary = VM_MANAGER.get_mut().get_mut(HF_PRIMARY_VM_ID).ok_or(())?;
+    let primary = vm_manager.get_mut(HF_PRIMARY_VM_ID).ok_or(())?;
     let mut it = mem::uninitialized();
 
     if !cpio_find_file(cpio, "vms.txt\0".as_ptr(), &mut it) {
@@ -279,16 +281,17 @@ pub unsafe fn load_secondary(
             continue;
         }
 
-        // TODO(HfO2): This should be rejected by borrowck, IMO. (by defining
-        // primary, VM_MANAGER is borrowed exclusively before.) Maybe unsafe
-        // static mut confused borrowck?
-        let vm = match VM_MANAGER.get_mut().new_vm(cpu as spci_vcpu_count_t, ppool) {
-            Some(vm) => vm,
+        let vm_id = match vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool) {
+            Some(vm) => vm.id,
             None => {
                 dlog!("Unable to initialise VM\n");
                 continue;
             }
         };
+
+        // We have to borrow primary again here, due to conservative Rust borrow
+        // checker.
+        let (primary, vm) = vm_manager.get_mut_with_primary(vm_id).unwrap();
 
         let secondary_entry = ipa_from_pa(secondary_mem_begin);
 

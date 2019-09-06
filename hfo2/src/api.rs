@@ -71,7 +71,7 @@ unsafe fn switch_to_primary(
     mut primary_ret: HfVCpuRunReturn,
     secondary_state: VCpuStatus,
 ) -> *mut VCpu {
-    let primary = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
+    let primary = vm_manager().get(HF_PRIMARY_VM_ID).unwrap();
     let next = primary
         .vcpus
         .get(cpu_index(&*current.get_inner().cpu))
@@ -230,7 +230,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
         return 0;
     }
 
-    let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), 0);
+    let vm = ok_or_return!(vm_manager().get(vm_id).ok_or(()), 0);
 
     vm.vcpus.len() as spci_vcpu_count_t
 }
@@ -386,7 +386,7 @@ pub unsafe extern "C" fn api_vcpu_run(
     }
 
     // The requested VM must exist.
-    let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), ret.into_raw());
+    let vm = ok_or_return!(vm_manager().get(vm_id).ok_or(()), ret.into_raw());
 
     // The requested vcpu must exist.
     let vcpu = ok_or_return!(vm.vcpus.get(vcpu_idx as usize).ok_or(()), ret.into_raw());
@@ -479,7 +479,7 @@ pub unsafe extern "C" fn api_vm_configure(
     //       to keep a single unlock point.
     let mut vm_inner = (*vm).inner.lock();
     if vm_inner
-        .configure(send, recv, &API_MANAGER.get_ref().ppool)
+        .configure(send, recv, &api_manager().ppool)
         .is_err()
     {
         return -1;
@@ -536,10 +536,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
 
     // Ensure the target VM exists.
     let to = ok_or_return!(
-        VM_MANAGER
-            .get_ref()
-            .get(from_msg_replica.target_vm_id)
-            .ok_or(()),
+        vm_manager().get(from_msg_replica.target_vm_id).ok_or(()),
         SpciReturn::InvalidParameters
     );
 
@@ -718,7 +715,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
         return -1;
     }
 
-    let vm = ok_or_return!(VM_MANAGER.get_ref().get(vm_id).ok_or(()), -1);
+    let vm = ok_or_return!(vm_manager().get(vm_id).ok_or(()), -1);
 
     // Check if there are outstanding notifications from given vm.
     let entry = (*vm).inner.lock().fetch_waiter();
@@ -818,7 +815,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
     next: *mut *mut VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let target_vm = ok_or_return!(VM_MANAGER.get_ref().get(target_vm_id).ok_or(()), -1);
+    let target_vm = ok_or_return!(vm_manager().get(target_vm_id).ok_or(()), -1);
 
     if intid >= HF_NUM_INTIDS {
         return -1;
@@ -844,7 +841,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
 /// Clears a region of physical memory by overwriting it with zeros. The data is
 /// flushed from the cache so the memory has been cleared across the system.
 fn clear_memory(begin: paddr_t, end: paddr_t, ppool: &MPool) -> Result<(), ()> {
-    let mut hypervisor_ptable = unsafe { MEMORY_MANAGER.get_ref() }.hypervisor_ptable.lock();
+    let mut hypervisor_ptable = memory_manager().hypervisor_ptable.lock();
     let size = pa_difference(begin, end);
     let region = pa_addr(begin);
 
@@ -901,7 +898,7 @@ pub fn spci_share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let local_page_pool: MPool = MPool::new_with_fallback(unsafe { &API_MANAGER.get_ref().ppool });
+    let local_page_pool: MPool = MPool::new_with_fallback(&api_manager().ppool);
 
     // Obtain the single contiguous set of pages from the memory_region.
     // TODO: Add support for multiple constituent regions.
@@ -982,7 +979,7 @@ fn share_memory(
     }
 
     // Ensure the target VM exists.
-    let to = unsafe { VM_MANAGER.get_ref() }.get(vm_id).ok_or(())?;
+    let to = vm_manager().get(vm_id).ok_or(())?;
 
     let begin = addr;
     let end = ipa_add(addr, size);
@@ -1007,7 +1004,7 @@ fn share_memory(
     // Create a local pool so any freed memory can't be used by another thread.
     // This is to ensure the original mapping can be restored if any stage of
     // the process fails.
-    let local_page_pool = MPool::new_with_fallback(unsafe { &API_MANAGER.get_ref().ppool });
+    let local_page_pool = MPool::new_with_fallback(&api_manager().ppool);
 
     let (mut from_inner, mut to_inner) = SpinLock::lock_both(&(*from).inner, &(*to).inner);
 
