@@ -217,7 +217,6 @@ pub unsafe fn load_secondary(
     mem_ranges_available.clone_from_slice(&params.mem_ranges);
     mem_ranges_available.truncate(params.mem_ranges_count);
 
-    let primary = vm_manager.get_mut(HF_PRIMARY_VM_ID).ok_or(())?;
     let mut it = mem::uninitialized();
 
     if !cpio_find_file(cpio, "vms.txt\0".as_ptr(), &mut it) {
