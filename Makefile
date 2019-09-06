@@ -38,8 +38,14 @@ GN ?= $(PREBUILTS)/gn/gn
 NINJA ?= $(PREBUILTS)/ninja/ninja
 export PATH := $(PREBUILTS)/clang/bin:$(PATH)
 
+
 CHECKPATCH := $(PWD)/third_party/linux/scripts/checkpatch.pl \
 	--ignore BRACES,SPDX_LICENSE_TAG,VOLATILE,SPLIT_STRING,AVOID_EXTERNS,USE_SPINLOCK_T,NEW_TYPEDEFS,INITIALISED_STATIC,FILE_PATH_CHANGES,EMBEDDED_FUNCTION_NAME,SINGLE_STATEMENT_DO_WHILE_MACRO,MACRO_WITH_FLOW_CONTROL --quiet
+
+# Specifies the grep pattern for ignoring specific files in checkpatch.
+# Separate the different items in the list with a grep or (\|).
+# debug_el1.c : uses XMACROS, which checkpatch doesn't understand.
+CHECKPATCH_IGNORE := "src/arch/aarch64/hypervisor/debug_el1.c"
 
 # Select the project to build.
 PROJECT ?= reference
@@ -89,10 +95,10 @@ format:
 
 .PHONY: checkpatch
 checkpatch:
-	@find src/ -name \*.c -o -name \*.h | xargs $(CHECKPATCH) -f
-	@find inc/ -name \*.c -o -name \*.h | xargs $(CHECKPATCH) -f
+	@find src/ -name \*.c -o -name \*.h | grep -v $(CHECKPATCH_IGNORE) | xargs $(CHECKPATCH) -f
+	@find inc/ -name \*.c -o -name \*.h | grep -v $(CHECKPATCH_IGNORE) | xargs $(CHECKPATCH) -f
 	# TODO: enable for test/
-	@find project/ -name \*.c -o -name \*.h | xargs $(CHECKPATCH) -f
+	@find project/ -name \*.c -o -name \*.h | grep -v $(CHECKPATCH_IGNORE) | xargs $(CHECKPATCH) -f
 
 # see .clang-tidy.
 .PHONY: tidy

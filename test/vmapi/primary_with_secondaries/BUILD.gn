@@ -26,6 +26,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
   sources = [
     "abort.c",
     "boot.c",
+    "debug_el1.c",
     "floating_point.c",
     "interrupts.c",
     "mailbox.c",

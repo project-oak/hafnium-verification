@@ -23,6 +23,8 @@
 #include "hf/addr.h"
 #include "hf/std.h"
 
+#include "hypervisor/debug_el1.h"
+
 void arch_irq_disable(void)
 {
 	__asm__ volatile("msr DAIFSet, #0xf");
@@ -101,6 +103,18 @@ void arch_regs_reset(struct arch_regs *r, bool is_primary, spci_vm_id_t vm_id,
 	/* TODO: Use constant here. */
 	r->spsr = 5 |	 /* M bits, set to EL1h. */
 		  (0xf << 6); /* DAIF bits set; disable interrupts. */
+
+	r->lazy.mdcr_el2 = get_mdcr_el2_value(vm_id);
+
+	/*
+	 * NOTE: It is important that MDSCR_EL1.MDE (bit 15) is set to 0 for
+	 * secondary VMs as long as Hafnium does not support debug register
+	 * access for secondary VMs. If adding Hafnium support for secondary VM
+	 * debug register accesses, then on context switches Hafnium needs to
+	 * save/restore EL1 debug register state that either might change, or
+	 * that needs to be protected.
+	 */
+	r->lazy.mdscr_el1 = 0x0u & ~(0x1u << 15);
 
 	gic_regs_reset(r, is_primary);
 }

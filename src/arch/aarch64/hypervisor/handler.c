@@ -21,6 +21,7 @@
 #include "hf/arch/mm.h"
 
 #include "hf/api.h"
+#include "hf/check.h"
 #include "hf/cpu.h"
 #include "hf/dlog.h"
 #include "hf/panic.h"
@@ -29,6 +30,7 @@
 
 #include "vmapi/hf/call.h"
 
+#include "debug_el1.h"
 #include "msr.h"
 #include "psci.h"
 #include "psci_handler.h"
@@ -36,12 +38,25 @@
 
 #define HCR_EL2_VI (1u << 7)
 
+/**
+ * Gets the Exception Class from the ESR.
+ */
+#define GET_EC(esr) ((esr) >> 26)
+
+/**
+ * Gets the value to increment for the next PC.
+ * The ESR encodes whether the instruction is 2 bytes or 4 bytes long.
+ */
+#define GET_NEXT_PC_INC(esr) (((esr) & (1u << 25)) ? 4 : 2)
+
 struct hvc_handler_return {
 	uintreg_t user_ret;
 	struct vcpu *new;
 };
 
-/* Gets a reference to the currently executing vCPU. */
+/**
+ * Returns a reference to the currently executing vCPU.
+ */
 static struct vcpu *current(void)
 {
 	return (struct vcpu *)read_msr(tpidr_el2);
@@ -185,13 +200,13 @@ noreturn void serr_current_exception(uintreg_t elr, uintreg_t spsr)
 noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	uintreg_t esr = read_msr(esr_el2);
+	uintreg_t ec = GET_EC(esr);
 
 	(void)spsr;
 
-	switch (esr >> 26) {
+	switch (ec) {
 	case 0x25: /* EC = 100101, Data abort. */
-		dlog("Data abort: pc=%#x, esr=%#x, ec=%#x", elr, esr,
-		     esr >> 26);
+		dlog("Data abort: pc=%#x, esr=%#x, ec=%#x", elr, esr, ec);
 		if (!(esr & (1u << 10))) { /* Check FnV bit. */
 			dlog(", far=%#x", read_msr(far_el2));
 		} else {
@@ -204,7 +219,7 @@ noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 	default:
 		dlog("Unknown current sync exception pc=%#x, esr=%#x, "
 		     "ec=%#x\n",
-		     elr, esr, esr >> 26);
+		     elr, esr, ec);
 		break;
 	}
 
@@ -468,11 +483,12 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 	struct vcpu *vcpu = current();
 	struct vcpu_fault_info info;
 	struct vcpu *new_vcpu;
+	uintreg_t ec = GET_EC(esr);
 
-	switch (esr >> 26) {
+	switch (ec) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
 		/* Skip the instruction. */
-		vcpu_get_regs(vcpu)->pc += (esr & (1u << 25)) ? 4 : 2;
+		vcpu_get_regs(vcpu)->pc += GET_NEXT_PC_INC(esr);
 		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
 		if (esr & 1) {
 			/* WFE */
@@ -513,7 +529,7 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		}
 
 		/* Skip the SMC instruction. */
-		vcpu_get_regs(vcpu)->pc = smc_pc + (esr & (1u << 25) ? 4 : 2);
+		vcpu_get_regs(vcpu)->pc = smc_pc + GET_NEXT_PC_INC(esr);
 		vcpu_get_regs(vcpu)->r[0] = ret.res0;
 		vcpu_get_regs(vcpu)->r[1] = ret.res1;
 		vcpu_get_regs(vcpu)->r[2] = ret.res2;
@@ -521,13 +537,54 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 		return next;
 	}
 
+	/*
+	 * EC = 011000, MSR, MRS or System instruction execution that is not
+	 * reported using EC 000000, 000001 or 000111.
+	 */
+	case 0x18:
+		/*
+		 * NOTE: This should never be reached because it goes through a
+		 * separate path handled by handle_system_register_access().
+		 */
+		panic("Handled by handle_system_register_access().");
+
 	default:
 		dlog("Unknown lower sync exception pc=%#x, esr=%#x, "
 		     "ec=%#x\n",
-		     vcpu_get_regs(vcpu)->pc, esr, esr >> 26);
+		     vcpu_get_regs(vcpu)->pc, esr, ec);
 		break;
 	}
 
 	/* The exception wasn't handled so abort the VM. */
 	return api_abort(vcpu);
+}
+
+/**
+ * Handles EC = 011000, msr, mrs instruction traps.
+ * Returns non-null ONLY if the access failed and the vcpu is changing.
+ */
+struct vcpu *handle_system_register_access(uintreg_t esr)
+{
+	struct vcpu *vcpu = current();
+	spci_vm_id_t vm_id = vm_get_id(vcpu_get_vm(vcpu));
+	uintreg_t ec = GET_EC(esr);
+
+	CHECK(ec == 0x18);
+
+	/*
+	 * Handle accesses to other registers that trap with the same EC.
+	 * Abort when encountering unhandled register accesses.
+	 */
+	if (!is_debug_el1_register_access(esr)) {
+		return api_abort(vcpu);
+	}
+
+	/* Abort if unable to fulfill the debug register access. */
+	if (!debug_el1_process_access(vcpu, vm_id, esr)) {
+		return api_abort(vcpu);
+	}
+
+	/* Instruction was fulfilled above. Skip it and run the next one. */
+	vcpu_get_regs(vcpu)->pc += GET_NEXT_PC_INC(esr);
+	return NULL;
 }
