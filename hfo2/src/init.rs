@@ -15,7 +15,6 @@
  */
 
 use core::mem::{self, MaybeUninit};
-use core::slice;
 
 use crate::addr::*;
 use crate::api::*;
@@ -96,12 +95,13 @@ unsafe fn one_time_init() {
 
     let initrd = pa_addr(params.initrd_begin) as *mut _;
 
-    let mut cpio = mem::uninitialized();
+    let mut cpio = MaybeUninit::uninit();
     memiter_init(
-        &mut cpio,
+        cpio.get_mut(),
         initrd,
         pa_difference(params.initrd_begin, params.initrd_end),
     );
+    let cpio = cpio.assume_init();
 
     VM_MANAGER = MaybeUninit::new(VmManager::new());
 
@@ -149,12 +149,13 @@ static mut INITED: bool = false;
 // The entry point of CPUs when they are turned on. It is supposed to initialise
 // all state and return the first vCPU to run.
 #[no_mangle]
-pub unsafe extern "C" fn cpu_main(c: *mut Cpu) -> *mut VCpu {
+pub unsafe extern "C" fn cpu_main(mut c: *const Cpu) -> *mut VCpu {
     // Do global one-time initialisation just once. We avoid using atomics by
     // only touching the variable from cpu 0.
-    if cpu_index(&*c) == 0 && !INITED {
+    if !INITED {
         INITED = true;
         one_time_init();
+        c = CPU_MANAGER.get_ref().cpu_find((*c).id).unwrap();
     }
 
     if !mm_cpu_init() {

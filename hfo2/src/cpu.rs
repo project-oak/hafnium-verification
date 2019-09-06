@@ -262,7 +262,7 @@ pub struct VCpuInner {
     /// ensures the scheduler can easily keep track of the vCPU state as
     /// transitions are indicated by the return code from the run call.
     pub state: VCpuStatus,
-    pub cpu: *mut Cpu,
+    pub cpu: *const Cpu,
     pub regs: ArchRegs,
 }
 
@@ -270,7 +270,7 @@ impl VCpuInner {
     pub fn new() -> Self {
         Self {
             state: VCpuStatus::Off,
-            cpu: ptr::null_mut(),
+            cpu: ptr::null(),
             regs: ArchRegs::new(),
         }
     }
@@ -311,7 +311,7 @@ impl VCpu {
         }
     }
 
-    pub fn set_cpu(&mut self, cpu: *mut Cpu) {
+    pub fn set_cpu(&mut self, cpu: *const Cpu) {
         self.inner.get_mut().cpu = cpu;
     }
 }
@@ -555,7 +555,7 @@ pub unsafe extern "C" fn vcpu_get_vm(vcpu: *mut VCpu) -> *mut Vm {
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *mut VCpu) -> *mut Cpu {
-    (*vcpu).inner.get_mut_unchecked().cpu
+    (*vcpu).inner.get_mut_unchecked().cpu as usize as *mut _
 }
 
 #[no_mangle]
