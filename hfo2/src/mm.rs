@@ -27,7 +27,7 @@
 
 use core::cmp;
 use core::marker::PhantomData;
-use core::mem::{self, MaybeUninit};
+use core::mem;
 use core::ops::*;
 use core::ptr;
 use core::slice;

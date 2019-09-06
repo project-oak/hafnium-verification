@@ -26,7 +26,6 @@ use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
-use crate::singleton::*;
 use crate::std::*;
 use crate::types::*;
 use crate::utils::*;
