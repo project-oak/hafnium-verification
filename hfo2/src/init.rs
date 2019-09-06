@@ -103,11 +103,11 @@ unsafe fn one_time_init() {
     );
     let cpio = cpio.assume_init();
 
-    let mut vm_manager = VmManager::new();
+    vm_manager_init(VmManager::new());
 
     // Load all VMs.
     let primary_initrd = load_primary(
-        &mut vm_manager,
+        vm_manager_mut(),
         &mut hypervisor_ptable,
         &cpio,
         params.kernel_arg,
@@ -123,7 +123,7 @@ unsafe fn one_time_init() {
     );
 
     if load_secondary(
-        &mut vm_manager,
+        vm_manager_mut(),
         &mut hypervisor_ptable,
         &cpio,
         &params,
@@ -134,8 +134,6 @@ unsafe fn one_time_init() {
     {
         panic!("unable to load secondary VMs");
     }
-
-    vm_manager_init(vm_manager);
 
     // Prepare to run by updating bootparams as seen by primary VM.
     if boot_params::update(&mut hypervisor_ptable, &mut update, &mut ppool).is_err() {

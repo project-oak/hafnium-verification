@@ -92,3 +92,10 @@ pub fn api_manager() -> &'static ApiManager {
 pub fn cpu_manager() -> &'static CpuManager {
     unsafe { CPU_MANAGER.get_ref() }
 }
+
+/// A temporal function to load VM correctly. Today VM need to know its address
+/// to initialize itself, thus we cannot simply 'move' the initialized VmManager
+/// into VM_MANAGER. TODO(HfO2): Fix it, and remove this function.
+pub unsafe fn vm_manager_mut() -> &'static mut VmManager {
+    VM_MANAGER.get_mut()
+}
