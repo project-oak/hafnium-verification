@@ -264,10 +264,7 @@ impl Stage for Stage2 {
     }
 
     fn invalidate_tlb(begin: usize, end: usize) {
-        if unsafe { MEMORY_MANAGER.get_ref() }
-            .stage2_invalidate
-            .load(Ordering::Relaxed)
-        {
+        if memory_manager().stage2_invalidate.load(Ordering::Relaxed) {
             unsafe {
                 arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
             }
@@ -1104,8 +1101,7 @@ impl MemoryManager {
 /// This function should not be invoked concurrently with other memory management functions.
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_enable_invalidation() {
-    MEMORY_MANAGER
-        .get_ref()
+    memory_manager()
         .stage2_invalidate
         .store(true, Ordering::Relaxed);
 }
@@ -1242,18 +1238,14 @@ pub unsafe extern "C" fn mm_unmap(
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     let mm = ok_or_return!(MemoryManager::new(&*mpool).ok_or(()), false);
-    MEMORY_MANAGER = MaybeUninit::new(mm);
+    memory_manager_init(mm);
 
     true
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
-    let raw_ptable = MEMORY_MANAGER
-        .get_ref()
-        .hypervisor_ptable
-        .get_mut_unchecked()
-        .root;
+    let raw_ptable = memory_manager().hypervisor_ptable.get_mut_unchecked().root;
     arch_mm_init(raw_ptable, false)
 }
 
@@ -1265,7 +1257,7 @@ pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
-    let ptable = &MEMORY_MANAGER.get_ref().hypervisor_ptable;
+    let ptable = &memory_manager().hypervisor_ptable;
     ptable.lock().into()
 }
 

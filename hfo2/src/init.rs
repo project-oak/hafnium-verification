@@ -56,20 +56,20 @@ unsafe fn one_time_init() {
         mem::size_of_val(PTABLE_BUF.get_ref()),
     );
 
-    let memory_manager = MemoryManager::new(&ppool).expect("mm_init failed");
-    MEMORY_MANAGER = MaybeUninit::new(memory_manager);
+    let mm = MemoryManager::new(&ppool).expect("mm_init failed");
+    memory_manager_init(mm);
 
     // Enable locks now that mm is initialised.
     dlog_enable_lock();
     mpool_enable_locks();
 
-    let mut hypervisor_ptable = MEMORY_MANAGER.get_ref().hypervisor_ptable.lock();
+    let mut hypervisor_ptable = memory_manager().hypervisor_ptable.lock();
 
     let params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
         .unwrap_or_else(|| panic!("unable to retrieve boot params"));
 
     let cpu_manager = cpu_module_init(&params.cpu_ids[..params.cpu_count]);
-    CPU_MANAGER = MaybeUninit::new(cpu_manager);
+    cpu_manager_init(cpu_manager);
 
     for i in 0..params.mem_ranges_count {
         dlog!(
@@ -103,11 +103,17 @@ unsafe fn one_time_init() {
     );
     let cpio = cpio.assume_init();
 
-    VM_MANAGER = MaybeUninit::new(VmManager::new());
+    let mut vm_manager = VmManager::new();
 
     // Load all VMs.
-    let primary_initrd = load_primary(&mut hypervisor_ptable, &cpio, params.kernel_arg, &ppool)
-        .unwrap_or_else(|_| panic!("unable to load primary VM"));
+    let primary_initrd = load_primary(
+        &mut vm_manager,
+        &mut hypervisor_ptable,
+        &cpio,
+        params.kernel_arg,
+        &ppool,
+    )
+    .unwrap_or_else(|_| panic!("unable to load primary VM"));
 
     // load_secondary will add regions assigned to the secondary VMs from
     // mem_ranges to reserved_ranges.
@@ -117,6 +123,7 @@ unsafe fn one_time_init() {
     );
 
     if load_secondary(
+        &mut vm_manager,
         &mut hypervisor_ptable,
         &cpio,
         &params,
@@ -128,6 +135,8 @@ unsafe fn one_time_init() {
         panic!("unable to load secondary VMs");
     }
 
+    vm_manager_init(vm_manager);
+
     // Prepare to run by updating bootparams as seen by primary VM.
     if boot_params::update(&mut hypervisor_ptable, &mut update, &mut ppool).is_err() {
         panic!("plat_update_boot_params failed");
@@ -136,7 +145,7 @@ unsafe fn one_time_init() {
     hypervisor_ptable.defrag(&ppool);
 
     // Initialise the API page pool. ppool will be empty from now on.
-    API_MANAGER = MaybeUninit::new(ApiManager::new(ppool));
+    api_manager_init(ApiManager::new(ppool));
 
     // Enable TLB invalidation for VM page table updates.
     mm_vm_enable_invalidation();
@@ -155,22 +164,25 @@ pub unsafe extern "C" fn cpu_main(mut c: *const Cpu) -> *mut VCpu {
     if !INITED {
         INITED = true;
         one_time_init();
-        c = CPU_MANAGER.get_ref().cpu_find((*c).id).unwrap();
+        c = cpu_manager().cpu_find((*c).id).unwrap();
     }
 
     if !mm_cpu_init() {
         panic!("mm_cpu_init failed");
     }
 
-    // TODO(HfO2): primary and vcpu are borrowed exclusively, which is safe but
-    // discouraged. Move this code into one_time_init().
-    let primary = VM_MANAGER.get_mut().get_mut(HF_PRIMARY_VM_ID).unwrap();
-    let vcpu = primary.vcpus.get_mut(cpu_index(&*c)).unwrap();
+    let primary = vm_manager().get(HF_PRIMARY_VM_ID).unwrap();
+    let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();
     let vm = vcpu.vm;
-    vcpu.set_cpu(c);
+
+    // TODO(HfO2): vcpu needs to be borrowed exclusively, which is safe but
+    // discouraged. Move this code into one_time_init().
+    let vcpu = vcpu as *const _ as usize as *mut VCpu;
+    (*vcpu).set_cpu(c);
 
     // Reset the registers to give a clean start for the primary's vCPU.
-    vcpu.inner
+    (*vcpu)
+        .inner
         .get_mut_unchecked()
         .regs
         .reset(true, &*vm, (*c).id);

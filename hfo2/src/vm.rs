@@ -156,7 +156,7 @@ impl Mailbox {
     ) -> Result<(), ()> {
         // TODO(HfO2): Acquring the singleton here is not recommended. Get the
         // hypervisor ptable from callee (API module.)
-        let mut hypervisor_ptable = unsafe { MEMORY_MANAGER.get_ref() }.hypervisor_ptable.lock();
+        let mut hypervisor_ptable = memory_manager().hypervisor_ptable.lock();
         let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
 
         // Map the send page as read-only in the hypervisor address space.
@@ -595,15 +595,24 @@ impl VmManager {
     pub fn get_mut(&mut self, id: spci_vm_id_t) -> Option<&mut Vm> {
         self.vms.get_mut(id as usize)
     }
+
+    pub fn get_mut_with_primary(&mut self, id: spci_vm_id_t) -> Option<(&mut Vm, &mut Vm)> {
+        let (primary, rest) = self.vms.split_first_mut()?;
+        let vm = rest.get_mut((id - 1) as usize)?;
+
+        Some((primary, vm))
+    }
 }
 
+/// This function is only used by unit test (fdt/find_memory_ranges.)
 #[no_mangle]
 pub unsafe extern "C" fn vm_init(
     vcpu_count: spci_vcpu_count_t,
     ppool: *mut MPool,
     new_vm: *mut *mut Vm,
 ) -> bool {
-    match VM_MANAGER.get_mut().new_vm(vcpu_count, &*ppool) {
+    let vmm = vm_manager() as *const _ as usize as *mut VmManager;
+    match (*vmm).new_vm(vcpu_count, &*ppool) {
         Some(vm) => {
             *new_vm = vm as *mut _;
             true
@@ -614,7 +623,7 @@ pub unsafe extern "C" fn vm_init(
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
-    VM_MANAGER.get_ref().vms.len() as spci_vm_count_t
+    vm_manager().vms.len() as spci_vm_count_t
 }
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.

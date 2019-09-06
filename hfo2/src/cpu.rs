@@ -394,8 +394,8 @@ impl Cpu {
 #[no_mangle]
 static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::uninit();
 
-/// State of all supported CPUs. The stack of the first one is initialized.
-/// Kernel loader writes booted CPU ID on `cpus.id` and initializes the CPU
+/// A record for boot CPU. Its field `stack_bottom` is initialized.
+/// Hafnium loader writes booted CPU ID on `cpus.id` and initializes the CPU
 /// stack by the address in `cpus.stack_bottom`.
 /// (See src/arch/aarch64/hypervisor/plat_entry.S and cpu_entry.S.)
 ///
@@ -406,6 +406,7 @@ extern "C" {
 }
 
 pub struct CpuManager {
+    /// State of all supported CPUs.
     cpus: ArrayVec<[Cpu; MAX_CPUS]>,
 }
 
@@ -442,7 +443,7 @@ impl CpuManager {
         let prev = mem::replace::<bool>(&mut c.is_on.lock(), true);
 
         if !prev {
-            let vm = VM_MANAGER.get_ref().get(HF_PRIMARY_VM_ID).unwrap();
+            let vm = vm_manager().get(HF_PRIMARY_VM_ID).unwrap();
             let vcpu = vm.vcpus.get(self.cpu_index(c)).unwrap();
 
             vcpu.inner.lock().on(entry, arg);
@@ -468,13 +469,13 @@ pub fn cpu_module_init(cpu_ids: &[cpu_id_t]) -> CpuManager {
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
-    CPU_MANAGER.get_ref().cpu_index(&*c)
+    cpu_manager().cpu_index(&*c)
 }
 
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
-    CPU_MANAGER.get_ref().cpu_on(&*c, entry, arg)
+    cpu_manager().cpu_on(&*c, entry, arg)
 }
 
 /// Prepares the CPU for turning itself off.
@@ -486,8 +487,7 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 /// Searches for a CPU based on its id.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
-    CPU_MANAGER
-        .get_ref()
+    cpu_manager()
         .cpu_find(id)
         .map(|cpu| cpu as *const _ as usize as *mut _)
         .unwrap_or(ptr::null_mut())
