@@ -86,6 +86,7 @@ extern "C" {
     ) -> bool;
 }
 
+/// Reads platform-specific boot parameters.
 pub fn get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> Option<BootParams> {
     unsafe {
         let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
@@ -98,6 +99,7 @@ pub fn get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> 
     }
 }
 
+/// Updates boot parameters for primary VM to read.
 pub fn update(
     ptable: &mut SpinLockGuard<PageTable<Stage1>>,
     p: &mut BootParamsUpdate,

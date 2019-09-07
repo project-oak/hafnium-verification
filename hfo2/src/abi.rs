@@ -122,7 +122,7 @@ mod test {
 
     /// Encode a preempted response without leaking.
     #[test]
-    fn abi_hf_vcpu_run_return_encode_preemptd() {
+    fn abi_hf_vcpu_run_return_encode_preempted() {
         let res = HfVCpuRunReturn::Preempted;
         assert_eq!(res.into_raw(), 0);
     }
