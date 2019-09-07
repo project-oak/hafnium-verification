@@ -162,7 +162,7 @@ pub unsafe extern "C" fn cpu_main(mut c: *const Cpu) -> *mut VCpu {
     if !INITED {
         INITED = true;
         one_time_init();
-        c = cpu_manager().cpu_find((*c).id).unwrap();
+        c = cpu_manager().lookup((*c).id).unwrap();
     }
 
     if !mm_cpu_init() {

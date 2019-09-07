@@ -107,6 +107,7 @@ impl Interrupts {
             enabled_and_pending_count: 0,
         }
     }
+
     pub fn id_to_index(intid: intid_t) -> Result<(usize, u32), ()> {
         if intid >= HF_NUM_INTIDS {
             return Err(());
@@ -425,26 +426,28 @@ impl CpuManager {
         cpus[0].id = boot_cpu_id;
         *cpus[0].is_on.get_mut() = true;
 
-        let cpu_ids_iter = cpu_ids.iter().filter(|id| boot_cpu_id != **id);
-        let stacks_iter = stacks.iter().skip(1);
+        let cpu_ids = cpu_ids.iter().filter(|id| boot_cpu_id != **id);
+        let stacks = stacks.iter().skip(1);
 
-        for (cpu_id, stack) in cpu_ids_iter.zip(stacks_iter) {
+        for (cpu_id, stack) in cpu_ids.zip(stacks) {
             cpus.push(Cpu::new(*cpu_id, stack.as_ptr() as usize + STACK_SIZE));
         }
 
         Self { cpus }
     }
 
-    pub unsafe fn cpu_index(&self, c: &Cpu) -> usize {
+    pub unsafe fn index_of(&self, c: &Cpu) -> usize {
         (c as *const Cpu).offset_from(self.cpus.as_ptr()) as usize
     }
 
     pub unsafe fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
-        let prev = mem::replace::<bool>(&mut c.is_on.lock(), true);
+        let mut is_on = c.is_on.lock();
+        let prev = *is_on;
+        *is_on = true;
 
         if !prev {
             let vm = vm_manager().get(HF_PRIMARY_VM_ID).unwrap();
-            let vcpu = vm.vcpus.get(self.cpu_index(c)).unwrap();
+            let vcpu = vm.vcpus.get(self.index_of(c)).unwrap();
 
             vcpu.inner.lock().on(entry, arg);
         }
@@ -452,7 +455,7 @@ impl CpuManager {
         prev
     }
 
-    pub fn cpu_find(&self, id: cpu_id_t) -> Option<&Cpu> {
+    pub fn lookup(&self, id: cpu_id_t) -> Option<&Cpu> {
         for cpu in self.cpus.iter() {
             if cpu.id == id {
                 return Some(cpu);
@@ -469,7 +472,7 @@ pub fn cpu_module_init(cpu_ids: &[cpu_id_t]) -> CpuManager {
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
-    cpu_manager().cpu_index(&*c)
+    cpu_manager().index_of(&*c)
 }
 
 /// Turns CPU on and returns the previous state.
@@ -488,7 +491,7 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
     cpu_manager()
-        .cpu_find(id)
+        .lookup(id)
         .map(|cpu| cpu as *const _ as usize as *mut _)
         .unwrap_or(ptr::null_mut())
 }

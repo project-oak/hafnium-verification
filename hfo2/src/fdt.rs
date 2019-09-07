@@ -30,6 +30,7 @@ extern "C" {
 }
 
 #[derive(Clone)]
+#[repr(C)]
 pub struct FdtNode {
     hdr: *const FdtHeader,
     begin: *const u8,
@@ -90,6 +91,7 @@ struct FdtTokenizer {
 
 const FDT_VERSION: u32 = 17;
 const FDT_MAGIC: u32 = 0xd00d_feed;
+const FDT_TOKEN_ALIGNMENT: usize = mem::size_of::<u32>();
 
 impl FdtTokenizer {
     fn new(strs: *const u8, begin: *const u8, end: *const u8) -> Self {
@@ -101,7 +103,7 @@ impl FdtTokenizer {
     }
 
     fn align(&mut self) {
-        self.cur = round_up(self.cur as usize, 4) as _;
+        self.cur = round_up(self.cur as usize, FDT_TOKEN_ALIGNMENT) as _;
     }
 
     unsafe fn u32(&mut self) -> Option<u32> {
