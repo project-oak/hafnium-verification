@@ -379,11 +379,11 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(id: cpu_id_t, stack_bottom: usize) -> Self {
+    pub fn new(id: cpu_id_t, stack_bottom: usize, is_on: bool) -> Self {
         Self {
             id,
             stack_bottom: stack_bottom as *mut _,
-            is_on: SpinLock::new(false),
+            is_on: SpinLock::new(is_on),
         }
     }
 }
@@ -422,15 +422,17 @@ impl CpuManager {
 
         // Initialize boot CPU.
         let boot_stack = stacks[0].as_ptr() as usize;
-        cpus.push(Cpu::new(boot_cpu_id, boot_stack + STACK_SIZE));
-        cpus[0].id = boot_cpu_id;
-        *cpus[0].is_on.get_mut() = true;
+        cpus.push(Cpu::new(boot_cpu_id, boot_stack + STACK_SIZE, true));
 
         let cpu_ids = cpu_ids.iter().filter(|id| boot_cpu_id != **id);
         let stacks = stacks.iter().skip(1);
 
         for (cpu_id, stack) in cpu_ids.zip(stacks) {
-            cpus.push(Cpu::new(*cpu_id, stack.as_ptr() as usize + STACK_SIZE));
+            cpus.push(Cpu::new(
+                *cpu_id,
+                stack.as_ptr() as usize + STACK_SIZE,
+                false,
+            ));
         }
 
         Self { cpus }
