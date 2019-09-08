@@ -595,13 +595,6 @@ impl VmManager {
     pub fn get_mut(&mut self, id: spci_vm_id_t) -> Option<&mut Vm> {
         self.vms.get_mut(id as usize)
     }
-
-    pub fn get_mut_with_primary(&mut self, id: spci_vm_id_t) -> Option<(&mut Vm, &mut Vm)> {
-        let (primary, rest) = self.vms.split_first_mut()?;
-        let vm = rest.get_mut((id - 1) as usize)?;
-
-        Some((primary, vm))
-    }
 }
 
 /// This function is only used by unit test (fdt/find_memory_ranges.)
@@ -623,7 +616,7 @@ pub unsafe extern "C" fn vm_init(
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
-    vm_manager().vms.len() as spci_vm_count_t
+    vm_manager().vms.len() as _
 }
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
@@ -666,5 +659,5 @@ pub unsafe extern "C" fn vm_get_arch(vm: *mut Vm) -> *mut ArchVm {
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_vcpu_count(vm: *const Vm) -> spci_vcpu_count_t {
-    (*vm).vcpus.len() as spci_vcpu_count_t
+    (*vm).vcpus.len() as _
 }

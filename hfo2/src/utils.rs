@@ -26,6 +26,16 @@ macro_rules! ok_or_return {
     }};
 }
 
+#[macro_export]
+macro_rules! unwrap_or {
+    ($e:expr, $err:expr) => {{
+        match $e {
+            Some(r) => r,
+            None => $err,
+        }
+    }};
+}
+
 pub fn spin_loop() -> ! {
     loop {
         spin_loop_hint();
