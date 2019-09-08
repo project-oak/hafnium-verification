@@ -57,7 +57,7 @@ pub const HF_INVALID_INTID: intid_t = 0xffff_ffff;
 /// The virtual interrupt ID used for the virtual timer.
 pub const HF_VIRTUAL_TIMER_INTID: intid_t = 3;
 
-// These constants are originally from build scripts. (See
+// TODO(HfO2): These constants are originally from build scripts. (See
 // //project/reference/BUILD.gn.)
 pub const HEAP_PAGES: usize = 60;
 

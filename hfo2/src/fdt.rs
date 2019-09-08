@@ -20,7 +20,6 @@ use core::ptr;
 use core::slice;
 use core::str;
 
-use crate::std::*;
 use crate::utils::*;
 
 use scopeguard::guard;
@@ -312,10 +311,7 @@ impl FdtNode {
 impl FdtHeader {
     pub unsafe fn dump(&self) {
         unsafe fn asciz_to_utf8(ptr: *const u8) -> &'static str {
-            let mut len = 0;
-            while *ptr.add(len) != 0u8 {
-                len += 1;
-            }
+            let len = (0..).find(|i| *ptr.add(*i) != 0).unwrap();
             let bytes = slice::from_raw_parts(ptr, len);
             str::from_utf8_unchecked(bytes)
         }
@@ -370,25 +366,24 @@ impl FdtHeader {
             "fdt: off_mem_rsvmap={}\n",
             u32::from_be(self.off_mem_rsvmap)
         );
-        {
-            let e = self as *const _ as usize + u32::from_be(self.off_mem_rsvmap) as usize;
-            let mut entry = e as *const FdtReserveEntry;
 
-            while (*entry).address != 0 || (*entry).size != 0 {
-                dlog!(
-                    "Entry: {:p} (0x{:x} bytes)\n",
-                    u64::from_be((*entry).address) as *const u8,
-                    u64::from_be((*entry).size)
-                );
-                entry = entry.add(1);
-            }
+        let mut entry = (self as *const _ as usize + u32::from_be(self.off_mem_rsvmap) as usize)
+            as *const FdtReserveEntry;
+
+        while (*entry).address != 0 || (*entry).size != 0 {
+            dlog!(
+                "Entry: {:p} (0x{:x} bytes)\n",
+                u64::from_be((*entry).address) as *const u8,
+                u64::from_be((*entry).size)
+            );
+            entry = entry.add(1);
         }
     }
 
     pub unsafe fn add_mem_reservation(&mut self, addr: u64, len: u64) {
         // TODO: Clean this up.
-        let begin = (self as *const _ as usize as *const u8)
-            .add(u32::from_be(self.off_mem_rsvmap) as usize);
+        let begin =
+            (self as *const _ as usize as *mut u8).add(u32::from_be(self.off_mem_rsvmap) as usize);
         let e = begin as *mut FdtReserveEntry;
         let old_size = u32::from_be(self.totalsize) - u32::from_be(self.off_mem_rsvmap);
 
@@ -399,12 +394,12 @@ impl FdtHeader {
         self.off_dt_strings =
             (u32::from_be(self.off_dt_strings) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
 
-        memmove_s(
-            begin.add(mem::size_of::<FdtReserveEntry>()) as usize as *mut _,
-            old_size as usize,
-            begin as usize as *const _,
+        ptr::copy_nonoverlapping(
+            begin,
+            begin.add(mem::size_of::<FdtReserveEntry>()),
             old_size as usize,
         );
+
         (*e).address = addr.to_be();
         (*e).size = len.to_be();
     }
@@ -420,7 +415,7 @@ pub extern "C" fn fdt_header_size() -> usize {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_total_size(hdr: *mut FdtHeader) -> u32 {
+pub unsafe extern "C" fn fdt_total_size(hdr: *const FdtHeader) -> u32 {
     (*hdr).total_size()
 }
 
@@ -444,10 +439,9 @@ pub unsafe extern "C" fn fdt_find_child(node: *mut FdtNode, child: *const u8) ->
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_first_child(node: *mut FdtNode, child_name: *mut *const u8) -> bool {
-    (*node).first_child().map_or(false, |name| {
-        ptr::write(child_name, name);
-        true
-    })
+    let name = unwrap_or!((*node).first_child(), return false);
+    ptr::write(child_name, name);
+    true
 }
 
 #[no_mangle]
@@ -468,14 +462,10 @@ pub unsafe extern "C" fn fdt_read_property(
     buf: *mut *const u8,
     size: *mut u32,
 ) -> bool {
-    match (*node).read_property(name) {
-        Ok((prop_buf, prop_size)) => {
-            *buf = prop_buf;
-            *size = prop_size;
-            true
-        }
-        Err(_) => false,
-    }
+    let (prop_buf, prop_size) = ok_or_return!((*node).read_property(name), false);
+    *buf = prop_buf;
+    *size = prop_size;
+    true
 }
 
 #[no_mangle]

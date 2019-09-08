@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, MaybeUninit};
+use core::mem;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -71,18 +71,18 @@ pub unsafe fn load_primary(
     kernel_arg: uintreg_t,
     ppool: &MPool,
 ) -> Result<MemIter, ()> {
-    let mut it = mem::uninitialized();
     let primary_begin = layout_primary_begin();
 
-    if !cpio_find_file(cpio, "vmlinuz\0".as_ptr(), &mut it) {
+    let it = unwrap_or!(find_file(&mut cpio.clone(), "vmlinuz\0".as_ptr()), {
         dlog!("Unable to find vmlinuz\n");
         return Err(());
-    }
+    });
 
     dlog!(
         "Copying primary to {:p}\n",
         pa_addr(primary_begin) as *const u8
     );
+
     if !copy_to_unmapped(
         hypervisor_ptable,
         primary_begin,
@@ -94,13 +94,10 @@ pub unsafe fn load_primary(
         return Err(());
     }
 
-    let mut initrd = MaybeUninit::uninit();
-    if !cpio_find_file(cpio, "initrd.img\0".as_ptr(), initrd.get_mut()) {
+    let initrd = unwrap_or!(find_file(&mut cpio.clone(), "initrd.img\0".as_ptr()), {
         dlog!("Unable to find initrd.img\n");
         return Err(());
-    }
-
-    let initrd = initrd.assume_init();
+    });
 
     let vm = vm_manager
         .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
@@ -216,26 +213,23 @@ pub unsafe fn load_secondary(
     mem_ranges_available.clone_from_slice(&params.mem_ranges);
     mem_ranges_available.truncate(params.mem_ranges_count);
 
-    let mut it = mem::uninitialized();
-
-    if !cpio_find_file(cpio, "vms.txt\0".as_ptr(), &mut it) {
+    let mut it = unwrap_or!(find_file(&mut cpio.clone(), "vms.txt\0".as_ptr()), {
         dlog!("vms.txt is missing\n");
         return Ok(());
-    }
+    });
 
     // Round the last addresses down to the page size.
     for mem_range in mem_ranges_available.iter_mut() {
         mem_range.end = pa_init(round_down(pa_addr(mem_range.end), PAGE_SIZE));
     }
 
-    let mut mem = mem::uninitialized();
-    let mut cpu = mem::uninitialized();
-    let mut name = mem::uninitialized();
+    loop {
+        // Note(HfO2): There is `while let (Some(x), Some(y)) = (...) {}` but it
+        // is not short-circuiting.
+        let mut mem = unwrap_or!(it.parse_uint(), break);
+        let cpu = unwrap_or!(it.parse_uint(), break);
+        let name = unwrap_or!(it.parse_str(), break);
 
-    while memiter_parse_uint(&mut it, &mut mem)
-        && memiter_parse_uint(&mut it, &mut cpu)
-        && memiter_parse_str(&mut it, &mut name)
-    {
         dlog!("Loading ");
         let mut p = name.next;
         while p != name.limit {
@@ -244,12 +238,10 @@ pub unsafe fn load_secondary(
         }
         dlog!("\n");
 
-        let mut kernel = mem::uninitialized();
-
-        if !cpio_find_file_memiter(cpio, &name, &mut kernel) {
+        let kernel = unwrap_or!(find_file_memiter(&mut cpio.clone(), &name), {
             dlog!("Unable to load kernel\n");
             continue;
-        }
+        });
 
         // Round up to page size.
         mem = (mem + PAGE_SIZE as u64 - 1) & !(PAGE_SIZE as u64 - 1);
@@ -279,19 +271,13 @@ pub unsafe fn load_secondary(
             continue;
         }
 
-        let vm_id = match vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool) {
-            Some(vm) => vm.id,
+        let vm = match vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool) {
+            Some(vm) => vm,
             None => {
                 dlog!("Unable to initialise VM\n");
                 continue;
             }
         };
-
-        // We have to borrow primary again here, due to conservative Rust borrow
-        // checker.
-        let (primary, vm) = vm_manager.get_mut_with_primary(vm_id).unwrap();
-
-        let secondary_entry = ipa_from_pa(secondary_mem_begin);
 
         // Grant the VM access to the memory.
         if vm
@@ -309,6 +295,9 @@ pub unsafe fn load_secondary(
             dlog!("Unable to initialise memory\n");
             continue;
         }
+
+        let vm_id = vm.id;
+        let primary = vm_manager.get_mut(HF_PRIMARY_VM_ID).unwrap();
 
         // Deny the primary VM access to this memory.
         if primary
@@ -328,6 +317,8 @@ pub unsafe fn load_secondary(
             pa_addr(secondary_mem_begin)
         );
 
+        let vm = vm_manager.get_mut(vm_id).unwrap();
+        let secondary_entry = ipa_from_pa(secondary_mem_begin);
         vcpu_secondary_reset_and_start(
             &mut vm.vcpus[0],
             secondary_entry,

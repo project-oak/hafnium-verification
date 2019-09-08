@@ -230,7 +230,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
         return 0;
     }
 
-    let vm = ok_or_return!(vm_manager().get(vm_id).ok_or(()), 0);
+    let vm = unwrap_or!(vm_manager().get(vm_id), return 0);
 
     vm.vcpus.len() as spci_vcpu_count_t
 }
