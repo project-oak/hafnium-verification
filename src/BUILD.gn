@@ -28,11 +28,11 @@ hypervisor("hafnium") {
 # src targets will merge!
 source_set("src_not_testable_yet") {
   sources = [
-    "plat.c",
   ]
   deps = [
     ":src_testable",
     "//project/${project}/${plat_name}",
+    plat_boot_flow,
     plat_console,
   ]
 }
@@ -54,6 +54,7 @@ source_set("src_testable") {
     ":mm",
     ":std",
     "//src/arch/${plat_arch}/hypervisor",
+    plat_boot_flow,
     plat_console,
   ]
 
@@ -131,7 +132,6 @@ static_library("fake_arch") {
   complete_static_lib = true
   sources = [
     "layout_fake.c",
-    "plat.c",
   ]
   cflags = [ "-fPIC" ]
   deps = [

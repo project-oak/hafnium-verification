@@ -42,6 +42,17 @@ pub fn spin_loop() -> ! {
     }
 }
 
+pub fn as_asciz(bytes: &[u8]) -> &[u8] {
+    bytes
+        .split_at(
+            bytes
+                .iter()
+                .position(|&c| c == b'\0')
+                .unwrap_or(bytes.len()),
+        )
+        .0
+}
+
 #[inline]
 pub fn div_ceil(a: usize, b: usize) -> usize {
     (a + b - 1) / b

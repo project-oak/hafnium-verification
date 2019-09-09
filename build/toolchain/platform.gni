@@ -19,6 +19,11 @@ declare_args() {
 
   # The architecture of the platform.
   plat_arch = ""
+
+  # Boot flow driver to be used by the platform, specified as build target.
+  plat_boot_flow = ""
+
+  # Console driver to be used for the platform, specified as build target.
   plat_console = ""
 
   # The number of pages to allocate for the hypervisor heap.

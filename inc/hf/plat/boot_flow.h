@@ -14,21 +14,12 @@
  * limitations under the License.
  */
 
-/dts-v1/;
-/plugin/;
+#pragma once
 
-&{/} {
-	hypervisor {
-		compatible = "hafnium,hafnium";
-		vm1 {
-			debug_name = "primary";
-		};
+#include "hf/addr.h"
+#include "hf/fdt.h"
 
-		vm2 {
-			debug_name = "socket0";
-			vcpu_count = <1>;
-			mem_size = <0x100000>;
-			kernel_filename = "socket0";
-		};
-	};
-};
+paddr_t plat_get_fdt_addr(void);
+uintreg_t plat_get_kernel_arg(void);
+bool plat_get_initrd_range(const struct fdt_node *fdt_root, paddr_t *begin,
+			   paddr_t *end);

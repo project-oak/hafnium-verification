@@ -1,4 +1,4 @@
-# Copyright 2018 The Hafnium Authors.
+# Copyright 2019 The Hafnium Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,26 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-source_set("fake") {
+source_set("android") {
   sources = [
-    "mm.c",
-    "timer.c",
+    "android.S",
   ]
 }
 
-# Empty implementation of platform boot flow.
-# Fake arch targets should not depend on the boot flow functions. Will fail to
-# compile if they do.
-source_set("boot_flow") {
-}
-
-# Fake implementation of putchar logs to the console.
-source_set("console") {
+source_set("linux") {
   sources = [
-    "console.c",
+    "linux.S",
   ]
-}
-
-# Empty, as the functions are provided by libc already.
-source_set("std") {
 }

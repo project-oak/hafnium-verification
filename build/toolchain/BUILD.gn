@@ -39,6 +39,7 @@ embedded_clang_toolchain("aarch64_linux_clang") {
   toolchain_args = {
     use_platform = true
     plat_arch = "fake"
+    plat_boot_flow = "//src/arch/fake:boot_flow"
     plat_console = "//src/arch/fake:console"
   }
 }

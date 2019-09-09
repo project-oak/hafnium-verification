@@ -160,16 +160,15 @@ template("device_tree") {
                            ])
     script = "//build/image/dtc.py"
 
-    dtb_file = "${target_out_dir}/{{source_name_part}}.dtb"
-
     outputs = [
-      dtb_file,
+      invoker.output_pattern,
     ]
     args = [
+      "compile",
       "-i",
       "{{source}}",
       "-o",
-      rebase_path(dtb_file),
+      rebase_path(invoker.output_pattern),
     ]
   }
 }
@@ -180,26 +179,29 @@ template("initrd") {
          "initrd() must specify a \"primary_vm\" value")
 
   manifest_target = "${target_name}__manifest"
+  base_out_dir = "${target_out_dir}/${target_name}"
 
+  # Generate manifest.dtbo
   device_tree(manifest_target) {
     sources = [
       invoker.manifest,
     ]
+    output_pattern = "${base_out_dir}/{{source_name_part}}.dtbo"
   }
 
   action(target_name) {
     forward_variables_from(invoker, [ "testonly" ])
     script = "//build/image/generate_initrd.py"
 
-    initrd_base = "${target_out_dir}/${target_name}/initrd"
-    initrd_file = "${initrd_base}.img"
-    initrd_staging = "${initrd_base}"
+    initrd_file = "${base_out_dir}/initrd.img"
+    initrd_staging = "${base_out_dir}/initrd"
 
     # Cannot get target outputs here as they are defined in a different file.
     primary_vm_image = get_label_info(invoker.primary_vm, "target_out_dir") +
                        "/" + get_label_info(invoker.primary_vm, "name") + ".bin"
 
     deps = [
+      ":${manifest_target}",
       invoker.primary_vm,
     ]
     args = [
@@ -236,13 +238,6 @@ template("initrd") {
         ]
       }
     }
-
-    manifest_target_outputs = get_target_outputs(":${manifest_target}")
-    deps += [ ":${manifest_target}" ]
-    args += [
-      "--manifest",
-      rebase_path(manifest_target_outputs[0]),
-    ]
 
     outputs = [
       initrd_file,

@@ -25,6 +25,7 @@
 #![feature(slice_from_raw_parts)]
 #![feature(linkage)]
 #![feature(track_caller)]
+#![feature(try_blocks)]
 
 #[macro_use]
 extern crate bitflags;
@@ -47,6 +48,7 @@ mod abi;
 mod addr;
 mod api;
 mod arch;
+mod boot_flow;
 mod boot_params;
 mod cpu;
 mod fdt;

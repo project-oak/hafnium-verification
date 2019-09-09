@@ -117,6 +117,7 @@ impl TryFrom<u32> for FdtToken {
     }
 }
 
+#[derive(Clone)]
 struct FdtTokenizer<'a> {
     cur: &'a [u8],
     strs: &'a [u8],
@@ -182,31 +183,8 @@ impl<'a> FdtTokenizer<'a> {
         Some(first)
     }
 
-    fn bytes_filter<F>(&mut self, size: usize, pred: F) -> Option<&'a [u8]>
-    where
-        F: FnOnce(&'a [u8]) -> bool,
-    {
-        if self.cur.len() < size {
-            return None;
-        }
-
-        let (first, rest) = self.cur.split_at(size);
-        if !pred(first) {
-            return None;
-        }
-        self.cur = rest;
-        self.align();
-
-        Some(first)
-    }
-
     fn u32(&mut self) -> Option<u32> {
         let bytes = self.bytes(mem::size_of::<u32>())?;
-        Some(u32::from_be_bytes(bytes.try_into().unwrap()))
-    }
-
-    fn u32_expect(&mut self, expect: u32) -> Option<u32> {
-        let bytes = self.bytes_filter(mem::size_of::<u32>(), |b| b == expect.to_be_bytes())?;
         Some(u32::from_be_bytes(bytes.try_into().unwrap()))
     }
 
@@ -222,14 +200,21 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn token_expect(&mut self, expect: FdtToken) -> Option<FdtToken> {
-        while let Some(v) = self.u32_expect(expect as u32) {
-            let token = v.try_into().unwrap();
-            if token != FdtToken::Nop {
-                return Some(token);
+        let rewind = self.clone();
+        let token = self.token()?;
+
+        if token != expect {
+            unsafe {
+                self.rewind();
             }
+            return None;
         }
 
-        None
+        Some(token)
+    }
+
+    unsafe fn rewind(&mut self) {
+        self.cur = slice::from_raw_parts(self.cur.as_ptr().sub(4), self.cur.len() + 4);
     }
 
     fn str(&mut self) -> Option<&'a [u8]> {
@@ -385,7 +370,7 @@ impl<'a> FdtNode<'a> {
 impl FdtHeader {
     pub fn dump(&self) {
         unsafe fn asciz_to_utf8(ptr: *const u8) -> &'static str {
-            let len = (0..).find(|i| *ptr.add(*i) != 0).unwrap();
+            let len = (0..).find(|i| *ptr.add(*i) == 0).unwrap();
             let bytes = slice::from_raw_parts(ptr, len);
             str::from_utf8_unchecked(bytes)
         }
@@ -416,7 +401,7 @@ impl FdtHeader {
                 }
             }
 
-            if t.token().filter(|t| *t != FdtToken::EndNode).is_none() {
+            if t.token().filter(|t| *t == FdtToken::EndNode).is_none() {
                 return;
             }
 

@@ -16,6 +16,7 @@
 
 use core::convert::TryInto;
 use core::fmt::{self, Write};
+use core::mem::MaybeUninit;
 use core::ptr;
 
 use crate::fdt::*;
@@ -29,8 +30,6 @@ const_assert!(MAX_VMS <= 99999);
 
 #[derive(PartialEq, Debug)]
 pub enum Error {
-    CorruptedFdt,
-    NoRootFdtNode,
     NoHypervisorFdtNode,
     NotCompatible,
     ReservedVmId,
@@ -38,6 +37,7 @@ pub enum Error {
     TooManyVms,
     PropertyNotFound,
     MalformedString,
+    StringTooLong,
     MalformedStringList,
     MalformedInteger,
     IntegerOverflow,
@@ -47,8 +47,6 @@ impl Into<&'static str> for Error {
     fn into(self) -> &'static str {
         use Error::*;
         match self {
-            CorruptedFdt => "Manifest failed FDT validation",
-            NoRootFdtNode => "Could not find root node of manifest",
             NoHypervisorFdtNode => "Could not find \"hypervisor\" node in manifest",
             NotCompatible => "Hypervisor manifest entry not compatible with Hafnium",
             ReservedVmId => "Manifest defines a VM with a reserved ID",
@@ -58,6 +56,7 @@ impl Into<&'static str> for Error {
             }
             PropertyNotFound => "Property not found",
             MalformedString => "Malformed string property",
+            StringTooLong => "String too long",
             MalformedStringList => "Malformed string list property",
             MalformedInteger => "Malformed integer property",
             IntegerOverflow => "Integer overflow",
@@ -65,14 +64,17 @@ impl Into<&'static str> for Error {
     }
 }
 
+/// Maximum length of a string parsed from the FDT, including NULL terminator.
+const MANIFEST_MAX_STRING_LENGTH: usize = 32;
+
 /// Holds information about one of the VMs described in the manifest.
 #[derive(Debug)]
 pub struct ManifestVm {
     // Properties defined for both primary and secondary VMs.
-    pub debug_name: MemIter,
+    pub debug_name: [u8; MANIFEST_MAX_STRING_LENGTH],
 
     // Properties specific to secondary VMs.
-    pub kernel_filename: MemIter,
+    pub kernel_filename: [u8; MANIFEST_MAX_STRING_LENGTH],
     pub mem_size: u64,
     pub vcpu_count: spci_vcpu_count_t,
 }
@@ -115,7 +117,7 @@ impl<'a> FdtNode<'a> {
     /// TODO(HfO2): This function is marked `inline(never)`, to prevent stack overflow. It is still
     /// mysterious why inlining this function into ManifestVm::new makes stack overflow.
     #[inline(never)]
-    fn read_string(&self, property: *const u8) -> Result<MemIter, Error> {
+    fn read_string(&self, property: *const u8, out: &mut [u8]) -> Result<(), Error> {
         let data = self
             .read_property(property)
             .map_err(|_| Error::PropertyNotFound)?;
@@ -125,9 +127,16 @@ impl<'a> FdtNode<'a> {
             return Err(Error::MalformedString);
         }
 
-        Ok(unsafe { MemIter::from_raw(data.as_ptr(), data.len() - 1) })
+        // Check that the string fits into the buffer.
+        if data.len() > out.len() {
+            return Err(Error::StringTooLong);
+        }
+
+        out[..data.len()].copy_from_slice(data);
+        Ok(())
     }
 
+    #[inline(never)]
     fn read_u64(&self, property: *const u8) -> Result<u64, Error> {
         let data = self
             .read_property(property)
@@ -136,6 +145,7 @@ impl<'a> FdtNode<'a> {
         fdt_parse_number(data).ok_or(Error::MalformedInteger)
     }
 
+    #[inline(never)]
     fn read_u16(&self, property: *const u8) -> Result<u16, Error> {
         let value = self.read_u64(property)?;
 
@@ -209,15 +219,19 @@ impl StringList {
 
 impl ManifestVm {
     fn new<'a>(node: &FdtNode<'a>, vm_id: spci_vm_id_t) -> Result<Self, Error> {
-        let debug_name = node.read_string("debug_name\0".as_ptr())?;
-        let (kernel_filename, mem_size, vcpu_count) = if vm_id != HF_PRIMARY_VM_ID {
+        let mut debug_name: [u8; MANIFEST_MAX_STRING_LENGTH] = Default::default();
+        node.read_string("debug_name\0".as_ptr(), &mut debug_name)?;
+
+        let mut kernel_filename: [u8; MANIFEST_MAX_STRING_LENGTH] = Default::default();
+
+        let (mem_size, vcpu_count) = if vm_id != HF_PRIMARY_VM_ID {
+            node.read_string("kernel_filename\0".as_ptr(), &mut kernel_filename)?;
             (
-                node.read_string("kernel_filename\0".as_ptr())?,
                 node.read_u64("mem_size\0".as_ptr())?,
                 node.read_u16("vcpu_count\0".as_ptr())?,
             )
         } else {
-            (unsafe { MemIter::from_raw(ptr::null(), 0) }, 0, 0)
+            (0, 0)
         };
 
         Ok(Self {
@@ -231,18 +245,15 @@ impl ManifestVm {
 
 impl Manifest {
     /// Parse manifest from FDT.
-    pub fn init(&mut self, fdt: &MemIter) -> Result<(), Error> {
+    pub fn init<'a>(&mut self, fdt: &FdtNode<'a>) -> Result<(), Error> {
         let mut vm_name_buf = Default::default();
         let mut found_primary_vm = false;
-        let mut hyp_node = FdtNode::new_root(unsafe { &*(fdt.get_next() as *const _) })
-            .ok_or(Error::CorruptedFdt)?;
         unsafe {
             self.vms.set_len(0);
         }
 
-        hyp_node
-            .find_child("\0".as_ptr())
-            .ok_or(Error::NoRootFdtNode)?;
+        // Find hypervisor node.
+        let mut hyp_node = fdt.clone();
         hyp_node
             .find_child("hypervisor\0".as_ptr())
             .ok_or(Error::NoHypervisorFdtNode)?;
@@ -298,12 +309,14 @@ mod test {
     extern crate std;
     use std::fmt::Write as fmtWrite;
     use std::io::Write;
+    use std::mem;
     use std::mem::MaybeUninit;
     use std::process::*;
     use std::string::String;
     use std::vec::Vec;
 
     use super::*;
+    use crate::utils::*;
 
     /// Class for programatically building a Device Tree.
     ///
@@ -333,10 +346,12 @@ mod test {
 
         fn build(&mut self) -> Vec<u8> {
             self.end_child();
+            const program: &'static str = "../build/image/dtc.py";
 
-            let mut child = Command::new("../build/image/dtc.py")
+            let mut child = Command::new(program)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
+                .args(&["compile"])
                 .spawn()
                 .unwrap();
 
@@ -403,13 +418,21 @@ mod test {
         }
     }
 
+    fn get_fdt_root<'a>(dtb: &'a [u8]) -> Option<FdtNode<'a>> {
+        let fdt_header = unsafe { &*(dtb.as_ptr() as *const FdtHeader) };
+
+        let mut node = FdtNode::new_root(fdt_header)?;
+        node.find_child("\0".as_ptr());
+        Some(node)
+    }
+
     #[test]
     fn no_hypervisor_node() {
         let dtb = ManifestDtBuilder::new().build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        assert_eq!(m.init(&it).unwrap_err(), Error::NoHypervisorFdtNode);
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::NoHypervisorFdtNode);
     }
 
     #[test]
@@ -419,9 +442,9 @@ mod test {
             .end_child()
             .build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        assert_eq!(m.init(&it).unwrap_err(), Error::PropertyNotFound);
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::PropertyNotFound);
     }
 
     #[test]
@@ -432,9 +455,9 @@ mod test {
             .end_child()
             .build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        assert_eq!(m.init(&it).unwrap_err(), Error::NotCompatible);
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::NotCompatible);
     }
 
     #[test]
@@ -448,9 +471,9 @@ mod test {
             .end_child()
             .build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        m.init(&it).unwrap();
+        m.init(&fdt_root).unwrap();
     }
 
     #[test]
@@ -461,9 +484,38 @@ mod test {
             .end_child()
             .build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        assert_eq!(m.init(&it).unwrap_err(), Error::NoPrimaryVm);
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::NoPrimaryVm);
+    }
+
+    #[test]
+    fn long_string() {
+        fn gen_long_string_dtb(valid: bool) -> Vec<u8> {
+            const LAST_VALID: &'static str = "1234567890123456789012345678901";
+            const FIRST_INVALID: &'static str = "12345678901234567890123456789012";
+            assert_eq!(LAST_VALID.len() + 1, MANIFEST_MAX_STRING_LENGTH);
+            assert_eq!(FIRST_INVALID.len() + 1, MANIFEST_MAX_STRING_LENGTH + 1);
+
+            ManifestDtBuilder::new()
+                .start_child("hypervisor")
+                .compatible_hafnium()
+                .start_child("vm1")
+                .debug_name(if valid { LAST_VALID } else { FIRST_INVALID })
+                .end_child()
+                .end_child()
+                .build()
+        }
+
+        let dtb_last_valid = gen_long_string_dtb(true);
+        let dtb_first_invalid = gen_long_string_dtb(false);
+
+        let fdt_root = get_fdt_root(&dtb_last_valid).unwrap();
+        let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
+        m.init(&fdt_root).unwrap();
+
+        let fdt_root = get_fdt_root(&dtb_first_invalid).unwrap();
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::StringTooLong);
     }
 
     #[test]
@@ -483,9 +535,9 @@ mod test {
             .end_child()
             .build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        assert_eq!(m.init(&it).unwrap_err(), Error::ReservedVmId);
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::ReservedVmId);
     }
 
     #[test]
@@ -510,14 +562,14 @@ mod test {
         let dtb_last_valid = gen_vcpu_count_limit_dtb(u16::max_value() as u64);
         let dtb_first_invalid = gen_vcpu_count_limit_dtb(u16::max_value() as u64 + 1);
 
-        let it = unsafe { MemIter::from_raw(dtb_last_valid.as_ptr(), dtb_last_valid.len()) };
+        let fdt_root = get_fdt_root(&dtb_last_valid).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        m.init(&it).unwrap();
+        m.init(&fdt_root).unwrap();
         assert_eq!(m.vms.len(), 2);
         assert_eq!(m.vms[1].vcpu_count, u16::max_value());
 
-        let it = unsafe { MemIter::from_raw(dtb_first_invalid.as_ptr(), dtb_first_invalid.len()) };
-        assert_eq!(m.init(&it).unwrap_err(), Error::IntegerOverflow);
+        let fdt_root = get_fdt_root(&dtb_first_invalid).unwrap();
+        assert_eq!(m.init(&fdt_root).unwrap_err(), Error::IntegerOverflow);
     }
 
     #[test]
@@ -543,24 +595,24 @@ mod test {
             .end_child()
             .build();
 
-        let it = unsafe { MemIter::from_raw(dtb.as_ptr(), dtb.len()) };
+        let fdt_root = get_fdt_root(&dtb).unwrap();
         let mut m: Manifest = unsafe { MaybeUninit::uninit().assume_init() };
-        m.init(&it).unwrap();
+        m.init(&fdt_root).unwrap();
         assert_eq!(m.vms.len(), 3);
 
         let vm = &m.vms[0];
-        assert!(unsafe { vm.debug_name.iseq("primary_vm\0".as_ptr()) });
+        assert_eq!(as_asciz(&vm.debug_name), b"primary_vm");
 
         let vm = &m.vms[1];
-        assert!(unsafe { vm.debug_name.iseq("first_secondary_vm\0".as_ptr()) });
+        assert_eq!(as_asciz(&vm.debug_name), b"first_secondary_vm");
         assert_eq!(vm.vcpu_count, 42);
         assert_eq!(vm.mem_size, 12345);
-        assert!(unsafe { vm.kernel_filename.iseq("first_kernel\0".as_ptr()) });
+        assert_eq!(as_asciz(&vm.kernel_filename), b"first_kernel");
 
         let vm = &m.vms[2];
-        assert!(unsafe { vm.debug_name.iseq("second_secondary_vm\0".as_ptr()) });
+        assert_eq!(as_asciz(&vm.debug_name), b"second_secondary_vm");
         assert_eq!(vm.vcpu_count, 43);
         assert_eq!(vm.mem_size, 0x12345);
-        assert!(unsafe { vm.kernel_filename.iseq("second_kernel\0".as_ptr()) });
+        assert_eq!(as_asciz(&vm.kernel_filename), b"second_kernel");
     }
 }

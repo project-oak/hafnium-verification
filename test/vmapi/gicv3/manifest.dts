@@ -15,8 +15,9 @@
  */
 
 /dts-v1/;
+/plugin/;
 
-/ {
+&{/} {
 	hypervisor {
 		compatible = "hafnium,hafnium";
 		vm1 {

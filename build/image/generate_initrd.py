@@ -29,7 +29,6 @@ import sys
 
 def Main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", required=True)
     parser.add_argument("--primary_vm", required=True)
     parser.add_argument("--primary_vm_initrd")
     parser.add_argument(
@@ -46,10 +45,6 @@ def Main():
     if not os.path.isdir(args.staging):
         os.makedirs(args.staging)
 
-    # Prepare the manifest.
-    if args.manifest:
-        shutil.copyfile(args.manifest, os.path.join(args.staging, "manifest.dtb"))
-        staged_files += ["manifest.dtb"]
     # Prepare the primary VM image.
     shutil.copyfile(args.primary_vm, os.path.join(args.staging, "vmlinuz"))
     # Prepare the primary VM's initrd.

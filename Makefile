@@ -87,10 +87,10 @@ clobber:
 .PHONY: format
 format:
 	@echo "Formatting..."
-	@find src/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
-	@find inc/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
-	@find test/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
-	@find project/ -name \*.c -o -name \*.cc -o -name \*.h | xargs clang-format -style file -i
+	@find src/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -r clang-format -style file -i
+	@find inc/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -r clang-format -style file -i
+	@find test/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -r clang-format -style file -i
+	@find project/ -name \*.c -o -name \*.cc -o -name \*.h | xargs -r clang-format -style file -i
 	@find . \( -name \*.gn -o -name \*.gni \) | xargs -n1 $(GN) format
 
 .PHONY: checkpatch

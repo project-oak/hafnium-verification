@@ -14,21 +14,8 @@
  * limitations under the License.
  */
 
-/dts-v1/;
-/plugin/;
-
-&{/} {
-	hypervisor {
-		compatible = "hafnium,hafnium";
-		vm1 {
-			debug_name = "primary";
-		};
-
-		vm2 {
-			debug_name = "socket0";
-			vcpu_count = <1>;
-			mem_size = <0x100000>;
-			kernel_filename = "socket0";
-		};
-	};
-};
+.section .init.plat_boot_flow_hook, "ax"
+.global plat_boot_flow_hook
+plat_boot_flow_hook:
+	/* Do nothing. */
+	ret

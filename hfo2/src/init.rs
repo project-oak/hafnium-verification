@@ -19,10 +19,12 @@ use core::ptr;
 
 use crate::addr::*;
 use crate::arch::*;
+use crate::boot_flow::*;
 use crate::boot_params::*;
 use crate::cpu::*;
 use crate::hypervisor::*;
 use crate::load::*;
+use crate::manifest::*;
 use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -102,9 +104,19 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     dlog_enable_lock();
     mpool_enable_locks();
 
+    /// Note(HfO2): This variable, was originally local, but is static to prevent stack overflow.
+    static mut MANIFEST: MaybeUninit<Manifest> = MaybeUninit::uninit();
+    let mut manifest = MANIFEST.get_mut();
+    let mut params: BootParams = MaybeUninit::uninit().assume_init();
+
     // TODO(HfO2): doesn't need to lock, actually
-    let params = boot_params_get(&mut mm.hypervisor_ptable.lock(), &ppool)
-        .expect("unable to retrieve boot params");
+    boot_flow_init(
+        &mut mm.hypervisor_ptable.lock(),
+        &mut manifest,
+        &mut params,
+        &ppool,
+    )
+    .unwrap();
 
     let cpum = CpuManager::new(
         &params.cpu_ids[..params.cpu_count],
@@ -171,6 +183,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     load_secondary(
         &mut HYPERVISOR.get_mut().vm_manager,
         &mut hypervisor_ptable,
+        &mut manifest,
         &cpio,
         &params,
         &mut update,
@@ -179,7 +192,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     .expect("unable to load secondary VMs");
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    boot_params_update(&mut hypervisor_ptable, &mut update, &hypervisor().mpool)
+    boot_params_patch_fdt(&mut hypervisor_ptable, &mut update, &hypervisor().mpool)
         .expect("plat_update_boot_params failed");
 
     hypervisor_ptable.defrag(&hypervisor().mpool);
