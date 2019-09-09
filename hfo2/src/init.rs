@@ -40,6 +40,20 @@ extern "C" {
 /// but it was not aligned to PAGE_SIZE.
 static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
 
+extern "C" {
+    /// The stack to be used by the CPUs.
+    static callstacks: [[u8; STACK_SIZE]; MAX_CPUS];
+
+    /// A record for boot CPU. Its field `stack_bottom` is initialized.
+    /// Hafnium loader writes booted CPU ID on `cpus.id` and initializes the CPU
+    /// stack by the address in `cpus.stack_bottom`.
+    /// (See src/arch/aarch64/hypervisor/plat_entry.S and cpu_entry.S.)
+    ///
+    /// Initializing static variables with pointers in Rust failed here. We left
+    /// the initialization code of `cpus` in `src/cpu.c`.
+    static boot_cpu: Cpu;
+}
+
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
 unsafe extern "C" fn one_time_init() -> *mut Cpu {
@@ -65,7 +79,7 @@ unsafe extern "C" fn one_time_init() -> *mut Cpu {
     let params = boot_params_get(&mut hypervisor_ptable, &mut ppool)
         .expect("unable to retrieve boot params");
 
-    let cpum = cpu_module_init(&params.cpu_ids[..params.cpu_count]);
+    let cpum = CpuManager::new(&params.cpu_ids[..params.cpu_count], boot_cpu.id, &callstacks);
     cpu_manager_init(cpum);
 
     for i in 0..params.mem_ranges_count {

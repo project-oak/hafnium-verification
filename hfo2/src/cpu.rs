@@ -62,7 +62,7 @@ extern "C" {
     fn arch_regs_set_retval(r: *mut ArchRegs, v: uintreg_t);
 }
 
-const STACK_SIZE: usize = PAGE_SIZE;
+pub const STACK_SIZE: usize = PAGE_SIZE;
 
 /// The number of bits in each element of the interrupt bitfields.
 pub const INTERRUPT_REGISTER_BITS: usize = 32;
@@ -388,24 +388,6 @@ impl Cpu {
     }
 }
 
-// unsafe impl Sync for Cpu {}
-
-/// The stack to be used by the CPUs.
-/// TODO: alignas(2 * sizeof(uintreg_t))
-#[no_mangle]
-static mut callstacks: MaybeUninit<[[u8; STACK_SIZE]; MAX_CPUS]> = MaybeUninit::uninit();
-
-/// A record for boot CPU. Its field `stack_bottom` is initialized.
-/// Hafnium loader writes booted CPU ID on `cpus.id` and initializes the CPU
-/// stack by the address in `cpus.stack_bottom`.
-/// (See src/arch/aarch64/hypervisor/plat_entry.S and cpu_entry.S.)
-///
-/// Initializing static variables with pointers in Rust failed here. We left
-/// the initialization code of `cpus` in `src/cpu.c`.
-extern "C" {
-    static boot_cpu: Cpu;
-}
-
 pub struct CpuManager {
     /// State of all supported CPUs.
     cpus: ArrayVec<[Cpu; MAX_CPUS]>,
@@ -471,10 +453,6 @@ impl CpuManager {
     pub fn boot_cpu(&self) -> *mut Cpu {
         self.cpus.get(0).unwrap() as &Cpu as *const _ as usize as *mut _
     }
-}
-
-pub fn cpu_module_init(cpu_ids: &[cpu_id_t]) -> CpuManager {
-    unsafe { CpuManager::new(cpu_ids, boot_cpu.id, callstacks.get_ref()) }
 }
 
 #[no_mangle]

@@ -32,7 +32,7 @@
 #define STACK_SIZE PAGE_SIZE
 
 /* The stack to be used by the CPUs. */
-extern char callstacks[MAX_CPUS][STACK_SIZE];
+alignas(2 * sizeof(uintreg_t)) char callstacks[MAX_CPUS][STACK_SIZE];
 
 /**
  * A temporal variable for one-time booting sequence. The booting CPU will
