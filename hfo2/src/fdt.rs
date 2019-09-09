@@ -317,13 +317,10 @@ impl FdtHeader {
         }
 
         // Traverse the whole thing.
-        let node = match FdtNode::new_root(self) {
-            Some(node) => node,
-            None => {
-                dlog!("FDT failed validation.\n");
-                return;
-            }
-        };
+        let node = unwrap_or!(FdtNode::new_root(self), {
+            dlog!("FDT failed validation.\n");
+            return;
+        });
 
         let mut t = FdtTokenizer::new(node.strs, node.begin, node.end);
         let mut depth = 0;
@@ -385,7 +382,7 @@ impl FdtHeader {
         let begin =
             (self as *const _ as usize as *mut u8).add(u32::from_be(self.off_mem_rsvmap) as usize);
         let e = begin as *mut FdtReserveEntry;
-        let old_size = u32::from_be(self.totalsize) - u32::from_be(self.off_mem_rsvmap);
+        let old_size = (u32::from_be(self.totalsize) - u32::from_be(self.off_mem_rsvmap)) as usize;
 
         self.totalsize =
             (u32::from_be(self.totalsize) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
@@ -394,10 +391,10 @@ impl FdtHeader {
         self.off_dt_strings =
             (u32::from_be(self.off_dt_strings) + mem::size_of::<FdtReserveEntry>() as u32).to_be();
 
-        ptr::copy_nonoverlapping(
+        ptr::copy(
             begin,
             begin.add(mem::size_of::<FdtReserveEntry>()),
-            old_size as usize,
+            old_size,
         );
 
         (*e).address = addr.to_be();
@@ -426,10 +423,9 @@ pub unsafe extern "C" fn fdt_dump(hdr: *mut FdtHeader) {
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_root_node(node: *mut FdtNode, hdr: *const FdtHeader) -> bool {
-    FdtNode::new_root(&*hdr).map_or(false, |n| {
-        ptr::write(node, n);
-        true
-    })
+    let n = unwrap_or!(FdtNode::new_root(&*hdr), return false);
+    ptr::write(node, n);
+    true
 }
 
 #[no_mangle]
@@ -449,10 +445,9 @@ pub unsafe extern "C" fn fdt_next_sibling(
     node: *mut FdtNode,
     sibling_name: *mut *const u8,
 ) -> bool {
-    (*node).next_sibling().map_or(false, |name| {
-        ptr::write(sibling_name, name);
-        true
-    })
+    let name = unwrap_or!((*node).next_sibling(), return false);
+    ptr::write(sibling_name, name);
+    true
 }
 
 #[no_mangle]
