@@ -72,21 +72,15 @@ impl FdtNode {
             return false;
         }
 
-        let initrd_begin = match self.read_number("linux,initrd-start\0".as_ptr()) {
-            Ok(initrd_begin) => initrd_begin,
-            Err(_) => {
-                dlog!("Unable to read linux,initrd-start\n");
-                return false;
-            }
-        };
+        let initrd_begin = ok_or_return!(self.read_number("linux,initrd-start\0".as_ptr()), {
+            dlog!("Unable to read linux,initrd-start\n");
+            false
+        });
 
-        let initrd_end = match self.read_number("linux,initrd-end\0".as_ptr()) {
-            Ok(initrd_end) => initrd_end,
-            Err(_) => {
-                dlog!("Unable to read linux,initrd-end\n");
-                return false;
-            }
-        };
+        let initrd_end = ok_or_return!(self.read_number("linux,initrd-end\0".as_ptr()), {
+            dlog!("Unable to read linux,initrd-end\n");
+            false
+        });
 
         *begin = pa_init(initrd_begin as usize);
         *end = pa_init(initrd_end as usize);
