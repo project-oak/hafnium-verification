@@ -78,12 +78,16 @@ class ArtifactsManager:
         self.sponge_log_path = self.create_file("sponge_log", ".log")
         self.sponge_xml_path = self.create_file("sponge_log", ".xml")
 
+    def gen_file_path(self, basename, extension):
+        """Generate path to a file in the log directory."""
+        return os.path.join(self.log_dir, basename + extension)
+
     def create_file(self, basename, extension):
         """Create and touch a new file in the log folder. Ensure that no other
         file of the same name was created by this instance of ArtifactsManager.
         """
         # Determine the path of the file.
-        path = os.path.join(self.log_dir, basename + extension)
+        path = self.gen_file_path(basename, extension)
 
         # Check that the path is unique.
         assert(path not in self.created_files)
@@ -93,6 +97,13 @@ class ArtifactsManager:
         with open(path, "w") as f:
             pass
 
+        return path
+
+    def get_file(self, basename, extension):
+        """Return path to a file in the log folder. Assert that it was created
+        by this instance of ArtifactsManager."""
+        path = self.gen_file_path(basename, extension)
+        assert(path in self.created_files)
         return path
 
 
@@ -118,6 +129,10 @@ class Driver:
 
     def __init__(self, args):
         self.args = args
+
+    def get_run_log(self, run_name):
+        """Return path to the main log of a given test run."""
+        return self.args.artifacts.get_file(run_name, ".log")
 
     def start_run(self, run_name):
         """Hook called by Driver subclasses before they invoke the target
@@ -369,7 +384,7 @@ class TestRunner:
             print("        PASS")
             return TestRunnerResult(tests_run=1, tests_failed=0)
         else:
-            print("[x]     FAIL --", self.driver.file_path(log_name))
+            print("[x]     FAIL --", self.driver.get_run_log(log_name))
             failure_xml = ET.SubElement(test_xml, "failure")
             # TODO: set a meaningful message and put log in CDATA
             failure_xml.set("message", "Test failed")
