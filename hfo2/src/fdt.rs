@@ -24,6 +24,7 @@ use crate::utils::*;
 
 use scopeguard::guard;
 
+/// TODO(HfO2): port this function into `std.rs` (#48.)
 extern "C" {
     fn strcmp(a: *const u8, b: *const u8) -> i64;
 }

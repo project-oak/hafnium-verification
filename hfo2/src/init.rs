@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 
-use core::mem::{self, MaybeUninit};
+use core::mem::MaybeUninit;
 
 use crate::addr::*;
 use crate::api::*;
-use crate::boot_params::{self, BootParamsUpdate};
+use crate::boot_params::*;
 use crate::cpu::*;
 use crate::load::*;
 use crate::memiter::*;
@@ -50,11 +50,7 @@ unsafe fn one_time_init() {
     arch_one_time_init();
 
     let mut ppool = MPool::new();
-    mpool_add_chunk(
-        &mut ppool,
-        PTABLE_BUF.get_mut().as_mut_ptr() as usize as *mut _,
-        mem::size_of_val(PTABLE_BUF.get_ref()),
-    );
+    ppool.free_pages(Pages::from_raw(PTABLE_BUF.get_mut().as_mut_ptr(), HEAP_PAGES));
 
     let mm = MemoryManager::new(&ppool).expect("mm_init failed");
     memory_manager_init(mm);
@@ -65,7 +61,7 @@ unsafe fn one_time_init() {
 
     let mut hypervisor_ptable = memory_manager().hypervisor_ptable.lock();
 
-    let params = boot_params::get(&mut hypervisor_ptable, &mut ppool)
+    let params = boot_params_get(&mut hypervisor_ptable, &mut ppool)
         .expect("unable to retrieve boot params");
 
     let cpu_manager = cpu_module_init(&params.cpu_ids[..params.cpu_count]);
@@ -126,7 +122,7 @@ unsafe fn one_time_init() {
     .expect("unable to load secondary VMs");
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    boot_params::update(&mut hypervisor_ptable, &mut update, &mut ppool)
+    boot_params_update(&mut hypervisor_ptable, &mut update, &mut ppool)
         .expect("plat_update_boot_params failed");
 
     hypervisor_ptable.defrag(&ppool);

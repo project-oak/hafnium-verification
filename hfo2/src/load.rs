@@ -271,6 +271,20 @@ pub unsafe fn load_secondary(
             continue;
         }
 
+        let primary = vm_manager.get_mut(HF_PRIMARY_VM_ID).unwrap();
+
+        // Deny the primary VM access to this memory.
+        if primary
+            .inner
+            .get_mut()
+            .ptable
+            .unmap(secondary_mem_begin, secondary_mem_end, ppool)
+            .is_err()
+        {
+            dlog!("Unable to unmap secondary VM from primary VM\n");
+            return Err(());
+        }
+
         let vm = match vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool) {
             Some(vm) => vm,
             None => {
@@ -296,28 +310,12 @@ pub unsafe fn load_secondary(
             continue;
         }
 
-        let vm_id = vm.id;
-        let primary = vm_manager.get_mut(HF_PRIMARY_VM_ID).unwrap();
-
-        // Deny the primary VM access to this memory.
-        if primary
-            .inner
-            .get_mut()
-            .ptable
-            .unmap(secondary_mem_begin, secondary_mem_end, ppool)
-            .is_err()
-        {
-            dlog!("Unable to unmap secondary VM from primary VM\n");
-            return Err(());
-        }
-
         dlog!(
             "Loaded with {} vcpus, entry at 0x{:x}\n",
             cpu,
             pa_addr(secondary_mem_begin)
         );
 
-        let vm = vm_manager.get_mut(vm_id).unwrap();
         let secondary_entry = ipa_from_pa(secondary_mem_begin);
         vcpu_secondary_reset_and_start(
             &mut vm.vcpus[0],
