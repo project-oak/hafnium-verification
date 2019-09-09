@@ -466,6 +466,11 @@ impl CpuManager {
 
         None
     }
+
+    /// Temporal impl (WIP)
+    pub fn boot_cpu(&self) -> *mut Cpu {
+        self.cpus.get(0).unwrap() as &Cpu as *const _ as usize as *mut _
+    }
 }
 
 pub fn cpu_module_init(cpu_ids: &[cpu_id_t]) -> CpuManager {

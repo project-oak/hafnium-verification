@@ -41,7 +41,8 @@ extern "C" {
 static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
 
 /// Performs one-time initialisation of the hypervisor.
-unsafe fn one_time_init() {
+#[no_mangle]
+unsafe extern "C" fn one_time_init() -> *mut Cpu {
     // Make sure the console is initialised before calling dlog.
     plat_console_init();
 
@@ -64,8 +65,8 @@ unsafe fn one_time_init() {
     let params = boot_params_get(&mut hypervisor_ptable, &mut ppool)
         .expect("unable to retrieve boot params");
 
-    let cpu_manager = cpu_module_init(&params.cpu_ids[..params.cpu_count]);
-    cpu_manager_init(cpu_manager);
+    let cpum = cpu_module_init(&params.cpu_ids[..params.cpu_count]);
+    cpu_manager_init(cpum);
 
     for i in 0..params.mem_ranges_count {
         dlog!(
@@ -134,22 +135,14 @@ unsafe fn one_time_init() {
     mm_vm_enable_invalidation();
 
     dlog!("Hafnium initialisation completed\n");
-}
 
-static mut INITED: bool = false;
+    cpu_manager().boot_cpu()
+}
 
 // The entry point of CPUs when they are turned on. It is supposed to initialise
 // all state and return the first vCPU to run.
 #[no_mangle]
-pub unsafe extern "C" fn cpu_main(mut c: *const Cpu) -> *mut VCpu {
-    // Do global one-time initialisation just once. We avoid using atomics by
-    // only touching the variable from cpu 0.
-    if !INITED {
-        INITED = true;
-        one_time_init();
-        c = cpu_manager().lookup((*c).id).unwrap();
-    }
-
+pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *mut VCpu {
     if !mm_cpu_init() {
         panic!("mm_cpu_init failed");
     }
