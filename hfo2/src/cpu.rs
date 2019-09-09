@@ -559,7 +559,7 @@ pub unsafe extern "C" fn vcpu_get_vm(vcpu: *mut VCpu) -> *mut Vm {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *mut VCpu) -> *mut Cpu {
+pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *const VCpu) -> *mut Cpu {
     (*vcpu).inner.get_mut_unchecked().cpu as usize as *mut _
 }
 

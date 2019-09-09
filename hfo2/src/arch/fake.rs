@@ -55,6 +55,9 @@ pub fn arch_cpu_module_init() {
     // Do nothing.
 }
 
+// TODO(HfO2): Following functions are empty, since linker complains if the
+// implementations of functions are missing even they're never called in the
+// unit tests. Make a custom target and remove those (#46.)
 #[no_mangle]
 pub extern "C" fn arch_one_time_init() {
     unreachable!();

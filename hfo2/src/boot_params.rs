@@ -25,20 +25,16 @@ use crate::types::*;
 
 pub const MAX_MEM_RANGES: usize = 20;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct MemRange {
     pub begin: paddr_t,
     pub end: paddr_t,
 }
 
-/// TODO(HfO2): Is it more natural for `paddr_t` to have 0 as default value?
-impl Default for MemRange {
-    fn default() -> Self {
-        Self {
-            begin: pa_init(0),
-            end: pa_init(0),
-        }
+impl MemRange {
+    pub fn new(begin: paddr_t, end: paddr_t) -> Self {
+        Self { begin, end }
     }
 }
 
@@ -64,7 +60,7 @@ pub struct BootParamsUpdate {
 impl BootParamsUpdate {
     pub fn new(initrd_begin: paddr_t, initrd_end: paddr_t) -> Self {
         Self {
-            reserved_ranges: Default::default(),
+            reserved_ranges: [MemRange::new(pa_init(0), pa_init(0)); MAX_MEM_RANGES],
             reserved_ranges_count: 0,
             initrd_begin,
             initrd_end,
@@ -72,6 +68,9 @@ impl BootParamsUpdate {
     }
 }
 
+/// TODO(HfO2): `plat.c`, containing those functions are not ported into Rust.
+/// It's because functions in `plat.c` are denoted by `#pragma weak` which is 
+/// not supported in Rust yet. (#47.)
 extern "C" {
     fn plat_get_boot_params(
         stage1_locked: mm_stage1_locked,
@@ -87,7 +86,7 @@ extern "C" {
 }
 
 /// Reads platform-specific boot parameters.
-pub fn get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> Option<BootParams> {
+pub fn boot_params_get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> Option<BootParams> {
     unsafe {
         let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
 
@@ -100,7 +99,7 @@ pub fn get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> 
 }
 
 /// Updates boot parameters for primary VM to read.
-pub fn update(
+pub fn boot_params_update(
     ptable: &mut SpinLockGuard<PageTable<Stage1>>,
     p: &mut BootParamsUpdate,
     ppool: &mut MPool,
