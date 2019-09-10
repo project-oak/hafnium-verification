@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem;
+use core::mem::{self, MaybeUninit};
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::str;
@@ -485,14 +485,26 @@ impl Vm {
         ppool: &MPool,
     ) -> Result<(), ()> {
         self.id = id;
-        self.vcpus = ArrayVec::new();
+        // self.vcpus = ArrayVec::new();
+        // TODO(HfO2): Using former one will allocate large temporal stack to
+        // store a ArrayVec<[VCpu; MAX_CPUS]>. Maybe MIR-only RLIBs or denoting
+        // ArrayVec::new as inline will solve this problem.
+        // (See https://github.com/rust-lang/rust/issues/38913)
+        unsafe {
+            self.vcpus = MaybeUninit::uninit().assume_init();
+            self.vcpus.set_len(0);
+        }
         self.aborting = AtomicBool::new(false);
         unsafe {
             let self_ptr = self as *mut _;
             self.inner.get_mut().init(self_ptr, ppool)?;
 
             for _ in 0..vcpu_count {
-                self.vcpus.push(VCpu::new(self_ptr));
+                // self.vcpus.push(VCpu::new(self_ptr));
+                // TODO(HfO2): Using former one will allocate large temporal
+                // stack to store a VCpu. Maybe MIR-only RLIBs or denoting
+                // ArrayVec::push as inline will solve this problem.
+                self.vcpus.push_unchecked(VCpu::new(self_ptr));
             }
         }
         Ok(())
