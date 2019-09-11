@@ -252,13 +252,10 @@ pub unsafe fn load_secondary(
         }
 
         let (secondary_mem_begin, secondary_mem_end) =
-            match carve_out_mem_range(&mut mem_ranges_available, mem as u64) {
-                Ok(range) => range,
-                Err(_) => {
-                    dlog!("Not enough memory ({} bytes)\n", mem);
-                    continue;
-                }
-            };
+            ok_or!(carve_out_mem_range(&mut mem_ranges_available, mem as u64), {
+                dlog!("Not enough memory ({} bytes)\n", mem);
+                continue;
+            });
 
         if !copy_to_unmapped(
             hypervisor_ptable,
@@ -285,13 +282,10 @@ pub unsafe fn load_secondary(
             return Err(());
         }
 
-        let vm = match vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool) {
-            Some(vm) => vm,
-            None => {
-                dlog!("Unable to initialise VM\n");
-                continue;
-            }
-        };
+        let vm = unwrap_or!(vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool), {
+            dlog!("Unable to initialise VM\n");
+            continue;
+        });
 
         // Grant the VM access to the memory.
         if vm
