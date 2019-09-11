@@ -24,7 +24,6 @@ use crate::init::*;
 use crate::mm::*;
 use crate::page::*;
 use crate::spinlock::*;
-use crate::std::*;
 use crate::types::*;
 use crate::vm::*;
 
@@ -409,6 +408,13 @@ impl CpuManager {
         // Initialize boot CPU.
         let boot_stack = stacks[0].as_ptr() as usize;
         cpus.push(Cpu::new(boot_cpu_id, boot_stack + STACK_SIZE, true));
+
+        // TODO(HfO2): Ask hafnium-discuss about zero or multiple boot CPU IDs
+        // and the reason why Hafnium initializes pCPUs in reverse order. If it
+        // has a special reason, fix this (#51.)
+        if cpu_ids.iter().filter(|id| boot_cpu_id == **id).count() != 1 {
+            panic!("`cpu_ids` contains zero or multiple boot CPU IDs.\n");
+        }
 
         let cpu_ids = cpu_ids.iter().filter(|id| boot_cpu_id != **id);
         let stacks = stacks.iter().skip(1);
