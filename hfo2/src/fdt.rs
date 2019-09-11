@@ -106,6 +106,10 @@ impl FdtTokenizer {
         self.cur = round_up(self.cur as usize, FDT_TOKEN_ALIGNMENT) as _;
     }
 
+    unsafe fn iter(&self) -> impl Iterator<Item = *const u8> {
+        slice::from_raw_parts(self.cur, self.end.offset_from(self.cur) as usize).iter().map(|p| p as *const u8)
+    }
+
     unsafe fn u32(&mut self) -> Option<u32> {
         let next = self.cur.add(mem::size_of::<u32>());
         if next > self.end {
@@ -143,9 +147,7 @@ impl FdtTokenizer {
     }
 
     unsafe fn str(&mut self) -> Option<*const u8> {
-        let mut p = self.cur;
-
-        while p < self.end {
+        for p in self.iter() {
             if *p == 0 {
                 // Found the end of the string.
                 let res = self.cur;
@@ -153,8 +155,6 @@ impl FdtTokenizer {
                 self.align();
                 return Some(res);
             }
-
-            p = p.add(1);
         }
 
         None

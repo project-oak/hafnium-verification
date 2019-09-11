@@ -126,16 +126,13 @@ impl FdtNode {
                 }
             }
 
-            let (mut data, mut size) =
-                if let Ok((data, size)) = node.read_property("reg\0".as_ptr()) {
-                    (data, size)
+            let (mut data, mut size) = ok_or!(node.read_property("reg\0".as_ptr()), {
+                if node.next_sibling().is_none() {
+                    break;
                 } else {
-                    if node.next_sibling().is_none() {
-                        break;
-                    } else {
-                        continue;
-                    }
-                };
+                    continue;
+                }
+            });
 
             // Get all entries for this CPU.
             while size as usize >= address_size {
@@ -200,16 +197,13 @@ impl FdtNode {
                     continue;
                 }
             }
-            let (mut data, mut size) =
-                if let Ok((data, size)) = node.read_property("reg\0".as_ptr()) {
-                    (data, size)
+            let (mut data, mut size) = ok_or!(node.read_property("reg\0".as_ptr()), {
+                if node.next_sibling().is_none() {
+                    break;
                 } else {
-                    if node.next_sibling().is_none() {
-                        break;
-                    } else {
-                        continue;
-                    }
-                };
+                    continue;
+                }
+            });
 
             // Traverse all memory ranges within this node.
             while size as usize >= entry_size {
