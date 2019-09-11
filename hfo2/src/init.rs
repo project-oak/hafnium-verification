@@ -16,6 +16,7 @@
 
 use core::mem::MaybeUninit;
 use core::ptr;
+use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::addr::*;
 use crate::arch::*;
@@ -60,7 +61,7 @@ pub struct Hypervisor {
 /// but it was not aligned to PAGE_SIZE.
 static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
 
-static mut INITED: bool = false;
+static INITED: AtomicBool = AtomicBool::new(false);
 
 /// A singleton collecting all managers in Hafnium.
 ///
@@ -84,7 +85,7 @@ pub static mut HAFNIUM: MaybeUninit<Hypervisor> = MaybeUninit::uninit();
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
 unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
-    if INITED {
+    if INITED.load(Ordering::Acquire) {
         return c;
     }
 
@@ -194,7 +195,7 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     mm_vm_enable_invalidation();
 
     dlog!("Hafnium initialisation completed\n");
-    INITED = true;
+    INITED.store(true, Ordering::Release);
 
     hafnium().cpu_manager.boot_cpu()
 
