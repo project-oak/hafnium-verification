@@ -166,8 +166,8 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     // load_secondary will add regions assigned to the secondary VMs from
     // mem_ranges to reserved_ranges.
     let mut update: BootParamsUpdate = BootParamsUpdate::new(
-        pa_from_va(va_from_ptr(primary_initrd.next as usize as *const _)),
-        pa_from_va(va_from_ptr(primary_initrd.limit as usize as *const _)),
+        pa_from_va(va_from_ptr(primary_initrd.get_next() as usize as *const _)),
+        pa_from_va(va_from_ptr(primary_initrd.get_limit() as usize as *const _)),
     );
 
     load_secondary(
