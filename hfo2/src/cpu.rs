@@ -203,17 +203,22 @@ impl Interrupts {
 
 impl ArchRegs {
     pub fn new() -> Self {
-        let mut ret;
-        unsafe {
-            ret = MaybeUninit::uninit().assume_init();
-            memset_s(
-                &mut ret as *mut _ as usize as *mut _,
-                mem::size_of_val(&ret),
-                0,
-                mem::size_of_val(&ret),
-            );
-        }
-        ret
+        // TODO(HfO2): Originally, ArchRegs are filled by 0 when they're crated.
+        // However, doing like
+        // ```
+        // let mut ret = MaybeUninit::uninit().assume_init();
+        // memset(&mut ret, 0, mem::size_of_val(&ret));
+        // ```
+        // allocates large memory in stack to hold the value of ArchRegs, and
+        // introduce unnecessary memcpy.
+        // Note that MaybeUninit::zeroed() makes same assembly. I guess Rust
+        // native MaybeUninit can be improved to generate higher quality code.
+        //
+        // Anyway, none of them works, thus we delay its initialization to the
+        // time when `reset` is called. Today Hafnium's implementation always
+        // call `reset` before using `ArchRegs`. But, the future is in shadow,
+        // we'd better refactor this, by making arch-dependent `new` methods.
+        unsafe { MaybeUninit::uninit().assume_init() }
     }
 
     /// Reset the register values other than the PC and argument which are set
