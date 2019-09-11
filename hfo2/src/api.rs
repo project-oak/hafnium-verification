@@ -385,7 +385,10 @@ pub unsafe extern "C" fn api_vcpu_run(
     );
 
     // Update state if allowed.
-    let mut vcpu_locked = ok_or!(vcpu_prepare_run(&current, vcpu, ret), return ret.into_raw());
+    let mut vcpu_locked = match vcpu_prepare_run(&current, vcpu, ret) {
+        Ok(locked) => locked,
+        Err(ret) => return ret.into_raw(),
+    };
 
     // Inject timer interrupt if timer has expired. It's safe to access
     // vcpu->regs here because vcpu_prepare_run already made sure that
