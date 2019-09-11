@@ -46,7 +46,7 @@
  * This function must be implemented to trigger the architecture specific
  * mechanism to call to the hypervisor.
  */
-int64_t hf_call(size_t arg0, size_t arg1, size_t arg2, size_t arg3);
+int64_t hf_call(uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3);
 
 /**
  * Returns the VM's own ID.

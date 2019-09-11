@@ -24,7 +24,7 @@ source_set("entry") {
 # Make a call to the hypervisor from a VM.
 source_set("hf_call") {
   sources = [
-    "hf_call.S",
+    "hf_call.c",
   ]
 }
 
