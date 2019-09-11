@@ -27,7 +27,7 @@ macro_rules! ok_or {
 }
 
 #[macro_export]
-macro_rules! unwrap_or {
+macro_rules! some_or {
     ($e:expr, $err:expr) => {{
         match $e {
             Some(r) => r,

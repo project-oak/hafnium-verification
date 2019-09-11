@@ -74,7 +74,7 @@ pub unsafe fn load_primary(
 ) -> Result<MemIter, ()> {
     let primary_begin = layout_primary_begin();
 
-    let it = unwrap_or!(find_file(&mut cpio.clone(), "vmlinuz\0".as_ptr()), {
+    let it = some_or!(find_file(&mut cpio.clone(), "vmlinuz\0".as_ptr()), {
         dlog!("Unable to find vmlinuz\n");
         return Err(());
     });
@@ -95,7 +95,7 @@ pub unsafe fn load_primary(
         return Err(());
     }
 
-    let initrd = unwrap_or!(find_file(&mut cpio.clone(), "initrd.img\0".as_ptr()), {
+    let initrd = some_or!(find_file(&mut cpio.clone(), "initrd.img\0".as_ptr()), {
         dlog!("Unable to find initrd.img\n");
         return Err(());
     });
@@ -104,7 +104,7 @@ pub unsafe fn load_primary(
         .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
         .ok_or_else(|| {
             dlog!("Unable to initialise primary vm\n");
-            (())
+            ()
         })?;
 
     if vm.id != HF_PRIMARY_VM_ID {
@@ -214,7 +214,7 @@ pub unsafe fn load_secondary(
     mem_ranges_available.clone_from_slice(&params.mem_ranges);
     mem_ranges_available.truncate(params.mem_ranges_count);
 
-    let mut it = unwrap_or!(find_file(&mut cpio.clone(), "vms.txt\0".as_ptr()), {
+    let mut it = some_or!(find_file(&mut cpio.clone(), "vms.txt\0".as_ptr()), {
         dlog!("vms.txt is missing\n");
         return Ok(());
     });
@@ -227,14 +227,14 @@ pub unsafe fn load_secondary(
     loop {
         // Note(HfO2): There is `while let (Some(x), Some(y)) = (...) {}` but it
         // is not short-circuiting.
-        let mut mem = unwrap_or!(it.parse_uint(), break);
-        let cpu = unwrap_or!(it.parse_uint(), break);
-        let name = unwrap_or!(it.parse_str(), break);
+        let mut mem = some_or!(it.parse_uint(), break);
+        let cpu = some_or!(it.parse_uint(), break);
+        let name = some_or!(it.parse_str(), break);
         let name_str = str::from_utf8_unchecked(name.as_slice());
 
         dlog!("Loading {}\n", name_str);
 
-        let kernel = unwrap_or!(find_file_memiter(&mut cpio.clone(), &name), {
+        let kernel = some_or!(find_file_memiter(&mut cpio.clone(), &name), {
             dlog!("Unable to load kernel\n");
             continue;
         });
@@ -280,7 +280,7 @@ pub unsafe fn load_secondary(
             return Err(());
         }
 
-        let vm = unwrap_or!(vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool), {
+        let vm = some_or!(vm_manager.new_vm(cpu as spci_vcpu_count_t, ppool), {
             dlog!("Unable to initialise VM\n");
             continue;
         });
