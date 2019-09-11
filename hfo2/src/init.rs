@@ -15,6 +15,7 @@
  */
 
 use core::mem::MaybeUninit;
+use core::ptr;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -107,7 +108,7 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     // Stage2::invalidate_tlb refers global state. TODO(HfO2): Refactor the
     // function to recieve the info from caller. Maybe MemoryManager should
     // have a wrapper function for page table.
-    HAFNIUM.get_mut().memory_manager = mm;
+    ptr::write(&mut HAFNIUM.get_mut().memory_manager, mm);
     let mm = &HAFNIUM.get_ref().memory_manager;
 
     // Enable locks now that mm is initialised.
@@ -150,7 +151,7 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
         pa_difference(params.initrd_begin, params.initrd_end),
     );
 
-    HAFNIUM.get_mut().vm_manager = VmManager::new();
+    ptr::write(&mut HAFNIUM.get_mut().vm_manager, VmManager::new());
 
     // Load all VMs.
     let primary_initrd = load_primary(
@@ -186,8 +187,8 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     hypervisor_ptable.defrag(&ppool);
 
     // Initialise HAFNIUM.
-    HAFNIUM.get_mut().mpool = ppool;
-    HAFNIUM.get_mut().cpu_manager = cpum;
+    ptr::write(&mut HAFNIUM.get_mut().mpool, ppool);
+    ptr::write(&mut HAFNIUM.get_mut().cpu_manager, cpum);
 
     // Enable TLB invalidation for VM page table updates.
     mm_vm_enable_invalidation();
