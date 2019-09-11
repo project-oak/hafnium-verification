@@ -197,9 +197,9 @@ impl FdtTokenizer {
             // Move cursor to the end so that caller won't get any new
             // tokens.
             self.cur = self.end;
-            return None
+            return None;
         });
-        
+
         Some(name)
     }
 

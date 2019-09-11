@@ -373,16 +373,10 @@ pub unsafe extern "C" fn api_vcpu_run(
     }
 
     // The requested VM must exist.
-    let vm = unwrap_or!(
-        hafnium().vm_manager.get(vm_id),
-        return ret.into_raw()
-    );
+    let vm = unwrap_or!(hafnium().vm_manager.get(vm_id), return ret.into_raw());
 
     // The requested vcpu must exist.
-    let vcpu = unwrap_or!(
-        vm.vcpus.get(vcpu_idx as usize),
-        return ret.into_raw()
-    );
+    let vcpu = unwrap_or!(vm.vcpus.get(vcpu_idx as usize), return ret.into_raw());
 
     // Update state if allowed.
     let mut vcpu_locked = match vcpu_prepare_run(&current, vcpu, ret) {
@@ -815,10 +809,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    let target_vcpu = unwrap_or!(
-        target_vm.vcpus.get(target_vcpu_idx as usize),
-        return -1
-    );
+    let target_vcpu = unwrap_or!(target_vm.vcpus.get(target_vcpu_idx as usize), return -1);
 
     dlog!(
         "Injecting IRQ {} for VM {} VCPU {} from VM {} VCPU {}\n",

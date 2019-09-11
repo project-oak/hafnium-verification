@@ -15,6 +15,7 @@
  */
 
 use core::ptr;
+use core::slice;
 
 use crate::std::*;
 use crate::types::*;
@@ -22,8 +23,8 @@ use crate::types::*;
 #[repr(C)]
 #[derive(Clone)]
 pub struct MemIter {
-    pub next: *const u8,
-    pub limit: *const u8,
+    next: *const u8,
+    limit: *const u8,
 }
 
 /// Determines if a character is a whitespace.
@@ -144,6 +145,22 @@ impl MemIter {
         } else {
             None
         }
+    }
+
+    pub fn get_next(&self) -> *const u8 {
+        self.next
+    }
+
+    pub fn get_limit(&self) -> *const u8 {
+        self.limit
+    }
+
+    pub unsafe fn as_slice(&self) -> &[u8] {
+        slice::from_raw_parts(self.next, self.limit.offset_from(self.next) as usize)
+    }
+
+    pub fn len(&self) -> usize {
+        unsafe { self.limit.offset_from(self.next) as usize }
     }
 }
 

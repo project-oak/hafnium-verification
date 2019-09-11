@@ -15,6 +15,7 @@
  */
 
 use core::mem;
+use core::str;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -86,8 +87,8 @@ pub unsafe fn load_primary(
     if !copy_to_unmapped(
         hypervisor_ptable,
         primary_begin,
-        it.next as usize as *mut _,
-        it.limit.offset_from(it.next) as usize,
+        it.get_next() as usize as *mut _,
+        it.len(),
         ppool,
     ) {
         dlog!("Unable to relocate kernel for primary vm.\n");
@@ -229,14 +230,9 @@ pub unsafe fn load_secondary(
         let mut mem = unwrap_or!(it.parse_uint(), break);
         let cpu = unwrap_or!(it.parse_uint(), break);
         let name = unwrap_or!(it.parse_str(), break);
+        let name_str = str::from_utf8_unchecked(name.as_slice());
 
-        dlog!("Loading ");
-        let mut p = name.next;
-        while p != name.limit {
-            dlog!("{}", *p as char);
-            p = p.add(1);
-        }
-        dlog!("\n");
+        dlog!("Loading {}\n", name_str);
 
         let kernel = unwrap_or!(find_file_memiter(&mut cpio.clone(), &name), {
             dlog!("Unable to load kernel\n");
@@ -246,22 +242,24 @@ pub unsafe fn load_secondary(
         // Round up to page size.
         mem = (mem + PAGE_SIZE as u64 - 1) & !(PAGE_SIZE as u64 - 1);
 
-        if mem < kernel.limit.offset_from(kernel.next) as u64 {
+        if mem < kernel.len() as u64 {
             dlog!("Kernel is larger than available memory\n");
             continue;
         }
 
-        let (secondary_mem_begin, secondary_mem_end) =
-            ok_or!(carve_out_mem_range(&mut mem_ranges_available, mem as u64), {
+        let (secondary_mem_begin, secondary_mem_end) = ok_or!(
+            carve_out_mem_range(&mut mem_ranges_available, mem as u64),
+            {
                 dlog!("Not enough memory ({} bytes)\n", mem);
                 continue;
-            });
+            }
+        );
 
         if !copy_to_unmapped(
             hypervisor_ptable,
             secondary_mem_begin,
-            kernel.next as usize as *const _,
-            kernel.limit.offset_from(kernel.next) as usize,
+            kernel.get_next() as usize as *const _,
+            kernel.len(),
             ppool,
         ) {
             dlog!("Unable to copy kernel\n");
