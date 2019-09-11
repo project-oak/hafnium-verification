@@ -33,31 +33,8 @@ image_entry:
 	orr x30, x29, x30
 	str x30, [x0, CPU_ID]
 
-	/**
-	 * Basically do the same thing on cpu_entry, but call one_time_init
-     * before cpu_main.
-	 */
-
-	/* Disable interrupts. */
-	msr DAIFSet, #0xf
-
-	/* Use SPx (instead of SP0). */
-	msr spsel, #1
-
-	/* Prepare the stack. */
-	ldr x30, [x0, #CPU_STACK_BOTTOM]
-	mov sp, x30
-
-	/* Configure exception handlers. */
-	adrp x30, vector_table_el2
-	add x30, x30, :lo12:vector_table_el2
-	msr vbar_el2, x30
-
-	/* Initialize the hypervisor. It returns a correct pointer to boot cpu. */
-	bl one_time_init
-
 	/* Call into C code, x0 holds the cpu pointer. */
-	bl cpu_main
+	bl cpu_entry
 
 	/* Run the vcpu returned by cpu_main. */
 	bl vcpu_restore_all_and_run
