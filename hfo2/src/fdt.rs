@@ -193,7 +193,7 @@ impl FdtTokenizer {
             return None;
         }
 
-        let name = unwrap_or!(self.str(), {
+        let name = some_or!(self.str(), {
             // Move cursor to the end so that caller won't get any new
             // tokens.
             self.cur = self.end;
@@ -317,7 +317,7 @@ impl FdtHeader {
         }
 
         // Traverse the whole thing.
-        let node = unwrap_or!(FdtNode::new_root(self), {
+        let node = some_or!(FdtNode::new_root(self), {
             dlog!("FDT failed validation.\n");
             return;
         });
@@ -423,7 +423,7 @@ pub unsafe extern "C" fn fdt_dump(hdr: *mut FdtHeader) {
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_root_node(node: *mut FdtNode, hdr: *const FdtHeader) -> bool {
-    let n = unwrap_or!(FdtNode::new_root(&*hdr), return false);
+    let n = some_or!(FdtNode::new_root(&*hdr), return false);
     ptr::write(node, n);
     true
 }
@@ -435,7 +435,7 @@ pub unsafe extern "C" fn fdt_find_child(node: *mut FdtNode, child: *const u8) ->
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_first_child(node: *mut FdtNode, child_name: *mut *const u8) -> bool {
-    let name = unwrap_or!((*node).first_child(), return false);
+    let name = some_or!((*node).first_child(), return false);
     ptr::write(child_name, name);
     true
 }
@@ -445,7 +445,7 @@ pub unsafe extern "C" fn fdt_next_sibling(
     node: *mut FdtNode,
     sibling_name: *mut *const u8,
 ) -> bool {
-    let name = unwrap_or!((*node).next_sibling(), return false);
+    let name = some_or!((*node).next_sibling(), return false);
     ptr::write(sibling_name, name);
     true
 }

@@ -217,7 +217,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
         return 0;
     }
 
-    let vm = unwrap_or!(hafnium().vm_manager.get(vm_id), return 0);
+    let vm = some_or!(hafnium().vm_manager.get(vm_id), return 0);
 
     vm.vcpus.len() as spci_vcpu_count_t
 }
@@ -373,10 +373,10 @@ pub unsafe extern "C" fn api_vcpu_run(
     }
 
     // The requested VM must exist.
-    let vm = unwrap_or!(hafnium().vm_manager.get(vm_id), return ret.into_raw());
+    let vm = some_or!(hafnium().vm_manager.get(vm_id), return ret.into_raw());
 
     // The requested vcpu must exist.
-    let vcpu = unwrap_or!(vm.vcpus.get(vcpu_idx as usize), return ret.into_raw());
+    let vcpu = some_or!(vm.vcpus.get(vcpu_idx as usize), return ret.into_raw());
 
     // Update state if allowed.
     let mut vcpu_locked = match vcpu_prepare_run(&current, vcpu, ret) {
@@ -519,7 +519,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     }
 
     // Ensure the target VM exists.
-    let to = unwrap_or!(
+    let to = some_or!(
         hafnium().vm_manager.get(from_msg_replica.target_vm_id),
         return SpciReturn::InvalidParameters
     );
@@ -699,7 +699,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
         return -1;
     }
 
-    let vm = unwrap_or!(hafnium().vm_manager.get(vm_id), return -1);
+    let vm = some_or!(hafnium().vm_manager.get(vm_id), return -1);
 
     // Check if there are outstanding notifications from given vm.
     let entry = (*vm).inner.lock().fetch_waiter();
@@ -799,7 +799,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
     next: *mut *mut VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let target_vm = unwrap_or!(hafnium().vm_manager.get(target_vm_id), return -1);
+    let target_vm = some_or!(hafnium().vm_manager.get(target_vm_id), return -1);
 
     if intid >= HF_NUM_INTIDS {
         return -1;
@@ -809,7 +809,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    let target_vcpu = unwrap_or!(target_vm.vcpus.get(target_vcpu_idx as usize), return -1);
+    let target_vcpu = some_or!(target_vm.vcpus.get(target_vcpu_idx as usize), return -1);
 
     dlog!(
         "Injecting IRQ {} for VM {} VCPU {} from VM {} VCPU {}\n",
