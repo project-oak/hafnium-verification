@@ -20,9 +20,9 @@ use core::ptr;
 
 use crate::addr::*;
 use crate::arch::*;
+use crate::init::*;
 use crate::mm::*;
 use crate::page::*;
-use crate::singleton::*;
 use crate::spinlock::*;
 use crate::std::*;
 use crate::types::*;
@@ -429,7 +429,7 @@ impl CpuManager {
         *is_on = true;
 
         if !prev {
-            let vm = vm_manager().get(HF_PRIMARY_VM_ID).unwrap();
+            let vm = hafnium().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
             let vcpu = vm.vcpus.get(self.index_of(c)).unwrap();
 
             vcpu.inner.lock().on(entry, arg);
@@ -456,13 +456,13 @@ impl CpuManager {
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
-    cpu_manager().index_of(&*c)
+    hafnium().cpu_manager.index_of(&*c)
 }
 
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
-    cpu_manager().cpu_on(&*c, entry, arg)
+    hafnium().cpu_manager.cpu_on(&*c, entry, arg)
 }
 
 /// Prepares the CPU for turning itself off.
@@ -474,7 +474,8 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 /// Searches for a CPU based on its id.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
-    cpu_manager()
+    hafnium()
+        .cpu_manager
         .lookup(id)
         .map(|cpu| cpu as *const _ as usize as *mut _)
         .unwrap_or(ptr::null_mut())

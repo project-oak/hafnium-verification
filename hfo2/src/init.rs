@@ -48,12 +48,23 @@ extern "C" {
     static boot_cpu: Cpu;
 }
 
+/// TODO(HfO2): Refactor api.rs and remove `pub` (#44.)
+pub struct Hypervisor {
+    pub mpool: MPool,
+    pub memory_manager: MemoryManager,
+    pub cpu_manager: CpuManager,
+    pub vm_manager: VmManager,
+}
+
 /// Note(HfO2): this variable was originally of type
 /// MaybeUninit<[u8; mem::size_of::<RawPageTable>() * HEAP_PAGES]>,
 /// but it was not aligned to PAGE_SIZE.
 static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
 
 static mut INITED: bool = false;
+/// TODO(HfO2): This `pub` is required by mm_init, which is only used by unit
+/// tests. Resolving #46 may help.
+pub static mut HAFNIUM: MaybeUninit<Hypervisor> = MaybeUninit::uninit();
 
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
@@ -68,6 +79,7 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     dlog!("Initialising hafnium\n");
 
     arch_one_time_init();
+    arch_cpu_module_init();
 
     let mut ppool = MPool::new();
     ppool.free_pages(Pages::from_raw(
@@ -76,25 +88,28 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     ));
 
     let mm = MemoryManager::new(&ppool).expect("mm_init failed");
-    memory_manager_init(mm);
+
+    // We have to initialize memory manager early, because
+    // Stage2::invalidate_tlb refers global state. TODO(HfO2): Refactor the
+    // function to recieve the info from caller. Maybe MemoryManager should
+    // have a wrapper function for page table.
+    HAFNIUM.get_mut().memory_manager = mm;
+    let mm = &HAFNIUM.get_ref().memory_manager;
 
     // Enable locks now that mm is initialised.
     dlog_enable_lock();
     mpool_enable_locks();
 
-    let mut hypervisor_ptable = memory_manager().hypervisor_ptable.lock();
+    let mut hypervisor_ptable = mm.hypervisor_ptable.lock();
 
     let params = boot_params_get(&mut hypervisor_ptable, &mut ppool)
         .expect("unable to retrieve boot params");
-
-    arch_cpu_module_init();
 
     let cpum = CpuManager::new(
         &params.cpu_ids[..params.cpu_count],
         boot_cpu.id,
         &callstacks,
     );
-    cpu_manager_init(cpum);
 
     for i in 0..params.mem_ranges_count {
         dlog!(
@@ -121,11 +136,11 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
         pa_difference(params.initrd_begin, params.initrd_end),
     );
 
-    vm_manager_init(VmManager::new());
+    HAFNIUM.get_mut().vm_manager = VmManager::new();
 
     // Load all VMs.
     let primary_initrd = load_primary(
-        vm_manager_mut(),
+        &mut HAFNIUM.get_mut().vm_manager,
         &mut hypervisor_ptable,
         &cpio,
         params.kernel_arg,
@@ -141,7 +156,7 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     );
 
     load_secondary(
-        vm_manager_mut(),
+        &mut HAFNIUM.get_mut().vm_manager,
         &mut hypervisor_ptable,
         &cpio,
         &params,
@@ -156,8 +171,9 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
 
     hypervisor_ptable.defrag(&ppool);
 
-    // Initialise the API page pool. ppool will be empty from now on.
-    api_manager_init(ApiManager::new(ppool));
+    // Initialise HAFNIUM.
+    HAFNIUM.get_mut().mpool = ppool;
+    HAFNIUM.get_mut().cpu_manager = cpum;
 
     // Enable TLB invalidation for VM page table updates.
     mm_vm_enable_invalidation();
@@ -165,11 +181,15 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     dlog!("Hafnium initialisation completed\n");
     INITED = true;
 
-    cpu_manager().boot_cpu()
+    hafnium().cpu_manager.boot_cpu()
 
     // From now on, other pCPUs are on in order to run multiple vCPUs. Thus
     // you may safely make readonly references to the Hafnium singleton, but
     // may not modify the singleton without proper locking.
+}
+
+pub fn hafnium() -> &'static Hypervisor {
+    unsafe { HAFNIUM.get_ref() }
 }
 
 // The entry point of CPUs when they are turned on. It is supposed to initialise
@@ -180,7 +200,7 @@ pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *mut VCpu {
         panic!("mm_cpu_init failed");
     }
 
-    let primary = vm_manager().get(HF_PRIMARY_VM_ID).unwrap();
+    let primary = hafnium().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
     let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();
     let vm = vcpu.vm;
 

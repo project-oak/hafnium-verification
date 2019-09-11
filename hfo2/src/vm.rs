@@ -26,11 +26,11 @@ use scopeguard::guard;
 use crate::addr::*;
 use crate::arch::*;
 use crate::cpu::*;
+use crate::init::*;
 use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
-use crate::singleton::*;
 use crate::spci::*;
 use crate::spinlock::*;
 use crate::std::*;
@@ -156,7 +156,7 @@ impl Mailbox {
     ) -> Result<(), ()> {
         // TODO(HfO2): Acquring the singleton here is not recommended. Get the
         // hypervisor ptable from callee (API module.)
-        let mut hypervisor_ptable = memory_manager().hypervisor_ptable.lock();
+        let mut hypervisor_ptable = hafnium().memory_manager.hypervisor_ptable.lock();
         let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
 
         // Map the send page as read-only in the hypervisor address space.
@@ -616,7 +616,7 @@ pub unsafe extern "C" fn vm_init(
     ppool: *mut MPool,
     new_vm: *mut *mut Vm,
 ) -> bool {
-    let vmm = vm_manager() as *const _ as usize as *mut VmManager;
+    let vmm = &hafnium().vm_manager as *const _ as usize as *mut VmManager;
     match (*vmm).new_vm(vcpu_count, &*ppool) {
         Some(vm) => {
             *new_vm = vm as *mut _;
@@ -628,7 +628,7 @@ pub unsafe extern "C" fn vm_init(
 
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
-    vm_manager().vms.len() as _
+    hafnium().vm_manager.vms.len() as _
 }
 
 /// Locks the given VM and updates `locked` to hold the newly locked vm.
