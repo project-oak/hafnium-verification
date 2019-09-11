@@ -219,7 +219,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
 
     let vm = some_or!(hafnium().vm_manager.get(vm_id), return 0);
 
-    vm.vcpus.len() as spci_vcpu_count_t
+    vm.vcpus.len() as _
 }
 
 /// This function is called by the architecture-specific context switching
@@ -584,6 +584,8 @@ pub unsafe extern "C" fn api_spci_msg_send(
         // at spci_msg_handle_architected_message will make several accesses to
         // fields in message_buffer. The memory area message_buffer must be
         // exclusively owned by Hf so that TOCTOU issues do not arise.
+        // TODO(HfO2): Refactor `spci_*` functions, in order to pass references 
+        // to VmInner.
         let ret = spci_msg_handle_architected_message(
             &ManuallyDrop::new(VmLocked::from_raw(to as *const _ as usize as *mut _)),
             &ManuallyDrop::new(VmLocked::from_raw(from)),

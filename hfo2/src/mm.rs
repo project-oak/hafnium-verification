@@ -1238,8 +1238,9 @@ pub unsafe extern "C" fn mm_unmap(
     stage1_locked.unmap(begin, end, mpool).is_ok()
 }
 
-/// This function is only used in one unit test (fdt/find_memory_ranges.)
-/// Unsafety doesn't really matter.
+/// TODO(HfO2): This function is only used in one unit test
+/// (fdt/find_memory_ranges.) Unsafety doesn't really matter. Resolve #46, then
+/// we can remove this.
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     let mm = some_or!(MemoryManager::new(&*mpool), return false);
