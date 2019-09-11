@@ -48,19 +48,6 @@ use crate::vm::*;
 // of a page.
 const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
-pub struct ApiManager {
-    /// A global page pool for sharing memories.
-    ppool: MPool,
-}
-
-impl ApiManager {
-    /// Initialises the API page pool by taking ownership of the contents of the
-    /// given page pool.
-    pub fn new(ppool: MPool) -> Self {
-        Self { ppool }
-    }
-}
-
 /// Switches the physical CPU back to the corresponding vcpu of the primary VM.
 ///
 /// This triggers the scheduling logic to run. Run in the context of secondary

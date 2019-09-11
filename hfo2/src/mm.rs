@@ -1243,7 +1243,7 @@ pub unsafe extern "C" fn mm_unmap(
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     let mm = ok_or_return!(MemoryManager::new(&*mpool).ok_or(()), false);
-    HAFNIUM.get_mut().memory_manager = mm;
+    ptr::write(&mut HAFNIUM.get_mut().memory_manager, mm);
 
     true
 }
