@@ -399,7 +399,6 @@ impl CpuManager {
         boot_cpu_id: cpu_id_t,
         stacks: &[[u8; STACK_SIZE]; MAX_CPUS],
     ) -> Self {
-        arch_cpu_module_init();
         let mut cpus: ArrayVec<[Cpu; MAX_CPUS]> = ArrayVec::new();
 
         // Initialize boot CPU.

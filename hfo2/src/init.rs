@@ -17,6 +17,7 @@
 use core::mem::MaybeUninit;
 
 use crate::addr::*;
+use crate::arch::*;
 use crate::api::*;
 use crate::boot_params::*;
 use crate::cpu::*;
@@ -78,6 +79,8 @@ unsafe extern "C" fn one_time_init() -> *mut Cpu {
 
     let params = boot_params_get(&mut hypervisor_ptable, &mut ppool)
         .expect("unable to retrieve boot params");
+
+    arch_cpu_module_init();
 
     let cpum = CpuManager::new(&params.cpu_ids[..params.cpu_count], boot_cpu.id, &callstacks);
     cpu_manager_init(cpum);
