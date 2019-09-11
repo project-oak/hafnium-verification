@@ -373,16 +373,19 @@ pub unsafe extern "C" fn api_vcpu_run(
     }
 
     // The requested VM must exist.
-    let vm = ok_or_return!(hafnium().vm_manager.get(vm_id).ok_or(()), ret.into_raw());
+    let vm = unwrap_or!(
+        hafnium().vm_manager.get(vm_id),
+        return ret.into_raw()
+    );
 
     // The requested vcpu must exist.
-    let vcpu = ok_or_return!(vm.vcpus.get(vcpu_idx as usize).ok_or(()), ret.into_raw());
+    let vcpu = unwrap_or!(
+        vm.vcpus.get(vcpu_idx as usize),
+        return ret.into_raw()
+    );
 
     // Update state if allowed.
-    let mut vcpu_locked = match vcpu_prepare_run(&current, vcpu, ret) {
-        Ok(locked) => locked,
-        Err(ret) => return ret.into_raw(),
-    };
+    let mut vcpu_locked = ok_or!(vcpu_prepare_run(&current, vcpu, ret), return ret.into_raw());
 
     // Inject timer interrupt if timer has expired. It's safe to access
     // vcpu->regs here because vcpu_prepare_run already made sure that
@@ -519,12 +522,9 @@ pub unsafe extern "C" fn api_spci_msg_send(
     }
 
     // Ensure the target VM exists.
-    let to = ok_or_return!(
-        hafnium()
-            .vm_manager
-            .get(from_msg_replica.target_vm_id)
-            .ok_or(()),
-        SpciReturn::InvalidParameters
+    let to = unwrap_or!(
+        hafnium().vm_manager.get(from_msg_replica.target_vm_id),
+        return SpciReturn::InvalidParameters
     );
 
     // Hf needs to hold the lock on `to` before the mailbox state is checked.
@@ -702,7 +702,7 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
         return -1;
     }
 
-    let vm = ok_or_return!(hafnium().vm_manager.get(vm_id).ok_or(()), -1);
+    let vm = unwrap_or!(hafnium().vm_manager.get(vm_id), return -1);
 
     // Check if there are outstanding notifications from given vm.
     let entry = (*vm).inner.lock().fetch_waiter();
@@ -802,7 +802,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
     next: *mut *mut VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let target_vm = ok_or_return!(hafnium().vm_manager.get(target_vm_id).ok_or(()), -1);
+    let target_vm = unwrap_or!(hafnium().vm_manager.get(target_vm_id), return -1);
 
     if intid >= HF_NUM_INTIDS {
         return -1;
@@ -812,7 +812,10 @@ pub unsafe extern "C" fn api_interrupt_inject(
         return -1;
     }
 
-    let target_vcpu = ok_or_return!(target_vm.vcpus.get(target_vcpu_idx as usize).ok_or(()), -1);
+    let target_vcpu = unwrap_or!(
+        target_vm.vcpus.get(target_vcpu_idx as usize),
+        return -1
+    );
 
     dlog!(
         "Injecting IRQ {} for VM {} VCPU {} from VM {} VCPU {}\n",
@@ -897,7 +900,7 @@ pub fn spci_share_memory(
     // Check if the state transition is lawful for both VMs involved in the
     // memory exchange, ensure that all constituents of a memory region being
     // shared are at the same state.
-    let (orig_from_mode, from_mode, to_mode) = ok_or_return!(
+    let (orig_from_mode, from_mode, to_mode) = ok_or!(
         spci_msg_check_transition(
             &to_locked,
             &from_locked,
@@ -906,7 +909,7 @@ pub fn spci_share_memory(
             end,
             memory_to_attributes,
         ),
-        SpciReturn::InvalidParameters
+        return SpciReturn::InvalidParameters
     );
 
     let pa_begin = pa_from_ipa(begin);
@@ -1070,7 +1073,7 @@ pub unsafe extern "C" fn api_share_memory(
 ) -> i64 {
     // Convert the sharing request to memory management modes.
     // The input is untrusted so might not be a valid value.
-    let share = ok_or_return!(HfShare::try_from(share), -1);
+    let share = ok_or!(HfShare::try_from(share), return -1);
 
     match share_memory(vm_id, addr, size, share, &*current) {
         Ok(_) => 0,

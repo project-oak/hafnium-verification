@@ -17,11 +17,11 @@
 use core::sync::atomic::spin_loop_hint;
 
 #[macro_export]
-macro_rules! ok_or_return {
+macro_rules! ok_or {
     ($e:expr, $err:expr) => {{
         match $e {
             Ok(r) => r,
-            Err(_) => return $err,
+            Err(_) => $err,
         }
     }};
 }

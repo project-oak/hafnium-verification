@@ -1173,17 +1173,17 @@ pub unsafe extern "C" fn mm_vm_unmap_hypervisor(
     // TODO: If we add pages dynamically, they must be included here too.
     let t = &mut *t;
     let mpool = &*mpool;
-    ok_or_return!(
+    ok_or!(
         t.unmap(layout_text_begin(), layout_text_end(), mpool),
-        false
+        return false
     );
-    ok_or_return!(
+    ok_or!(
         t.unmap(layout_rodata_begin(), layout_rodata_end(), mpool),
-        false
+        return false
     );
-    ok_or_return!(
+    ok_or!(
         t.unmap(layout_data_begin(), layout_data_end(), mpool),
-        false
+        return false
     );
     true
 }
@@ -1242,7 +1242,7 @@ pub unsafe extern "C" fn mm_unmap(
 /// Unsafety doesn't really matter.
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
-    let mm = ok_or_return!(MemoryManager::new(&*mpool).ok_or(()), false);
+    let mm = unwrap_or!(MemoryManager::new(&*mpool), return false);
     ptr::write(&mut HAFNIUM.get_mut().memory_manager, mm);
 
     true

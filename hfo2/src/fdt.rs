@@ -193,15 +193,14 @@ impl FdtTokenizer {
             return None;
         }
 
-        match self.str() {
-            Some(name) => Some(name),
-            None => {
-                // Move cursor to the end so that caller won't get any new
-                // tokens.
-                self.cur = self.end;
-                None
-            }
-        }
+        let name = unwrap_or!(self.str(), {
+            // Move cursor to the end so that caller won't get any new
+            // tokens.
+            self.cur = self.end;
+            return None
+        });
+        
+        Some(name)
     }
 
     unsafe fn skip_properties(&mut self) {
@@ -458,7 +457,7 @@ pub unsafe extern "C" fn fdt_read_property(
     buf: *mut *const u8,
     size: *mut u32,
 ) -> bool {
-    let (prop_buf, prop_size) = ok_or_return!((*node).read_property(name), false);
+    let (prop_buf, prop_size) = ok_or!((*node).read_property(name), return false);
     *buf = prop_buf;
     *size = prop_size;
     true
