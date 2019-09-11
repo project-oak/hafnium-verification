@@ -33,12 +33,4 @@ image_entry:
 	orr x30, x29, x30
 	str x30, [x0, CPU_ID]
 
-	/* Call into C code, x0 holds the cpu pointer. */
-	bl cpu_entry
-
-	/* Run the vcpu returned by cpu_main. */
-	bl vcpu_restore_all_and_run
-
-	/* Loop forever waiting for interrupts. */
-0:	wfi
-	b 0b
+	b cpu_entry
