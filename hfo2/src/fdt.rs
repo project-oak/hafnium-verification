@@ -107,7 +107,9 @@ impl FdtTokenizer {
     }
 
     unsafe fn iter(&self) -> impl Iterator<Item = *const u8> {
-        slice::from_raw_parts(self.cur, self.end.offset_from(self.cur) as usize).iter().map(|p| p as *const u8)
+        slice::from_raw_parts(self.cur, self.end.offset_from(self.cur) as usize)
+            .iter()
+            .map(|p| p as *const u8)
     }
 
     unsafe fn u32(&mut self) -> Option<u32> {
@@ -147,14 +149,12 @@ impl FdtTokenizer {
     }
 
     unsafe fn str(&mut self) -> Option<*const u8> {
-        for p in self.iter() {
-            if *p == 0 {
-                // Found the end of the string.
-                let res = self.cur;
-                self.cur = p.add(1);
-                self.align();
-                return Some(res);
-            }
+        if let Some(p) = self.iter().find(|p| **p == 0) {
+            // Found the end of the string.
+            let res = self.cur;
+            self.cur = p.add(1);
+            self.align();
+            return Some(res);
         }
 
         None
