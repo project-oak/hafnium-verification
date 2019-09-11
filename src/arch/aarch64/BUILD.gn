@@ -43,6 +43,5 @@ source_set("entry") {
 source_set("smc") {
   sources = [
     "smc.c",
-    "smc_internal.S",
   ]
 }
