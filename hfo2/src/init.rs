@@ -17,7 +17,6 @@
 use core::mem::MaybeUninit;
 
 use crate::addr::*;
-use crate::api::*;
 use crate::arch::*;
 use crate::boot_params::*;
 use crate::cpu::*;
@@ -26,7 +25,6 @@ use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
-use crate::singleton::*;
 use crate::types::*;
 use crate::vm::*;
 
@@ -62,8 +60,24 @@ pub struct Hypervisor {
 static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
 
 static mut INITED: bool = false;
+
+/// A singleton collecting all managers in Hafnium.
+///
+/// This is dependency-free; Typical solutions of mutable and shared static
+/// objects delay their initialization. Considering concurrency, they often use
+/// std::sync features to prevent racy initialization. But Hafnium is different.
+///
+///  - The initialization is _always_ happened once in the specific time.
+///  - During the time, no other thread is running; Hafnium runs as if it were
+///    a single-thread program.
+///  - After the initialization, Hafnium may make a non-exclusive reference of
+///    singletons, but they have their own way for Hafnium to safely write them.
+///
+/// Therefore, I do not use a safe wrapper for initialization such as
+/// `std::sync::Once` and `lazy_static`.
+///
 /// TODO(HfO2): This `pub` is required by mm_init, which is only used by unit
-/// tests. Resolving #46 may help.
+/// tests. Resolving #46 may help to remove the `pub`.
 pub static mut HAFNIUM: MaybeUninit<Hypervisor> = MaybeUninit::uninit();
 
 /// Performs one-time initialisation of the hypervisor.
