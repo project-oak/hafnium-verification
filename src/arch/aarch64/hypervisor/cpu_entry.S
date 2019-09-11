@@ -34,6 +34,9 @@ cpu_entry:
 	add x30, x30, :lo12:vector_table_el2
 	msr vbar_el2, x30
 
+	/* Initialize Hafnium. */
+	bl one_time_init
+
 	/* Call into C code, x0 holds the cpu pointer. */
 	bl cpu_main
 

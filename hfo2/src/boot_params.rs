@@ -69,7 +69,7 @@ impl BootParamsUpdate {
 }
 
 /// TODO(HfO2): `plat.c`, containing those functions are not ported into Rust.
-/// It's because functions in `plat.c` are denoted by `#pragma weak` which is 
+/// It's because functions in `plat.c` are denoted by `#pragma weak` which is
 /// not supported in Rust yet. (#47.)
 extern "C" {
     fn plat_get_boot_params(
@@ -86,7 +86,10 @@ extern "C" {
 }
 
 /// Reads platform-specific boot parameters.
-pub fn boot_params_get(ptable: &mut SpinLockGuard<PageTable<Stage1>>, ppool: &mut MPool) -> Option<BootParams> {
+pub fn boot_params_get(
+    ptable: &mut SpinLockGuard<PageTable<Stage1>>,
+    ppool: &mut MPool,
+) -> Option<BootParams> {
     unsafe {
         let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
 

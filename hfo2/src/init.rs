@@ -17,8 +17,8 @@
 use core::mem::MaybeUninit;
 
 use crate::addr::*;
-use crate::arch::*;
 use crate::api::*;
+use crate::arch::*;
 use crate::boot_params::*;
 use crate::cpu::*;
 use crate::load::*;
@@ -34,14 +34,7 @@ extern "C" {
     fn plat_console_init();
     fn arch_one_time_init();
     fn dlog_enable_lock();
-}
 
-/// Note(HfO2): this variable was originally of type
-/// MaybeUninit<[u8; mem::size_of::<RawPageTable>() * HEAP_PAGES]>,
-/// but it was not aligned to PAGE_SIZE.
-static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
-
-extern "C" {
     /// The stack to be used by the CPUs.
     static callstacks: [[u8; STACK_SIZE]; MAX_CPUS];
 
@@ -55,9 +48,20 @@ extern "C" {
     static boot_cpu: Cpu;
 }
 
+/// Note(HfO2): this variable was originally of type
+/// MaybeUninit<[u8; mem::size_of::<RawPageTable>() * HEAP_PAGES]>,
+/// but it was not aligned to PAGE_SIZE.
+static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
+
+static mut INITED: bool = false;
+
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
-unsafe extern "C" fn one_time_init() -> *mut Cpu {
+unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
+    if INITED {
+        return c;
+    }
+
     // Make sure the console is initialised before calling dlog.
     plat_console_init();
 
@@ -66,7 +70,10 @@ unsafe extern "C" fn one_time_init() -> *mut Cpu {
     arch_one_time_init();
 
     let mut ppool = MPool::new();
-    ppool.free_pages(Pages::from_raw(PTABLE_BUF.get_mut().as_mut_ptr(), HEAP_PAGES));
+    ppool.free_pages(Pages::from_raw(
+        PTABLE_BUF.get_mut().as_mut_ptr(),
+        HEAP_PAGES,
+    ));
 
     let mm = MemoryManager::new(&ppool).expect("mm_init failed");
     memory_manager_init(mm);
@@ -82,7 +89,11 @@ unsafe extern "C" fn one_time_init() -> *mut Cpu {
 
     arch_cpu_module_init();
 
-    let cpum = CpuManager::new(&params.cpu_ids[..params.cpu_count], boot_cpu.id, &callstacks);
+    let cpum = CpuManager::new(
+        &params.cpu_ids[..params.cpu_count],
+        boot_cpu.id,
+        &callstacks,
+    );
     cpu_manager_init(cpum);
 
     for i in 0..params.mem_ranges_count {
@@ -152,8 +163,13 @@ unsafe extern "C" fn one_time_init() -> *mut Cpu {
     mm_vm_enable_invalidation();
 
     dlog!("Hafnium initialisation completed\n");
+    INITED = true;
 
     cpu_manager().boot_cpu()
+
+    // From now on, other pCPUs are on in order to run multiple vCPUs. Thus
+    // you may safely make readonly references to the Hafnium singleton, but
+    // may not modify the singleton without proper locking.
 }
 
 // The entry point of CPUs when they are turned on. It is supposed to initialise
