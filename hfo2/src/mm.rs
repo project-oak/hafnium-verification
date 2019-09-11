@@ -36,10 +36,10 @@ use reduce::Reduce;
 
 use crate::addr::*;
 use crate::arch::*;
+use crate::init::*;
 use crate::layout::*;
 use crate::mpool::MPool;
 use crate::page::*;
-use crate::singleton::*;
 use crate::spinlock::{SpinLock, SpinLockGuard};
 use crate::types::*;
 use crate::utils::*;
@@ -264,7 +264,11 @@ impl Stage for Stage2 {
     }
 
     fn invalidate_tlb(begin: usize, end: usize) {
-        if memory_manager().stage2_invalidate.load(Ordering::Relaxed) {
+        if hafnium()
+            .memory_manager
+            .stage2_invalidate
+            .load(Ordering::Relaxed)
+        {
             unsafe {
                 arch_mm_invalidate_stage2_range(ipa_init(begin), ipa_init(end));
             }
@@ -1101,7 +1105,8 @@ impl MemoryManager {
 /// This function should not be invoked concurrently with other memory management functions.
 #[no_mangle]
 pub unsafe extern "C" fn mm_vm_enable_invalidation() {
-    memory_manager()
+    hafnium()
+        .memory_manager
         .stage2_invalidate
         .store(true, Ordering::Relaxed);
 }
@@ -1238,14 +1243,18 @@ pub unsafe extern "C" fn mm_unmap(
 #[no_mangle]
 pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     let mm = ok_or_return!(MemoryManager::new(&*mpool).ok_or(()), false);
-    memory_manager_init(mm);
+    HAFNIUM.get_mut().memory_manager = mm;
 
     true
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_cpu_init() -> bool {
-    let raw_ptable = memory_manager().hypervisor_ptable.get_mut_unchecked().root;
+    let raw_ptable = hafnium()
+        .memory_manager
+        .hypervisor_ptable
+        .get_mut_unchecked()
+        .root;
     arch_mm_init(raw_ptable, false)
 }
 
@@ -1257,7 +1266,7 @@ pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
-    let ptable = &memory_manager().hypervisor_ptable;
+    let ptable = &hafnium().memory_manager.hypervisor_ptable;
     ptable.lock().into()
 }
 
