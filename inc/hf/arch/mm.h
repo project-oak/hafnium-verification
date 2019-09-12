@@ -112,10 +112,11 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end);
 void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end);
 
 /**
- * Writes the given range of virtual memory back to the point of unification so
- * all cores and devices will see the updated values.
+ * Writes back the given range of virtual memory to such a point that all cores
+ * and devices will see the updated values. The corresponding cache lines are
+ * also invalidated.
  */
-void arch_mm_write_back_dcache(void *base, size_t size);
+void arch_mm_flush_dcache(void *base, size_t size);
 
 /**
  * Gets the maximum level allowed in the page table for stage-1.

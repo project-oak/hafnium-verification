@@ -67,10 +67,12 @@ bool hftest_cpu_start(uintptr_t id, void *stack, size_t stack_size,
 	s_arch.arg = (uintptr_t)&s;
 
 	/*
-	 * Write back the `cpu_start_state` struct because the new CPU will be
+	 * Flush the `cpu_start_state` struct because the new CPU will be
 	 * started without caching enabled and will need the data early on.
+	 * Write back is all that is really needed so flushing will definitely
+	 * get the job done.
 	 */
-	arch_mm_write_back_dcache(&s_arch, sizeof(s_arch));
+	arch_mm_flush_dcache(&s_arch, sizeof(s_arch));
 
 	if ((s_arch.initial_sp % STACK_ALIGN) != 0) {
 		HFTEST_FAIL(true,

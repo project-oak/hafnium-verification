@@ -68,7 +68,7 @@ extern "C" {
 
     fn arch_mm_stage2_attrs_to_mode(attrs: u64) -> c_int;
 
-    pub fn arch_mm_write_back_dcache(base: usize, size: size_t);
+    pub fn arch_mm_flush_dcache(base: usize, size: size_t);
 
     fn arch_mm_stage1_max_level() -> u8;
     fn arch_mm_stage2_max_level() -> u8;

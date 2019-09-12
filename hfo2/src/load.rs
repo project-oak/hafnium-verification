@@ -59,7 +59,7 @@ unsafe fn copy_to_unmapped(
     }
 
     ptr::copy_nonoverlapping(from, pa_addr(to) as *mut _, size);
-    arch_mm_write_back_dcache(pa_addr(to), size);
+    arch_mm_flush_dcache(pa_addr(to), size);
 
     hypervisor_ptable.unmap(to, to_end, ppool).unwrap();
 

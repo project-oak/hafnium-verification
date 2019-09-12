@@ -370,19 +370,15 @@ static uint16_t arch_mm_dcache_line_size(void)
 	       (UINT16_C(1) << ((read_msr(CTR_EL0) >> 16) & 0xf));
 }
 
-/**
- * Ensures that the range of data in the cache is written back so that it is
- * visible to all cores in the system.
- */
-void arch_mm_write_back_dcache(void *base, size_t size)
+void arch_mm_flush_dcache(void *base, size_t size)
 {
-	/* Clean each data cache line that corresponds to data in the range. */
+	/* Clean and invalidate each data cache line in the range. */
 	uint16_t line_size = arch_mm_dcache_line_size();
 	uintptr_t line_begin = (uintptr_t)base & ~(line_size - 1);
 	uintptr_t end = (uintptr_t)base + size;
 
 	while (line_begin < end) {
-		__asm__ volatile("dc cvac, %0" : : "r"(line_begin));
+		__asm__ volatile("dc civac, %0" : : "r"(line_begin));
 		line_begin += line_size;
 	}
 	dsb(sy);

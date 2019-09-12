@@ -772,7 +772,7 @@ impl Hypervisor {
 
         unsafe {
             ptr::write_bytes(region as *mut u8, 0, size);
-            arch_mm_write_back_dcache(region as usize, size);
+            arch_mm_flush_dcache(region as usize, size);
         }
 
         hypervisor_ptable.unmap(begin, end, ppool).unwrap();
