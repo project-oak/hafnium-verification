@@ -116,7 +116,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
         &mut params,
         &ppool,
     )
-    .unwrap();
+    .expect("Could not parse data from FDT.");
 
     let cpum = CpuManager::new(
         &params.cpu_ids[..params.cpu_count],
