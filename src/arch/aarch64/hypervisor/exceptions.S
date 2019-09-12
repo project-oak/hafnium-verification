@@ -55,54 +55,6 @@
 .endm
 
 /**
- * Save all general purpose registers into register buffer of current vcpu.
- */
-.macro save_registers_to_vcpu
-	save_volatile_to_vcpu also_save_x18
-	stp x19, x20, [x18, #VCPU_REGS + 8 * 19]
-	stp x21, x22, [x18, #VCPU_REGS + 8 * 21]
-	stp x23, x24, [x18, #VCPU_REGS + 8 * 23]
-	stp x25, x26, [x18, #VCPU_REGS + 8 * 25]
-	stp x27, x28, [x18, #VCPU_REGS + 8 * 27]
-.endm
-
-/**
- * Restore the volatile registers from the register buffer of the current vcpu.
- */
-.macro restore_volatile_from_vcpu vcpu_ptr:req
-	ldp x4, x5, [\vcpu_ptr, #VCPU_REGS + 8 * 4]
-	ldp x6, x7, [\vcpu_ptr, #VCPU_REGS + 8 * 6]
-	ldp x8, x9, [\vcpu_ptr, #VCPU_REGS + 8 * 8]
-	ldp x10, x11, [\vcpu_ptr, #VCPU_REGS + 8 * 10]
-	ldp x12, x13, [\vcpu_ptr, #VCPU_REGS + 8 * 12]
-	ldp x14, x15, [\vcpu_ptr, #VCPU_REGS + 8 * 14]
-	ldp x16, x17, [\vcpu_ptr, #VCPU_REGS + 8 * 16]
-	ldr x18, [\vcpu_ptr, #VCPU_REGS + 8 * 18]
-	ldp x29, x30, [\vcpu_ptr, #VCPU_REGS + 8 * 29]
-
-	/* Restore return address & mode. */
-	ldp x1, x2, [\vcpu_ptr, #VCPU_REGS + 8 * 31]
-	msr elr_el2, x1
-	msr spsr_el2, x2
-
-	/* Restore x0..x3, which we have used as scratch before. */
-	ldp x2, x3, [\vcpu_ptr, #VCPU_REGS + 8 * 2]
-	ldp x0, x1, [\vcpu_ptr, #VCPU_REGS + 8 * 0]
-.endm
-
-/**
- * Restore all general purpose registers from register buffer of current vcpu.
- */
-.macro restore_registers_from_vcpu vcpu_ptr:req
-	ldp x19, x20, [\vcpu_ptr, #VCPU_REGS + 8 * 19]
-	ldp x21, x22, [\vcpu_ptr, #VCPU_REGS + 8 * 21]
-	ldp x23, x24, [\vcpu_ptr, #VCPU_REGS + 8 * 23]
-	ldp x25, x26, [\vcpu_ptr, #VCPU_REGS + 8 * 25]
-	ldp x27, x28, [\vcpu_ptr, #VCPU_REGS + 8 * 27]
-	restore_volatile_from_vcpu \vcpu_ptr
-.endm
-
-/**
  * This is a generic handler for exceptions taken at a lower EL. It saves the
  * volatile registers to the current vcpu and calls the C handler, which can
  * select one of two paths: (a) restore volatile registers and return, or
@@ -139,8 +91,8 @@
 	lsr x18, x18, #26
 
 	/* Take the slow path if exception is not due to an HVC instruction. */
-	cmp x18, #0x16
-	b.ne slow_sync_lower
+	sub x18, x18, #0x16
+	cbnz x18, slow_sync_lower
 
 	/*
 	 * Make room for hvc_handler_return on stack, and point x8 (the indirect
@@ -259,12 +211,16 @@ serr_lower_32:
 
 .balign 0x40
 slow_sync_lower:
-	/* Take the system register path for EC 0x18 */
-	cmp x18, #0x18
-	b.eq handle_system_register_access_s
-
 	/* The caller must have saved x18, so we don't save it here. */
 	save_volatile_to_vcpu
+
+	/* Extract the exception class (EC) from exception syndrome register. */
+	mrs x18, esr_el2
+	lsr x18, x18, #26
+
+	/* Take the system register path for EC 0x18. */
+	sub x18, x18, #0x18
+	cbz x18, system_register_access
 
 	/* Read syndrome register and call C handler. */
 	mrs x0, esr_el2
@@ -274,6 +230,32 @@ slow_sync_lower:
 	/* vcpu is not changing. */
 	mrs x0, tpidr_el2
 	b vcpu_restore_volatile_and_run
+
+/**
+ * Handle accesses to system registers (EC=0x18) and return to original caller.
+ */
+system_register_access:
+	/*
+	 * Non-volatile registers are (conservatively) saved because the handler
+	 * can clobber non-volatile registers that are used by the msr/mrs,
+	 * which results in the wrong value being read or written.
+	 */
+	/* Get the current vcpu. */
+	mrs x18, tpidr_el2
+	stp x19, x20, [x18, #VCPU_REGS + 8 * 19]
+	stp x21, x22, [x18, #VCPU_REGS + 8 * 21]
+	stp x23, x24, [x18, #VCPU_REGS + 8 * 23]
+	stp x25, x26, [x18, #VCPU_REGS + 8 * 25]
+	stp x27, x28, [x18, #VCPU_REGS + 8 * 27]
+
+	/* Read syndrome register and call C handler. */
+	mrs x0, esr_el2
+	bl handle_system_register_access
+	cbnz x0, vcpu_switch
+
+	/* vcpu is not changing. */
+	mrs x0, tpidr_el2
+	b vcpu_restore_nonvolatile_and_run
 
 sync_lower_switch:
 	/* We'll have to switch, so save volatile state before doing so. */
@@ -568,6 +550,9 @@ vcpu_restore_lazy_and_run:
 	bl maybe_invalidate_tlb
 	mov x0, x19
 
+	/* Intentional fallthrough. */
+
+vcpu_restore_nonvolatile_and_run:
 	/* Restore non-volatile registers. */
 	ldp x19, x20, [x0, #VCPU_REGS + 8 * 19]
 	ldp x21, x22, [x0, #VCPU_REGS + 8 * 21]
@@ -582,7 +567,24 @@ vcpu_restore_lazy_and_run:
  * x0 is a pointer to the target vcpu.
  */
 vcpu_restore_volatile_and_run:
-	restore_volatile_from_vcpu x0
+	ldp x4, x5, [x0, #VCPU_REGS + 8 * 4]
+	ldp x6, x7, [x0, #VCPU_REGS + 8 * 6]
+	ldp x8, x9, [x0, #VCPU_REGS + 8 * 8]
+	ldp x10, x11, [x0, #VCPU_REGS + 8 * 10]
+	ldp x12, x13, [x0, #VCPU_REGS + 8 * 12]
+	ldp x14, x15, [x0, #VCPU_REGS + 8 * 14]
+	ldp x16, x17, [x0, #VCPU_REGS + 8 * 16]
+	ldr x18, [x0, #VCPU_REGS + 8 * 18]
+	ldp x29, x30, [x0, #VCPU_REGS + 8 * 29]
+
+	/* Restore return address & mode. */
+	ldp x1, x2, [x0, #VCPU_REGS + 8 * 31]
+	msr elr_el2, x1
+	msr spsr_el2, x2
+
+	/* Restore x0..x3, which we have used as scratch before. */
+	ldp x2, x3, [x0, #VCPU_REGS + 8 * 2]
+	ldp x0, x1, [x0, #VCPU_REGS + 8 * 0]
 	eret
 
 .balign 0x40
@@ -591,26 +593,4 @@ vcpu_restore_volatile_and_run:
  */
 restore_from_stack_and_return:
 	restore_volatile_from_stack el2
-	eret
-
-.balign 0x40
-/**
- * Handle accesses to system registers (EC=0x18) and return to original caller.
- */
-handle_system_register_access_s:
-	/*
-	 * All registers are (conservatively) saved because the handler can
-	 * clobber non-volatile registers that are used by the msr/mrs, which
-	 * results in the wrong value being read or written.
-	 */
-	save_registers_to_vcpu
-
-	/* Read syndrome register and call C handler. */
-	mrs x0, esr_el2
-	bl handle_system_register_access
-	cbnz x0, vcpu_switch
-
-	/* vcpu is not changing. */
-	mrs x0, tpidr_el2
-	restore_registers_from_vcpu x0
 	eret

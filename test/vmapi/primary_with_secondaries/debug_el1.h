@@ -15,12 +15,13 @@
  */
 
 #pragma once
+
 #include "vmapi/hf/call.h"
 
 #include "../msr.h"
 #include "hftest.h"
 
-#define TRY_READ(REG) dlog(#REG "=%#x\n", read_msr(REG));
+#define TRY_READ(REG) dlog(#REG "=%#x\n", read_msr(REG))
 
 #define TRY_WRITE_READ(REG, VALUE)     \
 	do {                           \
@@ -28,4 +29,4 @@
 		write_msr(REG, VALUE); \
 		x = read_msr(REG);     \
 		EXPECT_EQ(x, VALUE);   \
-	} while (0);
+	} while (0)
