@@ -21,6 +21,7 @@
 
 #define PAGE_BITS 12
 #define PAGE_LEVEL_BITS 9
+#define STACK_ALIGN 64
 
 /** The type of a page table entry (PTE). */
 typedef uint64_t pte_t;
