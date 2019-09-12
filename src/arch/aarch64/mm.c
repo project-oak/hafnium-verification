@@ -88,6 +88,8 @@
 #define STAGE2_ACCESS_READ  UINT64_C(1)
 #define STAGE2_ACCESS_WRITE UINT64_C(2)
 
+#define CACHE_WORD_SIZE 4
+
 /**
  * Threshold number of pages in TLB to invalidate after which we invalidate all
  * TLB entries on a given level.
@@ -360,13 +362,22 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 }
 
 /**
+ * Returns the smallest cache line size of all the caches for this core.
+ */
+static uint16_t arch_mm_dcache_line_size(void)
+{
+	return CACHE_WORD_SIZE *
+	       (UINT16_C(1) << ((read_msr(CTR_EL0) >> 16) & 0xf));
+}
+
+/**
  * Ensures that the range of data in the cache is written back so that it is
  * visible to all cores in the system.
  */
 void arch_mm_write_back_dcache(void *base, size_t size)
 {
-	/* Clean each data cache line the corresponds to data in the range. */
-	uint16_t line_size = 1 << ((read_msr(CTR_EL0) >> 16) & 0xf);
+	/* Clean each data cache line that corresponds to data in the range. */
+	uint16_t line_size = arch_mm_dcache_line_size();
 	uintptr_t line_begin = (uintptr_t)base & ~(line_size - 1);
 	uintptr_t end = (uintptr_t)base + size;
 
