@@ -26,33 +26,45 @@
 /**
  * Controls traps for Trace Filter.
  */
-#define MDCR_EL2_TTRF (1u << 19)
+#define MDCR_EL2_TTRF (0x1u << 19)
+
+/**
+ * Controls the owning translation regime and access to Profiling Buffer control
+ * registers from EL1. Depends on whether SPE is implemented.
+ */
+#define MDCR_EL2_E2PB (0x3u << 12)
 
 /**
  * Controls traps for Debug ROM.
  */
-#define MDCR_EL2_TDRA (1u << 11)
+#define MDCR_EL2_TDRA (0x1u << 11)
 
 /**
  * Controls traps for OS-Related Register Access.
  */
-#define MDCR_EL2_TDOSA (1u << 10)
+#define MDCR_EL2_TDOSA (0x1u << 10)
 
 /**
  * Controls traps for remaining Debug Registers not trapped by TDRA and TDOSA.
  */
-#define MDCR_EL2_TDA (1u << 9)
+#define MDCR_EL2_TDA (0x1u << 9)
 
 /**
  * Controls traps for all debug exceptions (e.g., breakpoints).
  */
-#define MDCR_EL2_TDE (1u << 8)
+#define MDCR_EL2_TDE (0x1u << 8)
+
+/**
+ * Defines the number of event counters that are accessible from various
+ * exception levels, if permitted.  Dependant on whether PMUv3 is implemented.
+ */
+#define MDCR_EL2_HPMN (0x1fu << 0)
 
 /**
  * Controls traps for debug events, i.e., breakpoints, watchpoints, and vector.
  * catch exceptions.
  */
-#define MDSCR_EL1_MDE (1u << 15)
+#define MDSCR_EL1_MDE (0x1u << 15)
 
 /**
  * System register are identified by op0, op2, op1, crn, crm. The ISS encoding
@@ -195,19 +207,27 @@
 	EL1_DEBUG_REGISTERS_READ_WRITE
 
 /**
- * Returns the value for mdcr_el2 for the particular VM.
+ * Returns the value for MDCR_EL2 for the particular VM.
  * For now, the primary VM has one value and all secondary VMs share a value.
  */
 uintreg_t get_mdcr_el2_value(spci_vm_id_t vm_id)
 {
+	uintreg_t mdcr_el2_preserve = read_msr(MDCR_EL2);
+
+	/*
+	 * Preserve the values of HPMN and E2PB, which are dependent on whether
+	 * certain features are enabled, and should be set up by the bootcode.
+	 */
+	mdcr_el2_preserve &= (MDCR_EL2_HPMN | MDCR_EL2_E2PB);
+
 	if (vm_id == HF_PRIMARY_VM_ID) {
 		/*
 		 * Trap primary VM accesses to debug registers to have fine
 		 * grained control over system register accesses.
 		 * Do not trap the Primary VM's debug events (!MDCR_EL2_TDE).
 		 */
-		return MDCR_EL2_TTRF | MDCR_EL2_TDRA | MDCR_EL2_TDOSA |
-		       MDCR_EL2_TDA;
+		return mdcr_el2_preserve | MDCR_EL2_TTRF | MDCR_EL2_TDRA |
+		       MDCR_EL2_TDOSA | MDCR_EL2_TDA;
 	}
 
 	/*
@@ -216,8 +236,8 @@ uintreg_t get_mdcr_el2_value(spci_vm_id_t vm_id)
 	 * Debug event exceptions should be disabled in secondary VMs, but trap
 	 * them for additional security (MDCR_EL2_TDE).
 	 */
-	return MDCR_EL2_TTRF | MDCR_EL2_TDRA | MDCR_EL2_TDOSA | MDCR_EL2_TDA |
-	       MDCR_EL2_TDE;
+	return mdcr_el2_preserve | MDCR_EL2_TTRF | MDCR_EL2_TDRA |
+	       MDCR_EL2_TDOSA | MDCR_EL2_TDA | MDCR_EL2_TDE;
 }
 
 /**
