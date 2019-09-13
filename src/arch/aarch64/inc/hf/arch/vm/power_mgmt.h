@@ -29,10 +29,21 @@ enum power_status {
 	POWER_STATUS_ON_PENDING,
 };
 
+/**
+ * Holds temporary state used to set up the environment on which CPUs will
+ * start executing.
+ *
+ * vm_cpu_entry() depends on the layout of this struct.
+ */
+struct arch_cpu_start_state {
+	uintptr_t initial_sp;
+	void (*entry)(uintreg_t arg);
+	uintreg_t arg;
+};
+
+bool arch_cpu_start(uintptr_t id, struct arch_cpu_start_state *s);
+
+noreturn void arch_cpu_stop(void);
+enum power_status arch_cpu_status(cpu_id_t cpu_id);
+
 noreturn void arch_power_off(void);
-
-bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
-	       void (*entry)(uintptr_t arg), uintptr_t arg);
-
-noreturn void cpu_stop(void);
-enum power_status cpu_status(cpu_id_t cpu_id);

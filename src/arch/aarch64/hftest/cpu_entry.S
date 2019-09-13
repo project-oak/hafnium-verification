@@ -14,16 +14,23 @@
  * limitations under the License.
  */
 
-.global vm_cpu_entry_raw
-vm_cpu_entry_raw:
-	/* Initialise stack from the cpu_start_state struct. */
-	ldr x1, [x0]
-	mov sp, x1
-
+.global vm_cpu_entry
+vm_cpu_entry:
 	/* Disable trapping floating point access in EL1. */
 	mov x1, #(0x3 << 20)
 	msr cpacr_el1, x1
 	isb
 
-	/* Jump to C entry point. */
-	b vm_cpu_entry
+	/* Initialise stack from the cpu_start_state struct. */
+	ldr x1, [x0]
+	mov sp, x1
+
+	/* Load entry function pointer and its argument. */
+	ldr x1, [x0, 8]
+	ldr x0, [x0, 16]
+
+	/* Branch to entry function. */
+	blr x1
+
+	/* Entry function should not return, but if it does, spin. */
+	b .

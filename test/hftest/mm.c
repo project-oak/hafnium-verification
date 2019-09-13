@@ -15,7 +15,6 @@
  */
 
 #include "hf/arch/vm/mm.h"
-#include "hf/arch/vm/power_mgmt.h"
 
 #include "hftest.h"
 
@@ -72,35 +71,7 @@ void hftest_mm_identity_map(const void *base, size_t size, int mode)
 	}
 }
 
-struct cpu_start_state {
-	void (*entry)(uintptr_t arg);
-	uintreg_t arg;
-	struct spinlock lock;
-};
-
-static void cpu_entry(uintptr_t arg)
+void hftest_mm_vcpu_init(void)
 {
-	struct cpu_start_state *s = (struct cpu_start_state *)arg;
-	struct cpu_start_state local = *s;
-
-	sl_unlock(&s->lock);
 	arch_vm_mm_enable(ptable.root);
-	local.entry(local.arg);
-}
-
-bool hftest_cpu_start(uintptr_t id, void *stack, size_t stack_size,
-		      void (*entry)(uintptr_t arg), uintptr_t arg)
-{
-	struct cpu_start_state s =
-		(struct cpu_start_state){.entry = entry, .arg = arg};
-
-	sl_init(&s.lock);
-	sl_lock(&s.lock);
-	if (!cpu_start(id, stack, stack_size, &cpu_entry, (uintptr_t)&s)) {
-		return false;
-	}
-
-	/* Wait until cpu_entry unlocks the lock before freeing stack memory. */
-	sl_lock(&s.lock);
-	return true;
 }
