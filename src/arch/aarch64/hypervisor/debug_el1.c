@@ -114,6 +114,13 @@
 #define GET_ISS_RT(esr) ((ISS_RT_MASK & (esr)) >> ISS_RT_SHIFT)
 
 /**
+ * PMCR_EL0.N: Indicates the number of event counters implemented.
+ */
+#define PMCR_EL0_N_MASK 0xf800
+#define PMCR_EL0_N_SHIFT 11
+#define GET_PMCR_EL0_N(pmcr) ((PMCR_EL0_N_MASK & (pmcr)) >> PMCR_EL0_N_SHIFT)
+
+/**
  * Definitions of read-only debug registers' ISS signatures.
  */
 #define EL1_DEBUG_REGISTERS_READ       \
@@ -212,32 +219,42 @@
  */
 uintreg_t get_mdcr_el2_value(spci_vm_id_t vm_id)
 {
-	uintreg_t mdcr_el2_preserve = read_msr(MDCR_EL2);
+	uintreg_t mdcr_el2_value = read_msr(MDCR_EL2);
+	uintreg_t pmcr_el0 = read_msr(PMCR_EL0);
 
 	/*
-	 * Preserve the values of HPMN and E2PB, which are dependent on whether
-	 * certain features are enabled, and should be set up by the bootcode.
+	 * Preserve E2PB for now, which depends on the SPE implementation.
+	 * TODO: Investigate how to detect whether SPE is implemented, and which
+	 * stage's translation regime is applicable, i.e., EL2 or EL1.
 	 */
-	mdcr_el2_preserve &= (MDCR_EL2_HPMN | MDCR_EL2_E2PB);
+	mdcr_el2_value &= MDCR_EL2_E2PB;
 
-	if (vm_id == HF_PRIMARY_VM_ID) {
+	/*
+	 * Set the number of event counters accessible from all exception levels
+	 * (MDCR_EL2.HPMN) to be the number of implemented event counters
+	 * (PMCR_EL0.N).
+	 * TODO(b/132394973): examine the implications of this setting.
+	 */
+	mdcr_el2_value |= GET_PMCR_EL0_N(pmcr_el0) & MDCR_EL2_HPMN;
+
+	/*
+	 * Trap all VM accesses to debug registers to have fine grained control
+	 * over system register accesses.
+	 * Do not trap the Primary VM's debug events, e.g., watchpoint or
+	 * breakpoint events (!MDCR_EL2_TDE).
+	 */
+	mdcr_el2_value |=
+		MDCR_EL2_TTRF | MDCR_EL2_TDRA | MDCR_EL2_TDOSA | MDCR_EL2_TDA;
+
+	if (vm_id != HF_PRIMARY_VM_ID) {
 		/*
-		 * Trap primary VM accesses to debug registers to have fine
-		 * grained control over system register accesses.
-		 * Do not trap the Primary VM's debug events (!MDCR_EL2_TDE).
+		 * Debug event exceptions should be disabled in secondary VMs
+		 * but trap them for additional security.
 		 */
-		return mdcr_el2_preserve | MDCR_EL2_TTRF | MDCR_EL2_TDRA |
-		       MDCR_EL2_TDOSA | MDCR_EL2_TDA;
+		mdcr_el2_value |= MDCR_EL2_TDE;
 	}
 
-	/*
-	 * Trap all secondary VM debug register accesses as well as debug
-	 * event exceptions.
-	 * Debug event exceptions should be disabled in secondary VMs, but trap
-	 * them for additional security (MDCR_EL2_TDE).
-	 */
-	return mdcr_el2_preserve | MDCR_EL2_TTRF | MDCR_EL2_TDRA |
-	       MDCR_EL2_TDOSA | MDCR_EL2_TDA | MDCR_EL2_TDE;
+	return mdcr_el2_value;
 }
 
 /**
