@@ -61,7 +61,9 @@ pub struct Hypervisor {
 /// but it was not aligned to PAGE_SIZE.
 static mut PTABLE_BUF: MaybeUninit<[RawPage; HEAP_PAGES]> = MaybeUninit::uninit();
 
-static INITED: AtomicBool = AtomicBool::new(false);
+/// A variable that stores if Hafnium is initialized. This is only read by boot
+/// CPU, so its type is not `AtomicBool`.
+static mut INITED: bool = false;
 
 /// A singleton collecting all managers in Hafnium.
 ///
@@ -84,8 +86,8 @@ pub static mut HAFNIUM: MaybeUninit<Hypervisor> = MaybeUninit::uninit();
 
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
-unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
-    if INITED.load(Ordering::Acquire) {
+unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
+    if &boot_cpu as *const _ != c || INITED {
         return c;
     }
 
@@ -195,7 +197,7 @@ unsafe extern "C" fn one_time_init(c: *mut Cpu) -> *mut Cpu {
     mm_vm_enable_invalidation();
 
     dlog!("Hafnium initialisation completed\n");
-    INITED.store(true, Ordering::Release);
+    INITED = true;
 
     hafnium().cpu_manager.boot_cpu()
 
