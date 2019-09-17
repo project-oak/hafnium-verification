@@ -520,15 +520,6 @@ pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
     (*locked).vcpu = ptr::null_mut();
 }
 
-/// Initialise the registers for the given vCPU and set the state to
-/// VCpuStatus::Ready. The caller must hold the vCPU execution lock while
-/// calling this.
-#[no_mangle]
-pub unsafe extern "C" fn vcpu_on(vcpu: VCpuExecutionLocked, entry: ipaddr_t, arg: uintreg_t) {
-    let mut vcpu = ManuallyDrop::new(vcpu);
-    vcpu.get_inner_mut().on(entry, arg);
-}
-
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
     let vcpus = (*(*vcpu).vm).vcpus.as_ptr();

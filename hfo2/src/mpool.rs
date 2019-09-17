@@ -308,8 +308,7 @@ impl Drop for MPool {
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mpool_enable_locks() {}
+pub unsafe fn mpool_enable_locks() {}
 
 #[no_mangle]
 pub unsafe extern "C" fn mpool_init(p: *mut MPool, entry_size: size_t) {

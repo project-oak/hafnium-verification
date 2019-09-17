@@ -91,8 +91,6 @@ struct mm_stage1_locked {
 	struct mm_ptable *ptable;
 };
 
-void mm_vm_enable_invalidation(void);
-
 bool mm_vm_init(struct mm_ptable *t, struct mpool *ppool);
 void mm_vm_fini(struct mm_ptable *t, struct mpool *ppool);
 bool mm_vm_identity_map(struct mm_ptable *t, paddr_t begin, paddr_t end,
@@ -101,7 +99,6 @@ bool mm_vm_unmap(struct mm_ptable *t, paddr_t begin, paddr_t end,
 		 struct mpool *ppool);
 bool mm_vm_unmap_hypervisor(struct mm_ptable *t, struct mpool *ppool);
 void mm_vm_defrag(struct mm_ptable *t, struct mpool *ppool);
-void mm_vm_dump(struct mm_ptable *t);
 bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
 		    int *mode);
 
@@ -109,9 +106,6 @@ struct mm_stage1_locked mm_lock_stage1(void);
 void mm_unlock_stage1(struct mm_stage1_locked *lock);
 void *mm_identity_map(struct mm_stage1_locked stage1_locked, paddr_t begin,
 		      paddr_t end, int mode, struct mpool *ppool);
-bool mm_unmap(struct mm_stage1_locked stage1_locked, paddr_t begin, paddr_t end,
-	      struct mpool *ppool);
 void mm_defrag(struct mm_stage1_locked stage1_locked, struct mpool *ppool);
 
 bool mm_init(struct mpool *ppool);
-bool mm_cpu_init(void);

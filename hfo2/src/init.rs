@@ -214,9 +214,7 @@ pub fn hafnium() -> &'static Hypervisor {
 // all state and return the first vCPU to run.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *mut VCpu {
-    if !mm_cpu_init() {
-        panic!("mm_cpu_init failed");
-    }
+    mm_cpu_init().expect("mm_cpu_init failed");
 
     let primary = hafnium().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
     let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();

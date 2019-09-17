@@ -1103,8 +1103,7 @@ impl MemoryManager {
 /// # Safety
 ///
 /// This function should not be invoked concurrently with other memory management functions.
-#[no_mangle]
-pub unsafe extern "C" fn mm_vm_enable_invalidation() {
+pub unsafe fn mm_vm_enable_invalidation() {
     hafnium()
         .memory_manager
         .stage2_invalidate
@@ -1189,12 +1188,6 @@ pub unsafe extern "C" fn mm_vm_unmap_hypervisor(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_vm_dump(t: *mut PageTable<Stage2>) {
-    let t = &mut *t;
-    t.dump();
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn mm_vm_defrag(t: *mut PageTable<Stage2>, mpool: *const MPool) {
     let t = &mut *t;
     let mpool = &*mpool;
@@ -1227,17 +1220,6 @@ pub unsafe extern "C" fn mm_identity_map(
         .unwrap_or(ptr::null_mut())
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mm_unmap(
-    mut stage1_locked: mm_stage1_locked,
-    begin: paddr_t,
-    end: paddr_t,
-    mpool: *const MPool,
-) -> bool {
-    let mpool = &*mpool;
-    stage1_locked.unmap(begin, end, mpool).is_ok()
-}
-
 /// TODO(HfO2): This function is only used in one unit test
 /// (fdt/find_memory_ranges.) Unsafety doesn't really matter. Resolve #46, then
 /// we can remove this.
@@ -1249,14 +1231,17 @@ pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
     true
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn mm_cpu_init() -> bool {
+pub unsafe fn mm_cpu_init() -> Result<(), ()> {
     let raw_ptable = hafnium()
         .memory_manager
         .hypervisor_ptable
         .get_mut_unchecked()
         .root;
-    arch_mm_init(raw_ptable, false)
+    if arch_mm_init(raw_ptable, false) {
+        Ok(())
+    } else {
+        Err(())
+    }
 }
 
 #[no_mangle]

@@ -407,18 +407,8 @@ impl FdtHeader {
 }
 
 #[no_mangle]
-pub extern "C" fn fdt_header_size() -> usize {
-    mem::size_of::<FdtHeader>()
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn fdt_total_size(hdr: *const FdtHeader) -> u32 {
     (*hdr).total_size()
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn fdt_dump(hdr: *mut FdtHeader) {
-    (*hdr).dump()
 }
 
 #[no_mangle]
@@ -434,23 +424,6 @@ pub unsafe extern "C" fn fdt_find_child(node: *mut FdtNode, child: *const u8) ->
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_first_child(node: *mut FdtNode, child_name: *mut *const u8) -> bool {
-    let name = some_or!((*node).first_child(), return false);
-    ptr::write(child_name, name);
-    true
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn fdt_next_sibling(
-    node: *mut FdtNode,
-    sibling_name: *mut *const u8,
-) -> bool {
-    let name = some_or!((*node).next_sibling(), return false);
-    ptr::write(sibling_name, name);
-    true
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn fdt_read_property(
     node: *mut FdtNode,
     name: *const u8,
@@ -461,9 +434,4 @@ pub unsafe extern "C" fn fdt_read_property(
     *buf = prop_buf;
     *size = prop_size;
     true
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn fdt_add_mem_reserveation(hdr: *mut FdtHeader, addr: u64, len: u64) {
-    (*hdr).add_mem_reservation(addr, len)
 }

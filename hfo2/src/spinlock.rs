@@ -43,6 +43,8 @@ impl RawSpinLock {
         !self.inner.swap(true, Ordering::Acquire)
     }
 
+    /// Locks both locks, enforcing the lowest address first ordering for locks
+    /// of the same kind.
     pub fn lock_both(lhs: &Self, rhs: &Self) {
         if (lhs as *const _) < (rhs as *const _) {
             lhs.lock();
@@ -190,17 +192,6 @@ pub unsafe extern "C" fn sl_init(l: *mut RawSpinLock) {
 #[no_mangle]
 pub unsafe extern "C" fn sl_lock(l: *const RawSpinLock) {
     (*l).lock();
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn sl_try_lock(l: *const RawSpinLock) -> bool {
-    (*l).try_lock()
-}
-
-/// Locks both locks, enforcing the lowest address first ordering for locks of the same kind.
-#[no_mangle]
-pub unsafe extern "C" fn sl_lock_both(a: *const RawSpinLock, b: *const RawSpinLock) {
-    RawSpinLock::lock_both(&*a, &*b);
 }
 
 #[no_mangle]
