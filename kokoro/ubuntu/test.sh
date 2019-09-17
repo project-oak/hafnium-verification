@@ -61,7 +61,7 @@ $TIMEOUT 30s $OUT/host_fake_clang/unit_tests \
   --gtest_output="xml:$OUT/kokoro_log/unit_tests/sponge_log.xml" \
   | tee $OUT/kokoro_log/unit_tests/sponge_log.log
 
-cargo test --manifest-path=hfo2/Cargo.toml
+RUSTFLAGS="-L ../$OUT/host_fake_clang/obj/src" cargo test --manifest-path=hfo2/Cargo.toml
 
 $HFTEST arch_test
 $HFTEST hafnium --initrd test/vmapi/gicv3/gicv3_test
