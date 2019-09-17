@@ -12,14 +12,13 @@
 
 Run `make` in the root `hafnium` directory.
 
-## Measure unsafe expressions and functions, etc.
+## Measure `unsafe`
 
-Use [cargo-osha][osha]. You can run like this:
+Use [cargo-count][count]. You can run like this:
 
- - `git clone https://github.com/icefoxen/cargo-osha`
- - `cd cargo-osha`
- - `cargo run -- PATH_TO_HFO2/src/*.rs`
+ - `cargo install cargo-count`
+ - `cargo count -e arch --unsafe-statistics`
 
 The result will exclude arch-dependent code.
 
-[osha]: https://github.com/icefoxen/cargo-osha
+[count]: https://github.com/kbknapp/cargo-count
