@@ -94,10 +94,7 @@ struct vm_locked {
 bool vm_init(spci_vcpu_count_t vcpu_count, struct mpool *ppool,
 	     struct vm **new_vm);
 spci_vm_count_t vm_get_count(void);
-struct vm_locked vm_lock(struct vm *vm);
-void vm_unlock(struct vm_locked *locked);
 struct vcpu *vm_get_vcpu(struct vm *vm, spci_vcpu_index_t vcpu_index);
 spci_vm_id_t vm_get_id(struct vm *vm);
-struct mm_ptable *vm_get_ptable(struct vm *vm);
 struct arch_vm *vm_get_arch(struct vm *vm);
 spci_vcpu_count_t vm_get_vcpu_count(struct vm *vm);

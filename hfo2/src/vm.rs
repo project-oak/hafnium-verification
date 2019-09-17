@@ -631,21 +631,6 @@ pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
     hafnium().vm_manager.vms.len() as _
 }
 
-/// Locks the given VM and updates `locked` to hold the newly locked vm.
-#[no_mangle]
-pub unsafe extern "C" fn vm_lock(vm: *mut Vm) -> VmLocked {
-    mem::forget((*vm).inner.lock());
-    VmLocked { vm }
-}
-
-/// Unlocks a VM previously locked with vm_lock, and updates `locked` to reflect
-/// the fact that the VM is no longer locked.
-#[no_mangle]
-pub unsafe extern "C" fn vm_unlock(locked: *mut VmLocked) {
-    drop(ptr::read(locked));
-    (*locked).vm = ptr::null_mut();
-}
-
 /// Get the vCPU with the given index from the given VM.
 /// This assumes the index is valid, i.e. less than vm->vcpu_count.
 #[no_mangle]
@@ -657,11 +642,6 @@ pub unsafe extern "C" fn vm_get_vcpu(vm: *mut Vm, vcpu_index: spci_vcpu_index_t)
 #[no_mangle]
 pub unsafe extern "C" fn vm_get_id(vm: *const Vm) -> spci_vm_id_t {
     (*vm).id
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn vm_get_ptable(vm: *mut Vm) -> *mut PageTable<Stage2> {
-    &mut (*vm).inner.get_mut_unchecked().ptable
 }
 
 #[no_mangle]

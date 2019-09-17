@@ -105,7 +105,6 @@ struct cpu *cpu_find(cpu_id_t id);
 struct vcpu_execution_locked vcpu_lock(struct vcpu *vcpu);
 bool vcpu_try_lock(struct vcpu *vcpu, struct vcpu_execution_locked *locked);
 void vcpu_unlock(struct vcpu_execution_locked *locked);
-void vcpu_on(struct vcpu_execution_locked vcpu, ipaddr_t entry, uintreg_t arg);
 spci_vcpu_index_t vcpu_index(const struct vcpu *vcpu);
 struct arch_regs *vcpu_get_regs(struct vcpu *vcpu);
 const struct arch_regs *vcpu_get_regs_const(const struct vcpu *vcpu);

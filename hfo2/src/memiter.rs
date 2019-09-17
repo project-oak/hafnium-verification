@@ -170,11 +170,6 @@ pub unsafe extern "C" fn memiter_init(it: *mut MemIter, data: *const c_void, siz
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn memiter_parse_uint(it: *mut MemIter, value: *mut u64) -> bool {
-    (*it).parse_uint().map(|v| *value = v).is_some()
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn memiter_parse_str(it: *mut MemIter, str: *mut MemIter) -> bool {
     (*it).parse_str().map(|s| *str = s).is_some()
 }
@@ -182,9 +177,4 @@ pub unsafe extern "C" fn memiter_parse_str(it: *mut MemIter, str: *mut MemIter) 
 #[no_mangle]
 pub unsafe extern "C" fn memiter_iseq(it: *const MemIter, str: *const u8) -> bool {
     (*it).iseq(str)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn memiter_advance(it: *mut MemIter, v: size_t) -> bool {
-    (*it).advance(v as usize).is_ok()
 }

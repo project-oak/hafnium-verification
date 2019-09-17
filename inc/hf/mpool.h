@@ -28,7 +28,6 @@ struct mpool {
 	struct mpool *fallback;
 };
 
-void mpool_enable_locks(void);
 void mpool_init(struct mpool *p, size_t entry_size);
 void mpool_init_from(struct mpool *p, struct mpool *from);
 void mpool_init_with_fallback(struct mpool *p, struct mpool *fallback);

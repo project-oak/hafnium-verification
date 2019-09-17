@@ -29,5 +29,4 @@ struct spinlock {
 
 void sl_init(struct spinlock *l);
 void sl_lock(struct spinlock *l);
-void sl_lock_both(struct spinlock *a, struct spinlock *b);
 void sl_unlock(struct spinlock *l);
