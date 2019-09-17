@@ -102,9 +102,6 @@ executable("unit_tests") {
   testonly = true
   sources = [
     "abi_test.cc",
-    "api_test.cc",
-    "fdt_handler_test.cc",
-    "fdt_test.cc",
     "mm_test.cc",
     "mpool_test.cc",
     "spci_test.cc",
@@ -118,5 +115,19 @@ executable("unit_tests") {
   deps = [
     ":src_testable",
     "//third_party:gtest_main",
+  ]
+  data_deps = [ ":fake_arch" ]
+}
+
+static_library("fake_arch") {
+  complete_static_lib = true
+  sources = [
+    "layout_fake.c",
+    "plat.c",
+  ]
+  cflags = [ "-fPIC" ]
+  deps = [
+    "//src/arch/fake/hypervisor",
+    "//src/arch/fake:console",
   ]
 }

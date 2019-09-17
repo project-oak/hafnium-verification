@@ -1094,3 +1094,13 @@ pub unsafe extern "C" fn api_debug_log(c: c_char, current: *mut VCpu) -> i64 {
     (*vm).debug_log(c);
     0
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn vm_get_count() {
+        assert_eq!(unsafe { api_vm_get_count() }, 0);
+    }
+}
