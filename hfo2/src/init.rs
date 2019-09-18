@@ -16,7 +16,6 @@
 
 use core::mem::MaybeUninit;
 use core::ptr;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::addr::*;
 use crate::arch::*;

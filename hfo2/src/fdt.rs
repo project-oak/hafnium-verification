@@ -407,11 +407,6 @@ impl FdtHeader {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_total_size(hdr: *const FdtHeader) -> u32 {
-    (*hdr).total_size()
-}
-
-#[no_mangle]
 pub unsafe extern "C" fn fdt_root_node(node: *mut FdtNode, hdr: *const FdtHeader) -> bool {
     let n = some_or!(FdtNode::new_root(&*hdr), return false);
     ptr::write(node, n);
