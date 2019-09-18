@@ -185,7 +185,7 @@ impl Hypervisor {
             return None;
         }
 
-        let vm = hafnium().vm_manager.get(vm_id)?;
+        let vm = self.vm_manager.get(vm_id)?;
 
         Some(vm.vcpus.len() as _)
     }
@@ -337,7 +337,7 @@ impl Hypervisor {
         }
 
         // The requested VM must exist.
-        let vm = some_or!(hafnium().vm_manager.get(vm_id), return ret);
+        let vm = some_or!(self.vm_manager.get(vm_id), return ret);
 
         // The requested vcpu must exist.
         let vcpu = some_or!(vm.vcpus.get(vcpu_idx as usize), return ret);
@@ -430,7 +430,7 @@ impl Hypervisor {
         // TODO: the scope of the can be reduced but will require restructing to keep a single
         //       unlock point.
         let mut vm_inner = vm.inner.lock();
-        if vm_inner.configure(send, recv, &hafnium().mpool).is_err() {
+        if vm_inner.configure(send, recv, &self.mpool).is_err() {
             return -1;
         }
 
@@ -483,7 +483,7 @@ impl Hypervisor {
 
         // Ensure the target VM exists.
         let to = some_or!(
-            hafnium().vm_manager.get(from_msg_replica.target_vm_id),
+            self.vm_manager.get(from_msg_replica.target_vm_id),
             return SpciReturn::InvalidParameters
         );
 
@@ -659,7 +659,7 @@ impl Hypervisor {
             return None;
         }
 
-        let vm = hafnium().vm_manager.get(vm_id)?;
+        let vm = self.vm_manager.get(vm_id)?;
 
         // Check if there are outstanding notifications from given vm.
         let entry = unsafe { vm.inner.lock().fetch_waiter().as_mut()? };
@@ -1204,6 +1204,6 @@ mod test {
 
     #[test]
     fn vm_get_count() {
-        assert_eq!(unsafe { api_vm_get_count() }, 0);
+        assert_eq!(hafnium().api_vm_get_count(), 0);
     }
 }
