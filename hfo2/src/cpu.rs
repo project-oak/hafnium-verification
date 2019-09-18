@@ -302,7 +302,7 @@ impl VCpuInner {
 pub struct VCpu {
     pub vm: *mut Vm,
 
-    /// If a vCPU is running, its lock is logically held by the running pCPU.
+    /// If a vCPU of secondary VMs is running, its lock is logically held by the running pCPU.
     pub inner: SpinLock<VCpuInner>,
     pub interrupts: SpinLock<Interrupts>,
 }
@@ -318,6 +318,13 @@ impl VCpu {
 
     pub fn set_cpu(&mut self, cpu: *const Cpu) {
         self.inner.get_mut().cpu = cpu;
+    }
+
+    pub fn index(&self) -> spci_vcpu_index_t {
+        let vcpus = unsafe { (*self.vm).vcpus.as_ptr() };
+        let index = unsafe { (self as *const VCpu).offset_from(vcpus) };
+        assert!(index < core::u16::MAX as isize);
+        index as _
     }
 }
 
@@ -430,8 +437,10 @@ impl CpuManager {
         Self { cpus }
     }
 
-    pub unsafe fn index_of(&self, c: &Cpu) -> usize {
-        (c as *const Cpu).offset_from(self.cpus.as_ptr()) as usize
+    pub fn index_of(&self, c: *const Cpu) -> usize {
+        // TODO(HfO2): Unsafety here can be avoided by `wrapping_offset_from` but optimization will
+        // be reduced.
+        unsafe { c.offset_from(self.cpus.as_ptr()) as usize }
     }
 
     pub unsafe fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
@@ -522,10 +531,7 @@ pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
 
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
-    let vcpus = (*(*vcpu).vm).vcpus.as_ptr();
-    let index = vcpu.offset_from(vcpus);
-    assert!(index < core::u16::MAX as isize);
-    index as u16
+    (*vcpu).index()
 }
 
 #[no_mangle]
