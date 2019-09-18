@@ -561,8 +561,8 @@ mod test {
                 &mut n,
                 &mut ppool,
             )
-            .unwrap()
-        };
+        }
+        .unwrap();
         let fdt = unsafe { fdt_raw.as_mut() };
 
         assert!(unsafe { n.find_child("\0".as_ptr()) }.is_some());
