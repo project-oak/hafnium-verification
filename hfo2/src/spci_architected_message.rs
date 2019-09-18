@@ -18,8 +18,8 @@ use core::mem;
 use core::ptr;
 
 use crate::addr::*;
-use crate::api::*;
 use crate::mm::*;
+use crate::mpool::*;
 use crate::page::*;
 use crate::spci::*;
 use crate::std::*;
@@ -28,15 +28,16 @@ use crate::vm::*;
 /// Performs initial architected message information parsing. Calls the corresponding api functions
 /// implementing the functionality requested in the architected message.
 pub fn spci_msg_handle_architected_message(
-    to_locked: &VmLocked,
-    from_locked: &VmLocked,
+    to_inner: &mut VmInner,
+    from_inner: &mut VmInner,
     architected_message_replica: &SpciArchitectedMessageHeader,
     from_msg_replica: &SpciMessage,
     to_msg: &mut SpciMessage,
+    fallback: &MPool,
 ) -> SpciReturn {
     let from_msg_payload_length = from_msg_replica.length as usize;
 
-    let message_type = (*architected_message_replica).r#type;
+    let message_type = architected_message_replica.r#type;
     if message_type != SpciMemoryShare::Donate {
         dlog!("Invalid memory sharing message.");
         return SpciReturn::InvalidParameters;
@@ -44,7 +45,7 @@ pub fn spci_msg_handle_architected_message(
 
     #[allow(clippy::cast_ptr_alignment)]
     let memory_region =
-        unsafe { &*((*architected_message_replica).payload.as_ptr() as *const SpciMemoryRegion) };
+        unsafe { &*(architected_message_replica.payload.as_ptr() as *const SpciMemoryRegion) };
     let memory_share_size =
         from_msg_payload_length - mem::size_of::<SpciArchitectedMessageHeader>();
     // TODO: Add memory attributes.
@@ -61,7 +62,14 @@ pub fn spci_msg_handle_architected_message(
     }
 
     // Call the memory sharing routine.
-    let ret = spci_share_memory(to_locked, from_locked, memory_region, to_mode, message_type);
+    let ret = spci_share_memory(
+        to_inner,
+        from_inner,
+        memory_region,
+        to_mode,
+        message_type,
+        fallback,
+    );
 
     // Copy data to the destination Rx.
     //
@@ -75,7 +83,7 @@ pub fn spci_msg_handle_architected_message(
             #[allow(clippy::cast_ptr_alignment)]
             ptr::copy_nonoverlapping(
                 architected_message_replica,
-                (*to_msg).payload.as_mut_ptr() as *mut _,
+                to_msg.payload.as_mut_ptr() as *mut _,
                 from_msg_payload_length,
             );
         }
@@ -131,8 +139,8 @@ fn spci_msg_get_next_state(
 ///  4) The requested share type was not handled.
 /// Success is indicated by true.
 pub fn spci_msg_check_transition(
-    to_locked: &VmLocked,
-    from_locked: &VmLocked,
+    to_inner: &VmInner,
+    from_inner: &VmInner,
     share: SpciMemoryShare,
     begin: ipaddr_t,
     end: ipaddr_t,
@@ -180,8 +188,8 @@ pub fn spci_msg_check_transition(
     }
 
     // Ensure that the memory range is mapped with the same mode.
-    let orig_from_mode = from_locked.get_inner().ptable.get_mode(begin, end)?;
-    let orig_to_mode = to_locked.get_inner().ptable.get_mode(begin, end)?;
+    let orig_from_mode = from_inner.ptable.get_mode(begin, end)?;
+    let orig_to_mode = to_inner.ptable.get_mode(begin, end)?;
 
     if share != SpciMemoryShare::Donate {
         return Err(());
@@ -193,4 +201,87 @@ pub fn spci_msg_check_transition(
         orig_from_mode,
         orig_to_mode,
     )
+}
+
+/// Shares memory from the calling VM with another. The memory can be shared in different modes.
+///
+/// This function requires the calling context to hold the <to> and <from> locks.
+///
+/// Returns:
+///  In case of error one of the following values is returned:
+///   1) SPCI_INVALID_PARAMETERS - The endpoint provided parameters were erroneous;
+///   2) SPCI_NO_MEMORY - Hf did not have sufficient memory to complete the request.
+///  Success is indicated by SPCI_SUCCESS.
+pub fn spci_share_memory(
+    to_inner: &mut VmInner,
+    from_inner: &mut VmInner,
+    memory_region: &SpciMemoryRegion,
+    memory_to_attributes: Mode,
+    share: SpciMemoryShare,
+    fallback: &MPool,
+) -> SpciReturn {
+    // Disallow reflexive shares as this suggests an error in the VM.
+    if to_inner as *mut _ == from_inner as *mut _ {
+        return SpciReturn::InvalidParameters;
+    }
+
+    // Create a local pool so any freed memory can't be used by another thread.
+    // This is to ensure the original mapping can be restored if any stage of
+    // the process fails.
+    let local_page_pool: MPool = MPool::new_with_fallback(fallback);
+
+    // Obtain the single contiguous set of pages from the memory_region.
+    // TODO: Add support for multiple constituent regions.
+    let constituent = unsafe { &*memory_region.constituents.as_ptr() };
+    let size = constituent.page_count as usize * PAGE_SIZE;
+    let begin = ipa_init(constituent.address as usize);
+    let end = ipa_add(begin, size as usize);
+
+    // Check if the state transition is lawful for both VMs involved in the
+    // memory exchange, ensure that all constituents of a memory region being
+    // shared are at the same state.
+    let (orig_from_mode, from_mode, to_mode) = ok_or!(
+        spci_msg_check_transition(
+            to_inner,
+            from_inner,
+            share,
+            begin,
+            end,
+            memory_to_attributes,
+        ),
+        return SpciReturn::InvalidParameters
+    );
+
+    let pa_begin = pa_from_ipa(begin);
+    let pa_end = pa_from_ipa(end);
+
+    // First update the mapping for the sender so there is not overlap with the
+    // recipient.
+    if from_inner
+        .ptable
+        .identity_map(pa_begin, pa_end, from_mode, &local_page_pool)
+        .is_err()
+    {
+        return SpciReturn::NoMemory;
+    }
+
+    // Complete the transfer by mapping the memory into the recipient.
+    if to_inner
+        .ptable
+        .identity_map(pa_begin, pa_end, to_mode, &local_page_pool)
+        .is_err()
+    {
+        // TODO: partial defrag of failed range.
+        // Recover any memory consumed in failed mapping.
+        from_inner.ptable.defrag(&local_page_pool);
+
+        from_inner
+            .ptable
+            .identity_map(pa_begin, pa_end, orig_from_mode, &local_page_pool)
+            .unwrap();
+
+        return SpciReturn::NoMemory;
+    }
+
+    SpciReturn::Success
 }

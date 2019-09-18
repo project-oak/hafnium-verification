@@ -65,8 +65,8 @@ pub struct WaitEntry {
 
 impl WaitEntry {
     #[inline]
-    pub unsafe fn is_in_ready_list(&self) -> bool {
-        !list_empty(&self.ready_links)
+    pub fn is_in_ready_list(&self) -> bool {
+        unsafe { !list_empty(&self.ready_links) }
     }
 }
 
@@ -105,15 +105,21 @@ impl Mailbox {
 
     /// Retrieves the next waiter and removes it from the wait list if the VM's
     /// mailbox is in a writable state.
-    pub unsafe fn fetch_waiter(&mut self) -> *mut WaitEntry {
-        if self.state != MailboxState::Empty || self.recv.is_null() || list_empty(&self.waiter_list)
+    pub fn fetch_waiter(&mut self) -> *mut WaitEntry {
+        if self.state != MailboxState::Empty
+            || self.recv.is_null()
+            || unsafe { list_empty(&self.waiter_list) }
         {
             // The mailbox is not writable or there are no waiters.
             return ptr::null_mut();
         }
 
         // Remove waiter from the wait list.
-        container_of!(list_pop_front(&self.waiter_list), WaitEntry, wait_links)
+        container_of!(
+            unsafe { list_pop_front(&self.waiter_list) },
+            WaitEntry,
+            wait_links
+        )
     }
 
     /// Checks if any waiters exists.
@@ -237,7 +243,7 @@ impl VmInner {
 
     /// Retrieves the next waiter and removes it from the wait list if the VM's
     /// mailbox is in a writable state.
-    pub unsafe fn fetch_waiter(&mut self) -> *mut WaitEntry {
+    pub fn fetch_waiter(&mut self) -> *mut WaitEntry {
         self.mailbox.fetch_waiter()
     }
 
@@ -607,6 +613,10 @@ impl VmManager {
     pub fn get_mut(&mut self, id: spci_vm_id_t) -> Option<&mut Vm> {
         self.vms.get_mut(id as usize)
     }
+
+    pub fn len(&self) -> spci_vm_count_t {
+        self.vms.len() as _
+    }
 }
 
 /// This function is only used by unit test (fdt/find_memory_ranges.)
@@ -624,11 +634,6 @@ pub unsafe extern "C" fn vm_init(
         }
         None => false,
     }
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn vm_get_count() -> spci_vm_count_t {
-    hafnium().vm_manager.vms.len() as _
 }
 
 /// Get the vCPU with the given index from the given VM.
