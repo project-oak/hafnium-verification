@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::MaybeUninit;
+use core::mem::{self, MaybeUninit};
 use core::ptr;
 
 use crate::addr::*;
@@ -212,20 +212,19 @@ pub fn hafnium() -> &'static Hafnium {
 // The entry point of CPUs when they are turned on. It is supposed to initialise
 // all state and return the first vCPU to run.
 #[no_mangle]
-pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *mut VCpu {
+pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
     mm_cpu_init().expect("mm_cpu_init failed");
 
     let primary = hafnium().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
     let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();
     let vm = vcpu.vm;
 
-    // TODO(HfO2): vcpu needs to be borrowed exclusively, which is safe but
-    // discouraged. Move this code into one_time_init().
-    let vcpu = vcpu as *const _ as usize as *mut VCpu;
-    (*vcpu).set_cpu(c);
+    mem::forget(vcpu.inner.lock());
+    let mut vcpu = VCpuExecutionLocked::from_raw(vcpu);
+    vcpu.get_inner_mut().set_cpu(c);
 
     // Reset the registers to give a clean start for the primary's vCPU.
-    (*vcpu).inner.get_mut().regs.reset(true, &*vm, (*c).id);
+    vcpu.get_inner_mut().regs.reset(true, &*vm, (*c).id);
 
-    vcpu
+    vcpu.into_raw()
 }
