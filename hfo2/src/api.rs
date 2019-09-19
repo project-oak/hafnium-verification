@@ -204,23 +204,20 @@ impl Hafnium {
         target_vcpu: &VCpu,
         intid: intid_t,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> i64 {
+    ) -> (i64, Option<&VCpu>) {
         if target_vcpu.interrupts.lock().inject(intid).is_ok() {
             if unsafe { (*current.vm).id } == HF_PRIMARY_VM_ID {
                 // If the call came from the primary VM, let it know that it should run or kick the
                 // target vCPU.
-                return 1;
-            } else if current.deref().deref() as *const _ != target_vcpu as *const _
-                && !next.is_null()
-            {
-                unsafe {
-                    *next = self.wake_up(current, target_vcpu);
-                }
+                return (1, None);
+            }
+
+            if current.deref().deref() as *const _ != target_vcpu as *const _ {
+                return (0, Some(self.wake_up(current, target_vcpu)));
             }
         }
 
-        0
+        (0, None)
     }
 
     /// Prepares the vcpu to run by updating its state and fetching whether a return value needs to
@@ -310,45 +307,36 @@ impl Hafnium {
         vm_id: spci_vm_id_t,
         vcpu_idx: spci_vcpu_index_t,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> HfVCpuRunReturn {
+    ) -> Result<VCpuExecutionLocked, HfVCpuRunReturn> {
         let ret = HfVCpuRunReturn::WaitForInterrupt {
             ns: HF_SLEEP_INDEFINITE,
         };
 
         // Only the primary VM can switch vcpus.
         if unsafe { (*current.vm).id } != HF_PRIMARY_VM_ID {
-            return ret;
+            return Err(ret);
         }
 
         // Only the secondary VM vcpus can be run.
         if vm_id == HF_PRIMARY_VM_ID {
-            return ret;
+            return Err(ret);
         }
 
         // The requested VM must exist.
-        let vm = some_or!(self.vm_manager.get(vm_id), return ret);
+        let vm = some_or!(self.vm_manager.get(vm_id), return Err(ret));
 
         // The requested vcpu must exist.
-        let vcpu = some_or!(vm.vcpus.get(vcpu_idx as usize), return ret);
+        let vcpu = some_or!(vm.vcpus.get(vcpu_idx as usize), return Err(ret));
 
         // Update state if allowed.
-        let mut vcpu_locked = match self.vcpu_prepare_run(current, vcpu, ret) {
-            Ok(locked) => locked,
-            Err(ret) => return ret,
-        };
+        let mut vcpu_locked = self.vcpu_prepare_run(current, vcpu, ret)?;
 
         // Inject timer interrupt if timer has expired. It's safe to access vcpu->regs here because
         // vcpu_prepare_run already made sure that regs_available was true (and then set it to
         // false) before returning true.
         if vcpu_locked.get_inner().regs.timer_pending() {
             // Make virtual timer interrupt pending.
-            self.internal_interrupt_inject(
-                &*vcpu,
-                HF_VIRTUAL_TIMER_INTID,
-                &mut vcpu_locked,
-                ptr::null_mut(),
-            );
+            self.internal_interrupt_inject(&*vcpu, HF_VIRTUAL_TIMER_INTID, &mut vcpu_locked);
 
             // Set the mask bit so the hardware interrupt doesn't fire again. Ideally we wouldn't
             // do this because it affects what the secondary vcPU sees, but if we don't then we end
@@ -358,13 +346,7 @@ impl Hafnium {
         }
 
         // Switch to the vcpu.
-        unsafe {
-            *next = vcpu_locked.into_raw();
-        }
-
-        // Set a placeholder return code to the scheduler. This will be overwritten when the switch
-        // back to the primary occurs.
-        HfVCpuRunReturn::Preempted
+        Ok(vcpu_locked)
     }
 
     /// Determines the value to be returned by api_vm_configure and api_mailbox_clear after they've
@@ -375,26 +357,23 @@ impl Hafnium {
         vm_id: spci_vm_id_t,
         vm_inner: &VmInner,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> i64 {
+    ) -> (i64, Option<&VCpu>) {
         if vm_inner.is_waiter_list_empty() {
             // No waiters, nothing else to do.
-            return 0;
+            return (0, None);
         }
 
         if vm_id == HF_PRIMARY_VM_ID {
             // The caller is the primary VM. Tell it to wake up waiters.
-            return 1;
+            return (1, None);
         }
 
         // Switch back to the primary VM, informing it that there are waiters that need to be
         // notified.
-        unsafe {
-            *next =
-                self.switch_to_primary(current, HfVCpuRunReturn::NotifyWaiters, VCpuStatus::Ready);
-        }
+        let next =
+            self.switch_to_primary(current, HfVCpuRunReturn::NotifyWaiters, VCpuStatus::Ready);
 
-        0
+        (0, Some(next))
     }
 
     /// Configures the VM to send/receive data through the specified pages. The pages must not be
@@ -410,8 +389,7 @@ impl Hafnium {
         send: ipaddr_t,
         recv: ipaddr_t,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> i64 {
+    ) -> (i64, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
 
         // The hypervisor's memory map must be locked for the duration of this operation to ensure
@@ -421,11 +399,11 @@ impl Hafnium {
         //       unlock point.
         let mut vm_inner = vm.inner.lock();
         if vm_inner.configure(send, recv, &self.mpool).is_err() {
-            return -1;
+            return (-1, None);
         }
 
         // Tell caller about waiters, if any.
-        self.waiter_result(vm.id, &vm_inner, current, next)
+        self.waiter_result(vm.id, &vm_inner, current)
     }
 
     /// Copies data from the sender's send buffer to the recipient's receive buffer and notifies
@@ -437,8 +415,7 @@ impl Hafnium {
         &self,
         attributes: SpciMsgSendAttributes,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> SpciReturn {
+    ) -> (SpciReturn, Option<&VCpu>) {
         let from = unsafe { &*current.vm };
 
         let notify = attributes.contains(SpciMsgSendAttributes::NOTIFY);
@@ -448,7 +425,7 @@ impl Hafnium {
         // the lock since the tx mailbox address can only be configured once.
         let from_msg = some_or!(
             unsafe { from.inner.lock().get_send_ptr().as_ref() },
-            return SpciReturn::InvalidParameters
+            return (SpciReturn::InvalidParameters, None)
         );
 
         // Copy the message header.
@@ -458,23 +435,23 @@ impl Hafnium {
 
         // Ensure source VM id corresponds to the current VM.
         if from_msg_replica.source_vm_id != from.id {
-            return SpciReturn::InvalidParameters;
+            return (SpciReturn::InvalidParameters, None);
         }
 
         // Limit the size of transfer.
         if from_msg_payload_length > SPCI_MSG_PAYLOAD_MAX {
-            return SpciReturn::InvalidParameters;
+            return (SpciReturn::InvalidParameters, None);
         }
 
         // Disallow reflexive requests as this suggests an error in the VM.
         if from_msg_replica.target_vm_id == from.id {
-            return SpciReturn::InvalidParameters;
+            return (SpciReturn::InvalidParameters, None);
         }
 
         // Ensure the target VM exists.
         let to = some_or!(
             self.vm_manager.get(from_msg_replica.target_vm_id),
-            return SpciReturn::InvalidParameters
+            return (SpciReturn::InvalidParameters, None)
         );
 
         // Hf needs to hold the lock on `to` before the mailbox state is checked. The lock on `to`
@@ -491,7 +468,7 @@ impl Hafnium {
                 let _ = from_inner.wait_for(&mut to_inner, to.id);
             }
 
-            return SpciReturn::Busy;
+            return (SpciReturn::Busy, None);
         }
 
         let to_msg = unsafe { &mut *to_inner.get_recv_ptr() };
@@ -517,11 +494,11 @@ impl Hafnium {
             let architected_header = from_msg.get_architected_message_header();
 
             if from_msg_payload_length > message_buffer.len() {
-                return SpciReturn::InvalidParameters;
+                return (SpciReturn::InvalidParameters, None);
             }
 
             if from_msg_payload_length < mem::size_of::<SpciArchitectedMessageHeader>() {
-                return SpciReturn::InvalidParameters;
+                return (SpciReturn::InvalidParameters, None);
             }
 
             // Copy the architected message into an internal buffer.
@@ -552,7 +529,7 @@ impl Hafnium {
             );
 
             if ret != SpciReturn::Success {
-                return ret;
+                return (ret, None);
             }
         }
 
@@ -561,22 +538,20 @@ impl Hafnium {
         // Messages for the primary VM are delivered directly.
         if to.id == HF_PRIMARY_VM_ID {
             to_inner.set_read();
-            unsafe {
-                *next = self.switch_to_primary(current, primary_ret, VCpuStatus::Ready);
-            }
-            return SpciReturn::Success;
+            let next = self.switch_to_primary(current, primary_ret, VCpuStatus::Ready);
+            return (SpciReturn::Success, Some(next));
         }
 
         to_inner.set_received();
 
         // Return to the primary VM directly or with a switch.
-        if from.id != HF_PRIMARY_VM_ID {
-            unsafe {
-                *next = self.switch_to_primary(current, primary_ret, VCpuStatus::Ready);
-            }
-        }
+        let next = if from.id != HF_PRIMARY_VM_ID {
+            Some(self.switch_to_primary(current, primary_ret, VCpuStatus::Ready))
+        } else {
+            None
+        };
 
-        SpciReturn::Success
+        (SpciReturn::Success, next)
     }
 
     /// Receives a message from the mailbox. If one isn't available, this function can optionally
@@ -587,27 +562,26 @@ impl Hafnium {
         &self,
         attributes: SpciMsgRecvAttributes,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> SpciReturn {
+    ) -> (SpciReturn, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
         let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
         // The primary VM will receive messages as a status code from running vcpus and must not
         // call this function.
         if vm.id == HF_PRIMARY_VM_ID {
-            return SpciReturn::Interrupted;
+            return (SpciReturn::Interrupted, None);
         }
 
         let mut vm_inner = vm.inner.lock();
 
         // Return pending messages without blocking.
         if vm_inner.try_read().is_ok() {
-            return SpciReturn::Success;
+            return (SpciReturn::Success, None);
         }
 
         // No pending message so fail if not allowed to block.
         if !block {
-            return SpciReturn::Retry;
+            return (SpciReturn::Retry, None);
         }
 
         // From this point onward this call can only be interrupted or a message received. If a
@@ -615,20 +589,20 @@ impl Hafnium {
         //
         // Block only if there are enabled and pending interrupts, to match behaviour of
         // wait_for_interrupt.
-        if !current.interrupts.lock().is_interrupted() {
+        let next = if !current.interrupts.lock().is_interrupted() {
             // Switch back to primary vm to block.
-            unsafe {
-                *next = self.switch_to_primary(
-                    current,
-                    HfVCpuRunReturn::WaitForMessage {
-                        ns: HF_SLEEP_INDEFINITE,
-                    },
-                    VCpuStatus::BlockedMailbox,
-                );
-            }
-        }
+            Some(self.switch_to_primary(
+                current,
+                HfVCpuRunReturn::WaitForMessage {
+                    ns: HF_SLEEP_INDEFINITE,
+                },
+                VCpuStatus::BlockedMailbox,
+            ))
+        } else {
+            None
+        };
 
-        SpciReturn::Interrupted
+        (SpciReturn::Interrupted, next)
     }
 
     /// Retrieves the next VM whose mailbox became writable. For a VM to be notified by this
@@ -675,15 +649,15 @@ impl Hafnium {
     ///  - 1 if it was called by the primary VM and the primary VM now needs to wake
     ///    up or kick waiters. Waiters should be retrieved by calling
     ///    hf_mailbox_waiter_get.
-    fn api_mailbox_clear(&self, current: &mut VCpuExecutionLocked, next: *mut *const VCpu) -> i64 {
+    fn api_mailbox_clear(&self, current: &mut VCpuExecutionLocked) -> (i64, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
         let mut vm_inner = vm.inner.lock();
         match vm_inner.get_state() {
-            MailboxState::Empty => 0,
-            MailboxState::Received => -1,
+            MailboxState::Empty => (0, None),
+            MailboxState::Received => (-1, None),
             MailboxState::Read => {
                 vm_inner.set_empty();
-                self.waiter_result(vm.id, &vm_inner, current, next)
+                self.waiter_result(vm.id, &vm_inner, current)
             }
         }
     }
@@ -729,19 +703,21 @@ impl Hafnium {
         target_vcpu_idx: spci_vcpu_index_t,
         intid: intid_t,
         current: &mut VCpuExecutionLocked,
-        next: *mut *const VCpu,
-    ) -> i64 {
-        let target_vm = some_or!(self.vm_manager.get(target_vm_id), return -1);
+    ) -> (i64, Option<&VCpu>) {
+        let target_vm = some_or!(self.vm_manager.get(target_vm_id), return (-1, None));
 
         if intid >= HF_NUM_INTIDS {
-            return -1;
+            return (-1, None);
         }
 
         if !self.is_injection_allowed(target_vm_id, current.deref()) {
-            return -1;
+            return (-1, None);
         }
 
-        let target_vcpu = some_or!(target_vm.vcpus.get(target_vcpu_idx as usize), return -1);
+        let target_vcpu = some_or!(
+            target_vm.vcpus.get(target_vcpu_idx as usize),
+            return (-1, None)
+        );
 
         dlog!(
             "Injecting IRQ {} for VM {} VCPU {} from VM {} VCPU {}\n",
@@ -751,7 +727,8 @@ impl Hafnium {
             unsafe { &*current.vm }.id,
             unsafe { &*current.get_inner().cpu }.id
         );
-        self.internal_interrupt_inject(target_vcpu, intid, current, next)
+
+        self.internal_interrupt_inject(target_vcpu, intid, current)
     }
 
     /// Clears a region of physical memory by overwriting it with zeros. The data is flushed from
@@ -1007,9 +984,15 @@ pub unsafe extern "C" fn api_vcpu_run(
     next: *mut *const VCpu,
 ) -> u64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium()
-        .api_vcpu_run(vm_id, vcpu_idx, &mut current, next)
-        .into_raw()
+
+    match hafnium().api_vcpu_run(vm_id, vcpu_idx, &mut current) {
+        Ok(vcpu) => *next = vcpu.into_raw(),
+        Err(ret) => return ret.into_raw(),
+    }
+
+    // Set a placeholder return code to the scheduler. This will be overwritten when the switch
+    // back to the primary occurs.
+    HfVCpuRunReturn::Preempted.into_raw()
 }
 
 /// Configures the VM to send/receive data through the specified pages. The
@@ -1029,7 +1012,10 @@ pub unsafe extern "C" fn api_vm_configure(
     next: *mut *const VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_vm_configure(send, recv, &mut current, next)
+    let (ret, vcpu) = hafnium().api_vm_configure(send, recv, &mut current);
+
+    *next = some_or!(vcpu, return ret);
+    ret
 }
 
 /// Copies data from the sender's send buffer to the recipient's receive buffer
@@ -1044,7 +1030,10 @@ pub unsafe extern "C" fn api_spci_msg_send(
     next: *mut *const VCpu,
 ) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_spci_msg_send(attributes, &mut current, next)
+    let (ret, vcpu) = hafnium().api_spci_msg_send(attributes, &mut current);
+
+    *next = some_or!(vcpu, return ret);
+    ret
 }
 
 /// Receives a message from the mailbox. If one isn't available, this function
@@ -1058,7 +1047,10 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     next: *mut *const VCpu,
 ) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_spci_msg_recv(attributes, &mut current, next)
+    let (ret, vcpu) = hafnium().api_spci_msg_recv(attributes, &mut current);
+
+    *next = some_or!(vcpu, return ret);
+    ret
 }
 
 /// Retrieves the next VM whose mailbox became writable. For a VM to be notified
@@ -1105,7 +1097,10 @@ pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *c
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *const VCpu) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_mailbox_clear(&mut current, next)
+    let (ret, vcpu) = hafnium().api_mailbox_clear(&mut current);
+
+    *next = some_or!(vcpu, return ret);
+    ret
 }
 
 /// Enables or disables a given interrupt ID for the calling vCPU.
@@ -1155,7 +1150,11 @@ pub unsafe extern "C" fn api_interrupt_inject(
     next: *mut *const VCpu,
 ) -> i64 {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_interrupt_inject(target_vm_id, target_vcpu_idx, intid, &mut current, next)
+    let (ret, vcpu) =
+        hafnium().api_interrupt_inject(target_vm_id, target_vcpu_idx, intid, &mut current);
+
+    *next = some_or!(vcpu, return ret);
+    ret
 }
 
 /// Shares memory from the calling VM with another. The memory can be shared in different modes.
