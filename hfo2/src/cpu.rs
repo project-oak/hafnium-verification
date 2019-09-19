@@ -296,17 +296,13 @@ impl VCpuInner {
         // off with a CPU_OFF call or hasn't yet been turned on with a CPU_ON call.
         self.state == VCpuStatus::Off
     }
-
-    pub fn set_cpu(&mut self, c: *const Cpu) {
-        self.cpu = c;
-    }
 }
 
 #[repr(C)]
 pub struct VCpu {
     pub vm: *mut Vm,
 
-    /// If a vCPU is running, its lock is logically held by the running pCPU.
+    /// If a vCPU of secondary VMs is running, its lock is logically held by the running pCPU.
     pub inner: SpinLock<VCpuInner>,
     pub interrupts: SpinLock<Interrupts>,
 }
@@ -318,6 +314,10 @@ impl VCpu {
             inner: SpinLock::new(VCpuInner::new()),
             interrupts: SpinLock::new(Interrupts::new()),
         }
+    }
+
+    pub fn set_cpu(&mut self, cpu: *const Cpu) {
+        self.inner.get_mut().cpu = cpu;
     }
 
     pub fn index(&self) -> spci_vcpu_index_t {

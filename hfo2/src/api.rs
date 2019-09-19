@@ -58,7 +58,7 @@ impl Hafnium {
         current: &mut VCpuExecutionLocked,
         mut primary_ret: HfVCpuRunReturn,
         secondary_state: VCpuStatus,
-    ) -> VCpuExecutionLocked {
+    ) -> &VCpu {
         let primary = self.vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
         let next = primary
             .vcpus
@@ -78,16 +78,12 @@ impl Hafnium {
             _ => {}
         }
 
-        // Lock the next vCPU.
-        //
-        // The use of `lock()` is non-blocking because the currently running pCPU implicitly owns 
-        // `next`. Notice that `next` is the vCPU of the primary VM that corresponds to the
-        // currently running pCPU.
-        mem::forget(next.inner.lock());
-        let mut next = unsafe { VCpuExecutionLocked::from_raw(next) };
-
         // Set the return value for the primary VM's call to HF_VCPU_RUN.
-        next.get_inner_mut()
+        //
+        // The use of `get_mut_unchecked()` is safe because the currently running pCPU implicitly
+        // owns `next`. Notice that `next` is the vCPU of the primary VM that corresponds to the
+        // currently running pCPU.
+        unsafe { next.inner.get_mut_unchecked() }
             .regs
             .set_retval(primary_ret.into_raw());
 
@@ -98,12 +94,12 @@ impl Hafnium {
     }
 
     /// Returns to the primary vm and signals that the vcpu still has work to do so.
-    fn api_preempt(&self, current: &mut VCpuExecutionLocked) -> VCpuExecutionLocked {
+    fn api_preempt(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         self.switch_to_primary(current, HfVCpuRunReturn::Preempted, VCpuStatus::Ready)
     }
 
     /// Puts the current vcpu in wait for interrupt mode, and returns to the primary vm.
-    fn api_wait_for_interrupt(&self, current: &mut VCpuExecutionLocked) -> VCpuExecutionLocked {
+    fn api_wait_for_interrupt(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         self.switch_to_primary(
             current,
             HfVCpuRunReturn::WaitForInterrupt {
@@ -114,7 +110,7 @@ impl Hafnium {
     }
 
     /// Puts the current vCPU in off mode, and returns to the primary VM.
-    fn api_vcpu_off(&self, current: &mut VCpuExecutionLocked) -> VCpuExecutionLocked {
+    fn api_vcpu_off(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         // Disable the timer, so the scheduler doesn't get told to call back based on it.
         unsafe {
             arch_timer_disable_current();
@@ -131,7 +127,7 @@ impl Hafnium {
 
     /// Returns to the primary vm to allow this cpu to be used for other tasks as the vcpu does not
     /// have work to do at this moment. The current vcpu is masked as ready to be scheduled again.
-    fn api_spci_yield(&self, current: &mut VCpuExecutionLocked) -> Option<VCpuExecutionLocked> {
+    fn api_spci_yield(&self, current: &mut VCpuExecutionLocked) -> Option<&VCpu> {
         if unsafe { (*current.vm).id } == HF_PRIMARY_VM_ID {
             // Noop on the primary as it makes the scheduling decisions.
             return None;
@@ -142,7 +138,7 @@ impl Hafnium {
 
     /// Switches to the primary so that it can switch to the target, or kick tit if it is already
     /// running on a different physical CPU.
-    fn wake_up(&self, current: &mut VCpuExecutionLocked, target_vcpu: &VCpu) -> VCpuExecutionLocked {
+    fn wake_up(&self, current: &mut VCpuExecutionLocked, target_vcpu: &VCpu) -> &VCpu {
         self.switch_to_primary(
             current,
             HfVCpuRunReturn::WakeUp {
@@ -154,7 +150,7 @@ impl Hafnium {
     }
 
     /// Aborts the vCPU and triggers its VM to abort fully.
-    fn api_abort(&self, current: &mut VCpuExecutionLocked) -> VCpuExecutionLocked {
+    fn api_abort(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         let vm = unsafe { &*current.vm };
 
         dlog!("Aborting VM {} vCPU {}\n", vm.id, current.index(),);
@@ -208,7 +204,7 @@ impl Hafnium {
         target_vcpu: &VCpu,
         intid: intid_t,
         current: &mut VCpuExecutionLocked,
-    ) -> (i64, Option<VCpuExecutionLocked>) {
+    ) -> (i64, Option<&VCpu>) {
         if target_vcpu.interrupts.lock().inject(intid).is_ok() {
             if unsafe { (*current.vm).id } == HF_PRIMARY_VM_ID {
                 // If the call came from the primary VM, let it know that it should run or kick the
@@ -361,7 +357,7 @@ impl Hafnium {
         vm_id: spci_vm_id_t,
         vm_inner: &VmInner,
         current: &mut VCpuExecutionLocked,
-    ) -> (i64, Option<VCpuExecutionLocked>) {
+    ) -> (i64, Option<&VCpu>) {
         if vm_inner.is_waiter_list_empty() {
             // No waiters, nothing else to do.
             return (0, None);
@@ -393,7 +389,7 @@ impl Hafnium {
         send: ipaddr_t,
         recv: ipaddr_t,
         current: &mut VCpuExecutionLocked,
-    ) -> (i64, Option<VCpuExecutionLocked>) {
+    ) -> (i64, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
 
         // The hypervisor's memory map must be locked for the duration of this operation to ensure
@@ -419,7 +415,7 @@ impl Hafnium {
         &self,
         attributes: SpciMsgSendAttributes,
         current: &mut VCpuExecutionLocked,
-    ) -> (SpciReturn, Option<VCpuExecutionLocked>) {
+    ) -> (SpciReturn, Option<&VCpu>) {
         let from = unsafe { &*current.vm };
 
         let notify = attributes.contains(SpciMsgSendAttributes::NOTIFY);
@@ -566,7 +562,7 @@ impl Hafnium {
         &self,
         attributes: SpciMsgRecvAttributes,
         current: &mut VCpuExecutionLocked,
-    ) -> (SpciReturn, Option<VCpuExecutionLocked>) {
+    ) -> (SpciReturn, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
         let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
@@ -653,7 +649,7 @@ impl Hafnium {
     ///  - 1 if it was called by the primary VM and the primary VM now needs to wake
     ///    up or kick waiters. Waiters should be retrieved by calling
     ///    hf_mailbox_waiter_get.
-    fn api_mailbox_clear(&self, current: &mut VCpuExecutionLocked) -> (i64, Option<VCpuExecutionLocked>) {
+    fn api_mailbox_clear(&self, current: &mut VCpuExecutionLocked) -> (i64, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
         let mut vm_inner = vm.inner.lock();
         match vm_inner.get_state() {
@@ -707,7 +703,7 @@ impl Hafnium {
         target_vcpu_idx: spci_vcpu_index_t,
         intid: intid_t,
         current: &mut VCpuExecutionLocked,
-    ) -> (i64, Option<VCpuExecutionLocked>) {
+    ) -> (i64, Option<&VCpu>) {
         let target_vm = some_or!(self.vm_manager.get(target_vm_id), return (-1, None));
 
         if intid >= HF_NUM_INTIDS {
@@ -901,7 +897,7 @@ impl Hafnium {
 #[no_mangle]
 pub unsafe extern "C" fn api_preempt(current: *mut VCpu) -> *const VCpu {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_preempt(&mut current).into_raw()
+    hafnium().api_preempt(&mut current)
 }
 
 /// Puts the current vcpu in wait for interrupt mode, and returns to the primary
@@ -909,14 +905,14 @@ pub unsafe extern "C" fn api_preempt(current: *mut VCpu) -> *const VCpu {
 #[no_mangle]
 pub unsafe extern "C" fn api_wait_for_interrupt(current: *mut VCpu) -> *const VCpu {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_wait_for_interrupt(&mut current).into_raw()
+    hafnium().api_wait_for_interrupt(&mut current)
 }
 
 /// Puts the current vCPU in off mode, and returns to the primary VM.
 #[no_mangle]
 pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *const VCpu {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_vcpu_off(&mut current).into_raw()
+    hafnium().api_vcpu_off(&mut current)
 }
 
 /// Returns to the primary vm to allow this cpu to be used for other tasks as
@@ -927,7 +923,7 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *const VCpu {
 pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *const VCpu) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     if let Some(vcpu) = hafnium().api_spci_yield(&mut current) {
-        *next = vcpu.into_raw();
+        *next = vcpu;
     }
 
     // SPCI_YIELD always returns SPCI_SUCCESS.
@@ -939,14 +935,14 @@ pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *const VC
 #[no_mangle]
 pub unsafe extern "C" fn api_wake_up(current: *mut VCpu, target_vcpu: *const VCpu) -> *const VCpu {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().wake_up(&mut current, &*target_vcpu).into_raw()
+    hafnium().wake_up(&mut current, &*target_vcpu)
 }
 
 /// Aborts the vCPU and triggers its VM to abort fully.
 #[no_mangle]
 pub unsafe extern "C" fn api_abort(current: *mut VCpu) -> *const VCpu {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hafnium().api_abort(&mut current).into_raw()
+    hafnium().api_abort(&mut current)
 }
 
 /// Returns the ID of the VM.
@@ -1018,7 +1014,7 @@ pub unsafe extern "C" fn api_vm_configure(
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let (ret, vcpu) = hafnium().api_vm_configure(send, recv, &mut current);
 
-    *next = some_or!(vcpu, return ret).into_raw();
+    *next = some_or!(vcpu, return ret);
     ret
 }
 
@@ -1036,7 +1032,7 @@ pub unsafe extern "C" fn api_spci_msg_send(
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let (ret, vcpu) = hafnium().api_spci_msg_send(attributes, &mut current);
 
-    *next = some_or!(vcpu, return ret).into_raw();
+    *next = some_or!(vcpu, return ret);
     ret
 }
 
@@ -1053,7 +1049,7 @@ pub unsafe extern "C" fn api_spci_msg_recv(
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let (ret, vcpu) = hafnium().api_spci_msg_recv(attributes, &mut current);
 
-    *next = some_or!(vcpu, return ret).into_raw();
+    *next = some_or!(vcpu, return ret);
     ret
 }
 
@@ -1103,7 +1099,7 @@ pub unsafe extern "C" fn api_mailbox_clear(current: *mut VCpu, next: *mut *const
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
     let (ret, vcpu) = hafnium().api_mailbox_clear(&mut current);
 
-    *next = some_or!(vcpu, return ret).into_raw();
+    *next = some_or!(vcpu, return ret);
     ret
 }
 
@@ -1157,7 +1153,7 @@ pub unsafe extern "C" fn api_interrupt_inject(
     let (ret, vcpu) =
         hafnium().api_interrupt_inject(target_vm_id, target_vcpu_idx, intid, &mut current);
 
-    *next = some_or!(vcpu, return ret).into_raw();
+    *next = some_or!(vcpu, return ret);
     ret
 }
 
