@@ -972,7 +972,9 @@ pub unsafe extern "C" fn api_vcpu_get_count(
 /// and can therefore be used by other pcpus.
 #[no_mangle]
 pub unsafe extern "C" fn api_regs_state_saved(vcpu: *mut VCpu) {
-    (*vcpu).inner.unlock_unchecked();
+    if (*(*vcpu).vm).id != HF_PRIMARY_VM_ID {
+        (*vcpu).inner.unlock_unchecked();
+    }
 }
 
 /// Runs the given vcpu of the given vm.
