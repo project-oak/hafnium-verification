@@ -48,7 +48,7 @@ extern "C" {
 }
 
 /// TODO(HfO2): Refactor api.rs and remove `pub` (#44.)
-pub struct Hypervisor {
+pub struct Hafnium {
     pub mpool: MPool,
     pub memory_manager: MemoryManager,
     pub cpu_manager: CpuManager,
@@ -81,7 +81,7 @@ static mut INITED: bool = false;
 ///
 /// TODO(HfO2): This `pub` is required by mm_init, which is only used by unit
 /// tests. Resolving #46 may help to remove the `pub`.
-pub static mut HAFNIUM: MaybeUninit<Hypervisor> = MaybeUninit::uninit();
+pub static mut HAFNIUM: MaybeUninit<Hafnium> = MaybeUninit::uninit();
 
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
@@ -205,7 +205,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     // may not modify the singleton without proper locking.
 }
 
-pub fn hafnium() -> &'static Hypervisor {
+pub fn hafnium() -> &'static Hafnium {
     unsafe { HAFNIUM.get_ref() }
 }
 

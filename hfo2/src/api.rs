@@ -48,7 +48,7 @@ use crate::vm::*;
 // of a page.
 const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
 
-impl Hypervisor {
+impl Hafnium {
     /// Switches the physical CPU back to the corresponding vcpu of the primary VM.
     ///
     /// This triggers the scheduling logic to run. Run in the context of secondary VM to cause
@@ -272,22 +272,12 @@ impl Hypervisor {
             }
 
             // Allow virtual interrupts to be delivered.
-            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-                if vcpu.interrupts.lock().is_interrupted() =>
-            {
-                // break;
-            }
-
             // The timer expired so allow the interrupt to be delivered.
-            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
-                if vcpu_inner.regs.timer_pending() =>
-            {
-                // break;
-            }
-
             // The vCPU is not ready to run, return the appropriate code to the primary which
             // called vcpu_run.
-            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt => {
+            VCpuStatus::BlockedMailbox | VCpuStatus::BlockedInterrupt
+                if !vcpu.interrupts.lock().is_interrupted() && !vcpu_inner.regs.timer_pending() =>
+            {
                 let run_ret = if !vcpu_inner.regs.timer_enabled() {
                     run_ret
                 } else {
@@ -301,8 +291,8 @@ impl Hypervisor {
                 return Err(run_ret);
             }
 
-            VCpuStatus::Ready => {
-                // break;
+            _ => {
+                // Do nothing.
             }
         }
 
@@ -797,7 +787,7 @@ impl Hypervisor {
     /// Shares memory from the calling VM with another. The memory can be shared in different modes.
     ///
     /// TODO: the interface for sharing memory will need to be enhanced to allow sharing with
-    ///       different modes e.g. read-only, informing the recipient of the memory they have been /
+    ///       different modes e.g. read-only, informing the recipient of the memory they have been
     ///       given, opting to not wipe the memory and possibly allowing multiple blocks to be
     ///       transferred. What this will look like is TBD.
     fn share_memory(
@@ -955,9 +945,8 @@ pub unsafe extern "C" fn api_vcpu_off(current: *mut VCpu) -> *const VCpu {
 #[no_mangle]
 pub unsafe extern "C" fn api_spci_yield(current: *mut VCpu, next: *mut *const VCpu) -> SpciReturn {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    match hafnium().api_spci_yield(&mut current) {
-        Some(vcpu) => *next = vcpu,
-        None => (),
+    if let Some(vcpu) = hafnium().api_spci_yield(&mut current) {
+        *next = vcpu;
     }
 
     // SPCI_YIELD always returns SPCI_SUCCESS.
@@ -1083,10 +1072,9 @@ pub unsafe extern "C" fn api_spci_msg_recv(
 /// became writable.
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
-    hafnium()
-        .api_mailbox_writable_get(&*current)
-        .map(i64::from)
-        .unwrap_or(-1)
+    let res = some_or!(hafnium().api_mailbox_writable_get(&*current), return -1);
+
+    i64::from(res)
 }
 
 /// Retrieves the next VM waiting to be notified that the mailbox of the
@@ -1096,10 +1084,12 @@ pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
 /// waiter otherwise.
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *const VCpu) -> i64 {
-    hafnium()
-        .api_mailbox_waiter_get(vm_id, &*current)
-        .map(i64::from)
-        .unwrap_or(-1)
+    let res = some_or!(
+        hafnium().api_mailbox_waiter_get(vm_id, &*current),
+        return -1
+    );
+
+    i64::from(res)
 }
 
 /// Clears the caller's mailbox so that a new message can be received. The
@@ -1168,6 +1158,12 @@ pub unsafe extern "C" fn api_interrupt_inject(
     hafnium().api_interrupt_inject(target_vm_id, target_vcpu_idx, intid, &mut current, next)
 }
 
+/// Shares memory from the calling VM with another. The memory can be shared in different modes.
+///
+/// TODO: the interface for sharing memory will need to be enhanced to allow sharing with different
+///       modes e.g. read-only, informing the recipient of the memory they have been given, opting
+///       to not wipe the memory and possibly allowing multiple blocks to be transferred. What this
+///       will look like is TBD.
 #[no_mangle]
 pub unsafe extern "C" fn api_share_memory(
     vm_id: spci_vm_id_t,
@@ -1180,9 +1176,13 @@ pub unsafe extern "C" fn api_share_memory(
     // The input is untrusted so might not be a valid value.
     let share = ok_or!(HfShare::try_from(share), return -1);
 
-    match hafnium().share_memory(vm_id, addr, size, share, &*current) {
-        Ok(_) => 0,
-        Err(_) => -1,
+    if hafnium()
+        .share_memory(vm_id, addr, size, share, &*current)
+        .is_ok()
+    {
+        0
+    } else {
+        -1
     }
 }
 
