@@ -322,7 +322,7 @@ impl VCpu {
 
     pub fn index(&self) -> spci_vcpu_index_t {
         let vcpus = unsafe { (*self.vm).vcpus.as_ptr() };
-        let index = unsafe { (self as *const VCpu).offset_from(vcpus) };
+        let index = (self as *const VCpu).wrapping_offset_from(vcpus);
         assert!(index < core::u16::MAX as isize);
         index as _
     }
@@ -438,9 +438,7 @@ impl CpuManager {
     }
 
     pub fn index_of(&self, c: *const Cpu) -> usize {
-        // TODO(HfO2): Unsafety here can be avoided by `wrapping_offset_from` but optimization will
-        // be reduced.
-        unsafe { c.offset_from(self.cpus.as_ptr()) as usize }
+        c.wrapping_offset_from(self.cpus.as_ptr()) as _
     }
 
     pub unsafe fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {

@@ -22,6 +22,7 @@
 #![feature(ptr_offset_from)]
 #![feature(const_raw_ptr_to_usize_cast)]
 #![feature(bind_by_move_pattern_guards)]
+#![feature(ptr_wrapping_offset_from)]
 
 #[macro_use]
 extern crate bitflags;
