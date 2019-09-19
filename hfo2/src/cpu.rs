@@ -437,7 +437,7 @@ impl CpuManager {
         c.wrapping_offset_from(self.cpus.as_ptr()) as _
     }
 
-    pub unsafe fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
+    pub fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
         let mut is_on = c.is_on.lock();
         let prev = *is_on;
         *is_on = true;
@@ -598,13 +598,12 @@ pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
 /// Returns true if the caller should resume the current vcpu, or false if its
 /// VM should be aborted.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_handle_page_fault(
-    current: *const VCpu,
-    f: *const VCpuFaultInfo,
-) -> bool {
-    let vm = (*current).vm;
-    let mask = (*f).mode | Mode::INVALID;
-    let vm_inner = (*vm).inner.lock();
+pub extern "C" fn vcpu_handle_page_fault(current: *const VCpu, f: *const VCpuFaultInfo) -> bool {
+    let current = unsafe { &*current };
+    let vm = unsafe { &*current.vm };
+    let f = unsafe { &*f };
+    let mask = f.mode | Mode::INVALID;
+    let vm_inner = vm.inner.lock();
 
     // Check if this is a legitimate fault, i.e., if the page table doesn't
     // allow the access attemped by the VM.
@@ -616,19 +615,19 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
     // ensured that the invalidations have completed.)
     let resume = vm_inner
         .ptable
-        .get_mode((*f).ipaddr, ipa_add((*f).ipaddr, 1))
-        .map(|mode| mode & mask == (*f).mode)
+        .get_mode(f.ipaddr, ipa_add(f.ipaddr, 1))
+        .map(|mode| mode & mask == f.mode)
         .unwrap_or(false);
 
     if !resume {
         dlog!(
             "Stage-2 page fault: pc=0x{}, vmid={}, vcpu={}, vaddr=0x{}, ipaddr=0x{}, mode=0x{}\n",
-            (*f).pc,
+            f.pc,
             (*vm).id,
-            vcpu_index(current),
-            (*f).vaddr,
-            (*f).ipaddr,
-            (*f).mode.bits() as u32
+            (*current).index(),
+            f.vaddr,
+            f.ipaddr,
+            f.mode.bits() as u32
         );
     }
 
