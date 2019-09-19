@@ -316,10 +316,6 @@ impl VCpu {
         }
     }
 
-    pub fn set_cpu(&mut self, cpu: *const Cpu) {
-        self.inner.get_mut().cpu = cpu;
-    }
-
     pub fn index(&self) -> spci_vcpu_index_t {
         let vcpus = unsafe { (*self.vm).vcpus.as_ptr() };
         let index = (self as *const VCpu).wrapping_offset_from(vcpus);
