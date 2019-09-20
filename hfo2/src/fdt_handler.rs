@@ -271,7 +271,7 @@ pub unsafe fn map(
 pub unsafe fn unmap(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt: &FdtHeader,
-    ppool: &mut MPool,
+    ppool: &MPool,
 ) -> Result<(), ()> {
     let fdt_addr = pa_init(fdt as *const _ as usize);
 
@@ -430,10 +430,10 @@ pub unsafe extern "C" fn fdt_map(
 #[no_mangle]
 pub unsafe extern "C" fn fdt_unmap(
     mut stage1_locked: mm_stage1_locked,
-    fdt: *mut FdtHeader,
-    ppool: *mut MPool,
+    fdt: *const FdtHeader,
+    ppool: *const MPool,
 ) -> bool {
-    unmap(&mut stage1_locked, &mut *fdt, &mut *ppool).is_ok()
+    unmap(&mut stage1_locked, &*fdt, &*ppool).is_ok()
 }
 
 #[no_mangle]
@@ -460,9 +460,11 @@ pub unsafe extern "C" fn fdt_find_initrd(
     begin: *mut paddr_t,
     end: *mut paddr_t,
 ) -> bool {
-    let (b, e) = some_or!(FdtNode::from((*n).clone()).find_initrd(), return false);
+    let mut node = FdtNode::from((*n).clone());
+    let (b, e) = some_or!(node.find_initrd(), return false);
     ptr::write(begin, b);
     ptr::write(end, e);
+    ptr::write(n, node.into());
     true
 }
 

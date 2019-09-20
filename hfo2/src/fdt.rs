@@ -456,13 +456,16 @@ pub unsafe extern "C" fn fdt_root_node(node: *mut fdt_node, hdr: *const FdtHeade
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_find_child(node: *mut fdt_node, child: *const u8) -> bool {
-    FdtNode::from((*node).clone()).find_child(child).is_some()
+pub unsafe extern "C" fn fdt_find_child(c_node: *mut fdt_node, child: *const u8) -> bool {
+    let mut node = FdtNode::from((*c_node).clone());
+    let ret = node.find_child(child).is_some();
+    ptr::write(c_node, node.into());
+    ret
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_read_property(
-    node: *mut fdt_node,
+    node: *const fdt_node,
     name: *const u8,
     buf: *mut *const u8,
     size: *mut u32,
