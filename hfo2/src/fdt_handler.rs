@@ -15,7 +15,9 @@
  */
 
 use core::mem;
-use core::ptr::{self, NonNull};
+use core::ptr;
+use core::convert::TryInto;
+use core::slice;
 
 use crate::addr::*;
 use crate::arch::*;
@@ -25,38 +27,36 @@ use crate::layout::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
-use crate::std::*;
 use crate::types::*;
 
 use scopeguard::{guard, ScopeGuard};
 
-unsafe fn convert_number(data: *const u8, size: u32) -> u64 {
-    match size {
-        4 => u32::from_be(*(data as usize as *const u32)) as u64,
-        8 => u64::from_be(*(data as usize as *const u64)),
-        _ => 0,
-    }
+fn convert_number(data: &[u8]) -> Option<u64> {
+    let ret = match data.len() {
+        4 => u32::from_be_bytes(data.try_into().unwrap()) as u64,
+        8 => u64::from_be_bytes(data.try_into().unwrap()),
+        _ => return None,
+    };
+
+    Some(ret)
 }
 
-impl FdtNode {
-    unsafe fn read_number(&mut self, name: *const u8) -> Result<u64, ()> {
-        let (data, size) = self.read_property(name)?;
+impl<'a> FdtNode<'a> {
+    fn read_number(&self, name: *const u8) -> Result<u64, ()> {
+        let data = self.read_property(name)?;
 
-        match size {
-            4 | 8 => Ok(convert_number(data, size)),
-            _ => Err(()),
-        }
+        convert_number(data).ok_or(())
     }
 
     unsafe fn write_number(&mut self, name: *const u8, value: u64) -> Result<(), ()> {
-        let (data, size) = self.read_property(name)?;
+        let data = self.read_property(name)?;
 
-        match size {
+        match data.len() {
             4 => {
-                *(data as *mut u32) = u32::from_be(value as u32);
+                *(data as *const _ as *mut u8 as *mut u32) = u32::from_be(value as u32);
             }
             8 => {
-                *(data as *mut u64) = u64::from_be(value);
+                *(data as *const _ as *mut u8 as *mut u64) = u64::from_be(value);
             }
             _ => return Err(()),
         }
@@ -66,31 +66,31 @@ impl FdtNode {
 
     /// Finds the memory region where initrd is stored, and updates the fdt node
     /// cursor to the node called "chosen".
-    unsafe fn find_initrd(&mut self, begin: &mut paddr_t, end: &mut paddr_t) -> bool {
+    pub fn find_initrd(&mut self) -> Option<(paddr_t, paddr_t)> {
         if self.find_child("chosen\0".as_ptr()).is_none() {
             dlog!("Unable to find 'chosen'\n");
-            return false;
+            return None;
         }
 
         let initrd_begin = ok_or!(self.read_number("linux,initrd-start\0".as_ptr()), {
             dlog!("Unable to read linux,initrd-start\n");
-            return false;
+            return None;
         });
 
         let initrd_end = ok_or!(self.read_number("linux,initrd-end\0".as_ptr()), {
             dlog!("Unable to read linux,initrd-end\n");
-            return false;
+            return None;
         });
 
-        *begin = pa_init(initrd_begin as usize);
-        *end = pa_init(initrd_end as usize);
+        let begin = pa_init(initrd_begin as usize);
+        let end = pa_init(initrd_end as usize);
 
-        true
+        Some((begin, end))
     }
 
-    pub unsafe fn find_cpus(&self, cpu_ids: *mut cpu_id_t, cpu_count: &mut usize) -> Option<()> {
+    pub fn find_cpus(&self, cpu_ids: &mut [cpu_id_t]) -> Option<usize> {
         let mut node = self.clone();
-        *cpu_count = 0;
+        let mut cpu_count = 0;
 
         node.find_child("cpus\0".as_ptr()).or_else(|| {
             dlog!("Unable to find 'cpus'\n");
@@ -109,14 +109,7 @@ impl FdtNode {
             if node
                 .read_property("device_type\0".as_ptr())
                 .ok()
-                .filter(|(_, size)| *size == "cpu\0".len() as u32)
-                .filter(|(data, _)| {
-                    memcmp_rs(
-                        *data as usize as *const _,
-                        "cpu\0".as_ptr() as usize as *const _,
-                        "cpu\0".len(),
-                    ) == 0
-                })
+                .filter(|data| *data == "cpu\0".as_bytes())
                 .is_none()
             {
                 if node.next_sibling().is_none() {
@@ -126,7 +119,7 @@ impl FdtNode {
                 }
             }
 
-            let (mut data, mut size) = ok_or!(node.read_property("reg\0".as_ptr()), {
+            let mut data = ok_or!(node.read_property("reg\0".as_ptr()), {
                 if node.next_sibling().is_none() {
                     break;
                 } else {
@@ -135,17 +128,16 @@ impl FdtNode {
             });
 
             // Get all entries for this CPU.
-            while size as usize >= address_size {
-                if *cpu_count >= MAX_CPUS {
+            while data.len() as usize >= address_size {
+                if cpu_count >= MAX_CPUS {
                     dlog!("Found more than {} CPUs\n", MAX_CPUS);
                     return None;
                 }
 
-                *cpu_ids.add(*cpu_count) = convert_number(data, address_size as u32) as cpu_id_t;
-                *cpu_count += 1;
+                cpu_ids[cpu_count] = convert_number(&data[..address_size]).unwrap() as cpu_id_t;
+                cpu_count += 1;
 
-                size -= address_size as u32;
-                data = data.add(address_size);
+                data = &data[address_size..];
             }
 
             if node.next_sibling().is_none() {
@@ -153,10 +145,10 @@ impl FdtNode {
             }
         }
 
-        Some(())
+        Some(cpu_count)
     }
 
-    pub unsafe fn find_memory_ranges(&self, p: &mut BootParams) -> Option<()> {
+    pub fn find_memory_ranges(&self, p: &mut BootParams) -> Option<()> {
         let mut node = self.clone();
 
         // Get the sizes of memory range addresses and sizes.
@@ -181,14 +173,7 @@ impl FdtNode {
             if node
                 .read_property("device_type\0".as_ptr())
                 .ok()
-                .filter(|(_, size)| *size as usize == "memory\0".len())
-                .filter(|(data, _)| {
-                    memcmp_rs(
-                        *data as usize as *const _,
-                        "memory\0".as_ptr() as usize as *const _,
-                        "memory\0".len(),
-                    ) == 0
-                })
+                .filter(|data| *data == "memory\0".as_bytes())
                 .is_none()
             {
                 if node.next_sibling().is_none() {
@@ -197,7 +182,7 @@ impl FdtNode {
                     continue;
                 }
             }
-            let (mut data, mut size) = ok_or!(node.read_property("reg\0".as_ptr()), {
+            let mut data = ok_or!(node.read_property("reg\0".as_ptr()), {
                 if node.next_sibling().is_none() {
                     break;
                 } else {
@@ -206,9 +191,9 @@ impl FdtNode {
             });
 
             // Traverse all memory ranges within this node.
-            while size as usize >= entry_size {
-                let addr = convert_number(data, address_size as u32) as usize;
-                let len = convert_number(data.add(address_size), size_size as u32) as usize;
+            while data.len() >= entry_size {
+                let addr = convert_number(&data[..address_size]).unwrap() as usize;
+                let len = convert_number(&data[address_size..entry_size]).unwrap() as usize;
 
                 if mem_range_index < MAX_MEM_RANGES {
                     p.mem_ranges[mem_range_index].begin = pa_init(addr);
@@ -219,8 +204,7 @@ impl FdtNode {
                     dlog!("Found memory range {} in FDT but only {} supported, ignoring additional range of size {}.\n", mem_range_index, MAX_MEM_RANGES, len);
                 }
 
-                size -= entry_size as u32;
-                data = data.add(entry_size);
+                data = &data[entry_size..];
             }
 
             if node.next_sibling().is_none() {
@@ -236,9 +220,8 @@ impl FdtNode {
 pub unsafe fn map(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt_addr: paddr_t,
-    node: &mut FdtNode,
-    ppool: &mut MPool,
-) -> Option<NonNull<FdtHeader>> {
+    ppool: &MPool,
+) -> Option<FdtNode<'static>> {
     if stage1_ptable
         .identity_map(
             fdt_addr,
@@ -262,12 +245,10 @@ pub unsafe fn map(
 
     let fdt = pa_addr(fdt_addr) as *mut FdtHeader;
 
-    if let Some(root) = FdtNode::new_root(&*fdt) {
-        *node = root;
-    } else {
+    let node = some_or!(FdtNode::new_root(&*fdt), {
         dlog!("FDT failed validation.\n");
         return None;
-    }
+    });
 
     // Map the rest of the fdt in.
     if stage1_ptable
@@ -284,12 +265,12 @@ pub unsafe fn map(
     }
 
     mem::forget(stage1_ptable);
-    NonNull::new(fdt)
+    Some(node)
 }
 
 pub unsafe fn unmap(
     stage1_ptable: &mut PageTable<Stage1>,
-    fdt: *mut FdtHeader,
+    fdt: *const FdtHeader,
     ppool: &mut MPool,
 ) -> Result<(), ()> {
     let fdt_addr = pa_from_va(va_from_ptr(fdt as usize as *const _));
@@ -439,13 +420,12 @@ pub unsafe fn patch(
 pub unsafe extern "C" fn fdt_map(
     mut stage1_locked: mm_stage1_locked,
     fdt_addr: paddr_t,
-    n: *mut FdtNode,
-    ppool: *mut MPool,
-) -> *mut FdtHeader {
-    match map(&mut stage1_locked, fdt_addr, &mut *n, &mut *ppool) {
-        Some(ret) => ret.as_ptr(),
-        None => ptr::null_mut(),
-    }
+    n: *mut CFdtNode,
+    ppool: *const MPool,
+) -> *const FdtHeader {
+    let node = some_or!(map(&mut stage1_locked, fdt_addr, &*ppool), return ptr::null());
+    *n = node.into();
+    pa_addr(fdt_addr) as _
 }
 
 #[no_mangle]
@@ -459,25 +439,28 @@ pub unsafe extern "C" fn fdt_unmap(
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_find_cpus(
-    root: *const FdtNode,
+    root: *const CFdtNode,
     cpu_ids: *mut cpu_id_t,
     cpu_count: *mut usize,
 ) {
-    (*root).find_cpus(cpu_ids, &mut *cpu_count);
+    *cpu_count = FdtNode::from((*root).clone()).find_cpus(slice::from_raw_parts_mut(cpu_ids, MAX_CPUS)).unwrap_or(0);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_find_memory_ranges(root: *const FdtNode, p: *mut BootParams) {
-    (*root).find_memory_ranges(&mut *p);
+pub unsafe extern "C" fn fdt_find_memory_ranges(root: *const CFdtNode, p: *mut BootParams) {
+    FdtNode::from((*root).clone()).find_memory_ranges(&mut *p);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_find_initrd(
-    n: *mut FdtNode,
+    n: *mut CFdtNode,
     begin: *mut paddr_t,
     end: *mut paddr_t,
 ) -> bool {
-    (*n).find_initrd(&mut *begin, &mut *end)
+    let (b, e) = some_or!(FdtNode::from((*n).clone()).find_initrd(), return false);
+    *begin = b;
+    *end = e;
+    true
 }
 
 #[no_mangle]
@@ -553,19 +536,15 @@ mod test {
 
         let mm = MemoryManager::new(&ppool).unwrap();
         let mut ptable = mm.hypervisor_ptable.lock();
-        let mut n: FdtNode = unsafe { MaybeUninit::uninit().assume_init() };
-        let mut fdt_raw = unsafe {
-            map(
+        let mut n: FdtNode = unsafe { map(
                 &mut ptable,
                 pa_init(&TEST_DTB.data as *const _ as _),
-                &mut n,
                 &mut ppool,
-            )
-        }
-        .unwrap();
-        let fdt = unsafe { fdt_raw.as_mut() };
+            ).unwrap() };
 
-        assert!(unsafe { n.find_child("\0".as_ptr()) }.is_some());
+        let fdt = &TEST_DTB.data as *const _ as *const FdtHeader;
+
+        assert!(n.find_child("\0".as_ptr()).is_some());
 
         let mut params = BootParams {
             cpu_ids: [0; MAX_CPUS],
@@ -577,9 +556,7 @@ mod test {
             kernel_arg: 0,
         };
 
-        unsafe {
-            n.find_memory_ranges(&mut params);
-        }
+        n.find_memory_ranges(&mut params);
 
         assert!(unsafe { unmap(&mut ptable, fdt, &mut ppool) }.is_ok());
 
