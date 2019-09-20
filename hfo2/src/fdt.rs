@@ -138,7 +138,7 @@ impl<'a> FdtTokenizer<'a> {
 
     fn align(&mut self) {
         let modular = self.cur.as_ptr() as usize % FDT_TOKEN_ALIGNMENT;
-        let (_, cur) = self.cur.split_at(FDT_TOKEN_ALIGNMENT - modular);
+        let (_, cur) = self.cur.split_at((FDT_TOKEN_ALIGNMENT - modular) % FDT_TOKEN_ALIGNMENT);
         self.cur = cur;
     }
 
@@ -204,9 +204,9 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn str(&mut self) -> Option<&'a [u8]> {
-        if let Some((i, _)) = self.cur.iter().enumerate().find(|(i, p)| **p == 0) {
+        if let Some((i, _)) = self.cur.iter().enumerate().find(|(_, p)| **p == 0) {
             // Found the end of the string.
-            let (first, rest) = self.cur.split_at(i);
+            let (first, rest) = self.cur.split_at(i + 1);
             self.cur = rest;
             self.align();
             return Some(first);
@@ -215,12 +215,16 @@ impl<'a> FdtTokenizer<'a> {
         None
     }
 
+    /// Move cursor to the end so that caller won't get any new tokens.
+    fn collapse(&mut self) {
+        self.cur = &self.cur[self.cur.len()..];
+    }
+
     fn next_property(&mut self) -> Option<(*const u8, &'a [u8])> {
         self.token_expect(FdtToken::Prop)?;
 
         let mut this = guard(self, |this| {
-            // Move cursor to the end so that caller won't get any new tokens.
-            this.cur = &this.cur[this.cur.len()..];
+            this.collapse();
         });
 
         let size = this.u32()? as usize;
@@ -261,7 +265,10 @@ impl<'a> FdtTokenizer<'a> {
                 pending += 1;
             }
 
-            self.token_expect(FdtToken::EndNode)?;
+            if self.token()? != FdtToken::EndNode {
+                self.collapse();
+                return None;
+            }
 
             pending -= 1;
         }
