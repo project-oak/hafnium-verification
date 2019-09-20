@@ -350,7 +350,7 @@ impl<'a> FdtNode<'a> {
 }
 
 impl FdtHeader {
-    pub unsafe fn dump(&self) {
+    pub fn dump(&self) {
         unsafe fn asciz_to_utf8(ptr: *const u8) -> &'static str {
             let len = (0..).find(|i| *ptr.add(*i) != 0).unwrap();
             let bytes = slice::from_raw_parts(ptr, len);
@@ -372,7 +372,7 @@ impl FdtHeader {
                     "{:1$}New node: \"{2}\"\n",
                     "",
                     2 * depth,
-                    str::from_utf8_unchecked(name)
+                    unsafe { str::from_utf8_unchecked(name) }
                 );
                 depth += 1;
                 while let Some((name, buf)) = t.next_property() {
@@ -380,7 +380,7 @@ impl FdtHeader {
                         "{:1$}property: \"{2}\" (",
                         "",
                         2 * depth,
-                        asciz_to_utf8(name)
+                        unsafe { asciz_to_utf8(name) }
                     );
                     for (i, byte) in buf.iter().enumerate() {
                         dlog!("{}{:02x}", if i == 0 { "" } else { " " }, *byte);
@@ -408,13 +408,15 @@ impl FdtHeader {
         let mut entry = (self as *const _ as usize + u32::from_be(self.off_mem_rsvmap) as usize)
             as *const FdtReserveEntry;
 
-        while (*entry).address != 0 || (*entry).size != 0 {
-            dlog!(
-                "Entry: {:p} (0x{:x} bytes)\n",
-                u64::from_be((*entry).address) as *const u8,
-                u64::from_be((*entry).size)
-            );
-            entry = entry.add(1);
+        unsafe {
+            while (*entry).address != 0 || (*entry).size != 0 {
+                dlog!(
+                    "Entry: {:p} (0x{:x} bytes)\n",
+                    u64::from_be((*entry).address) as *const u8,
+                    u64::from_be((*entry).size)
+                );
+                entry = entry.add(1);
+            }
         }
     }
 
