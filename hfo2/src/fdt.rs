@@ -29,7 +29,7 @@ extern "C" {
 
 #[derive(Clone)]
 #[repr(C)]
-pub struct CFdtNode {
+pub struct fdt_node {
     hdr: *const FdtHeader,
     begin: *const u8,
     end: *const u8,
@@ -43,8 +43,8 @@ pub struct FdtNode<'a> {
     strs: &'a [u8],
 }
 
-impl<'a> From<CFdtNode> for FdtNode<'a> {
-    fn from(n: CFdtNode) -> Self {
+impl<'a> From<fdt_node> for FdtNode<'a> {
+    fn from(n: fdt_node) -> Self {
         unsafe {
             let hdr = &*n.hdr;
             let data_size = u32::from_be(hdr.size_dt_struct) as usize;
@@ -59,20 +59,16 @@ impl<'a> From<CFdtNode> for FdtNode<'a> {
     }
 }
 
-impl<'a> From<FdtNode<'a>> for CFdtNode {
+impl<'a> From<FdtNode<'a>> for fdt_node {
     fn from(n: FdtNode<'a>) -> Self {
         Self {
             hdr: n.hdr,
             begin: n.data.as_ptr(),
-            /// TODO(HfO2): It'd better if a slice had a safe method to get a pointer refering the 
-            /// one after end.
             end: unsafe { n.data.as_ptr().add(n.data.len()) },
             strs: n.strs.as_ptr(),
         }
     }
 }
-
-
 
 #[repr(C)]
 pub struct FdtHeader {
@@ -129,16 +125,15 @@ const FDT_MAGIC: u32 = 0xd00d_feed;
 const FDT_TOKEN_ALIGNMENT: usize = mem::size_of::<u32>();
 
 impl<'a> FdtTokenizer<'a> {
-    fn new(strs: &'a [u8], begin: &'a [u8]) -> Self {
-        Self {
-            cur: begin,
-            strs,
-        }
+    fn new(cur: &'a [u8], strs: &'a [u8]) -> Self {
+        Self { cur, strs }
     }
 
     fn align(&mut self) {
         let modular = self.cur.as_ptr() as usize % FDT_TOKEN_ALIGNMENT;
-        let (_, cur) = self.cur.split_at((FDT_TOKEN_ALIGNMENT - modular) % FDT_TOKEN_ALIGNMENT);
+        let (_, cur) = self
+            .cur
+            .split_at((FDT_TOKEN_ALIGNMENT - modular) % FDT_TOKEN_ALIGNMENT);
         self.cur = cur;
     }
 
@@ -154,7 +149,9 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn u32_pred<F>(&mut self, pred: F) -> Option<u32>
-        where F: FnOnce(u32) -> bool {
+    where
+        F: FnOnce(u32) -> bool,
+    {
         if self.cur.len() < mem::size_of::<u32>() {
             return None;
         }
@@ -204,15 +201,13 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn str(&mut self) -> Option<&'a [u8]> {
-        if let Some((i, _)) = self.cur.iter().enumerate().find(|(_, p)| **p == 0) {
-            // Found the end of the string.
-            let (first, rest) = self.cur.split_at(i + 1);
-            self.cur = rest;
-            self.align();
-            return Some(first);
-        }
+        let (i, _) = self.cur.iter().enumerate().find(|(_, p)| **p == 0)?;
 
-        None
+        // Found the end of the string.
+        let (first, rest) = self.cur.split_at(i + 1);
+        self.cur = rest;
+        self.align();
+        Some(first)
     }
 
     /// Move cursor to the end so that caller won't get any new tokens.
@@ -242,9 +237,7 @@ impl<'a> FdtTokenizer<'a> {
         self.token_expect(FdtToken::BeginNode)?;
 
         let name = some_or!(self.str(), {
-            // Move cursor to the end so that caller won't get any new
-            // tokens.
-            self.cur = &self.cur[self.cur.len()..];
+            self.collapse();
             return None;
         });
 
@@ -309,7 +302,7 @@ impl<'a> FdtNode<'a> {
     }
 
     pub fn read_property(&self, name: *const u8) -> Result<&'a [u8], ()> {
-        let mut t = FdtTokenizer::new(self.strs, self.data);
+        let mut t = FdtTokenizer::new(self.data, self.strs);
         while let Some((prop_name, buf)) = t.next_property() {
             if unsafe { strcmp(prop_name, name) } == 0 {
                 return Ok(buf);
@@ -320,7 +313,7 @@ impl<'a> FdtNode<'a> {
     }
 
     pub fn first_child(&mut self) -> Option<&'a [u8]> {
-        let mut t = FdtTokenizer::new(self.strs, self.data);
+        let mut t = FdtTokenizer::new(self.data, self.strs);
 
         t.skip_properties();
 
@@ -331,7 +324,7 @@ impl<'a> FdtNode<'a> {
     }
 
     pub fn next_sibling(&mut self) -> Option<&'a [u8]> {
-        let mut t = FdtTokenizer::new(self.strs, self.data);
+        let mut t = FdtTokenizer::new(self.data, self.strs);
 
         t.skip_node()?;
         let sibling_name = t.next_subnode()?;
@@ -341,7 +334,7 @@ impl<'a> FdtNode<'a> {
     }
 
     pub fn find_child(&mut self, child: *const u8) -> Option<()> {
-        let mut t = FdtTokenizer::new(self.strs, self.data);
+        let mut t = FdtTokenizer::new(self.data, self.strs);
         t.skip_properties();
 
         while let Some(name) = t.next_subnode() {
@@ -371,7 +364,7 @@ impl FdtHeader {
             return;
         });
 
-        let mut t = FdtTokenizer::new(node.strs, node.data);
+        let mut t = FdtTokenizer::new(node.data, node.strs);
         let mut depth = 0;
 
         loop {
@@ -456,27 +449,30 @@ impl FdtHeader {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_root_node(node: *mut CFdtNode, hdr: *const FdtHeader) -> bool {
+pub unsafe extern "C" fn fdt_root_node(node: *mut fdt_node, hdr: *const FdtHeader) -> bool {
     let n = some_or!(FdtNode::new_root(&*hdr), return false);
     ptr::write(node, n.into());
     true
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_find_child(node: *mut CFdtNode, child: *const u8) -> bool {
+pub unsafe extern "C" fn fdt_find_child(node: *mut fdt_node, child: *const u8) -> bool {
     FdtNode::from((*node).clone()).find_child(child).is_some()
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_read_property(
-    node: *mut CFdtNode,
+    node: *mut fdt_node,
     name: *const u8,
     buf: *mut *const u8,
     size: *mut u32,
 ) -> bool {
-    let prop_buf = ok_or!(FdtNode::from((*node).clone()).read_property(name), return false);
-    *buf = prop_buf.as_ptr();
-    *size = prop_buf.len() as u32;
+    let prop_buf = ok_or!(
+        FdtNode::from((*node).clone()).read_property(name),
+        return false
+    );
+    ptr::write(buf, prop_buf.as_ptr());
+    ptr::write(size, prop_buf.len() as u32);
     true
 }
 
