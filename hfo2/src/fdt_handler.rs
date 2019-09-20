@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
+use core::convert::TryInto;
 use core::mem;
 use core::ptr;
-use core::convert::TryInto;
 use core::slice;
 
 use crate::addr::*;
@@ -270,23 +270,19 @@ pub unsafe fn map(
 
 pub unsafe fn unmap(
     stage1_ptable: &mut PageTable<Stage1>,
-    fdt: *const FdtHeader,
+    fdt: &FdtHeader,
     ppool: &mut MPool,
 ) -> Result<(), ()> {
-    let fdt_addr = pa_from_va(va_from_ptr(fdt as usize as *const _));
+    let fdt_addr = pa_init(fdt as *const _ as usize);
 
-    stage1_ptable.unmap(
-        fdt_addr,
-        pa_add(fdt_addr, (*fdt).total_size() as usize),
-        ppool,
-    )
+    stage1_ptable.unmap(fdt_addr, pa_add(fdt_addr, fdt.total_size() as usize), ppool)
 }
 
 pub unsafe fn patch(
     stage1_ptable: &mut PageTable<Stage1>,
     fdt_addr: paddr_t,
     p: &BootParamsUpdate,
-    ppool: &mut MPool,
+    ppool: &MPool,
 ) -> Result<(), ()> {
     // Map the fdt header in.
     if stage1_ptable
@@ -420,11 +416,14 @@ pub unsafe fn patch(
 pub unsafe extern "C" fn fdt_map(
     mut stage1_locked: mm_stage1_locked,
     fdt_addr: paddr_t,
-    n: *mut CFdtNode,
+    n: *mut fdt_node,
     ppool: *const MPool,
 ) -> *const FdtHeader {
-    let node = some_or!(map(&mut stage1_locked, fdt_addr, &*ppool), return ptr::null());
-    *n = node.into();
+    let node = some_or!(
+        map(&mut stage1_locked, fdt_addr, &*ppool),
+        return ptr::null()
+    );
+    ptr::write(n, node.into());
     pa_addr(fdt_addr) as _
 }
 
@@ -439,27 +438,31 @@ pub unsafe extern "C" fn fdt_unmap(
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_find_cpus(
-    root: *const CFdtNode,
+    root: *const fdt_node,
     cpu_ids: *mut cpu_id_t,
     cpu_count: *mut usize,
 ) {
-    *cpu_count = FdtNode::from((*root).clone()).find_cpus(slice::from_raw_parts_mut(cpu_ids, MAX_CPUS)).unwrap_or(0);
+    let count = FdtNode::from((*root).clone())
+        .find_cpus(slice::from_raw_parts_mut(cpu_ids, MAX_CPUS))
+        .unwrap_or(0);
+
+    ptr::write(cpu_count, count);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn fdt_find_memory_ranges(root: *const CFdtNode, p: *mut BootParams) {
+pub unsafe extern "C" fn fdt_find_memory_ranges(root: *const fdt_node, p: *mut BootParams) {
     FdtNode::from((*root).clone()).find_memory_ranges(&mut *p);
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_find_initrd(
-    n: *mut CFdtNode,
+    n: *mut fdt_node,
     begin: *mut paddr_t,
     end: *mut paddr_t,
 ) -> bool {
     let (b, e) = some_or!(FdtNode::from((*n).clone()).find_initrd(), return false);
-    *begin = b;
-    *end = e;
+    ptr::write(begin, b);
+    ptr::write(end, e);
     true
 }
 
@@ -468,9 +471,9 @@ pub unsafe extern "C" fn fdt_patch(
     mut stage1_locked: mm_stage1_locked,
     fdt_addr: paddr_t,
     p: *const BootParamsUpdate,
-    ppool: *mut MPool,
+    ppool: *const MPool,
 ) -> bool {
-    patch(&mut stage1_locked, fdt_addr, &*p, &mut *ppool).is_ok()
+    patch(&mut stage1_locked, fdt_addr, &*p, &*ppool).is_ok()
 }
 
 #[cfg(test)]
@@ -536,11 +539,14 @@ mod test {
 
         let mm = MemoryManager::new(&ppool).unwrap();
         let mut ptable = mm.hypervisor_ptable.lock();
-        let mut n: FdtNode = unsafe { map(
+        let mut n: FdtNode = unsafe {
+            map(
                 &mut ptable,
                 pa_init(&TEST_DTB.data as *const _ as _),
                 &mut ppool,
-            ).unwrap() };
+            )
+            .unwrap()
+        };
 
         let fdt = &TEST_DTB.data as *const _ as *const FdtHeader;
 
@@ -558,7 +564,7 @@ mod test {
 
         n.find_memory_ranges(&mut params);
 
-        assert!(unsafe { unmap(&mut ptable, fdt, &mut ppool) }.is_ok());
+        assert!(unsafe { unmap(&mut ptable, &*fdt, &mut ppool) }.is_ok());
 
         assert_eq!(params.mem_ranges_count, 3);
         assert_eq!(pa_addr(params.mem_ranges[0].begin), 0x0000_0000);
