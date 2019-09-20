@@ -137,33 +137,44 @@ impl<'a> FdtTokenizer<'a> {
         self.cur = cur;
     }
 
-    fn u32(&mut self) -> Option<u32> {
-        if self.cur.len() < mem::size_of::<u32>() {
+    fn bytes(&mut self, size: usize) -> Option<&'a [u8]> {
+        if self.cur.len() < size {
             return None;
         }
 
-        let (first, rest) = self.cur.split_at(mem::size_of::<u32>());
-        let res = u32::from_be_bytes(first.try_into().unwrap());
+        let (first, rest) = self.cur.split_at(size);
         self.cur = rest;
-        Some(res)
+        self.align();
+
+        Some(first)
     }
 
-    fn u32_pred<F>(&mut self, pred: F) -> Option<u32>
+    fn bytes_filter<F>(&mut self, size: usize, pred: F) -> Option<&'a [u8]>
     where
-        F: FnOnce(u32) -> bool,
+        F: FnOnce(&'a [u8]) -> bool,
     {
-        if self.cur.len() < mem::size_of::<u32>() {
+        if self.cur.len() < size {
             return None;
         }
 
-        let (first, rest) = self.cur.split_at(mem::size_of::<u32>());
-        let res = u32::from_be_bytes(first.try_into().unwrap());
-        if !pred(res) {
+        let (first, rest) = self.cur.split_at(size);
+        if !pred(first) {
             return None;
         }
-
         self.cur = rest;
-        Some(res)
+        self.align();
+
+        Some(first)
+    }
+
+    fn u32(&mut self) -> Option<u32> {
+        let bytes = self.bytes(mem::size_of::<u32>())?;
+        Some(u32::from_be_bytes(bytes.try_into().unwrap()))
+    }
+
+    fn u32_expect(&mut self, expect: u32) -> Option<u32> {
+        let bytes = self.bytes_filter(mem::size_of::<u32>(), |b| b == expect.to_be_bytes())?;
+        Some(u32::from_be_bytes(bytes.try_into().unwrap()))
     }
 
     fn token(&mut self) -> Option<FdtToken> {
@@ -178,7 +189,7 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn token_expect(&mut self, expect: FdtToken) -> Option<FdtToken> {
-        while let Some(v) = self.u32_pred(|v| v == expect as u32) {
+        while let Some(v) = self.u32_expect(expect as u32) {
             let token = v.try_into().unwrap();
             if token != FdtToken::Nop {
                 return Some(token);
@@ -186,18 +197,6 @@ impl<'a> FdtTokenizer<'a> {
         }
 
         None
-    }
-
-    fn bytes(&mut self, size: usize) -> Option<&'a [u8]> {
-        if self.cur.len() < size {
-            return None;
-        }
-
-        let (first, rest) = self.cur.split_at(size);
-        self.cur = rest;
-        self.align();
-
-        Some(first)
     }
 
     fn str(&mut self) -> Option<&'a [u8]> {
