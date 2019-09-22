@@ -162,7 +162,7 @@ impl Mailbox {
     ) -> Result<(), ()> {
         // TODO(HfO2): Acquring the singleton here is not recommended. Get the
         // hypervisor ptable from callee (API module.)
-        let mut hypervisor_ptable = hafnium().memory_manager.hypervisor_ptable.lock();
+        let mut hypervisor_ptable = hypervisor().memory_manager.hypervisor_ptable.lock();
         let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
 
         // Map the send page as read-only in the hypervisor address space.
@@ -626,7 +626,7 @@ pub unsafe extern "C" fn vm_init(
     ppool: *mut MPool,
     new_vm: *mut *mut Vm,
 ) -> bool {
-    let vmm = &hafnium().vm_manager as *const _ as usize as *mut VmManager;
+    let vmm = &hypervisor().vm_manager as *const _ as usize as *mut VmManager;
     match (*vmm).new_vm(vcpu_count, &*ppool) {
         Some(vm) => {
             *new_vm = vm as *mut _;

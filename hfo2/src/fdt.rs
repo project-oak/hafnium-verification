@@ -368,20 +368,14 @@ impl FdtHeader {
 
         loop {
             while let Some(name) = t.next_subnode() {
-                dlog!(
-                    "{:1$}New node: \"{2}\"\n",
-                    "",
-                    2 * depth,
-                    unsafe { str::from_utf8_unchecked(name) }
-                );
+                dlog!("{:1$}New node: \"{2}\"\n", "", 2 * depth, unsafe {
+                    str::from_utf8_unchecked(name)
+                });
                 depth += 1;
                 while let Some((name, buf)) = t.next_property() {
-                    dlog!(
-                        "{:1$}property: \"{2}\" (",
-                        "",
-                        2 * depth,
-                        unsafe { asciz_to_utf8(name) }
-                    );
+                    dlog!("{:1$}property: \"{2}\" (", "", 2 * depth, unsafe {
+                        asciz_to_utf8(name)
+                    });
                     for (i, byte) in buf.iter().enumerate() {
                         dlog!("{}{:02x}", if i == 0 { "" } else { " " }, *byte);
                     }
@@ -424,6 +418,7 @@ impl FdtHeader {
         // TODO: Clean this up.
         let begin =
             (self as *const _ as usize as *mut u8).add(u32::from_be(self.off_mem_rsvmap) as usize);
+        #[allow(clippy::cast_ptr_alignment)]
         let e = begin as *mut FdtReserveEntry;
         let old_size = (u32::from_be(self.totalsize) - u32::from_be(self.off_mem_rsvmap)) as usize;
 

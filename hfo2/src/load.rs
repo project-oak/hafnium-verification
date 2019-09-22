@@ -104,7 +104,6 @@ pub unsafe fn load_primary(
         .new_vm(MAX_CPUS as spci_vcpu_count_t, ppool)
         .ok_or_else(|| {
             dlog!("Unable to initialise primary vm\n");
-            ()
         })?;
 
     if vm.id != HF_PRIMARY_VM_ID {
@@ -202,7 +201,7 @@ pub unsafe fn load_secondary(
     cpio: &MemIter,
     params: &BootParams,
     update: &mut BootParamsUpdate,
-    ppool: &mut MPool,
+    ppool: &MPool,
 ) -> Result<(), ()> {
     let mut mem_ranges_available: ArrayVec<[MemRange; MAX_MEM_RANGES]> = ArrayVec::new();
     // static_assert(

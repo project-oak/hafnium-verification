@@ -21,6 +21,7 @@ use crate::addr::*;
 use crate::arch::*;
 use crate::boot_params::*;
 use crate::cpu::*;
+use crate::hypervisor::*;
 use crate::load::*;
 use crate::memiter::*;
 use crate::mm::*;
@@ -47,14 +48,6 @@ extern "C" {
     static boot_cpu: Cpu;
 }
 
-/// TODO(HfO2): Refactor api.rs and remove `pub` (#44.)
-pub struct Hafnium {
-    pub mpool: MPool,
-    pub memory_manager: MemoryManager,
-    pub cpu_manager: CpuManager,
-    pub vm_manager: VmManager,
-}
-
 /// Note(HfO2): this variable was originally of type
 /// MaybeUninit<[u8; mem::size_of::<RawPageTable>() * HEAP_PAGES]>,
 /// but it was not aligned to PAGE_SIZE.
@@ -78,10 +71,7 @@ static mut INITED: bool = false;
 ///
 /// Therefore, I do not use a safe wrapper for initialization such as
 /// `std::sync::Once` and `lazy_static`.
-///
-/// TODO(HfO2): This `pub` is required by mm_init, which is only used by unit
-/// tests. Resolving #46 may help to remove the `pub`.
-pub static mut HAFNIUM: MaybeUninit<Hafnium> = MaybeUninit::uninit();
+static mut HYPERVISOR: MaybeUninit<Hypervisor> = MaybeUninit::uninit();
 
 /// Performs one-time initialisation of the hypervisor.
 #[no_mangle]
@@ -98,7 +88,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     arch_one_time_init();
     arch_cpu_module_init();
 
-    let mut ppool = MPool::new();
+    let ppool = MPool::new();
     ppool.free_pages(Pages::from_raw(
         PTABLE_BUF.get_mut().as_mut_ptr(),
         HEAP_PAGES,
@@ -106,26 +96,24 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
 
     let mm = MemoryManager::new(&ppool).expect("mm_init failed");
 
-    // We have to initialize memory manager early, because
-    // Stage2::invalidate_tlb refers global state. TODO(HfO2): Refactor the
-    // function to recieve the info from caller. Maybe MemoryManager should
-    // have a wrapper function for page table.
-    ptr::write(&mut HAFNIUM.get_mut().memory_manager, mm);
-    let mm = &HAFNIUM.get_ref().memory_manager;
-
     // Enable locks now that mm is initialised.
     dlog_enable_lock();
     mpool_enable_locks();
 
-    let mut hypervisor_ptable = mm.hypervisor_ptable.lock();
-
-    let params = boot_params_get(&mut hypervisor_ptable, &mut ppool)
+    // TODO(HfO2): doesn't need to lock, actually
+    let params = boot_params_get(&mut mm.hypervisor_ptable.lock(), &ppool)
         .expect("unable to retrieve boot params");
 
     let cpum = CpuManager::new(
         &params.cpu_ids[..params.cpu_count],
         boot_cpu.id,
         &callstacks,
+    );
+
+    // Initialise HAFNIUM.
+    ptr::write(
+        HYPERVISOR.get_mut(),
+        Hypervisor::new(ppool, mm, cpum, VmManager::new()),
     );
 
     for i in 0..params.mem_ranges_count {
@@ -142,9 +130,17 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
         pa_addr(params.initrd_end) - 1
     );
 
+    // TODO(HfO2): doesn't need to lock, actually
+    let mut hypervisor_ptable = hypervisor().memory_manager.hypervisor_ptable.lock();
+
     // Map initrd in, and initialise cpio parser.
     hypervisor_ptable
-        .identity_map(params.initrd_begin, params.initrd_end, Mode::R, &ppool)
+        .identity_map(
+            params.initrd_begin,
+            params.initrd_end,
+            Mode::R,
+            &hypervisor().mpool,
+        )
         .expect("unable to map initrd in");
 
     let initrd = pa_addr(params.initrd_begin) as *mut _;
@@ -153,15 +149,13 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
         pa_difference(params.initrd_begin, params.initrd_end),
     );
 
-    ptr::write(&mut HAFNIUM.get_mut().vm_manager, VmManager::new());
-
     // Load all VMs.
     let primary_initrd = load_primary(
-        &mut HAFNIUM.get_mut().vm_manager,
+        &mut HYPERVISOR.get_mut().vm_manager,
         &mut hypervisor_ptable,
         &cpio,
         params.kernel_arg,
-        &ppool,
+        &hypervisor().mpool,
     )
     .expect("unable to load primary VM");
 
@@ -173,24 +167,20 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     );
 
     load_secondary(
-        &mut HAFNIUM.get_mut().vm_manager,
+        &mut HYPERVISOR.get_mut().vm_manager,
         &mut hypervisor_ptable,
         &cpio,
         &params,
         &mut update,
-        &mut ppool,
+        &hypervisor().mpool,
     )
     .expect("unable to load secondary VMs");
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    boot_params_update(&mut hypervisor_ptable, &mut update, &mut ppool)
+    boot_params_update(&mut hypervisor_ptable, &mut update, &hypervisor().mpool)
         .expect("plat_update_boot_params failed");
 
-    hypervisor_ptable.defrag(&ppool);
-
-    // Initialise HAFNIUM.
-    ptr::write(&mut HAFNIUM.get_mut().mpool, ppool);
-    ptr::write(&mut HAFNIUM.get_mut().cpu_manager, cpum);
+    hypervisor_ptable.defrag(&hypervisor().mpool);
 
     // Enable TLB invalidation for VM page table updates.
     mm_vm_enable_invalidation();
@@ -198,15 +188,15 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     dlog!("Hafnium initialisation completed\n");
     INITED = true;
 
-    hafnium().cpu_manager.boot_cpu()
+    hypervisor().cpu_manager.boot_cpu()
 
     // From now on, other pCPUs are on in order to run multiple vCPUs. Thus
     // you may safely make readonly references to the Hafnium singleton, but
     // may not modify the singleton without proper locking.
 }
 
-pub fn hafnium() -> &'static Hafnium {
-    unsafe { HAFNIUM.get_ref() }
+pub fn hypervisor() -> &'static Hypervisor {
+    unsafe { HYPERVISOR.get_ref() }
 }
 
 // The entry point of CPUs when they are turned on. It is supposed to initialise
@@ -215,7 +205,7 @@ pub fn hafnium() -> &'static Hafnium {
 pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
     mm_cpu_init().expect("mm_cpu_init failed");
 
-    let primary = hafnium().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
+    let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
     let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();
     let vm = vcpu.vm;
 

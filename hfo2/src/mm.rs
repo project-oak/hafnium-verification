@@ -264,7 +264,7 @@ impl Stage for Stage2 {
     }
 
     fn invalidate_tlb(begin: usize, end: usize) {
-        if hafnium()
+        if hypervisor()
             .memory_manager
             .stage2_invalidate
             .load(Ordering::Relaxed)
@@ -1104,7 +1104,7 @@ impl MemoryManager {
 ///
 /// This function should not be invoked concurrently with other memory management functions.
 pub unsafe fn mm_vm_enable_invalidation() {
-    hafnium()
+    hypervisor()
         .memory_manager
         .stage2_invalidate
         .store(true, Ordering::Relaxed);
@@ -1220,19 +1220,8 @@ pub unsafe extern "C" fn mm_identity_map(
         .unwrap_or(ptr::null_mut())
 }
 
-/// TODO(HfO2): This function is only used in one unit test
-/// (fdt/find_memory_ranges.) Unsafety doesn't really matter. Resolve #46, then
-/// we can remove this.
-#[no_mangle]
-pub unsafe extern "C" fn mm_init(mpool: *const MPool) -> bool {
-    let mm = some_or!(MemoryManager::new(&*mpool), return false);
-    ptr::write(&mut HAFNIUM.get_mut().memory_manager, mm);
-
-    true
-}
-
 pub unsafe fn mm_cpu_init() -> Result<(), ()> {
-    let raw_ptable = hafnium()
+    let raw_ptable = hypervisor()
         .memory_manager
         .hypervisor_ptable
         .get_mut_unchecked()
@@ -1252,7 +1241,7 @@ pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *
 
 #[no_mangle]
 pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
-    let ptable = &hafnium().memory_manager.hypervisor_ptable;
+    let ptable = &hypervisor().memory_manager.hypervisor_ptable;
     ptable.lock().into()
 }
 
