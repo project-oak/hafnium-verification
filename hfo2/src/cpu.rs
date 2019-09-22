@@ -443,7 +443,7 @@ impl CpuManager {
         *is_on = true;
 
         if !prev {
-            let vm = hafnium().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
+            let vm = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
             let vcpu = vm.vcpus.get(self.index_of(c)).unwrap();
 
             vcpu.inner.lock().on(entry, arg);
@@ -470,13 +470,13 @@ impl CpuManager {
 
 #[no_mangle]
 pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
-    hafnium().cpu_manager.index_of(&*c)
+    hypervisor().cpu_manager.index_of(&*c)
 }
 
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
-    hafnium().cpu_manager.cpu_on(&*c, entry, arg)
+    hypervisor().cpu_manager.cpu_on(&*c, entry, arg)
 }
 
 /// Prepares the CPU for turning itself off.
@@ -488,7 +488,7 @@ pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
 /// Searches for a CPU based on its id.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
-    hafnium()
+    hypervisor()
         .cpu_manager
         .lookup(id)
         .map(|cpu| cpu as *const _ as usize as *mut _)

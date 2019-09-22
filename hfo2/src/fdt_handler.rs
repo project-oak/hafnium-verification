@@ -33,7 +33,7 @@ use scopeguard::{guard, ScopeGuard};
 
 fn convert_number(data: &[u8]) -> Option<u64> {
     let ret = match data.len() {
-        4 => u32::from_be_bytes(data.try_into().unwrap()) as u64,
+        4 => u64::from(u32::from_be_bytes(data.try_into().unwrap())),
         8 => u64::from_be_bytes(data.try_into().unwrap()),
         _ => return None,
     };
@@ -51,6 +51,7 @@ impl<'a> FdtNode<'a> {
     unsafe fn write_number(&mut self, name: *const u8, value: u64) -> Result<(), ()> {
         let data = self.read_property(name)?;
 
+        #[allow(clippy::cast_ptr_alignment)]
         match data.len() {
             4 => {
                 *(data as *const _ as *mut u8 as *mut u32) = u32::from_be(value as u32);

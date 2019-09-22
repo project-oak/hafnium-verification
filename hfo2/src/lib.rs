@@ -49,6 +49,7 @@ mod boot_params;
 mod cpu;
 mod fdt;
 mod fdt_handler;
+mod hypervisor;
 mod init;
 mod layout;
 mod load;
