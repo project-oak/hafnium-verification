@@ -410,7 +410,15 @@ impl Hypervisor {
         // TODO: the scope of the can be reduced but will require restructing to keep a single
         //       unlock point.
         let mut vm_inner = vm.inner.lock();
-        if vm_inner.configure(send, recv, &self.mpool).is_err() {
+        if vm_inner
+            .configure(
+                send,
+                recv,
+                &self.memory_manager.hypervisor_ptable,
+                &self.mpool,
+            )
+            .is_err()
+        {
             return (-1, None);
         }
 

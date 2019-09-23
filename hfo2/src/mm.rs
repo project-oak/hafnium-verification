@@ -759,6 +759,10 @@ impl<S: Stage> PageTable<S> {
         }
     }
 
+    pub fn get_raw(&self) -> paddr_t {
+        self.root
+    }
+
     const unsafe fn null() -> Self {
         Self::from_raw(pa_init(0))
     }
@@ -1220,12 +1224,7 @@ pub unsafe extern "C" fn mm_identity_map(
         .unwrap_or(ptr::null_mut())
 }
 
-pub unsafe fn mm_cpu_init() -> Result<(), ()> {
-    let raw_ptable = hypervisor()
-        .memory_manager
-        .hypervisor_ptable
-        .get_mut_unchecked()
-        .root;
+pub unsafe fn mm_cpu_init(raw_ptable: paddr_t) -> Result<(), ()> {
     if arch_mm_init(raw_ptable, false) {
         Ok(())
     } else {

@@ -203,7 +203,12 @@ pub fn hypervisor() -> &'static Hypervisor {
 // all state and return the first vCPU to run.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
-    mm_cpu_init().expect("mm_cpu_init failed");
+    let raw_ptable = hypervisor()
+        .memory_manager
+        .hypervisor_ptable
+        .get_mut_unchecked()
+        .get_raw();
+    mm_cpu_init(raw_ptable).expect("mm_cpu_init failed");
 
     let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
     let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();
