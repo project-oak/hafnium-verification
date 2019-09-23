@@ -26,7 +26,6 @@ use scopeguard::guard;
 use crate::addr::*;
 use crate::arch::*;
 use crate::cpu::*;
-use crate::init::*;
 use crate::list::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -158,11 +157,10 @@ impl Mailbox {
         pa_send_end: paddr_t,
         pa_recv_begin: paddr_t,
         pa_recv_end: paddr_t,
+        hypervisor_ptable: &SpinLock<PageTable<Stage1>>,
         local_page_pool: &MPool,
     ) -> Result<(), ()> {
-        // TODO(HfO2): Acquring the singleton here is not recommended. Get the
-        // hypervisor ptable from callee (API module.)
-        let mut hypervisor_ptable = hypervisor().memory_manager.hypervisor_ptable.lock();
+        let mut hypervisor_ptable = hypervisor_ptable.lock();
         let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
 
         // Map the send page as read-only in the hypervisor address space.
@@ -281,6 +279,7 @@ impl VmInner {
         pa_recv_begin: paddr_t,
         pa_recv_end: paddr_t,
         orig_recv_mode: Mode,
+        hypervisor_ptable: &SpinLock<PageTable<Stage1>>,
         fallback_mpool: &MPool,
     ) -> Result<(), ()> {
         // Create a local pool so any freed memory can't be used by another
@@ -327,6 +326,7 @@ impl VmInner {
             pa_send_end,
             pa_recv_begin,
             pa_recv_end,
+            hypervisor_ptable,
             &local_page_pool,
         )?;
 
@@ -344,6 +344,7 @@ impl VmInner {
         &mut self,
         send: ipaddr_t,
         recv: ipaddr_t,
+        hypervisor_ptable: &SpinLock<PageTable<Stage1>>,
         fallback_mpool: &MPool,
     ) -> Result<(), ()> {
         // Fail if addresses are not page-aligned.
@@ -387,6 +388,7 @@ impl VmInner {
             pa_recv_begin,
             pa_recv_end,
             orig_recv_mode,
+            hypervisor_ptable,
             fallback_mpool,
         )
     }
@@ -616,23 +618,6 @@ impl VmManager {
 
     pub fn len(&self) -> spci_vm_count_t {
         self.vms.len() as _
-    }
-}
-
-/// This function is only used by unit test (fdt/find_memory_ranges.)
-#[no_mangle]
-pub unsafe extern "C" fn vm_init(
-    vcpu_count: spci_vcpu_count_t,
-    ppool: *mut MPool,
-    new_vm: *mut *mut Vm,
-) -> bool {
-    let vmm = &hypervisor().vm_manager as *const _ as usize as *mut VmManager;
-    match (*vmm).new_vm(vcpu_count, &*ppool) {
-        Some(vm) => {
-            *new_vm = vm as *mut _;
-            true
-        }
-        None => false,
     }
 }
 

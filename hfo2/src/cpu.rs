@@ -437,13 +437,13 @@ impl CpuManager {
         c.wrapping_offset_from(self.cpus.as_ptr()) as _
     }
 
-    pub fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
+    pub fn cpu_on(&self, c: &Cpu, entry: ipaddr_t, arg: uintreg_t, vm_manager: &VmManager) -> bool {
         let mut is_on = c.is_on.lock();
         let prev = *is_on;
         *is_on = true;
 
         if !prev {
-            let vm = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
+            let vm = vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
             let vcpu = vm.vcpus.get(self.index_of(c)).unwrap();
 
             vcpu.inner.lock().on(entry, arg);
@@ -476,7 +476,9 @@ pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
-    hypervisor().cpu_manager.cpu_on(&*c, entry, arg)
+    hypervisor()
+        .cpu_manager
+        .cpu_on(&*c, entry, arg, &hypervisor().vm_manager)
 }
 
 /// Prepares the CPU for turning itself off.
