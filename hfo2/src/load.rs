@@ -15,6 +15,7 @@
  */
 
 use core::mem;
+use core::ptr;
 use core::str;
 
 use crate::addr::*;
@@ -27,7 +28,6 @@ use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
 use crate::page::*;
-use crate::std::*;
 use crate::types::*;
 use crate::utils::*;
 use crate::vm::*;
@@ -56,7 +56,7 @@ unsafe fn copy_to_unmapped(
         return false;
     }
 
-    memcpy_s(pa_addr(to) as *mut _, size, from, size);
+    ptr::copy_nonoverlapping(from, pa_addr(to) as *mut _, size);
     arch_mm_write_back_dcache(pa_addr(to), size);
 
     hypervisor_ptable.unmap(to, to_end, ppool).unwrap();
