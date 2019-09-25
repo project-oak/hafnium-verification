@@ -44,7 +44,7 @@ impl fmt::Write for Writer {
 }
 
 static WRITER: SpinLock<Writer> = SpinLock::new(Writer::new());
-static DLOG_LOCK_ENABLED: AtomicBool = AtomicBool::new(false);
+static mut DLOG_LOCK_ENABLED: bool = false;
 
 #[macro_export]
 macro_rules! dlog {
@@ -60,19 +60,19 @@ pub fn _print(args: fmt::Arguments) {
 /// Enables the lock protecting the serial device.
 #[no_mangle]
 pub extern "C" fn dlog_enable_lock() {
-    DLOG_LOCK_ENABLED.store(true, Ordering::Relaxed);
+    unsafe { DLOG_LOCK_ENABLED = true; }
 }
 
 #[no_mangle]
 pub extern "C" fn dlog_lock() {
-    if DLOG_LOCK_ENABLED.load(Ordering::Relaxed) {
+    if unsafe { DLOG_LOCK_ENABLED } {
         mem::forget(WRITER.lock());
     }
 }
 
 #[no_mangle]
 pub extern "C" fn dlog_unlock() {
-    if DLOG_LOCK_ENABLED.load(Ordering::Relaxed) {
+    if unsafe { DLOG_LOCK_ENABLED } {
         unsafe {
             WRITER.unlock_unchecked();
         }
