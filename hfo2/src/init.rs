@@ -206,7 +206,7 @@ pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
     let raw_ptable = hypervisor()
         .memory_manager
         .get_raw_ptable();
-    mm_cpu_init(raw_ptable).expect("mm_cpu_init failed");
+    MemoryManager::cpu_init(raw_ptable).expect("mm_cpu_init failed");
 
     let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
     let vcpu = primary.vcpus.get(hypervisor().cpu_manager.index_of(c)).unwrap();
