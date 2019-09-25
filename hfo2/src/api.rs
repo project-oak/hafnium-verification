@@ -222,10 +222,7 @@ pub extern "C" fn api_spci_msg_recv(
 #[no_mangle]
 pub extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
     let current = ManuallyDrop::new(unsafe { VCpuExecutionLocked::from_raw(current) });
-    let res = some_or!(
-        hypervisor().api_mailbox_writable_get(&current),
-        return -1
-    );
+    let res = some_or!(hypervisor().api_mailbox_writable_get(&current), return -1);
 
     i64::from(res)
 }

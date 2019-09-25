@@ -16,7 +16,6 @@
 
 use core::fmt;
 use core::mem;
-use core::sync::atomic::{AtomicBool, Ordering};
 
 use crate::spinlock::*;
 
@@ -60,7 +59,9 @@ pub fn _print(args: fmt::Arguments) {
 /// Enables the lock protecting the serial device.
 #[no_mangle]
 pub extern "C" fn dlog_enable_lock() {
-    unsafe { DLOG_LOCK_ENABLED = true; }
+    unsafe {
+        DLOG_LOCK_ENABLED = true;
+    }
 }
 
 #[no_mangle]
