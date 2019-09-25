@@ -59,21 +59,23 @@ pub fn _print(args: fmt::Arguments) {
 
 /// Enables the lock protecting the serial device.
 #[no_mangle]
-pub unsafe extern "C" fn dlog_enable_lock() {
+pub extern "C" fn dlog_enable_lock() {
     DLOG_LOCK_ENABLED.store(true, Ordering::Relaxed);
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn dlog_lock() {
+pub extern "C" fn dlog_lock() {
     if DLOG_LOCK_ENABLED.load(Ordering::Relaxed) {
         mem::forget(WRITER.lock());
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn dlog_unlock() {
+pub extern "C" fn dlog_unlock() {
     if DLOG_LOCK_ENABLED.load(Ordering::Relaxed) {
-        WRITER.unlock_unchecked();
+        unsafe {
+            WRITER.unlock_unchecked();
+        }
     }
 }
 

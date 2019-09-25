@@ -211,7 +211,7 @@ pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
     mm_cpu_init(raw_ptable).expect("mm_cpu_init failed");
 
     let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
-    let vcpu = primary.vcpus.get(cpu_index(&*c)).unwrap();
+    let vcpu = primary.vcpus.get(hypervisor().cpu_manager.index_of(c)).unwrap();
     let vm = vcpu.vm;
 
     // TODO(HfO2): vcpu needs to be borrowed exclusively, which is safe but
