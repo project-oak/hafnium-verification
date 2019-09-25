@@ -443,8 +443,8 @@ impl CpuManager {
         *is_on = true;
 
         if !prev {
-            let vm = vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
-            let vcpu = vm.vcpus.get(self.index_of(c)).unwrap();
+            let vm = vm_manager.get_primary();
+            let vcpu = &vm.vcpus[self.index_of(c)];
 
             vcpu.inner.lock().on(entry, arg);
         }
@@ -462,9 +462,8 @@ impl CpuManager {
         None
     }
 
-    /// Temporal impl (WIP)
-    pub fn boot_cpu(&self) -> *mut Cpu {
-        self.cpus.get(0).unwrap() as &Cpu as *const _ as usize as *mut _
+    pub fn get_boot_cpu(&self) -> &Cpu {
+        unsafe { self.cpus.get_unchecked(0) }
     }
 }
 

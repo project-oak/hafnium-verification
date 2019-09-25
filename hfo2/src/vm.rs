@@ -616,6 +616,11 @@ impl VmManager {
         self.vms.get_mut(id as usize)
     }
 
+    pub fn get_primary(&self) -> &Vm {
+        // Primary VM always exists.
+        unsafe { self.vms.get_unchecked(HF_PRIMARY_VM_ID as usize) }
+    }
+
     pub fn len(&self) -> spci_vm_count_t {
         self.vms.len() as _
     }

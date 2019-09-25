@@ -188,7 +188,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     dlog!("Hafnium initialisation completed\n");
     INITED = true;
 
-    hypervisor().cpu_manager.boot_cpu()
+    hypervisor().cpu_manager.get_boot_cpu()
 
     // From now on, other pCPUs are on in order to run multiple vCPUs. Thus
     // you may safely make readonly references to the Hafnium singleton, but
@@ -206,16 +206,13 @@ pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
     let raw_ptable = hypervisor().memory_manager.get_raw_ptable();
     MemoryManager::cpu_init(raw_ptable).expect("mm_cpu_init failed");
 
-    let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
-    let vcpu = primary
-        .vcpus
-        .get(hypervisor().cpu_manager.index_of(c))
-        .unwrap();
+    let primary = hypervisor().vm_manager.get_primary();
+    let vcpu = &primary.vcpus[hypervisor().cpu_manager.index_of(c)];
     let vm = vcpu.vm;
 
     // TODO(HfO2): vcpu needs to be borrowed exclusively, which is safe but
     // discouraged. Move this code into one_time_init().
-    let vcpu_inner = (*vcpu).inner.get_mut_unchecked();
+    let vcpu_inner = vcpu.inner.get_mut_unchecked();
     vcpu_inner.cpu = c;
     // Reset the registers to give a clean start for the primary's vCPU.
     vcpu_inner.regs.reset(true, &*vm, (*c).id);
