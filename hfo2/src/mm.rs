@@ -1096,9 +1096,9 @@ impl MemoryManager {
         })
     }
 
-    /// Returns the root address of the page table of the hypervisor. It is safe not to lock 
-    /// `self.inner` because the value of `ptable.as_raw()` doesn't change after `ptable` is 
-    /// initialized. Of course, actual page table may vary during running. That's why this function 
+    /// Returns the root address of the page table of the hypervisor. It is safe not to lock
+    /// `self.inner` because the value of `ptable.as_raw()` doesn't change after `ptable` is
+    /// initialized. Of course, actual page table may vary during running. That's why this function
     /// returns `paddr_t` rather than `&[RawPageTable]`.
     pub fn get_raw_ptable(&self) -> paddr_t {
         unsafe { self.hypervisor_ptable.get_unchecked().as_raw() }
@@ -1114,9 +1114,21 @@ impl MemoryManager {
 
     pub fn vm_unmap_hypervisor(ptable: &mut PageTable<Stage2>, mpool: &MPool) -> Result<(), ()> {
         // TODO: If we add pages dynamically, they must be included here too.
-        ptable.unmap(unsafe { layout_text_begin() } , unsafe { layout_text_end() }, mpool)?;
-        ptable.unmap(unsafe { layout_rodata_begin() }, unsafe { layout_rodata_end() }, mpool)?;
-        ptable.unmap(unsafe { layout_data_begin() }, unsafe { layout_data_end() }, mpool)?;
+        ptable.unmap(
+            unsafe { layout_text_begin() },
+            unsafe { layout_text_end() },
+            mpool,
+        )?;
+        ptable.unmap(
+            unsafe { layout_rodata_begin() },
+            unsafe { layout_rodata_end() },
+            mpool,
+        )?;
+        ptable.unmap(
+            unsafe { layout_data_begin() },
+            unsafe { layout_data_end() },
+            mpool,
+        )?;
 
         Ok(())
     }
@@ -1190,10 +1202,7 @@ pub unsafe extern "C" fn mm_vm_unmap(
 }
 
 #[no_mangle]
-pub extern "C" fn mm_vm_unmap_hypervisor(
-    t: *mut PageTable<Stage2>,
-    mpool: *const MPool,
-) -> bool {
+pub extern "C" fn mm_vm_unmap_hypervisor(t: *mut PageTable<Stage2>, mpool: *const MPool) -> bool {
     MemoryManager::vm_unmap_hypervisor(unsafe { &mut *t }, unsafe { &*mpool }).is_ok()
 }
 
