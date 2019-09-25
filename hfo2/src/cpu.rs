@@ -469,27 +469,27 @@ impl CpuManager {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn cpu_index(c: *const Cpu) -> usize {
-    hypervisor().cpu_manager.index_of(&*c)
+pub extern "C" fn cpu_index(c: *const Cpu) -> usize {
+    hypervisor().cpu_manager.index_of(unsafe { &*c })
 }
 
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
-pub unsafe extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
+pub extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
     hypervisor()
         .cpu_manager
-        .cpu_on(&*c, entry, arg, &hypervisor().vm_manager)
+        .cpu_on(unsafe { &*c }, entry, arg, &hypervisor().vm_manager)
 }
 
 /// Prepares the CPU for turning itself off.
 #[no_mangle]
-pub unsafe extern "C" fn cpu_off(c: *mut Cpu) {
-    *((*c).is_on.lock()) = false;
+pub extern "C" fn cpu_off(c: *mut Cpu) {
+    *unsafe { (*c).is_on.lock() } = false;
 }
 
 /// Searches for a CPU based on its id.
 #[no_mangle]
-pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
+pub extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
     hypervisor()
         .cpu_manager
         .lookup(id)
@@ -499,8 +499,8 @@ pub unsafe extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
 
 /// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
-    mem::forget((*vcpu).inner.lock());
+pub extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
+    mem::forget(unsafe { (*vcpu).inner.lock() });
     VCpuExecutionLocked { vcpu }
 }
 
@@ -559,7 +559,7 @@ pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts
 /// turning vCPUs on and off. Note that aborted still counts as on in this
 /// context.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
+pub extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
     let vcpu = ManuallyDrop::new(vcpu);
     vcpu.get_inner().is_off()
 }
@@ -569,25 +569,24 @@ pub unsafe extern "C" fn vcpu_is_off(vcpu: VCpuExecutionLocked) -> bool {
 /// Returns true if the secondary was reset and started, or false if it was
 /// already on and so nothing was done.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_secondary_reset_and_start(
+pub extern "C" fn vcpu_secondary_reset_and_start(
     vcpu: *mut VCpu,
     entry: ipaddr_t,
     arg: uintreg_t,
 ) -> bool {
-    let vm = &*(*vcpu).vm;
+    let vcpu = unsafe { &*vcpu };
+    let vm = unsafe { &*vcpu.vm };
 
     assert!(vm.id != HF_PRIMARY_VM_ID);
 
-    let mut state = (*vcpu).inner.lock();
+    let mut state = vcpu.inner.lock();
     let vcpu_was_off = state.is_off();
     if vcpu_was_off {
         // Set vCPU registers to a clean state ready for boot. As this
         // is a secondary which can migrate between pCPUs, the ID of the
         // vCPU is defined as the index and does not match the ID of the
         // pCPU it is running on.
-        state
-            .regs
-            .reset(false, vm, cpu_id_t::from(vcpu_index(vcpu)));
+        state.regs.reset(false, vm, cpu_id_t::from(vcpu.index()));
         state.on(entry, arg);
     }
 
@@ -625,8 +624,8 @@ pub extern "C" fn vcpu_handle_page_fault(current: *const VCpu, f: *const VCpuFau
         dlog!(
             "Stage-2 page fault: pc=0x{}, vmid={}, vcpu={}, vaddr=0x{}, ipaddr=0x{}, mode=0x{}\n",
             f.pc,
-            (*vm).id,
-            (*current).index(),
+            vm.id,
+            current.index(),
             f.vaddr,
             f.ipaddr,
             f.mode.bits() as u32
