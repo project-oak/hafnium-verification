@@ -1103,6 +1103,23 @@ impl MemoryManager {
     pub fn get_raw_ptable(&self) -> paddr_t {
         unsafe { self.hypervisor_ptable.get_unchecked().as_raw() }
     }
+
+    pub fn cpu_init(raw_ptable: paddr_t) -> Result<(), ()> {
+        if unsafe { arch_mm_init(raw_ptable, false) } {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+
+    pub fn vm_unmap_hypervisor(ptable: &mut PageTable<Stage2>, mpool: &MPool) -> Result<(), ()> {
+        // TODO: If we add pages dynamically, they must be included here too.
+        ptable.unmap(unsafe { layout_text_begin() } , unsafe { layout_text_end() }, mpool)?;
+        ptable.unmap(unsafe { layout_rodata_begin() }, unsafe { layout_rodata_end() }, mpool)?;
+        ptable.unmap(unsafe { layout_data_begin() }, unsafe { layout_data_end() }, mpool)?;
+
+        Ok(())
+    }
 }
 
 /// After calling this function, modifications to stage-2 page tables will use break-before-make and
@@ -1173,26 +1190,11 @@ pub unsafe extern "C" fn mm_vm_unmap(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_vm_unmap_hypervisor(
+pub extern "C" fn mm_vm_unmap_hypervisor(
     t: *mut PageTable<Stage2>,
     mpool: *const MPool,
 ) -> bool {
-    // TODO: If we add pages dynamically, they must be included here too.
-    let t = &mut *t;
-    let mpool = &*mpool;
-    ok_or!(
-        t.unmap(layout_text_begin(), layout_text_end(), mpool),
-        return false
-    );
-    ok_or!(
-        t.unmap(layout_rodata_begin(), layout_rodata_end(), mpool),
-        return false
-    );
-    ok_or!(
-        t.unmap(layout_data_begin(), layout_data_end(), mpool),
-        return false
-    );
-    true
+    MemoryManager::vm_unmap_hypervisor(unsafe { &mut *t }, unsafe { &*mpool }).is_ok()
 }
 
 #[no_mangle]
@@ -1228,14 +1230,6 @@ pub unsafe extern "C" fn mm_identity_map(
         .unwrap_or(ptr::null_mut())
 }
 
-pub unsafe fn mm_cpu_init(raw_ptable: paddr_t) -> Result<(), ()> {
-    if arch_mm_init(raw_ptable, false) {
-        Ok(())
-    } else {
-        Err(())
-    }
-}
-
 #[no_mangle]
 pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *const MPool) {
     let mpool = &*mpool;
@@ -1243,7 +1237,7 @@ pub unsafe extern "C" fn mm_defrag(mut stage1_locked: mm_stage1_locked, mpool: *
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
+pub extern "C" fn mm_lock_stage1() -> mm_stage1_locked {
     let ptable = &hypervisor().memory_manager.hypervisor_ptable;
     ptable.lock().into()
 }
