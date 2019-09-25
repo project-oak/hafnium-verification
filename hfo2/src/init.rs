@@ -203,13 +203,14 @@ pub fn hypervisor() -> &'static Hypervisor {
 // all state and return the first vCPU to run.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
-    let raw_ptable = hypervisor()
-        .memory_manager
-        .get_raw_ptable();
+    let raw_ptable = hypervisor().memory_manager.get_raw_ptable();
     MemoryManager::cpu_init(raw_ptable).expect("mm_cpu_init failed");
 
     let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
-    let vcpu = primary.vcpus.get(hypervisor().cpu_manager.index_of(c)).unwrap();
+    let vcpu = primary
+        .vcpus
+        .get(hypervisor().cpu_manager.index_of(c))
+        .unwrap();
     let vm = vcpu.vm;
 
     // TODO(HfO2): vcpu needs to be borrowed exclusively, which is safe but

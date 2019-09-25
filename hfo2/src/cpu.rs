@@ -475,7 +475,7 @@ pub extern "C" fn cpu_index(c: *const Cpu) -> usize {
 
 /// Turns CPU on and returns the previous state.
 #[no_mangle]
-pub extern "C" fn cpu_on(c: *mut Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
+pub extern "C" fn cpu_on(c: *const Cpu, entry: ipaddr_t, arg: uintreg_t) -> bool {
     hypervisor()
         .cpu_manager
         .cpu_on(unsafe { &*c }, entry, arg, &hypervisor().vm_manager)
@@ -499,20 +499,22 @@ pub extern "C" fn cpu_find(id: cpu_id_t) -> *mut Cpu {
 
 /// Locks the given vCPU and updates `locked` to hold the newly locked vCPU.
 #[no_mangle]
-pub extern "C" fn vcpu_lock(vcpu: *mut VCpu) -> VCpuExecutionLocked {
+pub extern "C" fn vcpu_lock(vcpu: *const VCpu) -> VCpuExecutionLocked {
     mem::forget(unsafe { (*vcpu).inner.lock() });
-    VCpuExecutionLocked { vcpu }
+    unsafe { VCpuExecutionLocked::from_raw(vcpu) }
 }
 
 /// Tries to lock the given vCPU, and updates `locked` if succeed.
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecutionLocked) -> bool {
-    (*vcpu)
+pub extern "C" fn vcpu_try_lock(vcpu: *mut VCpu, locked: *mut VCpuExecutionLocked) -> bool {
+    unsafe { &*vcpu }
         .inner
         .try_lock()
         .map(|guard| {
             mem::forget(guard);
-            ptr::write(locked, VCpuExecutionLocked { vcpu });
+            unsafe {
+                ptr::write(locked, VCpuExecutionLocked::from_raw(vcpu));
+            }
         })
         .is_ok()
 }
@@ -526,33 +528,33 @@ pub unsafe extern "C" fn vcpu_unlock(locked: *mut VCpuExecutionLocked) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
-    (*vcpu).index()
+pub extern "C" fn vcpu_index(vcpu: *const VCpu) -> spci_vcpu_index_t {
+    unsafe { (*vcpu).index() }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_get_regs(vcpu: *mut VCpu) -> *mut ArchRegs {
-    &mut (*vcpu).inner.get_mut_unchecked().regs
+pub extern "C" fn vcpu_get_regs(vcpu: *mut VCpu) -> *mut ArchRegs {
+    unsafe { &mut (*vcpu).inner.get_mut_unchecked().regs }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_get_regs_const(vcpu: *const VCpu) -> *const ArchRegs {
-    &(*vcpu).inner.get_mut_unchecked().regs
+pub extern "C" fn vcpu_get_regs_const(vcpu: *const VCpu) -> *const ArchRegs {
+    unsafe { &(*vcpu).inner.get_unchecked().regs }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_get_vm(vcpu: *mut VCpu) -> *mut Vm {
-    (*vcpu).vm
+pub extern "C" fn vcpu_get_vm(vcpu: *const VCpu) -> *const Vm {
+    unsafe { (*vcpu).vm }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *const VCpu) -> *mut Cpu {
-    (*vcpu).inner.get_mut_unchecked().cpu as usize as *mut _
+pub extern "C" fn vcpu_get_cpu(vcpu: *const VCpu) -> *const Cpu {
+    unsafe { (*vcpu).inner.get_mut_unchecked().cpu }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *mut VCpu) -> *mut Interrupts {
-    (*vcpu).interrupts.get_mut_unchecked()
+pub extern "C" fn vcpu_get_interrupts(vcpu: *const VCpu) -> *mut Interrupts {
+    unsafe { (*vcpu).interrupts.get_mut_unchecked() }
 }
 
 /// Check whether the given vcpu_inner is an off state, for the purpose of
