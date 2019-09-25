@@ -67,11 +67,8 @@ impl Hypervisor {
         mut primary_ret: HfVCpuRunReturn,
         secondary_state: VCpuStatus,
     ) -> &VCpu {
-        let primary = self.vm_manager.get(HF_PRIMARY_VM_ID).unwrap();
-        let next = primary
-            .vcpus
-            .get(self.cpu_manager.index_of(current.get_inner().cpu))
-            .unwrap();
+        let primary = self.vm_manager.get_primary();
+        let next = &primary.vcpus[self.cpu_manager.index_of(current.get_inner().cpu)];
 
         // If the secondary is blocked but has a timer running, sleep until the timer fires rather
         // than indefinitely.
