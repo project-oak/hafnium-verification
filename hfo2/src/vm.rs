@@ -522,7 +522,7 @@ impl Vm {
     /// lock `self.inner` because the value of `ptable.as_raw()` doesn't change
     /// after `ptable` is initialized. Of course, actual page table may vary
     /// during running. That's why this function returns `paddr_t` rather than
-    /// `&RawPage`.
+    /// `&[RawPageTable]`.
     pub fn get_ptable_raw(&self) -> paddr_t {
         unsafe { self.inner.get_unchecked().ptable.as_raw() }
     }
