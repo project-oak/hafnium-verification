@@ -205,9 +205,7 @@ pub fn hypervisor() -> &'static Hypervisor {
 pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
     let raw_ptable = hypervisor()
         .memory_manager
-        .hypervisor_ptable
-        .get_mut_unchecked()
-        .get_raw();
+        .get_raw_ptable();
     mm_cpu_init(raw_ptable).expect("mm_cpu_init failed");
 
     let primary = hypervisor().vm_manager.get(HF_PRIMARY_VM_ID).unwrap();

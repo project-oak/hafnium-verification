@@ -759,10 +759,6 @@ impl<S: Stage> PageTable<S> {
         }
     }
 
-    pub fn get_raw(&self) -> paddr_t {
-        self.root
-    }
-
     const unsafe fn null() -> Self {
         Self::from_raw(pa_init(0))
     }
@@ -1098,6 +1094,14 @@ impl MemoryManager {
             hypervisor_ptable: page_table,
             stage2_invalidate: AtomicBool::new(false),
         })
+    }
+
+    /// Returns the root address of the page table of the hypervisor. It is safe not to lock 
+    /// `self.inner` because the value of `ptable.as_raw()` doesn't change after `ptable` is 
+    /// initialized. Of course, actual page table may vary during running. That's why this function 
+    /// returns `paddr_t` rather than `&[RawPageTable]`.
+    pub fn get_raw_ptable(&self) -> paddr_t {
+        unsafe { self.hypervisor_ptable.get_unchecked().as_raw() }
     }
 }
 
