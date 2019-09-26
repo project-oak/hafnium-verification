@@ -46,8 +46,8 @@ pub struct CpioResult {
 
 /// Retrieves the next file stored in the cpio archive stored in the cpio, and advances the iterator
 /// such that another call to this function would return the following file.
-pub unsafe fn parse_cpio(it: &mut MemIter) -> Option<CpioResult> {
-    let header = &*(it.read(mem::size_of::<CpioHeader>())? as *const CpioHeader);
+pub fn parse_cpio(it: &mut MemIter) -> Option<CpioResult> {
+    let header = unsafe { &*(it.read(mem::size_of::<CpioHeader>())? as *const CpioHeader) };
 
     // TODO: Check magic.
 
@@ -60,7 +60,7 @@ pub unsafe fn parse_cpio(it: &mut MemIter) -> Option<CpioResult> {
     // TODO: Check that string is null-terminated.
 
     /* Stop enumerating files when we hit the end marker. */
-    if strcmp(name, &("TRAILER!!!\n".as_bytes()[0])) == 0 {
+    if unsafe { strcmp(name, &("TRAILER!!!\n".as_bytes()[0])) } == 0 {
         return None;
     }
 
@@ -73,10 +73,10 @@ pub unsafe fn parse_cpio(it: &mut MemIter) -> Option<CpioResult> {
 
 /// Looks for a file in the given cpio archive. The filename is not null-terminated, so we use a
 /// memory iterator to represent it. The file, if found, is returned in the `it` argument.
-pub unsafe fn find_file_memiter(cpio: &mut MemIter, filename: &MemIter) -> Option<MemIter> {
+pub fn find_file_memiter(cpio: &mut MemIter, filename: &MemIter) -> Option<MemIter> {
     while let Some(result) = parse_cpio(cpio) {
-        if filename.iseq(result.name) {
-            return Some(MemIter::from_raw(result.contents, result.size));
+        if unsafe { filename.iseq(result.name) } {
+            return Some(unsafe { MemIter::from_raw(result.contents, result.size) });
         }
     }
 

@@ -90,14 +90,12 @@ pub fn boot_params_get(
     ptable: &mut SpinLockGuard<PageTable<Stage1>>,
     ppool: &MPool,
 ) -> Option<BootParams> {
-    unsafe {
-        let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
+    let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
 
-        if plat_get_boot_params(mm_stage1_locked::from_ref(ptable), p.get_mut(), ppool) {
-            Some(p.assume_init())
-        } else {
-            None
-        }
+    if unsafe { plat_get_boot_params(mm_stage1_locked::from_ref(ptable), p.get_mut(), ppool) } {
+        Some(unsafe { p.assume_init() })
+    } else {
+        None
     }
 }
 

@@ -17,9 +17,6 @@
 // TODO: Refactor type names and remove this.
 #![allow(non_camel_case_types)]
 
-use crate::boot_params::*;
-use crate::mm::*;
-use crate::mpool::*;
 use crate::types::*;
 
 /// The integer type corresponding to the native register size.
@@ -60,23 +57,5 @@ pub fn arch_cpu_module_init() {
 // unit tests. Make a custom target and remove those (#46.)
 #[no_mangle]
 pub extern "C" fn arch_one_time_init() {
-    unreachable!();
-}
-
-#[no_mangle]
-pub fn plat_get_boot_params(
-    _stage1_locked: mm_stage1_locked,
-    _p: *mut BootParams,
-    _ppool: *mut MPool,
-) -> bool {
-    unreachable!();
-}
-
-#[no_mangle]
-pub fn plat_update_boot_params(
-    _stage1_locked: mm_stage1_locked,
-    _p: *mut BootParamsUpdate,
-    _ppool: *mut MPool,
-) -> bool {
     unreachable!();
 }

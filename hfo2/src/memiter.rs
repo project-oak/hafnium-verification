@@ -127,7 +127,7 @@ impl MemIter {
     /// Advances the iterator by the given number of bytes. Returns true if the iterator was
     /// advanced without going over its limit; returns false and leaves the iterator unmodified
     /// otherwise.
-    pub unsafe fn advance(&mut self, v: usize) -> Result<(), ()> {
+    pub fn advance(&mut self, v: usize) -> Result<(), ()> {
         let p = self.next.wrapping_add(v);
 
         if !(self.next <= p && p <= self.limit) {
@@ -138,7 +138,7 @@ impl MemIter {
         Ok(())
     }
 
-    pub unsafe fn read(&mut self, v: usize) -> Option<*const u8> {
+    pub fn read(&mut self, v: usize) -> Option<*const u8> {
         let next = self.next;
         if self.advance(v).is_ok() {
             Some(next)
