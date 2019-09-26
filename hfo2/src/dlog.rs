@@ -58,25 +58,21 @@ pub fn _print(args: fmt::Arguments) {
 
 /// Enables the lock protecting the serial device.
 #[no_mangle]
-pub extern "C" fn dlog_enable_lock() {
-    unsafe {
-        DLOG_LOCK_ENABLED = true;
-    }
+pub unsafe extern "C" fn dlog_enable_lock() {
+    DLOG_LOCK_ENABLED = true;
 }
 
 #[no_mangle]
-pub extern "C" fn dlog_lock() {
-    if unsafe { DLOG_LOCK_ENABLED } {
+pub unsafe extern "C" fn dlog_lock() {
+    if DLOG_LOCK_ENABLED {
         mem::forget(WRITER.lock());
     }
 }
 
 #[no_mangle]
-pub extern "C" fn dlog_unlock() {
-    if unsafe { DLOG_LOCK_ENABLED } {
-        unsafe {
-            WRITER.unlock_unchecked();
-        }
+pub unsafe extern "C" fn dlog_unlock() {
+    if DLOG_LOCK_ENABLED {
+        WRITER.unlock_unchecked();
     }
 }
 
