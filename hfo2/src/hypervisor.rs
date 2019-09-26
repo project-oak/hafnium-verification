@@ -184,11 +184,7 @@ impl Hypervisor {
 
     /// Returns the number of vCPUs configured in the given VM, or 0 if there is no such VM or the
     /// caller is not the primary VM.
-    pub fn vcpu_get_count(
-        &self,
-        vm_id: spci_vm_id_t,
-        current: &VCpu,
-    ) -> Option<spci_vcpu_count_t> {
+    pub fn vcpu_get_count(&self, vm_id: spci_vm_id_t, current: &VCpu) -> Option<spci_vcpu_count_t> {
         // Only the primary VM needs to know about vcpus for scheduling.
         if unsafe { (*current.vm).id } != HF_PRIMARY_VM_ID {
             return None;
@@ -634,11 +630,7 @@ impl Hypervisor {
 
     /// Retrieves the next VM waiting to be notified that the mailbox of the specified VM became
     /// writable. Only primary VMs are allowed to call this.
-    pub fn mailbox_waiter_get(
-        &self,
-        vm_id: spci_vm_id_t,
-        current: &VCpu,
-    ) -> Option<spci_vm_id_t> {
+    pub fn mailbox_waiter_get(&self, vm_id: spci_vm_id_t, current: &VCpu) -> Option<spci_vm_id_t> {
         // Only primary VMs are allowed to call this function.
         if unsafe { (*current.vm).id } != HF_PRIMARY_VM_ID {
             return None;
@@ -686,12 +678,7 @@ impl Hypervisor {
     /// Enables or disables a given interrupt ID for the calling vCPU.
     ///
     /// Fails if the intid is invalid.
-    pub fn interrupt_enable(
-        &self,
-        intid: intid_t,
-        enable: bool,
-        current: &VCpu,
-    ) -> Result<(), ()> {
+    pub fn interrupt_enable(&self, intid: intid_t, enable: bool, current: &VCpu) -> Result<(), ()> {
         current.interrupts.lock().enable(intid, enable)
     }
 

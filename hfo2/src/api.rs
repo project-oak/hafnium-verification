@@ -116,9 +116,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
     current: *const VCpu,
 ) -> spci_vcpu_count_t {
     let current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    hypervisor()
-        .vcpu_get_count(vm_id, &current)
-        .unwrap_or(0)
+    hypervisor().vcpu_get_count(vm_id, &current).unwrap_or(0)
 }
 
 /// This function is called by the architecture-specific context switching
@@ -235,10 +233,7 @@ pub unsafe extern "C" fn api_mailbox_writable_get(current: *const VCpu) -> i64 {
 #[no_mangle]
 pub unsafe extern "C" fn api_mailbox_waiter_get(vm_id: spci_vm_id_t, current: *const VCpu) -> i64 {
     let current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    let res = some_or!(
-        hypervisor().mailbox_waiter_get(vm_id, &current),
-        return -1
-    );
+    let res = some_or!(hypervisor().mailbox_waiter_get(vm_id, &current), return -1);
 
     i64::from(res)
 }
