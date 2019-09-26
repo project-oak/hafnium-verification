@@ -43,6 +43,7 @@ pub type pte_t = u64;
 ///
 /// 2 64-bit integers used to avoid need for FP support at this level.
 #[repr(C, align(16))]
+#[derive(Default)]
 struct float_reg {
     // TODO: alignas(FLOAT_REG_BYTES)
     low: u64,
@@ -63,6 +64,7 @@ pub struct ArchVm {
 
 /// Type to represent the register state of a vCPU.
 #[repr(C)]
+#[derive(Default)]
 pub struct ArchRegs {
     /// General purpose registers.
     r: [uintreg_t; 31],
@@ -116,6 +118,7 @@ pub fn arch_cpu_module_init() {
 }
 
 #[repr(C)]
+#[derive(Default)]
 pub struct ArchSysRegs {
     vmpidr_el2: uintreg_t,
     csselr_el1: uintreg_t,
@@ -149,6 +152,7 @@ pub struct ArchSysRegs {
 }
 
 #[repr(C)]
+#[derive(Default)]
 struct ArchPeriRegs {
     cntv_cval_el0: uintreg_t,
     cntv_ctl_el0: uintreg_t,

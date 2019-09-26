@@ -74,6 +74,7 @@ impl Hypervisor {
         // than indefinitely.
         match &mut primary_ret {
             HfVCpuRunReturn::WaitForInterrupt { ns } | HfVCpuRunReturn::WaitForMessage { ns } => {
+                // TODO(HfO2): a module for arch_timer?
                 *ns = if unsafe { arch_timer_enabled_current() } {
                     unsafe { arch_timer_remaining_ns_current() }
                 } else {
@@ -84,6 +85,8 @@ impl Hypervisor {
         }
 
         // Set the return value for the primary VM's call to HF_VCPU_RUN.
+        //
+        // # Safety
         //
         // The use of `get_mut_unchecked()` is safe because the currently running pCPU implicitly
         // owns `next`. Notice that `next` is the vCPU of the primary VM that corresponds to the
@@ -133,7 +136,7 @@ impl Hypervisor {
     /// Returns to the primary vm to allow this cpu to be used for other tasks as the vcpu does not
     /// have work to do at this moment. The current vcpu is masked as ready to be scheduled again.
     pub fn spci_yield(&self, current: &mut VCpuExecutionLocked) -> Option<&VCpu> {
-        if unsafe { (*current.vm).id } == HF_PRIMARY_VM_ID {
+        if current.vm().id == HF_PRIMARY_VM_ID {
             // Noop on the primary as it makes the scheduling decisions.
             return None;
         }
@@ -147,7 +150,7 @@ impl Hypervisor {
         self.switch_to_primary(
             current,
             HfVCpuRunReturn::WakeUp {
-                vm_id: unsafe { (*target_vcpu.vm).id },
+                vm_id: target_vcpu.vm().id,
                 vcpu: target_vcpu.index(),
             },
             VCpuStatus::Ready,
@@ -156,7 +159,7 @@ impl Hypervisor {
 
     /// Aborts the vCPU and triggers its VM to abort fully.
     pub fn abort(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
-        let vm = unsafe { &*current.vm };
+        let vm = current.vm();
 
         dlog!("Aborting VM {} vCPU {}\n", vm.id, current.index(),);
 
@@ -174,7 +177,7 @@ impl Hypervisor {
 
     /// Returns the ID of the VM.
     pub fn vm_get_id(&self, current: &VCpu) -> spci_vm_id_t {
-        unsafe { (*current.vm).id }
+        current.vm().id
     }
 
     /// Returns the number of VMs configured to run.
@@ -186,7 +189,7 @@ impl Hypervisor {
     /// caller is not the primary VM.
     pub fn vcpu_get_count(&self, vm_id: spci_vm_id_t, current: &VCpu) -> Option<spci_vcpu_count_t> {
         // Only the primary VM needs to know about vcpus for scheduling.
-        if unsafe { (*current.vm).id } != HF_PRIMARY_VM_ID {
+        if current.vm().id != HF_PRIMARY_VM_ID {
             return None;
         }
 
@@ -211,7 +214,7 @@ impl Hypervisor {
         current: &mut VCpuExecutionLocked,
     ) -> (i64, Option<&VCpu>) {
         if target_vcpu.interrupts.lock().inject(intid).is_ok() {
-            if unsafe { (*current.vm).id } == HF_PRIMARY_VM_ID {
+            if current.vm().id == HF_PRIMARY_VM_ID {
                 // If the call came from the primary VM, let it know that it should run or kick the
                 // target vCPU.
                 return (1, None);
@@ -249,7 +252,7 @@ impl Hypervisor {
             run_ret
         })?;
 
-        let vm = unsafe { &*vcpu.vm };
+        let vm = vcpu.vm();
 
         if vm.aborting.load(Ordering::Relaxed) {
             if vcpu_inner.state != VCpuStatus::Aborted {
@@ -302,6 +305,10 @@ impl Hypervisor {
         vcpu_inner.cpu = current.get_inner().cpu;
 
         // We want to keep the lock of vcpu.state because we're going to run.
+        //
+        // # Safety
+        //
+        // TODO(HfO2): explain it.
         mem::forget(vcpu_inner);
         Ok(unsafe { VCpuExecutionLocked::from_raw(vcpu) })
     }
@@ -318,7 +325,7 @@ impl Hypervisor {
         };
 
         // Only the primary VM can switch vcpus.
-        if unsafe { (*current.vm).id } != HF_PRIMARY_VM_ID {
+        if current.vm().id != HF_PRIMARY_VM_ID {
             return Err(ret);
         }
 
@@ -395,7 +402,7 @@ impl Hypervisor {
         recv: ipaddr_t,
         current: &mut VCpuExecutionLocked,
     ) -> (i64, Option<&VCpu>) {
-        let vm = unsafe { &*current.vm };
+        let vm = unsafe { &*(current.vm() as *const Vm) };
 
         // The hypervisor's memory map must be locked for the duration of this operation to ensure
         // there will be sufficient memory to recover from any failures.
@@ -429,7 +436,7 @@ impl Hypervisor {
         attributes: SpciMsgSendAttributes,
         current: &mut VCpuExecutionLocked,
     ) -> (SpciReturn, Option<&VCpu>) {
-        let from = unsafe { &*current.vm };
+        let from = unsafe { &*(current.vm() as *const Vm) };
 
         let notify = attributes.contains(SpciMsgSendAttributes::NOTIFY);
 
@@ -437,6 +444,7 @@ impl Hypervisor {
         // configured (i.e. from_msg != ptr::null()) then it can be safely accessed after releasing
         // the lock since the tx mailbox address can only be configured once.
         let from_msg = some_or!(
+            // TODO(HfO2): complicated invariant...  send_ptr never changes.
             unsafe { from.inner.lock().get_send_ptr().as_ref() },
             return (SpciReturn::InvalidParameters, None)
         );
@@ -576,7 +584,7 @@ impl Hypervisor {
         attributes: SpciMsgRecvAttributes,
         current: &mut VCpuExecutionLocked,
     ) -> (SpciReturn, Option<&VCpu>) {
-        let vm = unsafe { &*current.vm };
+        let vm = unsafe { &*(current.vm() as *const Vm) };
         let block = attributes.contains(SpciMsgRecvAttributes::BLOCK);
 
         // The primary VM will receive messages as a status code from running vcpus and must not
@@ -624,7 +632,7 @@ impl Hypervisor {
     ///
     /// It should be called repeatedly to retrieve a list of VMs.
     pub fn mailbox_writable_get(&self, current: &VCpu) -> Option<spci_vm_id_t> {
-        let vm = unsafe { &*current.vm };
+        let vm = current.vm();
         vm.inner.lock().dequeue_ready_list()
     }
 
@@ -632,7 +640,7 @@ impl Hypervisor {
     /// writable. Only primary VMs are allowed to call this.
     pub fn mailbox_waiter_get(&self, vm_id: spci_vm_id_t, current: &VCpu) -> Option<spci_vm_id_t> {
         // Only primary VMs are allowed to call this function.
-        if unsafe { (*current.vm).id } != HF_PRIMARY_VM_ID {
+        if current.vm().id != HF_PRIMARY_VM_ID {
             return None;
         }
 
@@ -663,7 +671,7 @@ impl Hypervisor {
     ///    up or kick waiters. Waiters should be retrieved by calling
     ///    hf_mailbox_waiter_get.
     pub fn mailbox_clear(&self, current: &mut VCpuExecutionLocked) -> (i64, Option<&VCpu>) {
-        let vm = unsafe { &*current.vm };
+        let vm = unsafe { &*(current.vm() as *const Vm) };
         let mut vm_inner = vm.inner.lock();
         match vm_inner.get_state() {
             MailboxState::Empty => (0, None),
@@ -693,7 +701,7 @@ impl Hypervisor {
     /// vCPU.
     #[inline]
     fn is_injection_allowed(&self, target_vm_id: spci_vm_id_t, current: &VCpu) -> bool {
-        let current_vm_id = unsafe { (*current.vm).id };
+        let current_vm_id = current.vm().id;
 
         // The primary VM is allowed to inject interrupts into any VM. Secondary
         // VMs are only allowed to inject interrupts into their own vCPUs.
@@ -737,7 +745,7 @@ impl Hypervisor {
             intid,
             target_vm_id,
             target_vcpu_idx,
-            unsafe { &*current.vm }.id,
+            current.vm().id,
             unsafe { &*current.get_inner().cpu }.id
         );
 
@@ -788,7 +796,7 @@ impl Hypervisor {
         share: HfShare,
         current: &VCpu,
     ) -> Result<(), ()> {
-        let from: &Vm = unsafe { &*current.vm };
+        let from: &Vm = current.vm();
 
         // Disallow reflexive shares as this suggests an error in the VM.
         if vm_id == from.id {
@@ -901,7 +909,7 @@ impl Hypervisor {
     }
 
     pub fn debug_log(&self, c: c_char, current: &VCpu) {
-        let vm = unsafe { &*current.vm };
+        let vm = current.vm();
         vm.debug_log(c);
     }
 }

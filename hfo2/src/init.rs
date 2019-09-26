@@ -208,14 +208,13 @@ pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
 
     let primary = hypervisor().vm_manager.get_primary();
     let vcpu = &primary.vcpus[hypervisor().cpu_manager.index_of(c)];
-    let vm = vcpu.vm;
 
     // TODO(HfO2): vcpu needs to be borrowed exclusively, which is safe but
     // discouraged. Move this code into one_time_init().
     let vcpu_inner = vcpu.inner.get_mut_unchecked();
     vcpu_inner.cpu = c;
     // Reset the registers to give a clean start for the primary's vCPU.
-    vcpu_inner.regs.reset(true, &*vm, (*c).id);
+    vcpu_inner.regs.reset(true, vcpu.vm(), (*c).id);
 
     vcpu
 }
