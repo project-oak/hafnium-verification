@@ -99,12 +99,12 @@ impl Hypervisor {
     }
 
     /// Returns to the primary vm and signals that the vcpu still has work to do so.
-    pub fn api_preempt(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
+    pub fn preempt(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         self.switch_to_primary(current, HfVCpuRunReturn::Preempted, VCpuStatus::Ready)
     }
 
     /// Puts the current vcpu in wait for interrupt mode, and returns to the primary vm.
-    pub fn api_wait_for_interrupt(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
+    pub fn wait_for_interrupt(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         self.switch_to_primary(
             current,
             HfVCpuRunReturn::WaitForInterrupt {
@@ -115,7 +115,7 @@ impl Hypervisor {
     }
 
     /// Puts the current vCPU in off mode, and returns to the primary VM.
-    pub fn api_vcpu_off(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
+    pub fn vcpu_off(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         // Disable the timer, so the scheduler doesn't get told to call back based on it.
         unsafe {
             arch_timer_disable_current();
@@ -132,7 +132,7 @@ impl Hypervisor {
 
     /// Returns to the primary vm to allow this cpu to be used for other tasks as the vcpu does not
     /// have work to do at this moment. The current vcpu is masked as ready to be scheduled again.
-    pub fn api_spci_yield(&self, current: &mut VCpuExecutionLocked) -> Option<&VCpu> {
+    pub fn spci_yield(&self, current: &mut VCpuExecutionLocked) -> Option<&VCpu> {
         if unsafe { (*current.vm).id } == HF_PRIMARY_VM_ID {
             // Noop on the primary as it makes the scheduling decisions.
             return None;
@@ -155,7 +155,7 @@ impl Hypervisor {
     }
 
     /// Aborts the vCPU and triggers its VM to abort fully.
-    pub fn api_abort(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
+    pub fn abort(&self, current: &mut VCpuExecutionLocked) -> &VCpu {
         let vm = unsafe { &*current.vm };
 
         dlog!("Aborting VM {} vCPU {}\n", vm.id, current.index(),);
@@ -173,18 +173,18 @@ impl Hypervisor {
     }
 
     /// Returns the ID of the VM.
-    pub fn api_vm_get_id(&self, current: &VCpu) -> spci_vm_id_t {
+    pub fn vm_get_id(&self, current: &VCpu) -> spci_vm_id_t {
         unsafe { (*current.vm).id }
     }
 
     /// Returns the number of VMs configured to run.
-    pub fn api_vm_get_count(&self) -> spci_vm_count_t {
+    pub fn vm_get_count(&self) -> spci_vm_count_t {
         self.vm_manager.len() as _
     }
 
     /// Returns the number of vCPUs configured in the given VM, or 0 if there is no such VM or the
     /// caller is not the primary VM.
-    pub fn api_vcpu_get_count(
+    pub fn vcpu_get_count(
         &self,
         vm_id: spci_vm_id_t,
         current: &VCpu,
@@ -311,7 +311,7 @@ impl Hypervisor {
     }
 
     /// Runs the given vcpu of the given vm.
-    pub fn api_vcpu_run(
+    pub fn vcpu_run(
         &self,
         vm_id: spci_vm_id_t,
         vcpu_idx: spci_vcpu_index_t,
@@ -393,7 +393,7 @@ impl Hypervisor {
     ///  - 0 on success if no further action is needed.
     ///  - 1 if it was called by the primary VM and the primary VM now needs to wake up or kick
     ///    waiters. Waiters should be retrieved by calling hf_mailbox_waiter_get.
-    pub fn api_vm_configure(
+    pub fn vm_configure(
         &self,
         send: ipaddr_t,
         recv: ipaddr_t,
@@ -428,7 +428,7 @@ impl Hypervisor {
     ///
     /// If the recipient's receive buffer is busy, it can optionally register the caller to be
     /// notified when the recipient's receive buffer becomes available.
-    pub fn api_spci_msg_send(
+    pub fn spci_msg_send(
         &self,
         attributes: SpciMsgSendAttributes,
         current: &mut VCpuExecutionLocked,
@@ -575,7 +575,7 @@ impl Hypervisor {
     /// block the caller until one becomes available.
     ///
     /// No new messages can be received until the mailbox has been cleared.
-    pub fn api_spci_msg_recv(
+    pub fn spci_msg_recv(
         &self,
         attributes: SpciMsgRecvAttributes,
         current: &mut VCpuExecutionLocked,
@@ -627,14 +627,14 @@ impl Hypervisor {
     /// to true, and this call must have failed because the mailbox was not available.
     ///
     /// It should be called repeatedly to retrieve a list of VMs.
-    pub fn api_mailbox_writable_get(&self, current: &VCpu) -> Option<spci_vm_id_t> {
+    pub fn mailbox_writable_get(&self, current: &VCpu) -> Option<spci_vm_id_t> {
         let vm = unsafe { &*current.vm };
         vm.inner.lock().dequeue_ready_list()
     }
 
     /// Retrieves the next VM waiting to be notified that the mailbox of the specified VM became
     /// writable. Only primary VMs are allowed to call this.
-    pub fn api_mailbox_waiter_get(
+    pub fn mailbox_waiter_get(
         &self,
         vm_id: spci_vm_id_t,
         current: &VCpu,
@@ -670,7 +670,7 @@ impl Hypervisor {
     ///  - 1 if it was called by the primary VM and the primary VM now needs to wake
     ///    up or kick waiters. Waiters should be retrieved by calling
     ///    hf_mailbox_waiter_get.
-    pub fn api_mailbox_clear(&self, current: &mut VCpuExecutionLocked) -> (i64, Option<&VCpu>) {
+    pub fn mailbox_clear(&self, current: &mut VCpuExecutionLocked) -> (i64, Option<&VCpu>) {
         let vm = unsafe { &*current.vm };
         let mut vm_inner = vm.inner.lock();
         match vm_inner.get_state() {
@@ -686,7 +686,7 @@ impl Hypervisor {
     /// Enables or disables a given interrupt ID for the calling vCPU.
     ///
     /// Fails if the intid is invalid.
-    pub fn api_interrupt_enable(
+    pub fn interrupt_enable(
         &self,
         intid: intid_t,
         enable: bool,
@@ -698,7 +698,7 @@ impl Hypervisor {
     /// Returns the ID of the next pending interrupt for the calling vCPU, and acknowledges it
     /// (i.e. marks it as no longer pending). Returns HF_INVALID_INTID if there are no pending
     /// interrupts.
-    pub fn api_interrupt_get(&self, current: &VCpu) -> intid_t {
+    pub fn interrupt_get(&self, current: &VCpu) -> intid_t {
         current.interrupts.lock().get()
     }
 
@@ -723,7 +723,7 @@ impl Hypervisor {
     ///  - 0  on success if no further action is needed.
     ///  - 1  if it was called by the primary VM and the primary VM now needs to wake up or kick
     ///       the target vCPU.
-    pub fn api_interrupt_inject(
+    pub fn interrupt_inject(
         &self,
         target_vm_id: spci_vm_id_t,
         target_vcpu_idx: spci_vcpu_index_t,
@@ -905,7 +905,7 @@ impl Hypervisor {
     }
 
     /// Returns the version of the implemented SPCI specification.
-    pub fn api_spci_version(&self) -> i32 {
+    pub fn spci_version(&self) -> i32 {
         // Ensure that both major and minor revision representation occupies at most 15 bits.
         const_assert!(0x8000 > SPCI_VERSION_MAJOR);
         const_assert!(0x10000 > SPCI_VERSION_MINOR);
@@ -913,7 +913,7 @@ impl Hypervisor {
         (SPCI_VERSION_MAJOR << SPCI_VERSION_MAJOR_OFFSET) | SPCI_VERSION_MINOR
     }
 
-    pub fn api_debug_log(&self, c: c_char, current: &VCpu) {
+    pub fn debug_log(&self, c: c_char, current: &VCpu) {
         let vm = unsafe { &*current.vm };
         vm.debug_log(c);
     }
