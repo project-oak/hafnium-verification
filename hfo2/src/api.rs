@@ -125,7 +125,7 @@ pub unsafe extern "C" fn api_vcpu_get_count(
 #[no_mangle]
 pub unsafe extern "C" fn api_regs_state_saved(current: *const VCpu) {
     let mut current = ManuallyDrop::new(VCpuExecutionLocked::from_raw(current));
-    if (*current.vm).id != HF_PRIMARY_VM_ID {
+    if (*current).vm().id != HF_PRIMARY_VM_ID {
         ManuallyDrop::drop(&mut current);
     }
 }

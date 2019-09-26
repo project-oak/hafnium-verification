@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, ManuallyDrop, MaybeUninit};
+use core::mem::{self, ManuallyDrop};
 use core::ops::Deref;
 use core::ptr;
 
@@ -201,25 +201,6 @@ impl Interrupts {
 }
 
 impl ArchRegs {
-    pub fn new() -> Self {
-        // TODO(HfO2): Originally, ArchRegs are filled by 0 when they're crated.
-        // However, doing like
-        // ```
-        // let mut ret = MaybeUninit::uninit().assume_init();
-        // memset(&mut ret, 0, mem::size_of_val(&ret));
-        // ```
-        // allocates large memory in stack to hold the value of ArchRegs, and
-        // introduce unnecessary memcpy.
-        // Note that MaybeUninit::zeroed() makes same assembly. I guess Rust
-        // native MaybeUninit can be improved to generate higher quality code.
-        //
-        // Anyway, none of them works, thus we delay its initialization to the
-        // time when `reset` is called. Today Hafnium's implementation always
-        // call `reset` before using `ArchRegs`. But, the future is in shadow,
-        // we'd better refactor this, by making arch-dependent `new` methods.
-        unsafe { MaybeUninit::uninit().assume_init() }
-    }
-
     /// Reset the register values other than the PC and argument which are set
     /// with `arch_regs_set_pc_arg()`.
     pub fn reset(&mut self, is_primary: bool, vm: &Vm, vcpu_id: cpu_id_t) {
@@ -273,10 +254,12 @@ pub struct VCpuInner {
 
 impl VCpuInner {
     pub fn new() -> Self {
+        // TODO(HfO2): `ArchRegs::default()` may allocate large memory in stack, incurring stack
+        // overflow.
         Self {
             state: VCpuStatus::Off,
             cpu: ptr::null(),
-            regs: ArchRegs::new(),
+            regs: ArchRegs::default(),
         }
     }
 
@@ -300,7 +283,7 @@ impl VCpuInner {
 
 #[repr(C)]
 pub struct VCpu {
-    pub vm: *mut Vm,
+    vm: *mut Vm,
 
     /// If a vCPU of secondary VMs is running, its lock is logically held by the running pCPU.
     pub inner: SpinLock<VCpuInner>,
@@ -316,8 +299,12 @@ impl VCpu {
         }
     }
 
+    pub fn vm(&self) -> &Vm {
+        unsafe { &*self.vm }
+    }
+
     pub fn index(&self) -> spci_vcpu_index_t {
-        let vcpus = unsafe { (*self.vm).vcpus.as_ptr() };
+        let vcpus = self.vm().vcpus.as_ptr();
         let index = (self as *const VCpu).wrapping_offset_from(vcpus);
         assert!(index < core::u16::MAX as isize);
         index as _

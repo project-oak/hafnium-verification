@@ -42,6 +42,7 @@ pub struct ArchVm {
 
 /// Types to represent the register state of a VM.
 #[repr(C)]
+#[derive(Default)]
 pub struct ArchRegs {
     r: [uintreg_t; 5],
     vcpu_id: cpu_id_t,
