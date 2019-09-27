@@ -617,6 +617,8 @@ impl VmManager {
     }
 
     pub fn get_primary(&self) -> &Vm {
+        // # Safety
+        //
         // Primary VM always exists.
         unsafe { self.vms.get_unchecked(HF_PRIMARY_VM_ID as usize) }
     }
@@ -629,23 +631,23 @@ impl VmManager {
 /// Get the vCPU with the given index from the given VM.
 /// This assumes the index is valid, i.e. less than vm->vcpu_count.
 #[no_mangle]
-pub extern "C" fn vm_get_vcpu(vm: *const Vm, vcpu_index: spci_vcpu_index_t) -> *const VCpu {
-    let vm = unsafe { &*vm };
+pub unsafe extern "C" fn vm_get_vcpu(vm: *const Vm, vcpu_index: spci_vcpu_index_t) -> *const VCpu {
+    let vm = &*vm;
     assert!((vcpu_index as usize) < vm.vcpus.len());
     &vm.vcpus[vcpu_index as usize]
 }
 
 #[no_mangle]
-pub extern "C" fn vm_get_id(vm: *const Vm) -> spci_vm_id_t {
-    unsafe { (*vm).id }
+pub unsafe extern "C" fn vm_get_id(vm: *const Vm) -> spci_vm_id_t {
+    (*vm).id
 }
 
 #[no_mangle]
-pub extern "C" fn vm_get_arch(vm: *const Vm) -> *mut ArchVm {
-    unsafe { &mut (*vm).inner.get_mut_unchecked().arch }
+pub unsafe extern "C" fn vm_get_arch(vm: *const Vm) -> *mut ArchVm {
+    &mut (*vm).inner.get_mut_unchecked().arch
 }
 
 #[no_mangle]
-pub extern "C" fn vm_get_vcpu_count(vm: *const Vm) -> spci_vcpu_count_t {
-    unsafe { (*vm).vcpus.len() as _ }
+pub unsafe extern "C" fn vm_get_vcpu_count(vm: *const Vm) -> spci_vcpu_count_t {
+    (*vm).vcpus.len() as _
 }
