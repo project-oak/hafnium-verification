@@ -15,7 +15,6 @@
  */
 
 use core::mem::{self, MaybeUninit};
-use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::str;
 use core::sync::atomic::AtomicBool;
@@ -161,7 +160,7 @@ impl Mailbox {
         local_page_pool: &MPool,
     ) -> Result<(), ()> {
         let mut hypervisor_ptable = hypervisor_ptable.lock();
-        let mut ptable = guard(hypervisor_ptable.deref_mut(), |_| ());
+        let mut ptable = guard(&mut hypervisor_ptable, |_| ());
 
         // Map the send page as read-only in the hypervisor address space.
         if ptable
@@ -529,54 +528,6 @@ impl Vm {
 
     pub fn debug_log(&self, c: c_char) {
         self.inner.lock().debug_log(self.id, c)
-    }
-}
-
-/// Encapsulates a VM whose lock is held.
-#[repr(C)]
-#[derive(PartialEq, Eq)]
-pub struct VmLocked {
-    vm: *mut Vm,
-}
-
-impl Drop for VmLocked {
-    fn drop(&mut self) {
-        unsafe {
-            (*self.vm).inner.unlock_unchecked();
-        }
-    }
-}
-
-impl Deref for VmLocked {
-    type Target = Vm;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.vm }
-    }
-}
-
-impl VmLocked {
-    #[inline]
-    pub unsafe fn from_raw(vm: *mut Vm) -> Self {
-        Self { vm }
-    }
-
-    #[inline]
-    pub fn into_raw(self) -> *mut Vm {
-        let ret = self.vm;
-        mem::forget(self);
-        ret
-    }
-
-    #[inline]
-    pub fn get_inner(&self) -> &VmInner {
-        unsafe { (*self.vm).inner.get_unchecked() }
-    }
-
-    #[inline]
-    pub fn get_inner_mut(&mut self) -> &mut VmInner {
-        unsafe { (*self.vm).inner.get_mut_unchecked() }
     }
 }
 
