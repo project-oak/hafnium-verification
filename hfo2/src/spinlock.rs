@@ -34,7 +34,11 @@ impl RawSpinLock {
     }
 
     pub fn lock(&self) {
-        while self.inner.swap(true, Ordering::Acquire) {
+        while self
+            .inner
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
             spin_loop_hint();
         }
     }
