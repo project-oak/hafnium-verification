@@ -17,7 +17,7 @@ Run `make` in the root `hafnium` directory.
 Use [cargo-count][count]. You can run like this:
 
  - `cargo install cargo-count`
- - `cargo count -e arch --unsafe-statistics`
+ - `cargo count -e arch --unsafe-statistics # in /hfo2/src`
 
 The result will exclude arch-dependent code.
 
