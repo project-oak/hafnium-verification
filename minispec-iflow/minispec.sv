@@ -1,36 +1,23 @@
 Require Import ListSet.
-<<<<<<< HEAD
 Require Import Coq.Lists.List.
 
 (*aferr: idk if maybe already exists in coq*)
 Inductive maybe (t: Set) : Set :=
   | Some: t -> maybe t
   | None: maybe t.
-=======
->>>>>>> a4cd7d8a093db7909e9cfbec4f72d59df902952e
 
 (*-------------------------------------------------------------------------*)
 (* Hafnium State                                                           *)
 (*-------------------------------------------------------------------------*)
-<<<<<<< HEAD
 
 (* TODO make this an uninterpreted finite set *)
 Definition msg : Set := nat.
 
-=======
-(*aferr: idk if maybe already exists*)
-Inductive maybe (t: Set) : Set :=
-  | Some: t -> maybe t
-  | None: maybe t.
-
-Definition msg : Set := nat.
->>>>>>> a4cd7d8a093db7909e9cfbec4f72d59df902952e
 Inductive vmid : Set :=
   | Primary: vmid
   | Secondary : nat -> vmid.
 
 Definition wlist := list vmid.
-<<<<<<< HEAD
 
 (*aferr: I do not yet understand why there are separate Read and empty states
 * or why there needs to be a separate call to clear the mailbox. Why can't the rreceive call just move from the received state to the empty state *)
@@ -53,17 +40,6 @@ Record hfstate: Set := HFState {
 	(* TODO eventually need more complete model of VM state *)
     vmboxes: vmid -> mailbox;
     current: vmid;
-=======
-Record mailbox : Set := Mailbox {
-    sendb: maybe msg; recvb: maybe msg; waiters: wlist
-}.
-
-Eval simpl in (Mailbox (Some nat 3) (Some nat 4) nil).
-
-Record hfstate: Set := HFState {
-    vmboxes: vmid -> mailbox;
-    next: vmid
->>>>>>> a4cd7d8a093db7909e9cfbec4f72d59df902952e
 }.
 
 (*-------------------------------------------------------------------------*)
@@ -76,7 +52,6 @@ Definition eqid (x y: vmid): bool :=
         | (_, _) => false
     end.
 
-<<<<<<< HEAD
 (* state mutators *)
 Definition updvmbox (s: hfstate)(id: vmid)(mb: mailbox): hfstate :=
     {| 
@@ -185,66 +160,11 @@ Definition send (s: hfstate) (to: vmid) (args: sendargs):
                 let toprime := updwaiter oldto from in
                 (updvmbox s to toprime, sendRetBusy)
             else (s, sendRetBusy)
-=======
-
-Definition updvmbox (s: hfstate)(id: vmid)(mb: mailbox): hfstate :=
-    {| 
-        vmboxes := fun x: vmid => if eqid id x then mb else (vmboxes s) x;
-        next := next s
-    |}.
-
-Definition updnext (s: hfstate)(id: vmid): hfstate :=
-    {| 
-        vmboxes := vmboxes s;
-        next := id
-    |}.
-
-(*-------------------------------------------------------------------------*)
-(* HVCs                                                                    *)
-(*-------------------------------------------------------------------------*)
-Definition sendargs : Set := nat.
-
-(* TODO learn how to make "uninterpreted function declarations" *)
-
-(* Returns true when HVC would error instead of executing. *)
-Definition sendErrs: hfstate -> sendargs -> bool :=
-    fun x => fun y => false. (* TODO *)
-
-(* sendArchitected is how page permissions are changed. 
-*  It is a special case of the send HVC (depending on args) *)
-Definition doSendArchitected : sendargs -> bool := fun x => false. (* TODO *)
-Definition sendArchitected (s: hfstate) (to from : vmid) (args: sendargs):
-    (hfstate * bool) :=
-    (s, false). (* TODO *)
-
-Definition doNotify (args: sendargs) : bool := false. (* TODO *)
-
-Definition send (s: hfstate) (to from: vmid) (args: sendargs):
-  (hfstate * bool) :=
-    let oldto := (vmboxes s) to in
-    let oldfrom := (vmboxes s) from in
-    if sendErrs s args then (s, true)
-    else match recvb oldto with
-        | None _ => 
-            (* receiver mailbox empty, so we can do the send *)
-            if doSendArchitected args
-                then sendArchitected s to from args
-                else let toprime := Mailbox (sendb oldto)
-                    (sendb oldfrom) (waiters oldto ) in
-                   (* need to update state! *)
-                    let sprime := updvmbox s to toprime in
-                    if eqid Primary to then (updnext sprime Primary, false)
-                    else (sprime, false)
-        | Some _ _ => (s, false) (* TODO *)
-                (* need to better understand waitlist
-                behavior. for now just leaving this stub.*)
->>>>>>> a4cd7d8a093db7909e9cfbec4f72d59df902952e
             (* receiver mailbox not empty, so we need to either
             * notify or block *)
     end.
 
 
-<<<<<<< HEAD
 (*-------------------------------------------------------------------------*)
 (* Recv                                                                    *)
 (*-------------------------------------------------------------------------*)
@@ -267,5 +187,3 @@ Definition recv (s: hfstate) (block: bool):  (hfstate * recvRet) :=
             | true => ((switchToPrimary s VCPU_STATE_BLOCKED_MAILBOX), recvRetSucc)
         end
     end.
-=======
->>>>>>> a4cd7d8a093db7909e9cfbec4f72d59df902952e
