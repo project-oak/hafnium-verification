@@ -166,7 +166,7 @@ Definition updstate (mb: mailbox)(s: mboxState): mailbox :=
 (* Switch to Primary *)
 (*-------------------------------------------------------------------------*)
 (* This is called by send and recv and causes an immediate context switch
-* to the primary VM *)
+ * to the primary VM *)
 (* It is not filled in, but the important thing is that the primary VM does
 know that it is executing *)
 
@@ -267,8 +267,10 @@ Definition send (s: hfstate) (to: vmid (*{s.hfstate.current}*) )
 (*-------------------------------------------------------------------------*)
 (* Recv                                                                    *)
 (*-------------------------------------------------------------------------*)
-(*aferr: Note that AFAICT this call does not actually do anything with the data
-* in the reveive buffer. It just changes the mailbox state on a successful call. Presumably the expectation is that between the recv call and the clear call the caller will manually copy the data out of the receive buffer. *)
+(* aferr: Note that AFAICT this call does not actually do anything with the data
+ * in the reveive buffer. It just changes the mailbox state on a successful call. 
+ * Presumably the expectation is that between the recv call and the clear call 
+ * the caller will manually copy the data out of the receive buffer. *)
 
 Inductive recvRet: Set :=
     | recvRetSucc
