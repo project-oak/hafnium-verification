@@ -5,7 +5,7 @@ difficult/interesting aspects of formalizing security.
 
 ## How waiting/ready list in VM's mailbox works
 
-~~~
+₩₩₩
 mailbox {
   :
   list_entry waiter_list
@@ -17,10 +17,10 @@ vm {
   mailbox mailbox
   wait_entry wait_entries[MAX_VMS]
 }
-~~~
+₩₩₩
 
 When VM a wants to send a message to VM b but VM b is busy
-  ~a->wait_entries[b->id]~ gets added into b->mailbox->waiter_list
+  ₩a->wait_entries[b->id]₩ gets added into b->mailbox->waiter_list
   
 When VM b becomes available and wants to notify its availability to VM a
   a's wait_entry in b->mailbox->waiter_list (= a->waiter_list[b->id]) gets removed
