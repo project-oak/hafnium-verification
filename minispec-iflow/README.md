@@ -23,8 +23,7 @@ When VM `a` wants to send a message to VM `b` but `b` is busy
   `a->wait_entries[b->id]` gets added into `b->mailbox->waiter_list`
   
 When VM `b` becomes available and wants to notify its availability to VM `a`
-  `a`'s wait_entry in `b->mailbox->waiter_list` (= `a->waiter_list[b->id]`) gets removed
-     => The removed entry is `a->wait_entries[b->id]`
+  `a`'s wait_entry in `b->mailbox->waiter_list`, which is the same as `a->waiter_list[b->id]`, gets removed
   Then, then the removed entry gets added into `a->mailbox->ready_list`
      => In the ready_list, the ID of the target VM represented by the entry can be
         found by computing `entry - a->wait_entries`
