@@ -34,4 +34,4 @@ Use VM's IDs instead of `wait_entry`. Then, `wating_list` and `ready_list` are j
 
 One tricky thing is that, in `api_mailbox_waiter_get()`, it checks if a VM is already in the ready list to avoid adding it again. Well, in reality, when using intrusive list, it is impossible to add an entry multiple times. So, avoidance of redundant addition might be just a side effect.
 
-In the top-level spec, we can achieve the same effect by checking the ready list.
+In the top-level spec, we can achieve the same effect by checking the `ready_list`.
