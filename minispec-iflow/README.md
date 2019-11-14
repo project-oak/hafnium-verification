@@ -5,6 +5,11 @@ difficult/interesting aspects of formalizing security.
 
 ## How mailbox works 
 
+** [NOTE] ** It turns out that with a recent change in code, memory sharing request could be also done by sending a mailbox message to another VM. For now, let's ingore that aspect.
+
+The following are relevant hypervisor calls.
+
+* configure
 * send
 * recv
 * release
