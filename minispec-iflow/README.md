@@ -72,3 +72,7 @@ Use VM's IDs instead of `wait_entry`. Then, `wating_list` and `ready_list` are j
 One tricky thing is that, in `api_mailbox_waiter_get()`, it checks if a VM is already in the ready list to avoid adding it again. Well, in reality, when using intrusive list, it is impossible to add an entry multiple times. So, avoidance of redundant addition might be just a side effect.
 
 In the top-level spec, we can achieve the same effect by checking the `ready_list`.
+
+## Switching to the primary VM
+
+Both `send()` and `recv()` could end with switching to the primary VM. For `send()`, it is to enable the receiving VM to process the received message as soon as possbile. For `recv()`, it is to block the sending VM until it receives the expected message. In both cases, when the VM resumes execution later, it will return from the corresponding hypervisor call with appropriate return values.
