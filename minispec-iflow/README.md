@@ -34,7 +34,7 @@ How send/recv works when the target VM's mailbox is busy and the source VM wants
   The primary VM shomehow notifies the soure VM to try sending the message.
 * source VM: **Somehow gets** notified that one of the busy mailboxes become available. Try sending the mssage again.
 
-## How waiting/ready list in VM's mailbox works
+## How waiting/ready list works
 
 In Hafnium, a VM struct has a field called `mailbox` that maintains its waiter list and ready list. 
 
