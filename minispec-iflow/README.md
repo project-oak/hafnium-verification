@@ -3,6 +3,15 @@ meant to be used to study a proposed security condition and is not meant to be
 totally accurate or complete. It is meant to model some of the more 
 difficult/interesting aspects of formalizing security.
 
+## How mailbox works 
+
+* send
+* recv
+* release
+* get_waiter
+* get_writable
+* Anything else?
+
 ## How waiting/ready list in VM's mailbox works
 
 In Hafnium, a VM struct has a field called `mailbox` that maintains its waiter list and ready list. 
@@ -27,6 +36,8 @@ The waiter list represents VMs that tried to send message to the mailbox owner b
   
 * When VM `b` becomes available later and wants to notify its availability to VM `a`, `a`'s wait_entry in `b->mailbox->waiter_list`, which is the same as `a->waiter_list[b->id]`, gets removed. Then, the removed entry gets added into `a->mailbox->ready_list`. In the code, this happens in `api_fetch_waiter()`.
 
+* **[NEED CHECK]** Does the primary VM notify a VM to retry sending a message to another VM using vitural interrupts? Or, does it do something when scheduling a VM to run?
+ 
 The ready list represents VMs that (1) the mailbox's owner tried to send messages but couldn't because their mailboxes were busy but then their mailboxes became available later. This does not mean that the mailboxes of the VMs are still availabl because they may have received new messages in between. Hafnium provides a hypervior call, available to all VMs, that removes and then returns an entry from the ready list given a VM's ID. The caller uses this hypervisor call to try sending the message to the VM of the returend ID.
 
 * A VM can check if there has been any VM that notified its mailbox had become available by calling a HVC call, which eventually calls `api_mailbox_writable_get()`. In this function, the ID of the VM represented by an entry `entry` in `ready_list` can be constructed by computing `entry - a->wait_entries`.
