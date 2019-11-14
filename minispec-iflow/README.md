@@ -15,7 +15,7 @@ The following are relevant hypervisor calls.
 * release
 * get_waiter
 * get_writable
-* Anything else?
+* **Anything other than these?**
 
 How send/recv works when the target VM's mailbox is available.
 
