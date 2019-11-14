@@ -19,20 +19,20 @@ The following are relevant hypervisor calls.
 
 How send/recv works when the target VM's mailbox is available.
 
-* source VM: Calls send() to send a message to the target VM. The target VM's mailbox is EMPTY.
-  The send succeeds. The source VM's mailbox becomes RECEIVED.
-* target VM: Calls recv() to check if received a message. The target VM's mailbox becomes READ.
-* target VM: Read the recv buffer.
-* target VM: Calls rx_release() to clear the message. The target VM's mailbox becomes EMPTY.
+1. The source VM calls `send()` to send a message to the target VM. The target VM's mailbox is EMPTY.
+   The send succeeds. The source VM's mailbox becomes RECEIVED.
+2. The target VM calls `recv()` to check if received a message. The target VM's mailbox becomes READ.
+3. The target VM reads the recv buffer.
+4. The target VM calls `rx_release()` to clear the message. The target VM's mailbox becomes EMPTY.
 
 How send/recv works when the target VM's mailbox is busy and the source VM wants to be blocked.
 
-* source VM: Calls send() to send a message to the target VM. The target VM's mailbox is busy.
-  The send fails. The source VM is added in the waiter list of the target VM's mailbox.
-* target VM: Reads the message in the mailbox and clear the mail box. The target VM's mailbox comes EMPTY.
-* primary VM: **Somehow calls** waiter_get() to add the target VM in the ready list of the source VM.
-  The primary VM shomehow notifies the soure VM to try sending the message.
-* source VM: **Somehow gets** notified that one of the busy mailboxes become available. Try sending the mssage again.
+1. The source VM calls `send()` to send a message to the target VM. The target VM's mailbox is busy.
+   The send fails. The source VM is added in the waiter list of the target VM's mailbox.
+2. The target VM reads the message in the mailbox and clear the mail box. The target VM's mailbox comes EMPTY.
+3. The primary VM **somehow calls** `waiter_get()` to add the target VM in the ready list of the source VM.
+   The primary VM **shomehow notifies** the source VM so that it can retry sending the message.
+4. The source VM **somehow discovers** that one of the busy mailboxes become available. It retries sending the message.
 
 ## How waiting/ready list works
 
