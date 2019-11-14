@@ -17,12 +17,22 @@ The following are relevant hypervisor calls.
 * get_writable
 * Anything else?
 
-How send/recv works.
+How send/recv works when the target VM's mailbox is available.
 
-* source VM: Calls send() to send a message to the target VM. The source VM's mailbox becomes RECEIVED.
-* target VM: Calls recv() to check if received a message. The source VM's mailbox becomes READ.
+* source VM: Calls send() to send a message to the target VM. The target VM's mailbox is EMPTY.
+  The send succeeds. The source VM's mailbox becomes RECEIVED.
+* target VM: Calls recv() to check if received a message. The target VM's mailbox becomes READ.
 * target VM: Read the recv buffer.
-* target VM: Calls rx_release() to clear the message. The source VM's mailbox becomes EMPTY.
+* target VM: Calls rx_release() to clear the message. The target VM's mailbox becomes EMPTY.
+
+How send/recv works when the target VM's mailbox is busy and the source VM wants to be blocked.
+
+* source VM: Calls send() to send a message to the target VM. The target VM's mailbox is busy.
+  The send fails. The source VM is added in the waiter list of the target VM's mailbox.
+* target VM: Reads the message in the mailbox and clear the mail box. The target VM's mailbox comes EMPTY.
+* primary VM: **Somehow calls** waiter_get() to add the target VM in the ready list of the source VM.
+  The primary VM shomehow notifies the soure VM to try sending the message.
+* source VM: **Somehow gets** notified that one of the busy mailboxes become available. Try sending the mssage again.
 
 ## How waiting/ready list in VM's mailbox works
 
