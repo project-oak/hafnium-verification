@@ -17,6 +17,14 @@ The following are relevant hypervisor calls.
 * get_writable
 * Anything else?
 
+How send/recv works.
+
+* source VM: Calls send() to send a message to the target VM. 
+* The source VM's mailbox becomes RECEIVED.
+* target VM: Calls recv() to check if received a message. The source VM's mailbox becomes READ.
+* target VM: Read the recv buffer.
+* target VM: Calls rx_release() to clear the message. The source VM's mailbox becomes EMPTY.
+
 ## How waiting/ready list in VM's mailbox works
 
 In Hafnium, a VM struct has a field called `mailbox` that maintains its waiter list and ready list. 
