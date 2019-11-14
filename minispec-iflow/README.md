@@ -19,8 +19,7 @@ The following are relevant hypervisor calls.
 
 How send/recv works.
 
-* source VM: Calls send() to send a message to the target VM. 
-* The source VM's mailbox becomes RECEIVED.
+* source VM: Calls send() to send a message to the target VM. The source VM's mailbox becomes RECEIVED.
 * target VM: Calls recv() to check if received a message. The source VM's mailbox becomes READ.
 * target VM: Read the recv buffer.
 * target VM: Calls rx_release() to clear the message. The source VM's mailbox becomes EMPTY.
