@@ -75,4 +75,4 @@ In the top-level spec, we can achieve the same effect by checking the `ready_lis
 
 ## Switching to the primary VM
 
-Both `send()` and `recv()` could end with switching to the primary VM. For `send()`, it is to enable the receiving VM to process the received message as soon as possbile. For `recv()`, it is to block the sending VM until it receives the expected message. In both cases, when the VM resumes execution later, it will return from the corresponding hypervisor call with appropriate return values.
+Both `send()` and `recv()` could end with switching to the primary VM. For `send()`, it is to enable the receiving VM to process the received message as soon as possbile. For `recv()`, it is to block the sending VM until it receives the expected message or interrupted. In both cases, when the VM resumes execution later, it will return from the corresponding hypervisor call with appropriate return values.
