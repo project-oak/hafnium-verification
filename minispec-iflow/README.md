@@ -1,13 +1,30 @@
-This is a small coq specification of a subset of Hafnium. For now, this spec is 
-meant to be used to study a proposed security condition and is not meant to be 
-totally accurate or complete. It is meant to model some of the more 
-difficult/interesting aspects of formalizing security.
+This is a fork of the Hafnium verification repository for the mailbox 
+specification hackathon.
 
-## How mailbox works 
+# Hackathon Instructions
 
-**[NOTE]** It turns out that with a recent change in code, memory sharing request could be also done by sending a mailbox message to another VM. For now, let's ingore that aspect.
+In this hackathon we will be focusing on writing an abstract coq specification 
+of the mailbox hypervisor calls. Use the following guidelines when writing the 
+specification:
 
-The following are relevant hypervisor calls.
+* It should be purely functional
+* We should believe that the implementation could refine the specification
+* Functions should take the global state as an argument, and return an updated 
+  global state as the return value (or as one return value)
+* Feel free to decompose the C functions into more functions when writing the 
+  specification
+* The global state and other values should be more abstract than the C. As a 
+  starting point:
+    * Errors should be inductive datatypes not integers
+    * Structs should be record types
+    * Lists should be list types rather than arrays
+    * Hafnium's data structures should be algebraic datatypes distinct from 
+      VM memory (assume that this can be proven elsewhere).
+
+Though do feel free to improve on these choices!
+
+Please choose one hypervisor call to focus on specifying. The following are 
+the relevant hypervisor calls:
 
 * configure
 * send
@@ -16,6 +33,26 @@ The following are relevant hypervisor calls.
 * get_waiter
 * get_writable
 * **Anything other than these?**
+
+Also specify functions that are called by these HVCs. For example, [ ... TODO 
+... ] calls [ ... ].
+
+An example global state is given in [... TODO ...].
+
+An example send specification is given in [... TODO ...].
+
+For convenience, pieces of the C code have been placed in [... TODO ...]. But 
+the original Hafnium C implementation is available at:
+https://hafnium.googlesource.com/hafnium
+
+
+
+# How mailbox works 
+
+## How send/recv works 
+
+**[NOTE]** It turns out that with a recent change in code, memory sharing request could be also done by sending a mailbox message to another VM. For now, let's ingore that aspect.
+
 
 How send/recv works when the target VM's mailbox is available.
 
