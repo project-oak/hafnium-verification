@@ -36,6 +36,11 @@ the relevant hypervisor calls:
 * get_writable
 * **Anything other than these?**
 
+The C implementations of these calls can be found in the src/api.c file of the 
+original Hafnium repository. This one C file has also been copied into 
+c_impl/api.c for convenience. The original Hafnium C implementation is
+available at: https://hafnium.googlesource.com/hafnium
+
 Also specify functions that are called by these HVCs. For example, 
 send calls switch_to_primary.
 
@@ -45,17 +50,18 @@ may need amend it as you work on specifying the calls.
 
 Example specifications of send and recv are given in src/{send,recv}.v
 
-For convenience, pieces of the C code have been placed in [... TODO ...]. But 
-the original Hafnium C implementation is available at:
-https://hafnium.googlesource.com/hafnium
+There is a Makfile that uses coq_makefile tool that reads the \_CoqProject file. 
+Simply run 'make' and ensure that there are no errors before commiting your 
+code. If you need to add new files to the build, add them to \_CoqProject.
 
 When writing specifications here are some things to think about:
 * There is a lot of code in the HVCs that checks arugments and may return 
   errors. Could we get rid of some of this code by relying on type safety?
     * If so, can we reduce even more error checking by changing the spec
       representation? For example, by using dependent types?
-* Can we make the specification more trustworthy by making it even more 
+* Can we make the specification more trustworthy by making it more 
   abstract somehow?
+* How else could we write a better specification.
 
 # How mailbox works 
 
