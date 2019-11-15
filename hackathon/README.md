@@ -16,6 +16,8 @@ specification:
 * The global state and other values should be more abstract than the C. As a 
   starting point:
     * Errors should be inductive datatypes not integers
+    * When values may or may not be produced, wrap them in an Option/Maybe 
+      monad.
     * Structs should be record types
     * Lists should be list types rather than arrays
     * Hafnium's data structures should be algebraic datatypes distinct from 
@@ -37,7 +39,9 @@ the relevant hypervisor calls:
 Also specify functions that are called by these HVCs. For example, [ ... TODO 
 ... ] calls [ ... ].
 
-An example global state is given in [... TODO ...].
+Because all of the HVCs rely on having some specification of the global state,
+an initial global state specification is given in [... TODO ...], though you 
+may need amend it as you work on specifying the calls.
 
 An example send specification is given in [... TODO ...].
 
@@ -45,7 +49,13 @@ For convenience, pieces of the C code have been placed in [... TODO ...]. But
 the original Hafnium C implementation is available at:
 https://hafnium.googlesource.com/hafnium
 
-
+When writing specifications here are some things to think about:
+* There is a lot of code in the HVCs that checks arugments and may return 
+  errors. Could we get rid of some of this code by relying on type safety?
+    * If so, can we reduce even more error checking by changing the spec
+      representation? For example, by using dependent types?
+* Can we make the specification more trustworthy by making it even more 
+  abstract somehow?
 
 # How mailbox works 
 
