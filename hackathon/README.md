@@ -36,14 +36,14 @@ the relevant hypervisor calls:
 * get_writable
 * **Anything other than these?**
 
-Also specify functions that are called by these HVCs. For example, [ ... TODO 
-... ] calls [ ... ].
+Also specify functions that are called by these HVCs. For example, 
+send calls switch_to_primary.
 
 Because all of the HVCs rely on having some specification of the global state,
-an initial global state specification is given in [... TODO ...], though you 
+an initial global state specification is given in src/global_state.v, though you 
 may need amend it as you work on specifying the calls.
 
-An example send specification is given in [... TODO ...].
+Example specifications of send and recv are given in src/{send,recv}.v
 
 For convenience, pieces of the C code have been placed in [... TODO ...]. But 
 the original Hafnium C implementation is available at:
