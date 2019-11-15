@@ -1,5 +1,6 @@
 Require Import ListSet.
 Require Import Coq.Lists.List.
+Require Import Mailbox.global_state.
 
 (*-------------------------------------------------------------------------*)
 (* Utilities                                                               *)

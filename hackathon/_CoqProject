@@ -1,0 +1,6 @@
+-R src/ Mailbox
+src/global_state.v
+src/utils.v
+src/switch_to_primary.v
+src/send.v
+src/recv.v

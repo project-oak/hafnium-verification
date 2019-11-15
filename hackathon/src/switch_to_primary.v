@@ -1,3 +1,5 @@
+Require Import Mailbox.global_state.
+Require Import Mailbox.utils.
 
 (*-------------------------------------------------------------------------*)
 (* Switch to Primary *)
