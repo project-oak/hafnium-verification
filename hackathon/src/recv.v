@@ -40,13 +40,14 @@ Inductive recvRet: Set :=
 Definition recv (s: hfstate) (block: bool):  (hfstate * recvRet) :=
     let cur := current s in
     let curbox := (vmboxes s) cur in
-    (* 1 *) if eqid cur Primary then (s, recvRetInt)
+    if eqid cur Primary then (s, recvRetInt)
     else match state curbox with
-        | (* 2 *) Recv => (updvmbox s cur (updstate curbox Read), recvRetSucc)
+        | Recv => (updvmbox s cur (updstate curbox Read), recvRetSucc)
         | _ => match block with
-            | (* 3 *) false => (s, recvRetRetry)
-              (* 4 *) (* CURRENTLY MISSING *)
-            | (* 5 *) true => ((switchToPrimary s VCPU_STATE_BLOCKED_MAILBOX), recvRetSucc)
+            | false => (s, recvRetRetry)
+            | true => if interrupted cur
+                        then (s, recvRetInt)
+                        else ((switchToPrimary s VCPU_STATE_BLOCKED_MAILBOX), recvRetInt)
         end
     end.
 
