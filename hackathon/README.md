@@ -129,3 +129,30 @@ In the top-level spec, we can achieve the same effect by checking the `ready_lis
 ## Switching to the primary VM
 
 Both `send()` and `recv()` could end with switching to the primary VM. For `send()`, it is to enable the receiving VM to process the received message as soon as possbile. For `recv()`, it is to block the sending VM until it receives the expected message or interrupted. In both cases, when the VM resumes execution later, it will return from the corresponding hypervisor call with appropriate return values.
+
+## Relation to SPCI
+
+
+* SPCI_MSG_RX_RELEASE_32 -> api_spci_rx_release()
+* SPCI_MSG_SEND_32 -> api_spci_msg_send()
+* SPCI_MSG_WAIT_32 -> api_spci_msg_recv(block = true)
+* SPCI_MSG_POLL_32 -> api_spci_msg_recv(block = false)
+
+```
+struct spci_value args = {
+    .func = vcpu->regs.r[0],
+    .arg1 = vcpu->regs.r[1],
+    .arg2 = vcpu->regs.r[2],
+    .arg3 = vcpu->regs.r[3],
+    .arg4 = vcpu->regs.r[4],
+    .arg5 = vcpu->regs.r[5],
+    .arg6 = vcpu->regs.r[6],
+    .arg7 = vcpu->regs.r[7],
+};
+```
+
+
+Note: The following hyperviosr calls do not appear having corresponding SPCI calls yet.
+
+* HF_MAILBOX_WRITABLE_GET -> api_mailbox_writable_get
+* HF_MAILBOX_WAITER_GET -> api_mailbox_waiter_get
