@@ -28,8 +28,11 @@ Definition sendArchitected (s: hfstate) (to from : vmid) (args: sendargs):
 
 Definition doNotify (args: sendargs) : bool := false. (* TODO *)
 
+(* TODO aferr: recheck some_spci_value. I have no idea if this makes sense.
+* just added while working on switchToPrimary *)
+
 Definition send (s: hfstate) (to: vmid ) 
-    (args: sendargs ):
+    (args: sendargs )(some_spci_value: spci_value):
   (hfstate * sendRet) :=
     let from := current s in
     let oldto := (vmboxes s) to in
@@ -43,7 +46,8 @@ Definition send (s: hfstate) (to: vmid )
                     (sendb oldfrom ) (waiters oldto) (readylist oldto) in
                     let sprime := updvmbox s to toprime in
                     if eqid Primary to then 
-						(switchToPrimary sprime VCPU_STATE_READY,
+                    (* TODO Fix the primary_ret *)
+						(switchToPrimary sprime VCPU_STATE_READY some_spci_value,
                         	sendRetSucc)
                     else (sprime, sendRetSucc)
         | _ => 
