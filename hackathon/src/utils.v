@@ -17,6 +17,7 @@ Definition updvmbox (s: hfstate)(id: vmid)(mb: mailbox): hfstate :=
     {| 
         vmboxes := fun x: vmid => if eqid id x then mb else (vmboxes s) x;
         current := current s;
+        SPCI_MSG_PAYLOAD_MAX := SPCI_MSG_PAYLOAD_MAX s; 
     |}.
 
 (* mailbox mutators *)

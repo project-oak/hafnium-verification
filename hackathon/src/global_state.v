@@ -36,4 +36,5 @@ Record hfstate: Set := HFState {
     (*TODO model of VCPUs ? *)
     vmboxes: vmid -> mailbox;
     current: vmid;
+    SPCI_MSG_PAYLOAD_MAX: nat;
 }.
