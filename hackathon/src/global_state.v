@@ -37,3 +37,19 @@ Record hfstate: Set := HFState {
     vmboxes: vmid -> mailbox;
     current: vmid;
 }.
+
+Inductive spci_value_func : Set :=
+    | HF_SPCI_RUN_WAIT_FOR_INTERRUPT
+    | SPCI_MSG_WAIT_32
+    | SPCI_INTERRUPT_32.
+
+Record spci_value : Set := SPCI_Value {
+	func: spci_value_func;
+	arg1: nat;
+	arg2: nat;
+	arg3: nat;
+	arg4: nat;
+	arg5: nat;
+	arg6: nat;
+	arg7: nat;
+}.
