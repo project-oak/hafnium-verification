@@ -28,7 +28,8 @@ Record mailbox : Set  := Mailbox {
     state: mboxState;
     sendb: maybe msg;
     recvb: maybe msg;
-    waiters: wlist
+    waiters: wlist;
+    readylist: wlist;
 }.
 
 Record hfstate: Set := HFState {

@@ -27,6 +27,17 @@ Definition updwaiter (mb: mailbox)(id: vmid): mailbox :=
         sendb := sendb mb; 
         recvb := recvb mb; 
         waiters := id :: (waiters mb);
+        readylist := readylist mb;
+    |}.
+
+(* mailbox mutators *)
+Definition updready (mb: mailbox)(id: vmid): mailbox :=
+    {|
+        state := state mb;
+        sendb := sendb mb; 
+        recvb := recvb mb; 
+        waiters := waiters mb;
+        readylist := id :: (readylist mb);
     |}.
 
 (* mailbox mutators *)
@@ -40,6 +51,7 @@ Definition remwaiter (mb: mailbox): mailbox :=
                 | nil => nil
                 | cons waiter waiters' => waiters'
             end;
+        readylist := readylist mb;
     |}.
 
 (* mailbox mutators *)
@@ -49,5 +61,6 @@ Definition updstate (mb: mailbox)(s: mboxState): mailbox :=
         sendb := sendb mb; 
         recvb := recvb mb; 
         waiters := waiters mb;
+        readylist := readylist mb;
     |}.
         

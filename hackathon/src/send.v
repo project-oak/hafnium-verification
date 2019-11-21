@@ -40,7 +40,7 @@ Definition send (s: hfstate) (to: vmid )
             if doSendArchitected args 
                 then sendArchitected s to from args
                 else let toprime := Mailbox Recv (sendb oldto)
-                    (sendb oldfrom ) (waiters oldto) in
+                    (sendb oldfrom ) (waiters oldto) (readylist oldto) in
                     let sprime := updvmbox s to toprime in
                     if eqid Primary to then 
 						(switchToPrimary sprime VCPU_STATE_READY,
