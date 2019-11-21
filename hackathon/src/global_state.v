@@ -13,6 +13,7 @@ Inductive maybe (t: Set) : Set :=
 Definition msg : Set := nat.
 
 Inductive vmid : Set :=
+  | Invalid: vmid
   | Primary: vmid           
   | Secondary : nat -> vmid.
 

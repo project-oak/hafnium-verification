@@ -31,6 +31,19 @@ Definition updwaiter (mb: mailbox)(id: vmid): mailbox :=
     |}.
 
 (* mailbox mutators *)
+Definition remwaiter (mb: mailbox): mailbox :=
+    {|
+        state := state mb;
+        sendb := sendb mb; 
+        recvb := recvb mb;
+        waiters :=
+            match waiters mb with 
+                | nil => nil
+                | cons waiter waiters' => waiters'
+            end;
+    |}.
+
+(* mailbox mutators *)
 Definition updstate (mb: mailbox)(s: mboxState): mailbox :=
     {|
         state := s;

@@ -8,7 +8,7 @@ Require Import Mailbox.switch_to_primary.
 (* Without modeling vCPU, we cannot implement interrupted(). *)
 
 Definition interrupted (vcpu_id: vmid): bool :=
-    true.    
+    true.   
 
 (*-------------------------------------------------------------------------*)
 (* recv                                                                    *)
