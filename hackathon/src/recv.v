@@ -8,7 +8,7 @@ Require Import Mailbox.switch_to_primary.
 (* Without modeling vCPU, we cannot implement interrupted(). *)
 
 Definition interrupted (vcpu_id: vmid): bool :=
-    true.    
+    true.   
 
 (*-------------------------------------------------------------------------*)
 (* recv                                                                    *)
@@ -37,7 +37,9 @@ Inductive recvRet: Set :=
     | recvRetRetry
     | recvRetInt.
 
-Definition recv (s: hfstate) (block: bool):  (hfstate * recvRet) :=
+(* TODO aferr: recheck some_spci_value. I have no idea if this makes sense.
+* just added while working on switchToPrimary *)
+Definition recv (s: hfstate) (block: bool)(some_spci_value: spci_value):  (hfstate * recvRet) :=
     let cur := current s in
     let curbox := (vmboxes s) cur in
     if eqid cur Primary then (s, recvRetInt)
@@ -47,7 +49,8 @@ Definition recv (s: hfstate) (block: bool):  (hfstate * recvRet) :=
             | false => (s, recvRetRetry)
             | true => if interrupted cur
                         then (s, recvRetInt)
-                        else ((switchToPrimary s VCPU_STATE_BLOCKED_MAILBOX), recvRetInt)
+                        else ((switchToPrimary 
+                            s VCPU_STATE_BLOCKED_MAILBOX some_spci_value), recvRetInt)
         end
     end.
 
