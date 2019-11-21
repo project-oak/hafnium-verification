@@ -4,3 +4,4 @@ src/utils.v
 src/switch_to_primary.v
 src/send.v
 src/recv.v
+src/waiter_get.v
