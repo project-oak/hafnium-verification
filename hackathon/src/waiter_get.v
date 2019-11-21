@@ -53,8 +53,10 @@ Definition waiter_get (s: hfstate) (vm_id : vmid) (current_vcpu : vmid) : (vmid 
                (* TODO : should undate the ready list of the waiting VM *)
                let (waiter, s') := fetch_waiter s vm_id in
                     match waiter with
-                         | Invalid => (Invalid, s)
-                         | _ => (waiter, s')
+                         | Invalid => (Invalid, s')
+                         | _ =>
+                              let updated_mailbox := updready ((vmboxes s') waiter) vm_id in
+                                   (waiter, updvmbox s' waiter updated_mailbox)
                     end
           | _ => (Invalid, s)
      end.
