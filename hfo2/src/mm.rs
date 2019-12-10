@@ -309,14 +309,13 @@ impl PageTableEntry {
         unsafe { Self::from_raw(arch_mm_block_pte(level, begin, attrs)) }
     }
 
-    /// # Safety
-    ///
-    /// `page` should be a proper page table.
-    unsafe fn table(level: u8, page: Page) -> Self {
-        Self::from_raw(arch_mm_table_pte(
-            level,
-            pa_init(page.into_raw() as uintpaddr_t),
-        ))
+    fn table(level: u8, page: PageTableNode) -> Self {
+        unsafe {
+            Self::from_raw(arch_mm_table_pte(
+                level,
+                pa_init(page.into_raw() as uintpaddr_t),
+            ))
+        }
     }
 
     fn is_present(&self, level: u8) -> bool {
@@ -437,35 +436,26 @@ impl PageTableEntry {
         }
 
         // Allocate a new table.
-        let mut page = mpool
+        let page = mpool
             .alloc()
             .map_err(|_| dlog!("Failed to allocate memory for page table\n"))?;
 
-        let table = unsafe { RawPageTable::deref_mut_page(&mut page) };
-
         // Initialise entries in the new table.
         let level_below = level - 1;
-        if self.is_block(level) {
+        let table = if self.is_block(level) {
             let attrs = self.attrs(level);
             let entry_size = addr::entry_size(level_below);
 
-            for (i, pte) in table.iter_mut().enumerate() {
-                unsafe {
-                    ptr::write(
-                        pte,
-                        Self::block(
-                            level_below,
-                            pa_init(self.inner as usize + i * entry_size),
-                            attrs,
-                        ),
-                    );
-                }
-            }
+            PageTableNode::new(page, |i| {
+                Self::block(
+                    level_below,
+                    pa_init(self.inner as usize + i * entry_size),
+                    attrs,
+                )
+            })
         } else {
-            for pte in table.iter_mut() {
-                unsafe { ptr::write(pte, Self::absent(level_below)) };
-            }
-        }
+            PageTableNode::new(page, |_| Self::absent(level_below))
+        };
 
         // Ensure initialisation is visible before updating the pte.
         //
@@ -473,7 +463,7 @@ impl PageTableEntry {
         fence(Ordering::Release);
 
         // Replace the pte entry, doing a break-before-make if needed.
-        let table = unsafe { Self::table(level, page) };
+        let table = Self::table(level, table);
         self.replace::<S>(table, begin, level, mpool);
 
         Ok(())
@@ -591,22 +581,6 @@ impl DerefMut for RawPageTable {
 }
 
 impl RawPageTable {
-    unsafe fn deref_page(page: &Page) -> &Self {
-        Self::deref_raw_page(page)
-    }
-
-    unsafe fn deref_mut_page(page: &mut Page) -> &mut Self {
-        Self::deref_mut_raw_page(page)
-    }
-
-    unsafe fn deref_raw_page(page: &RawPage) -> &Self {
-        &*(page as *const _ as *const _)
-    }
-
-    unsafe fn deref_mut_raw_page(page: &mut RawPage) -> &mut Self {
-        &mut *(page as *mut _ as *mut _)
-    }
-
     /// Returns whether all entries in this table are absent.
     fn is_empty(&self, level: u8) -> bool {
         self.iter().all(|pte| !pte.is_present(level))
@@ -745,6 +719,38 @@ impl RawPageTable {
     }
 }
 
+/// TODO(HfO2): Investigate follows:
+///  - What is the invariant of PageTableNode, and the difference from PageTable?
+///  - Which method in PageTable can we implement in PageTableNode?
+struct PageTableNode {
+    ptr: *mut RawPageTable,
+}
+
+impl PageTableNode {
+    fn new(page: Page, mut pte_init: impl FnMut(usize) -> PageTableEntry) -> Self {
+        let ptes = unsafe { &mut *(page.into_raw() as *mut [PageTableEntry; PTE_PER_PAGE]) };
+        for (i, pte) in ptes.iter_mut().enumerate() {
+            mem::forget(mem::replace(pte, pte_init(i)));
+        }
+
+        Self {
+            ptr: ptes as *mut _ as *mut RawPageTable,
+        }
+    }
+
+    fn into_raw(self) -> *mut RawPageTable {
+        let ret = self.ptr;
+        mem::forget(self);
+        ret
+    }
+}
+
+impl Drop for PageTableNode {
+    fn drop(&mut self) {
+        panic!("`PageTableNode` should not be dropped.");
+    }
+}
+
 /// Page table.
 pub struct PageTable<S: Stage> {
     root: paddr_t,
@@ -768,12 +774,11 @@ impl<S: Stage> PageTable<S> {
         let root_table_count = S::root_table_count();
         let mut pages = mpool.alloc_pages(root_table_count as usize, root_table_count as usize)?;
 
-        for page in pages.iter_mut() {
-            let table = unsafe { RawPageTable::deref_mut_raw_page(page) };
+        for raw_page in pages.iter_mut() {
+            let page = unsafe { Page::from_raw(raw_page) };
+            let table = PageTableNode::new(page, |_| PageTableEntry::absent(S::max_level()));
 
-            for pte in table.iter_mut() {
-                unsafe { ptr::write(pte, PageTableEntry::absent(S::max_level())) };
-            }
+            mem::forget(table);
         }
 
         // TODO: halloc could return a virtual or physical address if mm not enabled?
