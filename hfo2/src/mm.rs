@@ -309,11 +309,11 @@ impl PageTableEntry {
         unsafe { Self::from_raw(arch_mm_block_pte(level, begin, attrs)) }
     }
 
-    fn table(level: u8, page: PageTableNode) -> Self {
+    fn table(level: u8, node: PageTableNode) -> Self {
         unsafe {
             Self::from_raw(arch_mm_table_pte(
                 level,
-                pa_init(page.into_raw() as uintpaddr_t),
+                pa_init(node.into_page() as uintpaddr_t),
             ))
         }
     }
@@ -727,7 +727,10 @@ struct PageTableNode {
 }
 
 impl PageTableNode {
-    fn new(page: Page, mut pte_init: impl FnMut(usize) -> PageTableEntry) -> Self {
+    fn new<F>(page: Page, pte_init: F) -> Self
+    where
+        F: Fn(usize) -> PageTableEntry,
+    {
         let ptes = unsafe { &mut *(page.into_raw() as *mut [PageTableEntry; PTE_PER_PAGE]) };
         for (i, pte) in ptes.iter_mut().enumerate() {
             mem::forget(mem::replace(pte, pte_init(i)));
@@ -738,7 +741,7 @@ impl PageTableNode {
         }
     }
 
-    fn into_raw(self) -> *mut RawPageTable {
+    fn into_page(self) -> *mut RawPageTable {
         let ret = self.ptr;
         mem::forget(self);
         ret
