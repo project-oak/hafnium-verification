@@ -359,30 +359,33 @@ impl PageTableEntry {
     }
 
     fn as_table_mut(&mut self, level: u8) -> Result<&mut RawPageTable, ()> {
-        unsafe {
-            if arch_mm_pte_is_table(self.inner, level) {
-                Ok(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _))
-            } else {
-                Err(())
-            }
+        if self.is_table(level) {
+            unsafe { Ok(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _)) }
+        } else {
+            Err(())
         }
+    }
+
+    fn into_table(self, level: u8) -> Result<PageTableNode, ()> {
+        let ret = if self.is_table(level) {
+            unsafe {
+                Ok(PageTableNode::from_raw(
+                    pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _,
+                ))
+            }
+        } else {
+            Err(())
+        };
+
+        mem::forget(self);
+        ret
     }
 
     /// Frees all page-table-related memory associated with the given pte at the given level,
     /// including any subtables recursively.
-    ///
-    /// # Safety
-    ///
-    /// After a page table entry is freed, it's value is undefined.
-    unsafe fn free(&mut self, level: u8, mpool: &MPool) {
-        if let Ok(table) = self.as_table_mut(level) {
-            // Recursively free any subtables.
-            for pte in table.iter_mut() {
-                pte.free(level - 1, mpool);
-            }
-
-            // Free the table itself.
-            mpool.free(Page::from_raw(table as *mut _ as *mut _));
+    fn drop(self, level: u8, mpool: &MPool) {
+        if let Ok(table) = self.into_table(level) {
+            table.drop(level - 1, mpool);
         }
     }
 
@@ -398,8 +401,6 @@ impl PageTableEntry {
         level: u8,
         mpool: &MPool,
     ) {
-        let inner = self.inner;
-
         // We need to do the break-before-make sequence if both values are present and the TLB is
         // being invalidated.
         if self.is_valid(level) && new_pte.is_valid(level) {
@@ -408,16 +409,8 @@ impl PageTableEntry {
         }
 
         // Assign the new pte.
-        unsafe {
-            ptr::write(self, new_pte);
-        }
-
-        // Free pages that aren't in use anymore.
-        unsafe {
-            let mut old_pte = Self::from_raw(inner);
-            old_pte.free(level, mpool);
-            mem::forget(old_pte);
-        }
+        let old_pte = mem::replace(self, new_pte);
+        old_pte.drop(level, mpool);
     }
 
     /// Populates the provided page table entry with a reference to another table if needed, that
@@ -717,6 +710,26 @@ impl RawPageTable {
             }
         }
     }
+
+    /// Recursively free any subtables.
+    ///
+    /// # Safety
+    ///
+    /// After calling this function, the inner value of the RawPageTable is invalid.
+    ///
+    /// FIXME(HfO2): We currently cannot drop the table by move, because move forwarding is not
+    /// working as well as expected. If possible, fix this consume value, and remove unsafe on the
+    /// function declaration. Note that, we should use by-value iterator if this takes a value,
+    /// which is also a problem. Use by-value iterator for arrays, ever since array::IntoIter
+    /// doesn't require [T; N]: LengthAtMost32. If so, this code will have no unsafe. (See
+    /// https://github.com/rust-lang/rust/issues/25725)
+    unsafe fn drop(&mut self, level: u8, mpool: &MPool) {
+        for pte in self.entries.iter() {
+            ptr::read(pte).drop(level, mpool);
+        }
+
+        mem::forget(self);
+    }
 }
 
 /// TODO(HfO2): Investigate follows:
@@ -741,10 +754,37 @@ impl PageTableNode {
         }
     }
 
+    unsafe fn from_raw(ptr: *mut RawPageTable) -> Self {
+        Self { ptr }
+    }
+
     fn into_page(self) -> *mut RawPageTable {
         let ret = self.ptr;
         mem::forget(self);
         ret
+    }
+
+    fn drop(mut self, level: u8, mpool: &MPool) {
+        unsafe {
+            self.deref_mut().drop(level, mpool);
+        }
+
+        // Free the table itself.
+        mpool.free(unsafe { Page::from_raw(self.ptr as *mut _) });
+        mem::forget(self);
+    }
+}
+
+impl Deref for PageTableNode {
+    type Target = RawPageTable;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.ptr }
+    }
+}
+
+impl DerefMut for PageTableNode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.ptr }
     }
 }
 
@@ -796,10 +836,8 @@ impl<S: Stage> PageTable<S> {
         let level = S::max_level();
 
         for page_table in self.deref_mut().iter_mut() {
-            for pte in page_table.iter_mut() {
-                unsafe {
-                    pte.free(level, mpool);
-                }
+            unsafe {
+                page_table.drop(level, mpool);
             }
         }
 
