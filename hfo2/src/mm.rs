@@ -732,9 +732,6 @@ impl RawPageTable {
     }
 }
 
-/// TODO(HfO2): Investigate follows:
-///  - What is the invariant of PageTableNode, and the difference from PageTable?
-///  - Which method in PageTable can we implement in PageTableNode?
 struct PageTableNode {
     ptr: *mut RawPageTable,
 }
