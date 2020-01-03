@@ -29,8 +29,8 @@ pub struct RawPage {
     inner: [u8; PAGE_SIZE],
 }
 
-const_assert!(raw_page_align; mem::align_of::<RawPage>() == PAGE_SIZE);
-const_assert!(raw_page_size; mem::size_of::<RawPage>() == PAGE_SIZE);
+const_assert_eq!(mem::align_of::<RawPage>(), PAGE_SIZE);
+const_assert_eq!(mem::size_of::<RawPage>(), PAGE_SIZE);
 
 impl RawPage {
     pub const fn new() -> Self {

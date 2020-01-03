@@ -50,7 +50,7 @@ struct float_reg {
     high: u64,
 }
 
-const_assert_eq!(float_reg_size; mem::size_of::<float_reg>(), FLOAT_REG_BYTES);
+const_assert_eq!(mem::size_of::<float_reg>(), FLOAT_REG_BYTES);
 
 /// Arch-specific information about a VM.
 #[repr(C)]

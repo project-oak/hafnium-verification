@@ -29,15 +29,15 @@ struct Chunk {
     entry: ListEntry,
     size: usize,
 }
+const_assert!(mem::size_of::<Chunk>() <= mem::size_of::<RawPage>());
 
 #[repr(C)]
 struct Entry {
     entry: ListEntry,
 }
+const_assert!(mem::size_of::<Entry>() <= mem::size_of::<RawPage>());
 
 impl Chunk {
-    const_assert!(chunk_size; mem::size_of::<Chunk>() <= mem::size_of::<RawPage>());
-
     pub const fn new(size: usize) -> Self {
         Self {
             entry: ListEntry::new(),
@@ -47,8 +47,6 @@ impl Chunk {
 }
 
 impl Entry {
-    const_assert!(entry_size; mem::size_of::<Entry>() <= mem::size_of::<RawPage>());
-
     pub const fn new() -> Self {
         Self {
             entry: ListEntry::new(),

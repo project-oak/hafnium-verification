@@ -161,7 +161,7 @@ bitflags! {
 type ptable_addr_t = uintvaddr_t;
 
 // For stage 2, the input is an intermediate physical addresses rather than a virtual address so:
-const_assert_eq!(addr_size_eq; mem::size_of::<ptable_addr_t>(), mem::size_of::<uintpaddr_t>());
+assert_eq_size!(ptable_addr_t, uintpaddr_t);
 
 /// Utility functions for address manipulation.
 mod addr {
@@ -556,8 +556,8 @@ struct RawPageTable {
     entries: [PageTableEntry; PTE_PER_PAGE],
 }
 
-const_assert!(raw_page_table_align; mem::align_of::<RawPageTable>() == PAGE_SIZE);
-const_assert!(raw_page_table_size; mem::size_of::<RawPageTable>() == PAGE_SIZE);
+const_assert_eq!(mem::align_of::<RawPageTable>(), PAGE_SIZE);
+const_assert_eq!(mem::size_of::<RawPageTable>(), PAGE_SIZE);
 
 impl Deref for RawPageTable {
     type Target = [PageTableEntry; PTE_PER_PAGE];
