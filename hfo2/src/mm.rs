@@ -1101,7 +1101,7 @@ impl MemoryManager {
         // other similar structures (VmLocked, VCpuExecutionLocked etc.) In that
         // case we can delay creating a SpinLock here, and more directly show
         // the meaning of unlocked but safe exclusive access of the page table.
-        let page_table = SpinLock::new(page_table);
+        let mut page_table = SpinLock::new(page_table);
         let stage1_locked = mm_stage1_locked {
             plock: &page_table as *const _ as usize,
         };
@@ -1111,15 +1111,15 @@ impl MemoryManager {
             plat_console_mm_init(stage1_locked, mpool);
 
             page_table
-                .get_mut_unchecked()
+                .get_mut()
                 .identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool)
                 .unwrap();
             page_table
-                .get_mut_unchecked()
+                .get_mut()
                 .identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool)
                 .unwrap();
             page_table
-                .get_mut_unchecked()
+                .get_mut()
                 .identity_map(
                     layout_data_begin(),
                     layout_data_end(),
@@ -1128,7 +1128,7 @@ impl MemoryManager {
                 )
                 .unwrap();
 
-            if !arch_mm_init(page_table.get_unchecked().root, true) {
+            if !arch_mm_init(page_table.get_mut().root, true) {
                 return None;
             }
         }
