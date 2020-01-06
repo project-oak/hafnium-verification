@@ -19,7 +19,6 @@ use core::marker::PhantomData;
 use core::ptr;
 
 /// An entry in an intrusive linked list.
-#[derive(Debug)]
 #[repr(C)]
 pub struct ListEntry {
     /// The next entry in the linked list.
@@ -85,12 +84,11 @@ pub trait IsElement<T> {
     unsafe fn element_of(entry: &ListEntry) -> &T;
 }
 
-/// A lock-free, intrusive linked list of type `T`.
-#[derive(Debug)]
+/// A intrusive linked list of type `T`.
 #[repr(C)]
 pub struct List<T, C: IsElement<T> = T> {
     /// The head of the linked list.
-    pub(crate) head: ListEntry,
+    head: ListEntry,
 
     /// The phantom data for using `T` and `C`.
     _marker: PhantomData<(T, C)>,
@@ -110,7 +108,7 @@ impl ListEntry {
     /// You should guarantee that:
     ///
     /// - `container` is not null
-    /// - `container` is immovable, e.g. inside an `Owned`
+    /// - `container` is immovable, e.g. inside a `Page`
     /// - the same `ListEntry` is not inserted more than once
     /// - the inserted object will be removed before the list is dropped
     pub unsafe fn push<T, C: IsElement<T>>(&self, element: &T) {
@@ -143,7 +141,7 @@ impl<T, C: IsElement<T>> List<T, C> {
     /// You should guarantee that:
     ///
     /// - `container` is not null
-    /// - `container` is immovable, e.g. inside an `Owned`
+    /// - `container` is immovable, e.g. inside a `Page`
     /// - the same `ListEntry` is not inserted more than once
     /// - the inserted object will be removed before the list is dropped
     pub unsafe fn push(&mut self, element: &T) {
