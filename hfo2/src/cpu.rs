@@ -611,7 +611,7 @@ pub unsafe extern "C" fn vcpu_handle_page_fault(
 
     if !resume {
         dlog!(
-            "Stage-2 page fault: pc={:#x}, vmid={}, vcpu={}, vaddr={:#x}, ipaddr={:#x}, mode={:#x}\n",
+            "Stage-2 page fault: pc=0x{}, vmid={}, vcpu={}, vaddr=0x{}, ipaddr=0x{}, mode=0x{}\n",
             f.pc,
             vm.id,
             current.index(),
