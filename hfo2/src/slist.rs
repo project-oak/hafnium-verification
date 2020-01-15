@@ -148,15 +148,15 @@ impl<T, C: IsElement<T>> List<T, C> {
         self.head.push::<T, C>(element);
     }
 
-    pub unsafe fn pop(&mut self) -> Option<*mut T> {
+    pub fn pop(&mut self) -> Option<*mut T> {
         let head = self.head.next.get();
         if head.is_null() {
             return None;
         }
 
-        let next = (*head).next.get();
+        let next = unsafe { (*head).next.get() };
         self.head.next.set(next);
-        Some(C::element_of(&*head) as *const _ as *mut _)
+        Some(unsafe { C::element_of(&*head) } as *const _ as *mut _)
     }
 
     pub unsafe fn pop_if_some<R, F>(&mut self, cond: F) -> Option<(*mut T, R)>
