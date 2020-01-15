@@ -14,20 +14,21 @@
  * limitations under the License.
  */
 
-//Singleton object
-//Its implementation uses lock, so it has no [** YIELD **]
-Module Mpool {
-  pages: { set: Set int64 | range: forall elem in set, 100 <= elem < 200 && elem % 10 == 0 }
+Page = addr : ptr_type
+Mpool = { page_size : size_t, pages : Set of Page, fallback_id : Option mpoolid }
 
-  fun alloc_page() : int64 {
-    match pages.pop() with 
-    | Some(page) => return page
-    | None => return NULL
+Module MPOOL {
+  map mpoolid : Option Mpool
+  
+  fun alloc (id: mpoolid) : Option Page {
+    [** YIELD **]
+    mpool = map[id] ! UB
+    if mpool.pages.pop() = Some page
+        Some page
+    else if mpool.fallback = Some next_id
+        mpool.alloc (next_id)
+    else
+        None
     end
-  }
-
-  fun free_page(page: int64) {
-    assume!(100 <= page < 200 && page % 10 == 0);
-    pages.put(page)
   }
 }

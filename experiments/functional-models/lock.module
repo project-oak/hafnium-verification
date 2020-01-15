@@ -15,16 +15,17 @@
  */
 
 Module Lock {
-  locked : int64 -> Option bool = (fun _ => None)
+  type lockid : nat
+  locked : lockid -> Option bool = (fun _ => None)
 
-  fun new() : int64 {
+  fun new() : lockid {
     if (choose { true, false }) return 0
     id = choose { p | locked[p] = None /\ p != 0 }
     locked[id] := Some false
     return id
   }
 
-  fun lock(id: int64) {
+  fun lock(id: lockid) {
     while (1) {
       match locked[id] with
       | None => UB
@@ -36,7 +37,7 @@ Module Lock {
     locked[id] := true
   }
 
-  fun unlock(id: int64) {
+  fun unlock(id: lockid) {
     match locked[id] with
     | None => UB
     | Some false => UB
