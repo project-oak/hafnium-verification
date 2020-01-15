@@ -1,0 +1,7 @@
+[
+  {
+    "file": "../../src/mpool.c",
+    "directory": "/home/eshaj/Documents/repo/hafnium/out/reference/",
+    "command": "clang -MMD -MF  aem_v8a_fvp_clang/obj/src/mm.mpool.o.d     -DVM_TOOLCHAIN=0 -DGIC_VERSION=3 -DGICD_BASE=0x2f000000 -DGICR_BASE=0x2f100000  -DHEAP_PAGES=60 -DMAX_CPUS=8 -DMAX_VMS=16 -DDEBUG=1  -I../../inc -I../../inc/vmapi -I../../src/arch/aarch64/inc -Iaem_v8a_fvp_clang/gen/offset_size_header -ffunction-sections -fdata-sections -flto -fno-builtin -ffreestanding -fpic -mcpu=cortex-a57+nofp -mstrict-align -target aarch64-none-eabi -fcolor-diagnostics -nostdinc -isystem/home/eshaj/Documents/repo/hafnium/prebuilts/linux-x64/clang/lib64/clang/9.0.3/include -isystem/home/eshaj/Documents/repo/hafnium/inc/system  -g -Wall -O2 -Wpedantic -Werror -fstack-protector-all  -std=c11 -c ../../src/mpool.c -o  aem_v8a_fvp_clang/obj/src/mm.mpool.o"
+  }
+]
