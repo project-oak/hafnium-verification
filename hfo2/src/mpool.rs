@@ -99,16 +99,12 @@ impl Pool {
 
         let chunk = unsafe { self.chunk_list.pop().ok_or(())? };
         let size = unsafe { (*chunk).size };
-        assert_ne!(size, 0);
+        debug_assert_ne!(size, 0);
+
         #[allow(clippy::cast_ptr_alignment)]
         let page = unsafe { Page::from_raw(chunk as *mut RawPage) };
 
-        if size == 2 {
-            let entry = unsafe { &mut *((chunk as usize + PAGE_SIZE) as *mut Entry) };
-            unsafe {
-                self.entry_list.push(entry);
-            }
-        } else if size > 2 {
+        if size > 1 {
             let new_chunk = unsafe { &mut *((chunk as usize + PAGE_SIZE) as *mut Chunk) };
             new_chunk.size = size - 1;
             unsafe { self.chunk_list.push(new_chunk) };
