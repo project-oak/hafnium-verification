@@ -1,0 +1,49 @@
+/*
+ * Copyright 2020 Youngju Song
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+Module Lock {
+  type lockid : nat
+  locked : lockid -> Option bool = (fun _ => None)
+
+  fun new() : lockid {
+    if (choose { true, false }) return 0
+    id = choose { p | locked[p] = None /\ p != 0 }
+    locked[id] := Some false
+    return id
+  }
+
+  fun lock(id: lockid) {
+    while (1) {
+      match locked[id] with
+      | None => UB
+      | Some true => [** YIELD **]
+      | Some false => break
+      end
+    }
+    
+    locked[id] := true
+  }
+
+  fun unlock(id: lockid) {
+    match locked[id] with
+    | None => UB
+    | Some false => UB
+    | Some true =>
+    end
+
+    locked[id] := false
+  }
+}
