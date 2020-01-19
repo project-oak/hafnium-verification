@@ -1194,35 +1194,124 @@
 
 	[META] SKIP
 
+// p: mutable reference, from: unlocked shared reference
+// p->lock: uninitialized
 [FUN] mpool_init_from
 
 	[META] SKIP
 
 	[LOAD] n$16=*&p:mpool* [line 84, column 13]
+    // n$16: mutable reference (borrowed from p), 
+    // p: mutable reference (borrowed to n$16),
+    // from: unlocked shared reference
 
 	[LOAD] n$17=*&from:mpool* [line 84, column 16]
+    // n$16: mutable reference (borrowed from p), 
+    // p: mutable reference (borrowed to n$16),
+    // n$17: unlocked shared reference,
+    // from: unlocked shared reference
 
-	[LOAD] n$18=*n$17.entry_size:unsigned long [line 84, column 16]
+    //(*n$17).entry_size is a constant
+	[LOAD] n$18=(*n$17).entry_size:unsigned long [line 84, column 16]
+    // n$16: mutable reference (borrowed from p), 
+    // p: mutable reference (borrowed to n$16),
+    // n$17: unlocked shared reference,
+    // n$18: primitive
+    // from: unlocked shared reference
 
 	[CALL] n$19=_fun_mpool_init(n$16:,n$18:) [line 84, column 2]
+    // n$16->lock: initialized
+    // n$16: mutable reference (borrowed from p), 
+    // p: mutable reference (borrowed to n$16),
+    // n$17: unlocked shared reference,
+    // n$18: primitive
+    // from: unlocked shared reference
 
 	[META] EXIT_SCOPE(n$16,n$17,n$18,n$19); [line 84, column 2]
+    // p: mutable reference 
+    // p->lock: initialized
+    // from: unlocked shared reference
 
 	[LOAD] n$14=*&from:mpool* [line 86, column 13]
+    // p: mutable reference 
+    // p->lock: initialized
+    // from: unlocked shared reference (copied to "n$14")
+    // n$14: unlocked shared reference (copied from "from")
+    // interior mutability?
 
 	[CALL] n$15=_fun_mpool_lock(n$14:) [line 86, column 2]
+    // p: mutable reference 
+    // p->lock: initialized
+    // from: locked mutable reference (copied to "n$14") - we cannot do this.
+    //  -- ???? unlocked shared reference -> locked mutable reference (should
+    //  not use this variable)
+    // n$14: locked mutable reference (copied from "from")
+    
+    /* [LSH] A shared reference can be copied to any other variables and "lock"
+     * is a special instruction that converts a unlock shared reference to a
+     * locked mutable reference. After the "fun_mpool_lock" intsruction, "n$14"
+     * becomes a locked mutable reference, but still "from" remains as a
+     * unlocked shared reference unless we keep track of copies for all the
+     * shared references. Then, we cannot modify any fields of "from" even
+     * after it is locked. Even if we keep track of all the copy information,
+     * because "from" should be converted to 'locked mutable reference (borrowed
+     * to n$14)', not just 'locked mutable reference', typing rules would be
+     * complicated to track ownership.  
+     * The "interior mutability" would be useful to handle this case. When
+     * "chunk_list", "entry_list", and "fallback" can be modified even if they
+     * are fields of an immutable shared reference, we can make typing rules
+     * simpler for the programming patterns. 
+     * //TODO: we can check the safety of "interior mutability" in static
+     * time? or just leave them unsafe?
+     */
 
 	[META] EXIT_SCOPE(n$14,n$15); [line 86, column 2]
+    // p: mutable reference 
+    // p->lock: initialized
+    // from: locked mutable reference 
 
 	[LOAD] n$11=*&p:mpool* [line 87, column 2]
+    // p: mutable reference (borrowed to "n$11")
+    // n$11: mutable reference (borrowed from "p")
+    // p->lock: initialized
+    // from: locked mutable reference 
 
 	[LOAD] n$12=*&from:mpool* [line 87, column 18]
+    // p: mutable reference (borrowed to "n$11")
+    // n$11: mutable reference (borrowed from "p")
+    // p->lock: initialized
+    // n$11->lock: initialized
+    // from: locked mutable reference (borrowed to "n$12")
+    // n$12: locked mutable reference (borrowed from "from")
 
 	[LOAD] n$13=*n$12.chunk_list:mpool_chunk* [line 87, column 18]
+    // p: mutable reference (borrowed to "n$11")
+    // n$11: mutable reference (borrowed from "p")
+    // p->lock: initialized
+    // n$11->lock: initialized
+    // from: locked mutable reference (borrowed to "n$12")
+    // n$12: locked mutable reference (borrowed from "from")
+    // n$12->chunk_list: mutable reference (borrowed to "n$13")
+    // n$13: mutable reference (borrowed from "n$12->chunk_list")
 
 	[STORE] *n$11.chunk_list:mpool_chunk*=n$13 [line 87, column 2]
+    // p: mutable reference (borrowed to "n$11")
+    // n$11: mutable reference (borrowed from "p")
+    // p->lock: initialized
+    // n$11->lock: initialized
+    // from: locked mutable reference (borrowed to "n$12")
+    // n$12: locked mutable reference (borrowed from "from")
+    // n$12->chunk_list: locked mutable reference (borrowed to "n$13") 
+    // --? we need to know what fields are protected by the "lock"
+    // n$13: locked mutable reference (borrowed from "n$12->chunk_list")
+    // n$11->chunk_list: mutable reference
 
 	[META] EXIT_SCOPE(n$11,n$12,n$13); [line 87, column 2]
+    // p: mutable reference 
+    // p->chunk_list: mutable reference
+    // p->lock: initialized
+    // from: locked mutable reference 
+    // from->chunk_list: locked mutable reference
 
 	[LOAD] n$8=*&p:mpool* [line 88, column 2]
 
