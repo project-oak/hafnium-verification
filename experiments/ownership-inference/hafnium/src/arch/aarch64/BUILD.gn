@@ -1,0 +1,48 @@
+# Copyright 2018 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+config("config") {
+  include_dirs = [ "." ]
+}
+
+# Implementation of the arch interface for aarch64.
+source_set("arch") {
+  sources = [
+    "irq.c",
+    "mm.c",
+    "sysregs.c",
+    "timer.c",
+  ]
+}
+
+source_set("std") {
+  sources = [
+    "stack_protector.c",
+    "std.c",
+  ]
+}
+
+# Entry code to prepare the loaded image to be run.
+source_set("entry") {
+  sources = [
+    "entry.S",
+  ]
+}
+
+# Make a call to the secure monitor.
+source_set("smc") {
+  sources = [
+    "smc.c",
+  ]
+}

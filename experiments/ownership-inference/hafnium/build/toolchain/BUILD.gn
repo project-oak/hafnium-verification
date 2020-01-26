@@ -1,0 +1,46 @@
+# Copyright 2018 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/toolchain/embedded.gni")
+import("//build/toolchain/host.gni")
+
+host_toolchain("host") {
+  use_platform = false
+}
+
+# Toolchain for building tests which run under Linux under Hafnium.
+embedded_clang_toolchain("aarch64_linux_clang") {
+  target = "aarch64-linux-musleabi"
+
+  # TODO: Remove //inc/system if we can stop using the version of stdatomic.h
+  # from the Android prebuilt Clang.
+  extra_cflags =
+      "-nostdinc -isystem" +
+      rebase_path("//prebuilts/linux-aarch64/musl/include") + " -isystem" +
+      rebase_path("//prebuilts/linux-x64/clang/lib64/clang/9.0.3/include") +
+      " -isystem" + rebase_path("//inc/system")
+  extra_defines = "-D_LIBCPP_HAS_MUSL_LIBC=1 -D_GNU_SOURCE=1"
+  extra_ldflags = "-no-pie -lc --library-path=" +
+                  rebase_path("//prebuilts/linux-aarch64/musl/lib/") + " " +
+                  rebase_path("//prebuilts/linux-aarch64/musl/lib/crt1.o") +
+                  " " + rebase_path(
+                      "//prebuilts/linux-x64/clang/lib64/clang/9.0.3/lib/linux/libclang_rt.builtins-aarch64-android.a")
+  toolchain_args = {
+    use_platform = true
+    plat_arch = "fake"
+    plat_boot_flow = "//src/arch/fake:boot_flow"
+    plat_console = "//src/arch/fake:console"
+    plat_iommu = "//src/iommu:absent"
+  }
+}

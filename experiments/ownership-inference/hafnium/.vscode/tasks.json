@@ -1,0 +1,51 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "make",
+            "type": "shell",
+            "command": "make",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "format",
+            "type": "shell",
+            "command": "make format",
+            "problemMatcher": []
+        },
+        {
+            "label": "check",
+            "type": "shell",
+            "command": "make check",
+            "problemMatcher": []
+        },
+        {
+            "label": "build.sh",
+            "type": "shell",
+            "command": "kokoro/build.sh",
+            "problemMatcher": []
+        },
+        {
+            "label": "test",
+            "type": "shell",
+            "command": "make && kokoro/test.sh"
+        },
+        {
+            "label": "test on FVP",
+            "type": "shell",
+            "command": "make && kokoro/test.sh --fvp"
+        },
+        {
+            "label": "push",
+            "type": "shell",
+            "command": "git push origin HEAD:refs/for/master",
+            "problemMatcher": []
+        }
+    ]
+}

@@ -1,0 +1,16 @@
+name: "repo"
+description: "The Multiple Git Repository Tool"
+
+third_party {
+  url {
+    type: HOMEPAGE
+    value: "https://gerrit.googlesource.com/git-repo"
+  }
+  url {
+    type: ARCHIVE
+    value: "https://storage.googleapis.com/git-repo-downloads/repo"
+  }
+  version: "1.13.6"
+  last_upgrade_date { year: 2019 month: 10 day: 1 }
+  license_type: NOTICE
+}

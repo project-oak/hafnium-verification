@@ -1,0 +1,87 @@
+# Copyright 2019 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/image/image.gni")
+
+source_set("common") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+  sources = [
+    "common.c",
+  ]
+}
+
+# Service which loops forever.
+source_set("busy") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "busy.c",
+  ]
+
+  deps = [
+    ":common",
+  ]
+}
+
+# Service which uses timers.
+source_set("timer") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "timer.c",
+  ]
+
+  deps = [
+    ":common",
+    "//src/arch/aarch64:arch",
+    "//src/arch/aarch64/hftest:interrupts",
+  ]
+}
+
+# Service which tries to access GICv3 system registers.
+source_set("systemreg") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "systemreg.c",
+  ]
+
+  deps = [
+    ":common",
+    "//src/arch/aarch64:arch",
+  ]
+
+  include_dirs = [
+    "//test/vmapi/common",
+    "//inc/vmapi/hf",
+  ]
+}
+
+# Group services together into VMs.
+
+vm_kernel("gicv3_service_vm1") {
+  testonly = true
+
+  deps = [
+    ":busy",
+    ":systemreg",
+    ":timer",
+    "//test/hftest:hftest_secondary_vm",
+    "//test/vmapi/common:common",
+  ]
+}

@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) QEMU",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "out/reference/qemu_aarch64_clang/hafnium.elf",
+            "miDebuggerServerAddress": "localhost:1234",
+            "MIMode": "gdb",
+            "miDebuggerPath": "/usr/bin/gdb-multiarch",
+            "cwd": "${workspaceRoot}",
+            "setupCommands": [
+                {
+                "description": "Enable pretty-printing for gdb",
+                "text": "-enable-pretty-printing",
+                "ignoreFailures": true
+                },
+                {
+                    // Update this with whatever VMs you want to debug.
+                    "text": "add-symbol-file ${workspaceRoot}/out/reference/qemu_aarch64_vm_clang/obj/test/vmapi/primary_with_secondaries/services/service_vm3.elf 0x43d00000+0xc4",
+                }
+            ]
+        },
+    ]
+}

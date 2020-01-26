@@ -1,0 +1,7 @@
+{
+  "external-java-packages": [
+    "external."
+  ],
+  "nullsafe-strict-containers": true,
+  "nullsafe-third-party-signatures": "third-party-signatures"
+}

@@ -1,0 +1,17 @@
+name: "GCC"
+description: "The GNU Compiler Collection."
+
+third_party {
+  url {
+    type: HOMEPAGE
+    value: "https://gcc.gnu.org/"
+  }
+  url {
+    type: GIT
+    value: "https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9/"
+  }
+  version: "2.27.0.20170315"
+  last_upgrade_date { year: 2019 month: 10 day: 21 }
+  license_type: RESTRICTED
+  local_modifications: "Removed deprecated Android GCC wrapper scripts, concatenated licenses."
+}

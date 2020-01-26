@@ -1,0 +1,84 @@
+# Copyright 2019 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# This template auto-generate a C header file with "#define" constants, e.g.
+# struct sizes and member offsets.
+#
+# It uses a trick similar to other projects, e.g. Linux, where the integer
+# constant is used as an immediate in an inline assembly block. The source file
+# is compiled and the constant extracted by a script which generates the header
+# file. For easy grep-ing, the constant is compiled into a '.ascii' string,
+# surrounded by magic strings, and extracted using the 'strings' binutils tool.
+#
+# To guarantee correctness, the same source file is compiled again as part
+# of the parent target but this time the declarations are converted to
+# static_asserts to check the values at its compile-time.
+template("offset_size_header") {
+  target_lib = "${target_name}__lib"
+  target_header = "${target_name}__header"
+
+  # Compile source files into binaries that contain strings with definitions
+  # of constants.
+  static_library(target_lib) {
+    forward_variables_from(invoker,
+                           [
+                             "sources",
+                             "deps",
+                             "test_only",
+                           ])
+    defines = [ "GENERATE_BINARY" ]
+
+    # Disable LTO to force emitting assembly.
+    cflags = [ "-fno-lto" ]
+  }
+
+  # Extract strings from the static library, parse definitions and generate
+  # a header file.
+  action(target_header) {
+    forward_variables_from(invoker, [ "test_only" ])
+    lib_file = "${target_out_dir}/${target_lib}.a"
+    out_file = "${root_gen_dir}/offset_size_header/${invoker.path}"
+
+    script = "//build/toolchain/gen_offset_size_header.py"
+    args = [
+      rebase_path(lib_file, root_build_dir),
+      rebase_path(out_file, root_build_dir),
+    ]
+    deps = [
+      ":$target_lib",
+    ]
+    outputs = [
+      out_file,
+    ]
+  }
+
+  # This source_set will be compiled into the target that depends on this one.
+  # This generates static_asserts which check the constants in the generated
+  # header against compile-time structs.
+  source_set(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "sources",
+                             "test_only",
+                           ])
+    cflags = [
+      "-include",
+      invoker.path,
+    ]
+    defines = [ "VERIFY_HEADER" ]
+    deps = [
+      ":$target_header",
+    ]
+  }
+}

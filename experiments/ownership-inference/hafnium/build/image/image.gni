@@ -1,0 +1,311 @@
+# Copyright 2018 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/toolchain/embedded.gni")
+import("//build/toolchain/platform.gni")
+
+# Build image, link to an ELF file then convert to plain binary.
+template("image_binary") {
+  assert(defined(invoker.image_name),
+         "image_binary() must specify an \"image_name\" value")
+
+  output_root = ""
+  if (defined(invoker.output_path)) {
+    output_root += "${invoker.output_path}/"
+  }
+  output_root += invoker.image_name
+
+  file_root = "${root_out_dir}/${output_root}"
+  elf_file = "${file_root}.elf"
+  bin_file = "${file_root}.bin"
+
+  elf_target = "${target_name}__elf"
+  checked_elf_target = "${target_name}__checked_elf"
+
+  # Link objects together
+  executable(elf_target) {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "include_dirs",
+                             "public_configs",
+                             "public_deps",
+                             "sources",
+                             "testonly",
+                           ])
+    output_name = "${output_root}.elf"
+    inputs = [
+      rebase_path("//build/image/image.ld"),
+    ]
+    ldflags = [
+      "-T",
+      rebase_path("//build/image/image.ld"),
+    ]
+    visibility = [
+      ":${checked_elf_target}",
+      ":${invoker.target_name}",
+    ]
+  }
+
+  # Analyze the generated ELF file and check that assembly-level fixes, e.g.
+  # for CPU errata, have been properly applied.
+  action(checked_elf_target) {
+    forward_variables_from(invoker, [ "testonly" ])
+    stamp_file = elf_file + "_check.stamp"
+
+    script = "//build/image/check_elf.py"
+    deps = [
+      ":${elf_target}",
+    ]
+    args = [
+      rebase_path(elf_file),
+      rebase_path(stamp_file),
+      "--max-image-size",
+      "$plat_max_image_size",
+    ]
+    outputs = [
+      stamp_file,
+    ]
+    visibility = [ ":${invoker.target_name}" ]
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+
+    script = "//build/image/convert_to_binary.py"
+
+    if (defined(invoker.check_binary) && invoker.check_binary == true) {
+      deps = [
+        ":${checked_elf_target}",
+      ]
+    } else {
+      deps = [
+        ":${elf_target}",
+      ]
+    }
+    args = [
+      "--input",
+      rebase_path(elf_file),
+      "--output",
+      rebase_path(bin_file),
+    ]
+    outputs = [
+      bin_file,
+    ]
+  }
+}
+
+# Helper to build a hypervisor image
+template("hypervisor") {
+  image_binary(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "public_deps",
+                             "sources",
+                             "testonly",
+                           ])
+    image_name = target_name
+
+    # Perform checks on the generated binary to prevent regressing on some
+    # classes of bugs, typically CPU erratas.
+    check_binary = true
+  }
+}
+
+# Helper to build a virtual machine kernel
+template("vm_kernel") {
+  image_binary(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "cflags",
+                             "cflags_c",
+                             "defines",
+                             "deps",
+                             "include_dirs",
+                             "public_configs",
+                             "public_deps",
+                             "sources",
+                             "testonly",
+                           ])
+    output_path = rebase_path(".", root_out_dir, target_out_dir)
+    image_name = target_name
+  }
+}
+
+# Build the initial RAM disk for the Linux VM.
+template("linux_initrd") {
+  initrd_base = "${target_out_dir}/${target_name}/initrd"
+  initrd_file = "${initrd_base}.img"
+  initrd_staging = "${initrd_base}"
+
+  copy("${target_name}__staging") {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "sources",
+                             "deps",
+                           ])
+    outputs = [
+      "${initrd_staging}/{{source_file_part}}",
+    ]
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+    script = "//build/image/generate_linux_initrd.py"
+    args = [
+      "--staging",
+      rebase_path(initrd_staging),
+      "--output",
+      rebase_path(initrd_file),
+    ]
+    deps = [
+      ":${target_name}__staging",
+    ]
+    outputs = [
+      initrd_file,
+    ]
+  }
+}
+
+template("device_tree") {
+  action_foreach(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "sources",
+                             "deps",
+                           ])
+    script = "//build/image/dtc.py"
+
+    if (defined(invoker.output_pattern)) {
+      output_pattern = invoker.output_pattern
+    } else {
+      output_pattern = "${target_out_dir}/{{source_name_part}}.dtb"
+    }
+
+    outputs = [
+      output_pattern,
+    ]
+    args = [
+      "compile",
+      "-i",
+      "{{source}}",
+      "-o",
+      rebase_path(output_pattern),
+    ]
+  }
+}
+
+template("incbin") {
+  source_set(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "deps",
+                           ])
+
+    sources = [
+      "//build/image/incbin.S",
+    ]
+    inputs = invoker.sources
+    defines = [
+      "SECTION_NAME=" + invoker.section,
+      "FILE_PATH=\"" + rebase_path(inputs[0]) + "\"",
+    ]
+  }
+}
+
+# Build the initial RAM disk for the hypervisor.
+template("initrd") {
+  assert(defined(invoker.primary_name),
+         "initrd() must specify a \"primary_name\" value")
+  assert(defined(invoker.primary_vm),
+         "initrd() must specify a \"primary_vm\" value")
+
+  manifest_target = "${target_name}__manifest"
+  base_out_dir = "${target_out_dir}/${target_name}"
+
+  # Generate manifest.dtbo
+  device_tree(manifest_target) {
+    sources = [
+      invoker.manifest,
+    ]
+    output_pattern = "${base_out_dir}/{{source_name_part}}.dtbo"
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+    script = "//build/image/generate_initrd.py"
+
+    initrd_file = "${base_out_dir}/initrd.img"
+    initrd_staging = "${base_out_dir}/initrd"
+
+    # Cannot get target outputs here as they are defined in a different file.
+    primary_vm_image = get_label_info(invoker.primary_vm, "target_out_dir") +
+                       "/" + get_label_info(invoker.primary_vm, "name") + ".bin"
+
+    deps = [
+      ":${manifest_target}",
+      invoker.primary_vm,
+    ]
+    args = [
+      "--file",
+      invoker.primary_name,
+      rebase_path(primary_vm_image),
+      "--staging",
+      rebase_path(initrd_staging),
+      "--output",
+      rebase_path(initrd_file),
+    ]
+
+    if (defined(invoker.primary_initrd)) {
+      deps += [ invoker.primary_initrd ]
+      primary_initrd_outputs = get_target_outputs(invoker.primary_initrd)
+      args += [
+        "--file",
+        "initrd.img",
+        rebase_path(primary_initrd_outputs[0]),
+      ]
+    }
+
+    # Add the info about the secondary VMs. The information about the VMs is
+    # encoded in lists with the following elements:
+    #
+    #    1. File name for the VM image.
+    #    2. Build target for the VM.
+    if (defined(invoker.secondary_vms)) {
+      foreach(vm, invoker.secondary_vms) {
+        deps += [ vm[1] ]
+        args += [
+          "--file",
+          vm[0],
+          rebase_path(get_label_info(vm[1], "target_out_dir") + "/" +
+                      get_label_info(vm[1], "name") + ".bin"),
+        ]
+      }
+    }
+
+    outputs = [
+      initrd_file,
+    ]
+  }
+}

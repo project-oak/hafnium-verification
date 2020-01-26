@@ -1,0 +1,7 @@
+property SkipAfterRemove
+  prefix "ArrayList"
+  nondet (start)
+  start -> start: *
+  start -> removed: remove(Collection, Index)
+  removed -> ok:    get(collection, index)
+  removed -> error: get(collection, J) if J != index
