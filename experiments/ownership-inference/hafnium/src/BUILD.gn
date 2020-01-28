@@ -1,0 +1,175 @@
+# Copyright 2018 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/image/image.gni")
+import("//build/toolchain/platform.gni")
+
+# The hypervisor image.
+hypervisor("hafnium") {
+  deps = [
+    ":layout",
+    ":src_not_testable_yet",
+  ]
+}
+
+# Hypervisor specific code that isn't. One day it will be testable and both the
+# src targets will merge!
+source_set("src_not_testable_yet") {
+  sources = [
+    "cpio.c",
+    "init.c",
+    "load.c",
+    "main.c",
+  ]
+  deps = [
+    ":src_testable",
+    "//project/${project}/${plat_name}",
+    plat_boot_flow,
+    plat_console,
+    plat_iommu,
+  ]
+}
+
+# One day, this will contain all the hypervisor's source but only once it can
+# all be built against the fake arch for unit tests. Utilities that are shared
+# e.g. with VM used in the VM tests have their own targets to facilitate
+# sharing.
+source_set("src_testable") {
+  sources = [
+    "abort.c",
+    "api.c",
+    "cpu.c",
+    "manifest.c",
+    "panic.c",
+    "spci_architected_message.c",
+    "string.c",
+    "vcpu.c",
+    "vm.c",
+  ]
+
+  deps = [
+    ":fdt",
+    ":fdt_handler",
+    ":memiter",
+    ":mm",
+    ":std",
+    "//src/arch/${plat_arch}/hypervisor",
+    plat_boot_flow,
+    plat_console,
+    plat_iommu,
+  ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
+}
+
+source_set("layout") {
+  sources = [
+    "layout.c",
+  ]
+}
+
+source_set("mm") {
+  sources = [
+    "mm.c",
+    "mpool.c",
+  ]
+}
+
+# Standard library functions.
+source_set("std") {
+  sources = [
+    "std.c",
+  ]
+
+  deps = [
+    "//src/arch/${plat_arch}:std",
+  ]
+}
+
+# Debug code that is not specific to a certain image so can be shared.
+source_set("dlog") {
+  sources = [
+    "dlog.c",
+  ]
+
+  deps = [
+    ":std",
+    plat_console,
+  ]
+}
+
+source_set("fdt_handler") {
+  sources = [
+    "fdt_handler.c",
+  ]
+  deps = [
+    ":fdt",
+  ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
+}
+
+# Flattened Device Tree (FDT) utilities.
+source_set("fdt") {
+  sources = [
+    "fdt.c",
+  ]
+
+  deps = [
+    ":std",
+  ]
+
+  if (is_debug) {
+    deps += [ ":dlog" ]
+  }
+}
+
+source_set("memiter") {
+  sources = [
+    "memiter.c",
+  ]
+}
+
+source_set("panic") {
+  sources = [
+    "panic.c",
+  ]
+}
+
+executable("unit_tests") {
+  testonly = true
+  sources = [
+    "api_test.cc",
+    "fdt_handler_test.cc",
+    "fdt_test.cc",
+    "manifest_test.cc",
+    "mm_test.cc",
+    "mpool_test.cc",
+    "string_test.cc",
+    "vm_test.cc",
+  ]
+  sources += [ "layout_fake.c" ]
+  cflags_cc = [
+    "-Wno-c99-extensions",
+    "-Wno-nested-anon-types",
+  ]
+  deps = [
+    ":src_testable",
+    "//third_party/googletest:gtest_main",
+  ]
+}

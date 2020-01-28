@@ -1,0 +1,52 @@
+# Copyright 2018 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/image/image.gni")
+import("//build/toolchain/platform.gni")
+
+config("config") {
+  include_dirs = [ "inc" ]
+}
+
+# Tests specific to GICv3.
+vm_kernel("gicv3_test_vm") {
+  testonly = true
+  public_configs = [ ":config" ]
+
+  sources = [
+    "busy_secondary.c",
+    "gicv3.c",
+    "interrupts.c",
+    "timer_secondary.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64:arch",
+    "//src/arch/aarch64/hftest:interrupts",
+    "//src/arch/aarch64/hftest:interrupts_gicv3",
+    "//test/hftest:hftest_primary_vm",
+  ]
+}
+
+initrd("gicv3_test") {
+  testonly = true
+
+  manifest = "manifest.dts"
+  primary_name = "gicv3_test"
+  primary_vm = ":gicv3_test_vm"
+  secondary_vms = [ [
+        "services1",
+        "services:gicv3_service_vm1",
+      ] ]
+}

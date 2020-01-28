@@ -1,0 +1,24 @@
+BasedOnStyle: Google
+
+IndentWidth: 8
+ContinuationIndentWidth: 8
+UseTab: Always
+
+BreakBeforeBraces: Linux
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+IndentCaseLabels: false
+
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex:    '^<[[:alnum:].]+>'
+    Priority: 1
+  - Regex:    '^"hf/arch/'
+    Priority: 2
+  - Regex:    '^"hf/'
+    Priority: 3
+  - Regex:    '^"vmapi/'
+    Priority: 4
+  - Regex:    '.*'
+    Priority: 5
