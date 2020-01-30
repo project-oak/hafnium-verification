@@ -1,0 +1,19 @@
+name: "Device Tree Compiler"
+description: "Toolchain for working with device tree files"
+
+third_party {
+  url {
+    type: HOMEPAGE
+    value: "https://github.com/dgibson/dtc"
+  }
+  url {
+    type: ARCHIVE
+    value: "https://github.com/dgibson/dtc/archive/v1.5.1.tar.gz"
+  }
+  version: "1.5.1"
+  last_upgrade_date { year: 2020 month: 1 day: 17 }
+
+  # The `dtc` tool is GPL only, but `libfdt` is dual GPL/BSD.
+  # We statically link only code from `libfdt`.
+  license_type: RESTRICTED
+}

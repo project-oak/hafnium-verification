@@ -1,0 +1,96 @@
+# Copyright 2019 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/image/image.gni")
+import("//build/toolchain/platform.gni")
+
+executable("test_binary") {
+  include_dirs = [
+    "//driver/linux/inc/uapi",
+    "//third_party/linux/include/uapi",
+  ]
+
+  testonly = true
+  sources = [
+    "linux.c",
+  ]
+  deps = [
+    "//test/hftest:hftest_linux",
+  ]
+  output_name = "test_binary"
+}
+
+vm_kernel("socket_vm1") {
+  testonly = true
+
+  deps = [
+    ":hftest_secondary_vm_socket",
+  ]
+}
+
+linux_initrd("linux_test_initrd") {
+  testonly = true
+
+  # Always use the aarch64_linux_clang toolchain to build test_binary
+  test_binary_target = ":test_binary(//build/toolchain:aarch64_linux_clang)"
+  sources = [
+    get_label_info(test_binary_target, "root_out_dir") + "/test_binary",
+    get_label_info("//driver/linux", "target_out_dir") + "/hafnium.ko",
+  ]
+  deps = [
+    "//driver/linux",
+    test_binary_target,
+  ]
+}
+
+initrd("linux_test") {
+  testonly = true
+
+  manifest = "manifest.dts"
+  primary_name = "vmlinuz"
+  primary_vm = "//third_party/linux:linux__prebuilt"
+  primary_initrd = ":linux_test_initrd"
+  secondary_vms = [ [
+        "socket0",
+        ":socket_vm1",
+      ] ]
+}
+
+group("linux") {
+  testonly = true
+
+  deps = [
+    ":linux_test",
+  ]
+}
+
+# Testing framework for a secondary VM with socket.
+source_set("hftest_secondary_vm_socket") {
+  testonly = true
+
+  configs += [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "hftest_socket.c",
+  ]
+
+  deps = [
+    "//src:dlog",
+    "//src:panic",
+    "//src:std",
+    "//src/arch/${plat_arch}:entry",
+    "//src/arch/${plat_arch}/hftest:entry",
+    "//src/arch/${plat_arch}/hftest:power_mgmt",
+  ]
+}

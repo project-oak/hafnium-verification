@@ -1,0 +1,12 @@
+name: "Linux kernel"
+description: "Linux kernel snapshot. FOR DEVELOPMENT ONLY!"
+
+third_party {
+  url {
+    type: ARCHIVE
+    value: "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.4.2.tar.xz"
+  }
+  version: "5.4.2"
+  last_upgrade_date { year: 2019 month: 12 day: 10 }
+  license_type: NOTICE
+}

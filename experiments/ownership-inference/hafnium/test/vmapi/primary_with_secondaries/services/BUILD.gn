@@ -1,0 +1,265 @@
+# Copyright 2018 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import("//build/image/image.gni")
+
+# Service to expose race conditions when running a vCPU.
+source_set("check_state") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "check_state.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:state",
+  ]
+}
+
+# Service to try to access EL1 debug registers.
+source_set("debug_el1") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "debug_el1.c",
+  ]
+}
+
+# Service to try to access performance monitor registers.
+source_set("perfmon") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "perfmon.c",
+  ]
+}
+
+# Service to listen for messages and echo them back to the sender.
+source_set("echo") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "echo.c",
+  ]
+}
+
+# Echo service that waits for recipient to become writable.
+source_set("echo_with_notification") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "echo_with_notification.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:interrupts",
+  ]
+}
+
+# Service for floating point register save/restore checks.
+source_set("floating_point") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "floating_point.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:registers",
+  ]
+}
+
+# Services related to memory sharing.
+source_set("memory") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  deps = [
+    "//test/vmapi/common",
+    "//vmlib",
+  ]
+
+  sources = [
+    "memory.c",
+  ]
+}
+
+# Services related to VMs that access unmapped memory.
+source_set("unmapped") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "unmapped.c",
+  ]
+
+  deps = [
+    "//test/vmapi/common:common",
+  ]
+}
+
+# Services related to the boot process for VMs.
+source_set("boot") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "boot.c",
+  ]
+
+  deps = [
+    "//test/vmapi/common:common",
+  ]
+}
+
+# Service that can be interrupted.
+source_set("interruptible") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+
+  sources = [
+    "interruptible.c",
+    "interruptible_echo.c",
+  ]
+
+  deps = [
+    "//src/arch/aarch64/hftest:interrupts",
+  ]
+}
+
+# Service to check that hf_mailbox_receive can't block when there are pending
+# interrupts.
+source_set("receive_block") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  sources = [
+    "receive_block.c",
+  ]
+  deps = [
+    "//src/arch/aarch64:arch",
+    "//src/arch/aarch64/hftest:interrupts",
+    "//test/vmapi/common",
+  ]
+}
+
+# Service to listen for messages and forward them on to another.
+source_set("relay") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "relay.c",
+  ]
+}
+
+# Service to start a second vCPU and send messages from both.
+source_set("smp") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  sources = [
+    "smp.c",
+  ]
+}
+
+# Service to check that WFI is a no-op when there are pending interrupts.
+source_set("wfi") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  sources = [
+    "wfi.c",
+  ]
+  deps = [
+    "//src/arch/aarch64/hftest:interrupts",
+  ]
+}
+
+# Service to receive messages in a secondary VM and ensure that the header fields are correctly set.
+source_set("spci_check") {
+  testonly = true
+  public_configs = [
+    "..:config",
+    "//test/hftest:hftest_config",
+  ]
+  deps = [
+    "//test/vmapi/common",
+  ]
+
+  sources = [
+    "spci_check.c",
+  ]
+}
+
+# Group services together into VMs.
+
+vm_kernel("service_vm1") {
+  testonly = true
+
+  deps = [
+    ":boot",
+    ":check_state",
+    ":debug_el1",
+    ":echo",
+    ":echo_with_notification",
+    ":floating_point",
+    ":interruptible",
+    ":memory",
+    ":perfmon",
+    ":receive_block",
+    ":relay",
+    ":spci_check",
+    ":unmapped",
+    ":wfi",
+    "//test/hftest:hftest_secondary_vm",
+  ]
+}
+
+vm_kernel("service_vm2") {
+  testonly = true
+
+  deps = [
+    ":interruptible",
+    ":memory",
+    ":relay",
+    "//test/hftest:hftest_secondary_vm",
+  ]
+}
+
+vm_kernel("service_vm3") {
+  testonly = true
+
+  deps = [
+    ":smp",
+    "//test/hftest:hftest_secondary_vm",
+  ]
+}

@@ -1,0 +1,188 @@
+# Copyright 2019 The Hafnium Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+template("source_dir") {
+  action("${target_name}") {
+    depfile = "${target_out_dir}/${target_name}.d"
+    outputs = [
+      "$target_out_dir/${target_name}.script.stamp",
+    ]
+
+    script = "//build/linux/gen_depfile.py"
+    args = [
+      rebase_path(invoker.path, root_build_dir),
+      rebase_path(outputs[0], root_build_dir),
+      rebase_path(depfile, root_build_dir),
+    ]
+  }
+}
+
+template("source_dir_copy") {
+  source_dir_target = "${target_name}__source_dir"
+
+  source_dir(source_dir_target) {
+    path = invoker.path
+  }
+
+  action("${target_name}") {
+    script = "//build/linux/copy_dirs.py"
+    outputs = [
+      "$target_out_dir/${target_name}.script.stamp",
+    ]
+    args = [
+      rebase_path(invoker.path),
+      rebase_path(target_out_dir),
+      rebase_path(outputs[0]),
+    ]
+    deps = [
+      ":${source_dir_target}",
+    ]
+  }
+}
+
+template("linux_kernel") {
+  source_target = "${target_name}__source"
+  defconfig_target = "${target_name}__defconfig"
+  prebuilt_target = "${target_name}__prebuilt"
+
+  kernel_dir = "./"
+
+  # Args to build/make.py to start the Linux build.
+  shared_args = [
+    "--directory",
+    rebase_path(kernel_dir),
+
+    # TODO: Build with toolchain cc instead of a hardcoded one.
+    "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+    "LD=" +
+        rebase_path("//prebuilts/linux-x64/gcc/bin/aarch64-linux-android-ld"),
+    "AR=" +
+        rebase_path("//prebuilts/linux-x64/gcc/bin/aarch64-linux-android-ar"),
+    "NM=" + rebase_path("//prebuilts/linux-x64/clang/bin/llvm-nm"),
+    "OBJCOPY=" + rebase_path(
+            "//prebuilts/linux-x64/gcc/bin/aarch64-linux-android-objcopy"),
+    "OBJDUMP=" + rebase_path("//prebuilts/linux-x64/clang/bin/llvm-objdump"),
+    "STRIP=" + rebase_path("//prebuilts/linux-x64/clang/bin/llvm-strip"),
+    "GCC_TOOLCHAIN_DIR=" + rebase_path("//prebuilts/linux-x64/gcc/bin"),
+    "ARCH=arm64",
+    "CROSS_COMPILE=aarch64-linux-gnu-",
+
+    # Build out-of-tree in `target_out_dir`.
+    "O=" + rebase_path(target_out_dir),
+
+    # TODO: Remove/replace.
+    "-j24",
+  ]
+
+  # Subtarget which generates a depfile with all files in the Linux tree
+  # and gets invalidated if any of them change.
+  source_dir(source_target) {
+    path = kernel_dir
+  }
+
+  # Subtarget which runs `defconfig` and `modules_prepare`. Used by targets
+  # which do not require the whole kernel to have been built.
+  action(defconfig_target) {
+    script = "//build/make.py"
+    args = shared_args + [
+             "defconfig",
+             "modules_prepare",
+           ]
+
+    # We never use the output but GN requires each target to have one, and for
+    # its timestamp to change after a recompile. Use the .config file.
+    outputs = [
+      "${target_out_dir}/.config",
+    ]
+    deps = [
+      ":${source_target}",
+    ]
+  }
+
+  action(target_name) {
+    script = "//build/make.py"
+    output_file = "${target_out_dir}/${target_name}.bin"
+    args = shared_args + [
+             "--copy_out_file",
+             rebase_path("${target_out_dir}/arch/arm64/boot/Image"),
+             rebase_path(output_file),
+           ]
+    outputs = [
+      output_file,
+    ]
+    deps = [
+      ":${defconfig_target}",
+      ":${source_target}",
+    ]
+  }
+
+  # Subtarget for a prebuilt image, if defined.
+  if (defined(invoker.prebuilt)) {
+    copy(prebuilt_target) {
+      sources = [
+        invoker.prebuilt,
+      ]
+      outputs = [
+        "${target_out_dir}/${prebuilt_target}.bin",
+      ]
+    }
+  }
+}
+
+template("linux_kernel_module") {
+  # Out-of-tree modules cannot be built outside of their directory.
+  # So as to avoid parallel builds under different toolchains clashing,
+  # work around by copying source files to `target_out_dir`.
+
+  source_target = "${target_name}__source"
+
+  module_dir = "./"
+
+  source_dir_copy(source_target) {
+    path = module_dir
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker, [ "testonly" ])
+    script = "//build/make.py"
+    args = [
+      "--directory",
+      rebase_path(target_out_dir),
+      "HAFNIUM_PATH=" + rebase_path("//"),
+      "KERNEL_PATH=" + rebase_path(invoker.kernel_dir),
+      "O=" +
+          rebase_path(get_label_info(invoker.kernel_target, "target_out_dir")),
+      "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
+      "LD=" +
+          rebase_path("//prebuilts/linux-x64/gcc/bin/aarch64-linux-android-ld"),
+      "AR=" +
+          rebase_path("//prebuilts/linux-x64/gcc/bin/aarch64-linux-android-ar"),
+      "NM=" + rebase_path("//prebuilts/linux-x64/clang/bin/llvm-nm"),
+      "OBJCOPY=" + rebase_path(
+              "//prebuilts/linux-x64/gcc/bin/aarch64-linux-android-objcopy"),
+      "OBJDUMP=" + rebase_path("//prebuilts/linux-x64/clang/bin/llvm-objdump"),
+      "STRIP=" + rebase_path("//prebuilts/linux-x64/clang/bin/llvm-strip"),
+      "GCC_TOOLCHAIN_DIR=" + rebase_path("//prebuilts/linux-x64/gcc/bin"),
+      "ARCH=arm64",
+      "CROSS_COMPILE=aarch64-linux-gnu-",
+    ]
+    outputs = [
+      "${target_out_dir}/${invoker.module_name}.ko",
+    ]
+    deps = [
+      ":${source_target}",
+      "${invoker.kernel_target}__defconfig",
+    ]
+  }
+}
