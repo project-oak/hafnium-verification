@@ -26,7 +26,6 @@ pub fn is_aligned(v: usize, a: usize) -> bool {
 
 /// As per the C11 specification, mem*_s() operations fill the destination buffer if runtime
 /// constraint validation fails, assuming that `dest` and `destsz` are both valid.
-/// Note(HfO2): The function name is automatically included by `panic!` macro.
 macro_rules! check_or_fill {
     ($cond:expr, $dest:expr, $destsz:expr, $ch:expr) => {{
         if !$cond {

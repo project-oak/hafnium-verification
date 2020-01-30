@@ -19,14 +19,12 @@ use core::fmt::{self, Write};
 use core::ptr;
 
 use crate::fdt::*;
-use crate::fdt_handler::*;
 use crate::memiter::*;
 use crate::types::*;
 
 use arrayvec::ArrayVec;
 
-/// "vm" + number + null terminator
-const VM_NAME_BUF_SIZE: usize = 2 + 5 + 1;
+const VM_NAME_BUF_SIZE: usize = 2 + 5 + 1; // "vm" + number + null terminator
 const_assert!(MAX_VMS <= 99999);
 
 #[derive(PartialEq, Debug)]
@@ -109,49 +107,49 @@ fn generate_vm_node_name<'a>(
     &mut buf.buf[..buf.size]
 }
 
-/// TODO(HfO2): This function is marked `inline(never)`, to prevent stack overflow. It is still
-/// mysterious why inlining this function into ManifestVm::new makes stack overflow.
-#[inline(never)]
-fn read_string<'a>(node: &FdtNode<'a>, property: *const u8) -> Result<MemIter, Error> {
-    let data = node
-        .read_property(property)
-        .map_err(|_| Error::PropertyNotFound)?;
+impl<'a> FdtNode<'a> {
+    /// TODO(HfO2): This function is marked `inline(never)`, to prevent stack overflow. It is still
+    /// mysterious why inlining this function into ManifestVm::new makes stack overflow.
+    #[inline(never)]
+    fn read_string(&self, property: *const u8) -> Result<MemIter, Error> {
+        let data = self
+            .read_property(property)
+            .map_err(|_| Error::PropertyNotFound)?;
 
-    if data[data.len() - 1] != b'\0' {
-        return Err(Error::MalformedString);
+        if data[data.len() - 1] != b'\0' {
+            return Err(Error::MalformedString);
+        }
+
+        Ok(unsafe { MemIter::from_raw(data.as_ptr(), data.len() - 1) })
     }
 
-    Ok(unsafe { MemIter::from_raw(data.as_ptr(), data.len() - 1) })
-}
+    fn read_u64(&self, property: *const u8) -> Result<u64, Error> {
+        let data = self
+            .read_property(property)
+            .map_err(|_| Error::PropertyNotFound)?;
 
-fn read_u64<'a>(node: &FdtNode<'a>, property: *const u8) -> Result<u64, Error> {
-    let data = node
-        .read_property(property)
-        .map_err(|_| Error::PropertyNotFound)?;
+        fdt_parse_number(data).ok_or(Error::MalformedInteger)
+    }
 
-    fdt_parse_number(data).ok_or(Error::MalformedInteger)
-}
+    fn read_u16(&self, property: *const u8) -> Result<u16, Error> {
+        let value = self.read_u64(property)?;
 
-fn read_u16<'a>(node: &FdtNode<'a>, property: *const u8) -> Result<u16, Error> {
-    let value = read_u64(node, property)?;
-
-    value.try_into().map_err(|_| Error::IntegerOverflow)
+        value.try_into().map_err(|_| Error::IntegerOverflow)
+    }
 }
 
 impl ManifestVm {
     fn new<'a>(node: &FdtNode<'a>, vm_id: spci_vm_id_t) -> Result<Self, Error> {
-        let debug_name = read_string(node, "debug_name\0".as_ptr())?;
-        let (kernel_filename, mem_size, vcpu_count);
-
-        if vm_id != HF_PRIMARY_VM_ID {
-            kernel_filename = read_string(node, "kernel_filename\0".as_ptr())?;
-            mem_size = read_u64(node, "mem_size\0".as_ptr())?;
-            vcpu_count = read_u16(node, "vcpu_count\0".as_ptr())?;
+        let debug_name = node.read_string("debug_name\0".as_ptr())?;
+        let (kernel_filename, mem_size, vcpu_count) = if vm_id != HF_PRIMARY_VM_ID {
+            (
+                node.read_string("kernel_filename\0".as_ptr())?,
+                node.read_u64("mem_size\0".as_ptr())?,
+                node.read_u16("vcpu_count\0".as_ptr())?,
+            )
         } else {
-            kernel_filename = unsafe { MemIter::from_raw(ptr::null(), 0) };
-            mem_size = 0;
-            vcpu_count = 0;
-        }
+            (unsafe { MemIter::from_raw(ptr::null(), 0) }, 0, 0)
+        };
 
         Ok(Self {
             debug_name,

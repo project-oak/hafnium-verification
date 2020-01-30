@@ -20,6 +20,8 @@ use core::ptr;
 use core::slice;
 use core::str;
 
+use crate::std::*;
+
 use scopeguard::guard;
 
 /// TODO(HfO2): port this function into `std.rs` (#48.)
@@ -123,6 +125,28 @@ struct FdtTokenizer<'a> {
 const FDT_VERSION: u32 = 17;
 const FDT_MAGIC: u32 = 0xd00d_feed;
 const FDT_TOKEN_ALIGNMENT: usize = mem::size_of::<u32>();
+
+/// Helper method for parsing 32/64-bit units from FDT data.
+pub fn fdt_parse_number(data: &[u8]) -> Option<u64> {
+    // FDT values should be aligned to 32-bit boundary.
+    assert!(is_aligned(data.as_ptr() as _, FDT_TOKEN_ALIGNMENT));
+
+    let ret = match data.len() {
+        4 => {
+            // Assert that `data` is already sufficiently aligned to dereference as u32.
+            const_assert!(mem::align_of::<u32>() <= FDT_TOKEN_ALIGNMENT);
+            unsafe { u32::from_be(*(data.as_ptr() as *const u32)) as u64 }
+        }
+        8 => {
+            // ARMv8 requires `data` to be realigned to 64-bit boundary to dereferences as u64.
+            // May not be needed on other architectures.
+            u64::from_be_bytes(data.try_into().unwrap())
+        }
+        _ => return None,
+    };
+
+    Some(ret)
+}
 
 impl<'a> FdtTokenizer<'a> {
     fn new(cur: &'a [u8], strs: &'a [u8]) -> Self {

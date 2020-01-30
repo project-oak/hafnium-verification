@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use core::convert::TryInto;
 use core::mem;
 use core::ptr;
 use core::slice;
@@ -30,19 +29,6 @@ use crate::page::*;
 use crate::types::*;
 
 use scopeguard::{guard, ScopeGuard};
-
-/// Helper method for parsing 32/64-bit units from FDT data.
-/// Note(HfO2): We do not require `data` aligned by `size_of::<u32>()`; The original was not, so
-/// it may be faster. However, we do not consider those kind of micro-optimizations here.
-pub fn fdt_parse_number(data: &[u8]) -> Option<u64> {
-    let ret = match data.len() {
-        4 => u64::from(u32::from_be_bytes(data.try_into().unwrap())),
-        8 => u64::from_be_bytes(data.try_into().unwrap()),
-        _ => return None,
-    };
-
-    Some(ret)
-}
 
 impl<'a> FdtNode<'a> {
     fn read_number(&self, name: *const u8) -> Result<u64, ()> {

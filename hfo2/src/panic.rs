@@ -25,8 +25,8 @@ fn abort_impl() -> ! {
 /// system in an inconsistent state.
 ///
 /// TODO: Should this also reset the system?
-/// TODO(HfO2): This function is marked `linkage=weak`, because some tests have custom `abort`
-/// function but still need HfO2. Separating HfO2 into many libraries may resolve this.
+/// TODO(HfO2): This function needs to be weakly linked because some tests have custom `abort`
+/// function but still need HfO2. Dividing HfO2 into many libraries may resolve this.
 #[cfg(not(feature = "test"))]
 #[linkage = "weak"]
 #[no_mangle]
