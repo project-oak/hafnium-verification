@@ -128,6 +128,11 @@ const FDT_TOKEN_ALIGNMENT: usize = mem::size_of::<u32>();
 
 /// Helper method for parsing 32/64-bit units from FDT data.
 pub fn fdt_parse_number(data: &[u8]) -> Option<u64> {
+    #[repr(C, align(8))]
+    struct T {
+        a: [u8; 8],
+    }
+
     // FDT values should be aligned to 32-bit boundary.
     assert!(is_aligned(data.as_ptr() as _, FDT_TOKEN_ALIGNMENT));
 
@@ -140,7 +145,11 @@ pub fn fdt_parse_number(data: &[u8]) -> Option<u64> {
         8 => {
             // ARMv8 requires `data` to be realigned to 64-bit boundary to dereferences as u64.
             // May not be needed on other architectures.
-            u64::from_be_bytes(data.try_into().unwrap())
+            let mut t = T {
+                a: Default::default(),
+            };
+            t.a.copy_from_slice(data);
+            u64::from_be(unsafe { mem::transmute(t) })
         }
         _ => return None,
     };
