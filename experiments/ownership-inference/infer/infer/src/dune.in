@@ -30,6 +30,7 @@ let source_dirs =
        ; "test_determinator"
        ; "topl"
        ; "unit"
+       ; "types"
        ; "unit" ^/ "nullsafe" ] )
 
 

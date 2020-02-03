@@ -43,7 +43,8 @@ type checkers =
   ; resource_leak: bool ref
   ; siof: bool ref
   ; starvation: bool ref
-  ; uninit: bool ref }
+  ; uninit: bool ref
+  ; ownership: bool ref }
 
 let equal_analyzer = [%compare.equal: analyzer]
 
@@ -641,7 +642,8 @@ and { annotation_reachability
     ; resource_leak
     ; siof
     ; starvation
-    ; uninit } =
+    ; uninit 
+    ; ownership } =
   let mk_checker ?(default = false) ?(deprecated = []) ~long doc =
     let var =
       CLOpt.mk_bool ~long ~in_help:InferCommand.[(Analyze, manual_generic)] ~default ~deprecated doc
@@ -707,7 +709,9 @@ and { annotation_reachability
   and self_in_block =
     mk_checker ~long:"self_in_block" ~default:true
       "checker to flag incorrect uses of when Objective-C blocks capture self"
-  and uninit = mk_checker ~long:"uninit" "checker for use of uninitialized values" ~default:true in
+  and uninit = mk_checker ~long:"uninit" "checker for use of uninitialized values" ~default:true
+  and ownership = mk_checker ~long:"ownership-type" "checker for ownership type in C"
+  ~default:false in
   let mk_only (var, long, doc, _) =
     let (_ : bool ref) =
       CLOpt.mk_bool_group ~long:(long ^ "-only")
@@ -768,7 +772,8 @@ and { annotation_reachability
   ; self_in_block
   ; siof
   ; starvation
-  ; uninit }
+  ; uninit
+  ; ownership }
 
 
 and annotation_reachability_cxx =
@@ -3272,6 +3277,8 @@ and tv_limit_filtered = !tv_limit_filtered
 and type_size = !type_size
 
 and uninit = !uninit
+
+and ownership = !ownership
 
 and uninit_interproc = !uninit_interproc
 

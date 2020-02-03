@@ -27,10 +27,14 @@ type callback = callback_fun * Language.t
 
 type checker = {name: string; active: bool; callbacks: callback list}
 
-let all_checkers =
+let all_checkers = 
   (* TODO (T24393492): the checkers should run in the order from this list.
      Currently, the checkers are run in the reverse order *)
-  [ { name= "annotation reachability"
+  [ { name= "onwership type checker"
+    ; active= Config.ownership
+    ; callbacks=
+        [ (Procedure OwnershipChecker.checker, Language.Clang) ] }
+  ; { name= "annotation reachability"
     ; active= Config.annotation_reachability
     ; callbacks=
         [ (Procedure AnnotationReachability.checker, Language.Java)

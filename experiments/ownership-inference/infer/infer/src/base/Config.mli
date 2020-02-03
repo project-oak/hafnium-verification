@@ -720,6 +720,8 @@ val type_size : bool
 
 val uninit : bool
 
+val ownership : bool
+
 val uninit_interproc : bool
 
 val unsafe_malloc : bool
