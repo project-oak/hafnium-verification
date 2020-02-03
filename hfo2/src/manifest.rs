@@ -16,8 +16,6 @@
 
 use core::convert::TryInto;
 use core::fmt::{self, Write};
-use core::mem::MaybeUninit;
-use core::ptr;
 
 use crate::fdt::*;
 use crate::memiter::*;
@@ -307,9 +305,8 @@ impl Manifest {
 #[cfg(test)]
 mod test {
     extern crate std;
-    use std::fmt::Write as fmtWrite;
+    use std::fmt::Write as _;
     use std::io::Write;
-    use std::mem;
     use std::mem::MaybeUninit;
     use std::process::*;
     use std::string::String;
@@ -346,9 +343,8 @@ mod test {
 
         fn build(&mut self) -> Vec<u8> {
             self.end_child();
-            const program: &'static str = "../build/image/dtc.py";
 
-            let mut child = Command::new(program)
+            let mut child = Command::new("../build/image/dtc.py")
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .args(&["compile"])
@@ -406,7 +402,7 @@ mod test {
         }
 
         fn string_list_property(&mut self, name: &str, value: &[&str]) -> &mut Self {
-            write!(self.dts, "{} = \"", name);
+            write!(self.dts, "{} = \"", name).unwrap();
             self.dts.push_str(&value.join("\", \""));
             self.dts.push_str("\";\n");
             self

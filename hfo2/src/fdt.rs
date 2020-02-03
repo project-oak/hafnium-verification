@@ -117,7 +117,6 @@ impl TryFrom<u32> for FdtToken {
     }
 }
 
-#[derive(Clone)]
 struct FdtTokenizer<'a> {
     cur: &'a [u8],
     strs: &'a [u8],
@@ -200,7 +199,6 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn token_expect(&mut self, expect: FdtToken) -> Option<FdtToken> {
-        let rewind = self.clone();
         let token = self.token()?;
 
         if token != expect {
@@ -214,7 +212,10 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     unsafe fn rewind(&mut self) {
-        self.cur = slice::from_raw_parts(self.cur.as_ptr().sub(4), self.cur.len() + 4);
+        self.cur = slice::from_raw_parts(
+            self.cur.as_ptr().sub(FDT_TOKEN_ALIGNMENT),
+            self.cur.len() + FDT_TOKEN_ALIGNMENT,
+        );
     }
 
     fn str(&mut self) -> Option<&'a [u8]> {

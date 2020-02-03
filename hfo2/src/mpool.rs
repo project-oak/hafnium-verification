@@ -92,12 +92,12 @@ impl Pool {
 
     /// Allocates a page.
     pub fn alloc(&mut self) -> Result<Page, ()> {
-        if let Some(entry) = unsafe { self.entry_list.pop() } {
+        if let Some(entry) = self.entry_list.pop() {
             #[allow(clippy::cast_ptr_alignment)]
             return Ok(unsafe { Page::from_raw(entry as *mut RawPage) });
         }
 
-        let chunk = unsafe { self.chunk_list.pop().ok_or(())? };
+        let chunk = self.chunk_list.pop().ok_or(())?;
         let size = unsafe { (*chunk).size };
         debug_assert_ne!(size, 0);
 
