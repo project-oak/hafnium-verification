@@ -26,28 +26,28 @@ pub fn is_aligned(v: usize, a: usize) -> bool {
 
 /// As per the C11 specification, mem*_s() operations fill the destination buffer if runtime
 /// constraint validation fails, assuming that `dest` and `destsz` are both valid.
-macro_rules! check_or_fill {
-    ($cond:expr, $dest:expr, $destsz:expr, $ch:expr) => {{
-        if !$cond {
-            if (!$dest.is_null() && $destsz <= RSIZE_MAX) {
-                memset_s($dest, $destsz, $ch, $destsz);
-            }
-            panic!("failed: {}", stringify!($cond));
+#[track_caller]
+unsafe fn check_or_fill(cond: bool, dest: *const c_void, destsz: size_t, ch: i32, condmsg: &str) {
+    if !cond {
+        if !dest.is_null() && destsz <= RSIZE_MAX {
+            memset_s(dest, destsz, ch, destsz);
         }
-    }};
+        panic!("failed: {}", condmsg);
+    }
+}
 
-    ($cond:expr, $dest:expr, $destsz:expr) => {{
-        check_or_fill!($cond, $dest, $destsz, 0)
-    }};
+#[track_caller]
+unsafe fn check_or_fill_zero(cond: bool, dest: *const c_void, destsz: size_t, condmsg: &str) {
+    check_or_fill(cond, dest, destsz, 0, condmsg)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn memset_s(dest: *const c_void, destsz: size_t, ch: c_int, count: size_t) {
-    check_or_fill!(!dest.is_null(), dest, destsz, ch);
+    check_or_fill(!dest.is_null(), dest, destsz, ch, "!dest.is_null()");
 
     // Check count <= destsz <= RSIZE_MAX.
-    check_or_fill!(destsz <= RSIZE_MAX, dest, destsz, ch);
-    check_or_fill!(count <= destsz, dest, destsz, ch);
+    check_or_fill(destsz <= RSIZE_MAX, dest, destsz, ch, "destsz <= RSIZE_MAX");
+    check_or_fill(count <= destsz, dest, destsz, ch, "count <= destsz");
 
     ptr::write_bytes(dest as *mut u8, ch as u8, count);
 }
@@ -62,19 +62,29 @@ pub unsafe extern "C" fn memcpy_s(
     let d = dest as usize;
     let s = src as usize;
 
-    check_or_fill!(!dest.is_null(), dest, destsz);
-    check_or_fill!(!src.is_null(), dest, destsz);
+    check_or_fill_zero(!dest.is_null(), dest, destsz, "!dest.is_null()");
+    check_or_fill_zero(!src.is_null(), dest, destsz, "!src.is_null()");
 
     // Check count <= destsz <= RSIZE_MAX.
-    check_or_fill!(destsz <= RSIZE_MAX, dest, destsz);
-    check_or_fill!(count <= destsz, dest, destsz);
+    check_or_fill_zero(destsz <= RSIZE_MAX, dest, destsz, "destsz <= RSIZE_MAX");
+    check_or_fill_zero(count <= destsz, dest, destsz, "count <= destsz");
 
     // Buffer overlap test.
     // case a) `d < s` impiles `s >= d+count`
     // case b) `d > s` impiles `d >= s+count`
-    check_or_fill!(d != s, dest, destsz);
-    check_or_fill!(d < s || d >= (s + count), dest, destsz);
-    check_or_fill!(d > s || s >= (d + count), dest, destsz);
+    check_or_fill_zero(d != s, dest, destsz, "d != s");
+    check_or_fill_zero(
+        d < s || d >= (s + count),
+        dest,
+        destsz,
+        "d < s || d >= (s + count)",
+    );
+    check_or_fill_zero(
+        d > s || s >= (d + count),
+        dest,
+        destsz,
+        "d > s || s >= (d + count)",
+    );
 
     ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, count);
 }
@@ -86,12 +96,12 @@ pub unsafe extern "C" fn memmove_s(
     src: *const c_void,
     count: size_t,
 ) {
-    check_or_fill!(!dest.is_null(), dest, destsz);
-    check_or_fill!(!src.is_null(), dest, destsz);
+    check_or_fill_zero(!dest.is_null(), dest, destsz, "!dest.is_null()");
+    check_or_fill_zero(!src.is_null(), dest, destsz, "!src.is_null()");
 
     // Check count <= destsz <= RSIZE_MAX.
-    check_or_fill!(destsz <= RSIZE_MAX, dest, destsz);
-    check_or_fill!(count <= destsz, dest, destsz);
+    check_or_fill_zero(destsz <= RSIZE_MAX, dest, destsz, "destsz <= RSIZE_MAX");
+    check_or_fill_zero(count <= destsz, dest, destsz, "count <= destsz");
 
     ptr::copy(src as *const u8, dest as *mut u8, count);
 }

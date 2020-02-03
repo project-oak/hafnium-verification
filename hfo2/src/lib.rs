@@ -24,6 +24,7 @@
 #![feature(ptr_wrapping_offset_from)]
 #![feature(slice_from_raw_parts)]
 #![feature(linkage)]
+#![feature(track_caller)]
 
 #[macro_use]
 extern crate bitflags;
