@@ -104,7 +104,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     dlog_enable_lock();
     mpool_enable_locks();
 
-    /// Note(HfO2): This variable, was originally local, but is static to prevent stack overflow.
+    /// Note(HfO2): This variable was originally local, but now is static to prevent stack overflow.
     static mut MANIFEST: MaybeUninit<Manifest> = MaybeUninit::uninit();
     let mut manifest = MANIFEST.get_mut();
     let mut params: BootParams = MaybeUninit::uninit().assume_init();
