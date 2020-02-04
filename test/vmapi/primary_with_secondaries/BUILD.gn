@@ -26,6 +26,7 @@ vm_kernel("primary_with_secondaries_test_vm") {
   sources = [
     "abort.c",
     "boot.c",
+    "debug_el1.c",
     "floating_point.c",
     "interrupts.c",
     "mailbox.c",
@@ -47,23 +48,19 @@ vm_kernel("primary_with_secondaries_test_vm") {
 initrd("primary_with_secondaries_test") {
   testonly = true
 
+  manifest = "manifest.dts"
+
   primary_vm = ":primary_with_secondaries_test_vm"
   secondary_vms = [
     [
-      "1048576",
-      "1",
       "services0",
       "services:service_vm0",
     ],
     [
-      "1048576",
-      "1",
       "services1",
       "services:service_vm1",
     ],
     [
-      "1048576",
-      "2",
       "services2",
       "services:service_vm2",
     ],

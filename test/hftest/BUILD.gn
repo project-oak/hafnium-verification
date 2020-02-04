@@ -18,7 +18,7 @@ config("hftest_config") {
   include_dirs = [ "inc" ]
 }
 
-# Testing framework for a primary vm.
+# Testing framework for a primary VM.
 source_set("hftest_primary_vm") {
   testonly = true
 
@@ -30,7 +30,7 @@ source_set("hftest_primary_vm") {
   ]
 }
 
-# Testing framework for a secondary vm. It's currently just a slave VM and
+# Testing framework for a secondary VM. It's currently just a slave VM and
 # can't affect the tests directly.
 source_set("hftest_secondary_vm") {
   testonly = true
@@ -38,11 +38,12 @@ source_set("hftest_secondary_vm") {
   public_configs = [ ":hftest_config" ]
 
   sources = [
-    "hftest_service.c",
+    "service.c",
   ]
-  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
 
   deps = [
+    ":mm",
+    ":power_mgmt",
     "//src:dlog",
     "//src:memiter",
     "//src:panic",
@@ -92,6 +93,8 @@ source_set("hftest_standalone") {
 
   deps = [
     ":common",
+    ":mm",
+    ":power_mgmt",
     "//src:dlog",
     "//src:fdt",
     "//src:memiter",
@@ -108,7 +111,7 @@ source_set("common") {
   testonly = true
   public_configs = [ ":hftest_config" ]
   sources = [
-    "hftest_common.c",
+    "common.c",
   ]
   libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
   deps = [
@@ -116,5 +119,39 @@ source_set("common") {
     "//src:memiter",
     "//src:panic",
     "//src:std",
+  ]
+}
+
+source_set("mm") {
+  testonly = true
+
+  public_configs = [ ":hftest_config" ]
+
+  sources = [
+    "mm.c",
+  ]
+
+  libs = ["//hfo2/target/aarch64-hfo2-test/release/libhfo2.a"]
+
+  deps = [
+    "//src:layout",
+    "//src:mm",
+    "//src/arch/${plat_arch}:arch",
+    "//src/arch/${plat_arch}/hftest:mm",
+  ]
+}
+
+source_set("power_mgmt") {
+  testonly = true
+
+  public_configs = [ ":hftest_config" ]
+
+  sources = [
+    "power_mgmt.c",
+  ]
+
+  deps = [
+    ":mm",
+    "//src/arch/${plat_arch}/hftest:power_mgmt",
   ]
 }

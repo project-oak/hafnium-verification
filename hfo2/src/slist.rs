@@ -19,7 +19,6 @@ use core::marker::PhantomData;
 use core::ptr;
 
 /// An entry in an intrusive linked list.
-#[derive(Debug)]
 #[repr(C)]
 pub struct ListEntry {
     /// The next entry in the linked list.
@@ -85,12 +84,11 @@ pub trait IsElement<T> {
     unsafe fn element_of(entry: &ListEntry) -> &T;
 }
 
-/// A lock-free, intrusive linked list of type `T`.
-#[derive(Debug)]
+/// A intrusive linked list of type `T`.
 #[repr(C)]
 pub struct List<T, C: IsElement<T> = T> {
     /// The head of the linked list.
-    pub(crate) head: ListEntry,
+    head: ListEntry,
 
     /// The phantom data for using `T` and `C`.
     _marker: PhantomData<(T, C)>,
@@ -110,7 +108,7 @@ impl ListEntry {
     /// You should guarantee that:
     ///
     /// - `container` is not null
-    /// - `container` is immovable, e.g. inside an `Owned`
+    /// - `container` is immovable, e.g. inside a `Page`
     /// - the same `ListEntry` is not inserted more than once
     /// - the inserted object will be removed before the list is dropped
     pub unsafe fn push<T, C: IsElement<T>>(&self, element: &T) {
@@ -143,22 +141,22 @@ impl<T, C: IsElement<T>> List<T, C> {
     /// You should guarantee that:
     ///
     /// - `container` is not null
-    /// - `container` is immovable, e.g. inside an `Owned`
+    /// - `container` is immovable, e.g. inside a `Page`
     /// - the same `ListEntry` is not inserted more than once
     /// - the inserted object will be removed before the list is dropped
     pub unsafe fn push(&mut self, element: &T) {
         self.head.push::<T, C>(element);
     }
 
-    pub unsafe fn pop(&mut self) -> Option<*mut T> {
+    pub fn pop(&mut self) -> Option<*mut T> {
         let head = self.head.next.get();
         if head.is_null() {
             return None;
         }
 
-        let next = (*head).next.get();
+        let next = unsafe { (*head).next.get() };
         self.head.next.set(next);
-        Some(C::element_of(&*head) as *const _ as *mut _)
+        Some(unsafe { C::element_of(&*head) } as *const _ as *mut _)
     }
 
     pub unsafe fn pop_if_some<R, F>(&mut self, cond: F) -> Option<(*mut T, R)>

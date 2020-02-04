@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,11 @@
 #include "hf/std.h"
 
 #include "vmapi/hf/call.h"
+#include "vmapi/hf/transport.h"
 
 #include "hftest.h"
 
 alignas(4096) uint8_t kstack[4096];
-
-HFTEST_ENABLE();
-
-extern struct hftest_test hftest_begin[];
-extern struct hftest_test hftest_end[];
 
 static alignas(HF_MAILBOX_SIZE) uint8_t send[HF_MAILBOX_SIZE];
 static alignas(HF_MAILBOX_SIZE) uint8_t recv[HF_MAILBOX_SIZE];
@@ -45,26 +41,6 @@ struct hftest_context *hftest_get_context(void)
 	return &global_context;
 }
 
-/** Find the service with the name passed in the arguments. */
-static hftest_test_fn find_service(struct memiter *args)
-{
-	struct memiter service_name;
-	struct hftest_test *test;
-
-	if (!memiter_parse_str(args, &service_name)) {
-		return NULL;
-	}
-
-	for (test = hftest_begin; test < hftest_end; ++test) {
-		if (test->kind == HFTEST_KIND_SERVICE &&
-		    memiter_iseq(&service_name, test->name)) {
-			return test->fn;
-		}
-	}
-
-	return NULL;
-}
-
 noreturn void abort(void)
 {
 	HFTEST_LOG("Service contained failures.");
@@ -76,34 +52,23 @@ noreturn void abort(void)
 	}
 }
 
+static void swap(uint64_t *a, uint64_t *b)
+{
+	uint64_t t = *a;
+	*a = *b;
+	*b = t;
+}
+
 noreturn void kmain(size_t memory_size)
 {
-	struct memiter args;
-	hftest_test_fn service;
 	struct hftest_context *ctx;
-
-	struct spci_message *recv_msg = (struct spci_message *)recv;
 
 	/* Prepare the context. */
 
 	/* Set up the mailbox. */
 	hf_vm_configure(send_addr, recv_addr);
 
-	/* Receive the name of the service to run. */
-	spci_msg_recv(SPCI_MSG_RECV_BLOCK);
-	memiter_init(&args, recv_msg->payload, recv_msg->length);
-	service = find_service(&args);
 	hf_mailbox_clear();
-
-	/* Check the service was found. */
-	if (service == NULL) {
-		HFTEST_LOG_FAILURE();
-		HFTEST_LOG(HFTEST_LOG_INDENT
-			   "Unable to find requested service");
-		for (;;) {
-			/* Hang if the service was unknown. */
-		}
-	}
 
 	/* Clean the context. */
 	ctx = hftest_get_context();
@@ -113,18 +78,29 @@ noreturn void kmain(size_t memory_size)
 	ctx->recv = (struct spci_message *)recv;
 	ctx->memory_size = memory_size;
 
-	/* Pause so the next time cycles are given the service will be run. */
-	spci_yield();
-
-	/* Let the service run. */
-	service();
-
-	/* Cleanly handle it if the service returns. */
-	if (ctx->failures) {
-		abort();
-	}
-
 	for (;;) {
-		/* Hang if the service returns. */
+		struct spci_message *send_buf = (struct spci_message *)send;
+		struct spci_message *recv_buf = (struct spci_message *)recv;
+
+		/* Receive the packet. */
+		spci_msg_recv(SPCI_MSG_RECV_BLOCK);
+		EXPECT_LE(recv_buf->length, SPCI_MSG_PAYLOAD_MAX);
+
+		/* Echo the message back to the sender. */
+		memcpy_s(send_buf->payload, SPCI_MSG_PAYLOAD_MAX,
+			 recv_buf->payload, recv_buf->length);
+
+		/* Swap the socket's source and destination ports */
+		struct hf_msg_hdr *hdr = (struct hf_msg_hdr *)send_buf->payload;
+		swap(&(hdr->src_port), &(hdr->dst_port));
+
+		/* Swap the destination and source ids. */
+		spci_vm_id_t dst_id = recv_buf->source_vm_id;
+		spci_vm_id_t src_id = recv_buf->target_vm_id;
+
+		spci_message_init(send_buf, recv_buf->length, dst_id, src_id);
+
+		hf_mailbox_clear();
+		EXPECT_EQ(spci_msg_send(0), SPCI_SUCCESS);
 	}
 }

@@ -31,11 +31,13 @@ typedef size_t rsize_t;
  * Only the safer versions of these functions are exposed to reduce the chance
  * of misusing the versions without bounds checking or null pointer checks.
  *
- * These functions don't return errno_t as per the specification and implicity
+ * These functions don't return errno_t as per the specification and implicitly
  * have a constraint handler that panics.
  */
 void memset_s(void *dest, rsize_t destsz, int ch, rsize_t count);
 void memcpy_s(void *dest, rsize_t destsz, const void *src, rsize_t count);
 void memmove_s(void *dest, rsize_t destsz, const void *src, rsize_t count);
+
+void *memchr(const void *ptr, int ch, size_t count);
 
 size_t strnlen_s(const char *str, size_t strsz);

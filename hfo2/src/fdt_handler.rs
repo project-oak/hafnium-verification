@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-use core::convert::TryInto;
 use core::mem;
 use core::ptr;
 use core::slice;
@@ -31,21 +30,11 @@ use crate::types::*;
 
 use scopeguard::{guard, ScopeGuard};
 
-fn convert_number(data: &[u8]) -> Option<u64> {
-    let ret = match data.len() {
-        4 => u64::from(u32::from_be_bytes(data.try_into().unwrap())),
-        8 => u64::from_be_bytes(data.try_into().unwrap()),
-        _ => return None,
-    };
-
-    Some(ret)
-}
-
 impl<'a> FdtNode<'a> {
     fn read_number(&self, name: *const u8) -> Result<u64, ()> {
         let data = self.read_property(name)?;
 
-        convert_number(data).ok_or(())
+        fdt_parse_number(data).ok_or(())
     }
 
     unsafe fn write_number(&mut self, name: *const u8, value: u64) -> Result<(), ()> {
@@ -67,18 +56,19 @@ impl<'a> FdtNode<'a> {
 
     /// Finds the memory region where initrd is stored, and updates the fdt node
     /// cursor to the node called "chosen".
-    pub fn find_initrd(&mut self) -> Option<(paddr_t, paddr_t)> {
-        if self.find_child("chosen\0".as_ptr()).is_none() {
+    pub fn find_initrd(&self) -> Option<(paddr_t, paddr_t)> {
+        let mut node = self.clone();
+        if node.find_child("chosen\0".as_ptr()).is_none() {
             dlog!("Unable to find 'chosen'\n");
             return None;
         }
 
-        let initrd_begin = ok_or!(self.read_number("linux,initrd-start\0".as_ptr()), {
+        let initrd_begin = ok_or!(node.read_number("linux,initrd-start\0".as_ptr()), {
             dlog!("Unable to read linux,initrd-start\n");
             return None;
         });
 
-        let initrd_end = ok_or!(self.read_number("linux,initrd-end\0".as_ptr()), {
+        let initrd_end = ok_or!(node.read_number("linux,initrd-end\0".as_ptr()), {
             dlog!("Unable to read linux,initrd-end\n");
             return None;
         });
@@ -135,7 +125,10 @@ impl<'a> FdtNode<'a> {
                     return None;
                 }
 
-                cpu_ids[cpu_count] = convert_number(&data[..address_size]).unwrap() as cpu_id_t;
+                cpu_ids[cpu_count] = some_or!(fdt_parse_number(&data[..address_size]), {
+                    dlog!("Could not parse CPU id\n");
+                    return None;
+                }) as cpu_id_t;
                 cpu_count += 1;
 
                 data = &data[address_size..];
@@ -193,8 +186,8 @@ impl<'a> FdtNode<'a> {
 
             // Traverse all memory ranges within this node.
             while data.len() >= entry_size {
-                let addr = convert_number(&data[..address_size]).unwrap() as usize;
-                let len = convert_number(&data[address_size..entry_size]).unwrap() as usize;
+                let addr = fdt_parse_number(&data[..address_size]).unwrap() as usize;
+                let len = fdt_parse_number(&data[address_size..entry_size]).unwrap() as usize;
 
                 if mem_range_index < MAX_MEM_RANGES {
                     p.mem_ranges[mem_range_index].begin = pa_init(addr);
@@ -271,12 +264,16 @@ pub unsafe fn map(
 
 pub unsafe fn unmap(
     stage1_ptable: &mut PageTable<Stage1>,
-    fdt: &FdtHeader,
+    fdt: *const FdtHeader,
     ppool: &MPool,
 ) -> Result<(), ()> {
-    let fdt_addr = pa_init(fdt as *const _ as usize);
+    let fdt_addr = pa_init(fdt as usize);
 
-    stage1_ptable.unmap(fdt_addr, pa_add(fdt_addr, fdt.total_size() as usize), ppool)
+    stage1_ptable.unmap(
+        fdt_addr,
+        pa_add(fdt_addr, (*fdt).total_size() as usize),
+        ppool,
+    )
 }
 
 pub unsafe fn patch(
@@ -434,7 +431,7 @@ pub unsafe extern "C" fn fdt_unmap(
     fdt: *const FdtHeader,
     ppool: *const MPool,
 ) -> bool {
-    unmap(&mut stage1_locked, &*fdt, &*ppool).is_ok()
+    unmap(&mut stage1_locked, fdt, &*ppool).is_ok()
 }
 
 #[no_mangle]
@@ -457,15 +454,14 @@ pub unsafe extern "C" fn fdt_find_memory_ranges(root: *const fdt_node, p: *mut B
 
 #[no_mangle]
 pub unsafe extern "C" fn fdt_find_initrd(
-    n: *mut fdt_node,
+    n: *const fdt_node,
     begin: *mut paddr_t,
     end: *mut paddr_t,
 ) -> bool {
-    let mut node = FdtNode::from((*n).clone());
+    let node = FdtNode::from((*n).clone());
     let (b, e) = some_or!(node.find_initrd(), return false);
     ptr::write(begin, b);
     ptr::write(end, e);
-    ptr::write(n, node.into());
     true
 }
 

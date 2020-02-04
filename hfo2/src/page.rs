@@ -16,7 +16,7 @@
 
 use core::mem;
 use core::ops::*;
-use core::slice;
+use core::ptr;
 
 use crate::utils::*;
 
@@ -29,8 +29,8 @@ pub struct RawPage {
     inner: [u8; PAGE_SIZE],
 }
 
-const_assert!(raw_page_align; mem::align_of::<RawPage>() == PAGE_SIZE);
-const_assert!(raw_page_size; mem::size_of::<RawPage>() == PAGE_SIZE);
+const_assert_eq!(mem::align_of::<RawPage>(), PAGE_SIZE);
+const_assert_eq!(mem::size_of::<RawPage>(), PAGE_SIZE);
 
 impl RawPage {
     pub const fn new() -> Self {
@@ -97,13 +97,14 @@ impl DerefMut for Page {
 }
 
 pub struct Pages {
-    ptr: *mut RawPage,
-    size: usize,
+    ptr: *mut [RawPage],
 }
 
 impl Pages {
-    pub unsafe fn from_raw(ptr: *mut RawPage, size: usize) -> Self {
-        Self { ptr, size }
+    pub unsafe fn from_raw(raw: *mut RawPage, size: usize) -> Self {
+        Self {
+            ptr: ptr::slice_from_raw_parts_mut(raw, size),
+        }
     }
 
     pub unsafe fn from_raw_u8(ptr: *mut u8, size: usize) -> Result<Self, ()> {
@@ -116,16 +117,16 @@ impl Pages {
             return Err(());
         }
 
-        Ok(Self {
-            ptr: new_begin as *mut RawPage,
-            size: (new_end - new_begin) / PAGE_SIZE,
-        })
+        Ok(Self::from_raw(
+            new_begin as *mut RawPage,
+            (new_end - new_begin) / PAGE_SIZE,
+        ))
     }
 
     pub fn into_raw(self) -> *mut RawPage {
         let ptr = self.ptr;
         mem::forget(self);
-        ptr
+        ptr as *mut _
     }
 
     pub fn clear(&mut self) {
@@ -145,12 +146,12 @@ impl Deref for Pages {
     type Target = [RawPage];
 
     fn deref(&self) -> &Self::Target {
-        unsafe { slice::from_raw_parts(self.ptr as *const RawPage, self.size) }
+        unsafe { &*self.ptr }
     }
 }
 
 impl DerefMut for Pages {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { slice::from_raw_parts_mut(self.ptr as *mut RawPage, self.size) }
+        unsafe { &mut *self.ptr }
     }
 }

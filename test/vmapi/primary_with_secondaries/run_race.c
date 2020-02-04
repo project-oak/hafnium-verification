@@ -88,8 +88,8 @@ TEST(vcpu_state, concurrent_save_restore)
 	SERVICE_SELECT(SERVICE_VM0, "check_state", mb.send);
 
 	/* Start second vCPU. */
-	ASSERT_TRUE(cpu_start(hftest_get_cpu_id(1), stack, sizeof(stack),
-			      vm_cpu_entry, (uintptr_t)&mb));
+	ASSERT_TRUE(hftest_cpu_start(hftest_get_cpu_id(1), stack, sizeof(stack),
+				     vm_cpu_entry, (uintptr_t)&mb));
 
 	/* Run on a loop until the secondary VM is done. */
 	EXPECT_TRUE(run_loop(&mb));

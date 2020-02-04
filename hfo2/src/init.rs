@@ -19,10 +19,12 @@ use core::ptr;
 
 use crate::addr::*;
 use crate::arch::*;
+use crate::boot_flow::*;
 use crate::boot_params::*;
 use crate::cpu::*;
 use crate::hypervisor::*;
 use crate::load::*;
+use crate::manifest::*;
 use crate::memiter::*;
 use crate::mm::*;
 use crate::mpool::*;
@@ -96,13 +98,25 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
 
     let mm = MemoryManager::new(&ppool).expect("mm_init failed");
 
+    mm.cpu_init();
+
     // Enable locks now that mm is initialised.
     dlog_enable_lock();
     mpool_enable_locks();
 
+    /// Note(HfO2): This variable was originally local, but now is static to prevent stack overflow.
+    static mut MANIFEST: MaybeUninit<Manifest> = MaybeUninit::uninit();
+    let mut manifest = MANIFEST.get_mut();
+    let mut params: BootParams = MaybeUninit::uninit().assume_init();
+
     // TODO(HfO2): doesn't need to lock, actually
-    let params = boot_params_get(&mut mm.hypervisor_ptable.lock(), &ppool)
-        .expect("unable to retrieve boot params");
+    boot_flow_init(
+        &mut mm.hypervisor_ptable.lock(),
+        &mut manifest,
+        &mut params,
+        &ppool,
+    )
+    .expect("Could not parse data from FDT.");
 
     let cpum = CpuManager::new(
         &params.cpu_ids[..params.cpu_count],
@@ -118,14 +132,14 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
 
     for i in 0..params.mem_ranges_count {
         dlog!(
-            "Memory range: 0x{:x} - 0x{:x}\n",
+            "Memory range: {:#x} - {:#x}\n",
             pa_addr(params.mem_ranges[i].begin),
             pa_addr(params.mem_ranges[i].end) - 1
         );
     }
 
     dlog!(
-        "Ramdisk range: 0x{:x} - 0x{:x}\n",
+        "Ramdisk range: {:#x} - {:#x}\n",
         pa_addr(params.initrd_begin),
         pa_addr(params.initrd_end) - 1
     );
@@ -169,6 +183,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     load_secondary(
         &mut HYPERVISOR.get_mut().vm_manager,
         &mut hypervisor_ptable,
+        &mut manifest,
         &cpio,
         &params,
         &mut update,
@@ -177,7 +192,7 @@ unsafe extern "C" fn one_time_init(c: *const Cpu) -> *const Cpu {
     .expect("unable to load secondary VMs");
 
     // Prepare to run by updating bootparams as seen by primary VM.
-    boot_params_update(&mut hypervisor_ptable, &mut update, &hypervisor().mpool)
+    boot_params_patch_fdt(&mut hypervisor_ptable, &mut update, &hypervisor().mpool)
         .expect("plat_update_boot_params failed");
 
     hypervisor_ptable.defrag(&hypervisor().mpool);
@@ -203,8 +218,9 @@ pub fn hypervisor() -> &'static Hypervisor {
 // all state and return the first vCPU to run.
 #[no_mangle]
 pub unsafe extern "C" fn cpu_main(c: *const Cpu) -> *const VCpu {
-    let raw_ptable = hypervisor().memory_manager.get_raw_ptable();
-    MemoryManager::cpu_init(raw_ptable).expect("mm_cpu_init failed");
+    if hypervisor().cpu_manager.index_of(c) != 0 {
+        hypervisor().memory_manager.cpu_init();
+    }
 
     let primary = hypervisor().vm_manager.get_primary();
     let vcpu = &primary.vcpus[hypervisor().cpu_manager.index_of(c)];

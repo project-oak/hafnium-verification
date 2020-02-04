@@ -2,18 +2,18 @@
 
 ## Getting the source code
 
-``` shell
+```shell
 git clone --recurse-submodules https://hafnium.googlesource.com/hafnium && (cd hafnium && f=`git rev-parse --git-dir`/hooks/commit-msg ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f)
 ```
 
 To upload a commit for review:
 
-``` shell
+```shell
 git push origin HEAD:refs/for/master
 ```
 
-Browse source at https://hafnium.googlesource.com/hafnium.
-Review CLs at https://hafnium-review.googlesource.com/.
+Browse source at https://hafnium.googlesource.com/hafnium. Review CLs at
+https://hafnium-review.googlesource.com/.
 
 See details of [how to contribute](../CONTRIBUTING.md).
 
@@ -21,8 +21,8 @@ See details of [how to contribute](../CONTRIBUTING.md).
 
 Install prerequisites:
 
-``` shell
-sudo apt install make binutils-aarch64-linux-gnu device-tree-compiler libssl-dev flex bison
+```shell
+sudo apt install make binutils-aarch64-linux-gnu aarch64-linux-gnu-gcc device-tree-compiler libssl-dev flex bison
 ```
 
 By default, the hypervisor is built with clang for a few target platforms along
@@ -31,19 +31,19 @@ configurations of the build. Adding a project is the preferred way to extend
 support to new platforms. The target project that is built is selected by the
 `PROJECT` make variable, the default project is 'reference'.
 
-``` shell
+```shell
 make PROJECT=<project_name>
 ```
 
-The compiled image can be found under `out/<project>`, for example the QEMU image is at
-at `out/reference/qemu_aarch64_clang/hafnium.bin`.
+The compiled image can be found under `out/<project>`, for example the QEMU
+image is at `out/reference/qemu_aarch64_clang/hafnium.bin`.
 
 ## Running on QEMU
 
 You will need at least version 2.9 for QEMU. The following command line can be
 used to run Hafnium on it:
 
-``` shell
+```shell
 qemu-system-aarch64 -M virt,gic_version=3 -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin
 ```
 
@@ -51,18 +51,39 @@ Though it is admittedly not very useful because it doesn't have any virtual
 machines to run. Follow the [Hafnium RAM disk](HafniumRamDisk.md) instructions
 to create an initial RAM disk for Hafnium with Linux as the primary VM.
 
+Next, you need to create a manifest which will describe the VM to Hafnium.
+Follow the [Manifest](Manifest.md) instructions and build a DTBO with:
+```
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	hypervisor {
+		vm1 {
+			debug_name = "Linux VM";
+		};
+	};
+};
+```
+
+Dump the DTB used by QEMU:
+```shell
+qemu-system-aarch64 -M virt,gic_version=3 -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init" -machine dumpdtb=qemu.dtb
+```
+and follow instructions in [Manifest](Manifest.md) to overlay it with the manifest.
+
 The following command line will run Hafnium, with the RAM disk just created,
 which will then boot into the primary Linux VM:
 
-``` shell
-qemu-system-aarch64 -M virt,gic_version=3 -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
+```shell
+qemu-system-aarch64 -M virt,gic_version=3 -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init" -dtb=qemu_with_manifest.dtb
 ```
 
 ## Running tests
 
 After building, presubmit tests can be run with the following command line:
 
-``` shell
+```shell
 ./kokoro/ubuntu/test.sh
 ```
 

@@ -73,8 +73,15 @@ pub const MAX_VMS: usize = 6;
 #[cfg(target_arch = "aarch64")]
 pub const MAX_VMS: usize = 16;
 
+/// An offset to use when assigning VM IDs.
+/// The offset is needed because VM ID 0 is reserved.
+pub const HF_VM_ID_OFFSET: spci_vm_id_t = 1;
+
 /// The ID of the primary VM which is responsible for scheduling.
-pub const HF_PRIMARY_VM_ID: spci_vm_id_t = 0;
+///
+/// Starts at the offset because ID 0 is reserved for the hypervisor itself.
+/// All other VM IDs come after the primary.
+pub const HF_PRIMARY_VM_ID: spci_vm_id_t = HF_VM_ID_OFFSET;
 
 /// The amount of data that can be sent to a mailbox.
 pub const HF_MAILBOX_SIZE: usize = PAGE_SIZE;

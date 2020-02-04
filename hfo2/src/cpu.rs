@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use core::mem::{self, ManuallyDrop};
+use core::mem::{self, ManuallyDrop, MaybeUninit};
 use core::ops::Deref;
 use core::ptr;
 
@@ -173,8 +173,12 @@ impl Interrupts {
         Ok(())
     }
 
+    /// Checks whether the vCPU's attempt to block for a message has already been interrupted or
+    /// whether it is allowed to block.
     #[inline]
     pub fn is_interrupted(&self) -> bool {
+        // Don't block if there are enabled and pending interrupts, to match behaviour of
+        // wait_for_interrupt.
         self.enabled_and_pending_count > 0
     }
 
@@ -382,6 +386,21 @@ impl Cpu {
     }
 }
 
+pub unsafe fn cpu_get_buffer(cpu_id: cpu_id_t) -> &'static mut RawPage {
+    /// Internal buffer used to store SPCI messages from a VM Tx. Its usage prevents TOCTOU issues
+    /// while Hafnium performs actions on information that would otherwise be re-writable by the VM.
+    ///
+    /// Each buffer is owned by a single cpu. The buffer can only be used for `spci_msg_send`. The
+    /// information stored in the buffer is only valid during the `spci_msg_send` request is
+    /// performed.
+    ///
+    /// TODO(HfO2): Can we safely model this like `std::thread_local`?
+    static mut MESSAGE_BUFFER: MaybeUninit<[RawPage; MAX_CPUS]> = MaybeUninit::uninit();
+    assert!(cpu_id < MAX_CPUS as _);
+
+    &mut MESSAGE_BUFFER.get_mut()[cpu_id as usize]
+}
+
 pub struct CpuManager {
     /// State of all supported CPUs.
     cpus: ArrayVec<[Cpu; MAX_CPUS]>,
@@ -534,6 +553,11 @@ pub unsafe extern "C" fn vcpu_get_cpu(vcpu: *const VCpu) -> *const Cpu {
 #[no_mangle]
 pub unsafe extern "C" fn vcpu_get_interrupts(vcpu: *const VCpu) -> *mut Interrupts {
     (*vcpu).interrupts.get_mut_unchecked()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn vcpu_is_interrupted(vcpu: *const VCpu) -> bool {
+    (*vcpu).interrupts.lock().is_interrupted()
 }
 
 /// Check whether the given vcpu_inner is an off state, for the purpose of

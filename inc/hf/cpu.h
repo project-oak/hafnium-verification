@@ -110,7 +110,7 @@ struct arch_regs *vcpu_get_regs(struct vcpu *vcpu);
 const struct arch_regs *vcpu_get_regs_const(const struct vcpu *vcpu);
 struct vm *vcpu_get_vm(struct vcpu *vcpu);
 struct cpu *vcpu_get_cpu(struct vcpu *vcpu);
-struct interrupts *vcpu_get_interrupts(struct vcpu *vcpu);
+bool vcpu_is_interrupted(struct vcpu *vcpu);
 bool vcpu_is_off(struct vcpu_execution_locked vcpu);
 bool vcpu_secondary_reset_and_start(struct vcpu *vcpu, ipaddr_t entry,
 				    uintreg_t arg);

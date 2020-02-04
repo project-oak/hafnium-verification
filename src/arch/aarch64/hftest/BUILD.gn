@@ -24,7 +24,7 @@ source_set("entry") {
 # Make a call to the hypervisor from a VM.
 source_set("hf_call") {
   sources = [
-    "hf_call.S",
+    "hf_call.c",
   ]
 }
 
@@ -77,5 +77,11 @@ source_set("console") {
 
   deps = [
     "//src/arch/aarch64/hftest:hf_call",
+  ]
+}
+
+source_set("mm") {
+  sources = [
+    "mm.c",
   ]
 }

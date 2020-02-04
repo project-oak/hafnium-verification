@@ -12,8 +12,49 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+template("source_dir") {
+  action("${target_name}") {
+    depfile = "${target_out_dir}/${target_name}.d"
+    outputs = [
+      "$target_out_dir/${target_name}.script.stamp",
+    ]
+
+    script = "//build/linux/gen_depfile.py"
+    args = [
+      rebase_path(invoker.path, root_build_dir),
+      rebase_path(outputs[0], root_build_dir),
+      rebase_path(depfile, root_build_dir),
+    ]
+  }
+}
+
+template("source_dir_copy") {
+  source_dir_target = "${target_name}__source_dir"
+
+  source_dir(source_dir_target) {
+    path = invoker.path
+  }
+
+  action("${target_name}") {
+    script = "//build/linux/copy_dirs.py"
+    outputs = [
+      "$target_out_dir/${target_name}.script.stamp",
+    ]
+    args = [
+      rebase_path(invoker.path),
+      rebase_path(target_out_dir),
+      rebase_path(outputs[0]),
+    ]
+    deps = [
+      ":${source_dir_target}",
+    ]
+  }
+}
+
 template("linux_kernel") {
-  # TODO: target has no "sources"
+  source_target = "${target_name}__source"
+  defconfig_target = "${target_name}__defconfig"
+  prebuilt_target = "${target_name}__prebuilt"
 
   # Args to build/make.py to start the Linux build.
   shared_args = [
@@ -32,9 +73,15 @@ template("linux_kernel") {
     "-j24",
   ]
 
+  # Subtarget which generates a depfile with all files in the Linux tree
+  # and gets invalidated if any of them change.
+  source_dir(source_target) {
+    path = invoker.kernel_dir
+  }
+
   # Subtarget which runs `defconfig` and `modules_prepare`. Used by targets
   # which do not require the whole kernel to have been built.
-  action("${target_name}__defconfig") {
+  action(defconfig_target) {
     script = "//build/make.py"
     args = shared_args + [
              "defconfig",
@@ -45,6 +92,9 @@ template("linux_kernel") {
     # its timestamp to change after a recompile. Use the .config file.
     outputs = [
       "${target_out_dir}/.config",
+    ]
+    deps = [
+      ":${source_target}",
     ]
   }
 
@@ -60,8 +110,21 @@ template("linux_kernel") {
       output_file,
     ]
     deps = [
-      ":${target_name}__defconfig",
+      ":${defconfig_target}",
+      ":${source_target}",
     ]
+  }
+
+  # Subtarget for a prebuilt image, if defined.
+  if (defined(invoker.prebuilt)) {
+    copy(prebuilt_target) {
+      sources = [
+        invoker.prebuilt,
+      ]
+      outputs = [
+        "${target_out_dir}/${prebuilt_target}.bin",
+      ]
+    }
   }
 }
 
@@ -69,15 +132,11 @@ template("linux_kernel_module") {
   # Out-of-tree modules cannot be built outside of their directory.
   # So as to avoid parallel builds under different toolchains clashing,
   # work around by copying source files to `target_out_dir`.
-  copy("${target_name}__copy_source") {
-    forward_variables_from(invoker,
-                           [
-                             "sources",
-                             "testonly",
-                           ])
-    outputs = [
-      "${target_out_dir}/{{source_file_part}}",
-    ]
+
+  source_target = "${target_name}__source"
+
+  source_dir_copy(source_target) {
+    path = invoker.module_dir
   }
 
   action(target_name) {
@@ -87,7 +146,7 @@ template("linux_kernel_module") {
       "--directory",
       rebase_path(target_out_dir),
       "HAFNIUM_PATH=" + rebase_path("//"),
-      "KERNEL_PATH=" + rebase_path(invoker.kernel_src_dir),
+      "KERNEL_PATH=" + rebase_path(invoker.kernel_dir),
       "O=" +
           rebase_path(get_label_info(invoker.kernel_target, "target_out_dir")),
       "CC=" + rebase_path("//prebuilts/linux-x64/clang/bin/clang"),
@@ -98,7 +157,7 @@ template("linux_kernel_module") {
       "${target_out_dir}/${invoker.module_name}.ko",
     ]
     deps = [
-      ":${target_name}__copy_source",
+      ":${source_target}",
       "${invoker.kernel_target}__defconfig",
     ]
   }

@@ -1,37 +1,69 @@
 # Testing
 
-Testing of Hafnium is currently evolving. There are basic tests running on QEMU
-but we want more and more kinds of tests e.g. unit tests.
+## Overview
+
+Hafnium has 4 main kinds of tests:
+
+1.  Host tests
+    *   Unit tests of core functionality, e.g. page table manipulation.
+    *   Source in `src/*_test.cc`.
+    *   Using the [Google Test](https://github.com/google/googletest) framework,
+        built against 'fake' architecture (`src/arch/fake`).
+1.  Arch tests
+    *   Architecture-specific unit tests, e.g. MMU setup.
+    *   Source under `test/arch`.
+    *   Using our own _hftest_ framework, with `standalone_main.c`.
+    *   Build own hypervisor image, run in EL2.
+1.  VM API tests
+    *   Exercise hypervisor API from both primary and secondary VMs.
+    *   Source under `test/vmapi`.
+    *   Tests are run from the primary VM under a normal build of the Hafnium
+        hypervisor, possibly communicating with a helper service in one or more
+        secondary VMs.
+    *   Using our own _hftest_ framework, with `standalone_main.c` for the
+        primary VM and `hftest_service.c` for secondary VMs.
+    *   Build own primary and secondary VMs, run in EL1 under actual Hafnium
+        image.
+1.  Linux tests
+    *   Exercise the Hafnium Linux kernel module.
+    *   Source under `test/linux`.
+    *   Tests are run from userspace (PID 1) under Linux in the primary VM under
+        Hafnium, possibly with other secondary VMs.
+    *   Using our own _hftest_ framework, with `linux_main.c`.
+
+Host tests run directly on the host machine where they are built, whereas the
+other 3 types can run under an emulator such as QEMU, or on real hardware.
 
 ## Presubmit
 
-Presubmit builds everything, runs all tests and checks the source for
-formatting and lint errors. This can be run locally with:
+Presubmit builds everything, runs all tests and checks the source for formatting
+and lint errors. This can be run locally with:
 
-``` shell
+```shell
 ./kokoro/ubuntu/build.sh
 ```
 
 Or to just run the tests after having built everything manually run:
 
-``` shell
+```shell
 ./kokoro/ubuntu/test.sh
 ```
 
 ## QEMU tests
 
 These tests boot Hafnium on QEMU and the VMs make calls to Hafnium to test its
-behaviour.
+behaviour. They can also be run on the Arm [FVP](FVP.md) and in some cases on
+real hardware.
 
-### `hftest`
+### hftest
 
-Having a framework for tests makes them easier to read and write. `hftest` is a
+Having a framework for tests makes them easier to read and write. _hftest_ is a
 framework to meet the needs of VM based tests for Hafnium. It consists of:
 
-   * assertions
-   * test declarations
-   * base VM image
-   * driver script
+*   assertions
+*   test declarations
+*   base VM image
+*   driver script
 
 Assertions should be familiar from other testing libraries. They make use of
 C11's `_Generic` expressions for type genericity.

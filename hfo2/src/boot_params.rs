@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-use core::mem::MaybeUninit;
-
 use crate::addr::*;
 use crate::arch::*;
+use crate::boot_flow::*;
+use crate::fdt::*;
+use crate::fdt_handler::*;
 use crate::mm::*;
 use crate::mpool::*;
-use crate::spinlock::*;
 use crate::types::*;
 
 pub const MAX_MEM_RANGES: usize = 20;
@@ -68,46 +68,33 @@ impl BootParamsUpdate {
     }
 }
 
-/// TODO(HfO2): `plat.c`, containing those functions are not ported into Rust.
-/// It's because functions in `plat.c` are denoted by `#pragma weak` which is
-/// not supported in Rust yet. (#47.)
-extern "C" {
-    fn plat_get_boot_params(
-        stage1_locked: mm_stage1_locked,
-        p: *mut BootParams,
-        ppool: *const MPool,
-    ) -> bool;
+impl BootParams {
+    /// Extract the boot parameters from the FDT and the boot-flow driver.
+    pub fn init<'a>(&mut self, fdt_root: &FdtNode<'a>) -> Result<(), ()> {
+        self.mem_ranges_count = 0;
+        self.kernel_arg = plat::get_kernel_arg();
 
-    fn plat_update_boot_params(
-        stage1_locked: mm_stage1_locked,
-        p: *mut BootParamsUpdate,
-        ppool: *const MPool,
-    ) -> bool;
-}
+        let (begin, end) = plat::get_initrd_range(fdt_root)?;
+        self.initrd_begin = begin;
+        self.initrd_end = end;
 
-/// Reads platform-specific boot parameters.
-pub fn boot_params_get(
-    ptable: &mut SpinLockGuard<PageTable<Stage1>>,
-    ppool: &MPool,
-) -> Option<BootParams> {
-    let mut p: MaybeUninit<BootParams> = MaybeUninit::uninit();
+        self.cpu_count = fdt_root.find_cpus(&mut self.cpu_ids).ok_or(())?;
+        fdt_root.find_memory_ranges(self).ok_or(())?;
 
-    if unsafe { plat_get_boot_params(mm_stage1_locked::from_ref(ptable), p.get_mut(), ppool) } {
-        Some(unsafe { p.assume_init() })
-    } else {
-        None
-    }
-}
-
-/// Updates boot parameters for primary VM to read.
-pub fn boot_params_update(
-    ptable: &mut SpinLockGuard<PageTable<Stage1>>,
-    p: &mut BootParamsUpdate,
-    ppool: &MPool,
-) -> Result<(), ()> {
-    if unsafe { plat_update_boot_params(mm_stage1_locked::from_ref(ptable), p, ppool) } {
         Ok(())
-    } else {
-        Err(())
     }
+}
+
+/// Updates the FDT before being passed to the primary VM's kernel.
+///
+/// TODO: in future, each VM will declare whether it expects an argument passed and that will be
+/// static data e.g. it will provide its own FDT so there will be no FDT modification. This is
+/// done because each VM has a very different view of the system and we don't want to force VMs
+/// to require loader code when another loader can load the data for it.
+pub fn boot_params_patch_fdt(
+    ptable: &mut PageTable<Stage1>,
+    p: &BootParamsUpdate,
+    mpool: &MPool,
+) -> Result<(), ()> {
+    unsafe { patch(ptable, plat::get_fdt_addr(), p, mpool) }
 }

@@ -16,6 +16,7 @@
 
 #include "hf/mm.h"
 
+#include "hf/arch/barriers.h"
 #include "hf/arch/cpu.h"
 
 #include "hf/dlog.h"
@@ -87,7 +88,25 @@
 #define STAGE2_ACCESS_READ  UINT64_C(1)
 #define STAGE2_ACCESS_WRITE UINT64_C(2)
 
+#define CACHE_WORD_SIZE 4
+
+/**
+ * Threshold number of pages in TLB to invalidate after which we invalidate all
+ * TLB entries on a given level.
+ * Constant is the number of pointers per page table entry, also used by Linux.
+ */
+#define MAX_TLBI_OPS  MM_PTE_PER_PAGE
+
 /* clang-format on */
+
+#define tlbi(op)                               \
+	do {                                   \
+		__asm__ volatile("tlbi " #op); \
+	} while (0)
+#define tlbi_reg(op, reg)                                              \
+	do {                                                           \
+		__asm__ __volatile__("tlbi " #op ", %0" : : "r"(reg)); \
+	} while (0)
 
 /** Mask for the address bits of the pte. */
 #define PTE_ADDR_MASK \
@@ -98,6 +117,11 @@
 
 static uint8_t mm_s2_max_level;
 static uint8_t mm_s2_root_table_count;
+
+static uintreg_t mm_vtcr_el2;
+static uintreg_t mm_mair_el2;
+static uintreg_t mm_tcr_el2;
+static uintreg_t mm_sctlr_el2;
 
 /**
  * Returns the encoding of a page table entry that isn't present.
@@ -240,16 +264,39 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
 	uintvaddr_t end = va_addr(va_end);
 	uintvaddr_t it;
 
-	begin >>= 12;
-	end >>= 12;
+	/* Sync with page table updates. */
+	dsb(ishst);
 
-	__asm__ volatile("dsb ishst");
-
-	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-		__asm__("tlbi vae2is, %0" : : "r"(it));
+	/*
+	 * Revisions prior to ARMv8.4 do not support invalidating a range of
+	 * addresses, which means we have to loop over individual pages. If
+	 * there are too many, it is quicker to invalidate all TLB entries.
+	 */
+	if ((end - begin) > (MAX_TLBI_OPS * PAGE_SIZE)) {
+		if (VM_TOOLCHAIN == 1) {
+			tlbi(vmalle1is);
+		} else {
+			tlbi(alle2is);
+		}
+	} else {
+		begin >>= 12;
+		end >>= 12;
+		/* Invalidate stage-1 TLB, one page from the range at a time. */
+		for (it = begin; it < end;
+		     it += (UINT64_C(1) << (PAGE_BITS - 12))) {
+			if (VM_TOOLCHAIN == 1) {
+				tlbi_reg(vae1is, it);
+			} else {
+				tlbi_reg(vae2is, it);
+			}
+		}
 	}
 
-	__asm__ volatile("dsb ish");
+	/* Sync data accesses with TLB invalidation completion. */
+	dsb(ish);
+
+	/* Sync instruction fetches with TLB invalidation completion. */
+	isb();
 }
 
 /**
@@ -264,38 +311,77 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
 
 	/* TODO: This only applies to the current VMID. */
 
-	begin >>= 12;
-	end >>= 12;
+	/* Sync with page table updates. */
+	dsb(ishst);
 
-	__asm__ volatile("dsb ishst");
+	/*
+	 * Revisions prior to ARMv8.4 do not support invalidating a range of
+	 * addresses, which means we have to loop over individual pages. If
+	 * there are too many, it is quicker to invalidate all TLB entries.
+	 */
+	if ((end - begin) > (MAX_TLBI_OPS * PAGE_SIZE)) {
+		/*
+		 * Invalidate all stage-1 and stage-2 entries of the TLB for
+		 * the current VMID.
+		 */
+		tlbi(vmalls12e1is);
+	} else {
+		begin >>= 12;
+		end >>= 12;
 
-	for (it = begin; it < end; it += (UINT64_C(1) << (PAGE_BITS - 12))) {
-		__asm__("tlbi ipas2e1, %0" : : "r"(it));
+		/*
+		 * Invalidate stage-2 TLB, one page from the range at a time.
+		 * Note that this has no effect if the CPU has a TLB with
+		 * combined stage-1/stage-2 translation.
+		 */
+		for (it = begin; it < end;
+		     it += (UINT64_C(1) << (PAGE_BITS - 12))) {
+			tlbi_reg(ipas2e1is, it);
+		}
+
+		/*
+		 * Ensure completion of stage-2 invalidation in case a page
+		 * table walk on another CPU refilled the TLB with a complete
+		 * stage-1 + stage-2 walk based on the old stage-2 mapping.
+		 */
+		dsb(ish);
+
+		/*
+		 * Invalidate all stage-1 TLB entries. If the CPU has a combined
+		 * TLB for stage-1 and stage-2, this will invalidate stage-2 as
+		 * well.
+		 */
+		tlbi(vmalle1is);
 	}
 
-	__asm__ volatile(
-		"dsb ish\n"
-		"tlbi vmalle1is\n"
-		"dsb ish\n");
+	/* Sync data accesses with TLB invalidation completion. */
+	dsb(ish);
+
+	/* Sync instruction fetches with TLB invalidation completion. */
+	isb();
 }
 
 /**
- * Ensures that the range of data in the cache is written back so that it is
- * visible to all cores in the system.
+ * Returns the smallest cache line size of all the caches for this core.
  */
-void arch_mm_write_back_dcache(void *base, size_t size)
+static uint16_t arch_mm_dcache_line_size(void)
 {
-	/* Clean each data cache line the corresponds to data in the range. */
-	uint16_t line_size = 1 << ((read_msr(CTR_EL0) >> 16) & 0xf);
+	return CACHE_WORD_SIZE *
+	       (UINT16_C(1) << ((read_msr(CTR_EL0) >> 16) & 0xf));
+}
+
+void arch_mm_flush_dcache(void *base, size_t size)
+{
+	/* Clean and invalidate each data cache line in the range. */
+	uint16_t line_size = arch_mm_dcache_line_size();
 	uintptr_t line_begin = (uintptr_t)base & ~(line_size - 1);
 	uintptr_t end = (uintptr_t)base + size;
 
 	while (line_begin < end) {
-		__asm__ volatile("dc cvac, %0" : : "r"(line_begin));
+		__asm__ volatile("dc civac, %0" : : "r"(line_begin));
 		line_begin += line_size;
 	}
-
-	__asm__ volatile("dsb sy");
+	dsb(sy);
 }
 
 uint64_t arch_mm_mode_to_stage1_attrs(int mode)
@@ -444,11 +530,10 @@ uint8_t arch_mm_stage2_root_table_count(void)
 	return mm_s2_root_table_count;
 }
 
-bool arch_mm_init(paddr_t table, bool first)
+bool arch_mm_init(void)
 {
 	static const int pa_bits_table[16] = {32, 36, 40, 42, 44, 48};
 	uint64_t features = read_msr(id_aa64mmfr0_el1);
-	uint64_t v;
 	int pa_bits = pa_bits_table[features & 0xf];
 	int extend_bits;
 	int sl0;
@@ -466,9 +551,7 @@ bool arch_mm_init(paddr_t table, bool first)
 		return false;
 	}
 
-	if (first) {
-		dlog("Supported bits in physical address: %d\n", pa_bits);
-	}
+	dlog("Supported bits in physical address: %d\n", pa_bits);
 
 	/*
 	 * Determine sl0, starting level of the page table, based on the number
@@ -502,65 +585,69 @@ bool arch_mm_init(paddr_t table, bool first)
 	}
 	mm_s2_root_table_count = 1 << extend_bits;
 
-	if (first) {
-		dlog("Stage 2 has %d page table levels with %d pages at the "
-		     "root.\n",
-		     mm_s2_max_level + 1, mm_s2_root_table_count);
-	}
+	dlog("Stage 2 has %d page table levels with %d pages at the root.\n",
+	     mm_s2_max_level + 1, mm_s2_root_table_count);
 
-	v = (1u << 31) |	       /* RES1. */
-	    ((features & 0xf) << 16) | /* PS, matching features. */
-	    (0 << 14) |		       /* TG0: 4 KB granule. */
-	    (3 << 12) |		       /* SH0: inner shareable. */
-	    (1 << 10) |		       /* ORGN0: normal, cacheable ... */
-	    (1 << 8) |		       /* IRGN0: normal, cacheable ... */
-	    (sl0 << 6) |	       /* SL0. */
-	    ((64 - pa_bits) << 0);     /* T0SZ: dependent on PS. */
-	write_msr(vtcr_el2, v);
+	mm_vtcr_el2 = (1u << 31) |		 /* RES1. */
+		      ((features & 0xf) << 16) | /* PS, matching features. */
+		      (0 << 14) |		 /* TG0: 4 KB granule. */
+		      (3 << 12) |		 /* SH0: inner shareable. */
+		      (1 << 10) |	     /* ORGN0: normal, cacheable ... */
+		      (1 << 8) |	      /* IRGN0: normal, cacheable ... */
+		      (sl0 << 6) |	    /* SL0. */
+		      ((64 - pa_bits) << 0) | /* T0SZ: dependent on PS. */
+		      0;
 
 	/*
 	 * 0    -> Device-nGnRnE memory
 	 * 0xff -> Normal memory, Inner/Outer Write-Back Non-transient,
 	 *         Write-Alloc, Read-Alloc.
 	 */
-	write_msr(mair_el2, (0 << (8 * STAGE1_DEVICEINDX)) |
-				    (0xff << (8 * STAGE1_NORMALINDX)));
-
-	write_msr(ttbr0_el2, pa_addr(table));
+	mm_mair_el2 = (0 << (8 * STAGE1_DEVICEINDX)) |
+		      (0xff << (8 * STAGE1_NORMALINDX));
 
 	/*
 	 * Configure tcr_el2.
 	 */
-	v = (1 << 20) |		       /* TBI, top byte ignored. */
-	    ((features & 0xf) << 16) | /* PS. */
-	    (0 << 14) |		       /* TG0, granule size, 4KB. */
-	    (3 << 12) |		       /* SH0, inner shareable. */
-	    (1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
-	    (1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
-	    (25 << 0) | /* T0SZ, input address is 2^39 bytes. */
-	    0;
-	write_msr(tcr_el2, v);
+	mm_tcr_el2 = (1 << 20) |		/* TBI, top byte ignored. */
+		     ((features & 0xf) << 16) | /* PS. */
+		     (0 << 14) |		/* TG0, granule size, 4KB. */
+		     (3 << 12) |		/* SH0, inner shareable. */
+		     (1 << 10) | /* ORGN0, normal mem, WB RA WA Cacheable. */
+		     (1 << 8) |  /* IRGN0, normal mem, WB RA WA Cacheable. */
+		     (25 << 0) | /* T0SZ, input address is 2^39 bytes. */
+		     0;
 
-	v = (1 << 0) |  /* M, enable stage 1 EL2 MMU. */
-	    (1 << 1) |  /* A, enable alignment check faults. */
-	    (1 << 2) |  /* C, data cache enable. */
-	    (1 << 3) |  /* SA, enable stack alignment check. */
-	    (3 << 4) |  /* RES1 bits. */
-	    (1 << 11) | /* RES1 bit. */
-	    (1 << 12) | /* I, instruction cache enable. */
-	    (1 << 16) | /* RES1 bit. */
-	    (1 << 18) | /* RES1 bit. */
-	    (1 << 19) | /* WXN bit, writable execute never. */
-	    (3 << 22) | /* RES1 bits. */
-	    (3 << 28) | /* RES1 bits. */
-	    0;
-
-	__asm__ volatile("dsb sy");
-	__asm__ volatile("isb");
-	write_msr(sctlr_el2, v);
-	__asm__ volatile("isb");
+	mm_sctlr_el2 = (1 << 0) |  /* M, enable stage 1 EL2 MMU. */
+		       (1 << 1) |  /* A, enable alignment check faults. */
+		       (1 << 2) |  /* C, data cache enable. */
+		       (1 << 3) |  /* SA, enable stack alignment check. */
+		       (3 << 4) |  /* RES1 bits. */
+		       (1 << 11) | /* RES1 bit. */
+		       (1 << 12) | /* I, instruction cache enable. */
+		       (1 << 16) | /* RES1 bit. */
+		       (1 << 18) | /* RES1 bit. */
+		       (1 << 19) | /* WXN bit, writable execute never. */
+		       (3 << 22) | /* RES1 bits. */
+		       (3 << 28) | /* RES1 bits. */
+		       0;
 
 	return true;
+}
+
+void arch_mm_enable(paddr_t table)
+{
+	/* Configure translation management registers. */
+	write_msr(ttbr0_el2, pa_addr(table));
+	write_msr(vtcr_el2, mm_vtcr_el2);
+	write_msr(mair_el2, mm_mair_el2);
+	write_msr(tcr_el2, mm_tcr_el2);
+
+	/* Configure sctlr_el2 to enable MMU and cache. */
+	dsb(sy);
+	isb();
+	write_msr(sctlr_el2, mm_sctlr_el2);
+	isb();
 }
 
 /**

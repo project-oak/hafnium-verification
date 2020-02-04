@@ -61,9 +61,10 @@ TEST(faults, spurious_due_to_configure)
 
 	/* Start secondary cpu while holding lock. */
 	sl_lock(&s.lock);
-	EXPECT_EQ(cpu_start(hftest_get_cpu_id(1), other_stack,
-			    sizeof(other_stack), rx_reader, (uintptr_t)&s),
-		  true);
+	EXPECT_EQ(
+		hftest_cpu_start(hftest_get_cpu_id(1), other_stack,
+				 sizeof(other_stack), rx_reader, (uintptr_t)&s),
+		true);
 
 	/* Wait for CPU to release the lock. */
 	sl_lock(&s.lock);

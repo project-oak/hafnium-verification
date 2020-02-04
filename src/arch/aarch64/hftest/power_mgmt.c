@@ -16,7 +16,6 @@
 
 #include "hf/arch/vm/power_mgmt.h"
 
-#include "hf/spinlock.h"
 #include "hf/static_assert.h"
 
 #include "vmapi/hf/call.h"
@@ -25,73 +24,33 @@
 #include "smc.h"
 
 /**
- * Holds temporary state used to set up the environment on which CPUs will
- * start executing.
+ * Starts the CPU with the given ID. It will set the stack pointer according to
+ * the provided `state` and jump to the entry point with the given argument
+ * specified in it.
  *
- * vm_cpu_entry_raw requires that the first field of cpu_start_state be the
- * initial stack pointer.
+ * Note: The caller of this function must guarantee that the contents of `state`
+ * do not change until the new CPU has branched to the given entry point, and
+ * that it was written-back to memory (that it is not waiting in a data cache)
+ * because the new CPU is started with caching disabled.
  */
-struct cpu_start_state {
-	uintptr_t initial_sp;
-	void (*entry)(uintptr_t arg);
-	uintreg_t arg;
-	struct spinlock lock;
-};
-
-/**
- * Releases the given cpu_start_state struct by releasing its lock, then calls
- * the entry point specified by the caller of cpu_start.
- */
-void vm_cpu_entry(struct cpu_start_state *s)
+bool arch_cpu_start(uintptr_t id, struct arch_cpu_start_state *state)
 {
-	struct cpu_start_state local = *(volatile struct cpu_start_state *)s;
-
-	sl_unlock(&s->lock);
-
-	local.entry(local.arg);
-
-	/* Turn off CPU if the entry point ever returns. */
-	cpu_stop();
-}
-
-/**
- * Starts the CPU with the given ID. It will start at the provided entry point
- * with the provided argument.
- */
-bool cpu_start(uintptr_t id, void *stack, size_t stack_size,
-	       void (*entry)(uintptr_t arg), uintptr_t arg)
-{
-	void vm_cpu_entry_raw(uintptr_t arg);
-	struct cpu_start_state s;
-
-	/* Initialise the temporary state we'll hold on the stack. */
-	sl_init(&s.lock);
-	sl_lock(&s.lock);
-	s.initial_sp = (uintptr_t)stack + stack_size;
-	s.entry = entry;
-	s.arg = arg;
+	void vm_cpu_entry(uintptr_t arg);
+	smc_res_t smc_res;
 
 	/* Try to start the CPU. */
-	if (smc32(PSCI_CPU_ON, id, (size_t)&vm_cpu_entry_raw, (size_t)&s) !=
-	    PSCI_RETURN_SUCCESS) {
-		return false;
-	}
+	smc_res = smc64(PSCI_CPU_ON, id, (uintptr_t)&vm_cpu_entry,
+			(uintptr_t)state, 0, 0, 0, SMCCC_CALLER_HYPERVISOR);
 
-	/*
-	 * Wait for the starting cpu to release the spin lock, which indicates
-	 * that it won't touch the state we hold on the stack anymore.
-	 */
-	sl_lock(&s.lock);
-
-	return true;
+	return smc_res.res0 == PSCI_RETURN_SUCCESS;
 }
 
 /**
  * Stops the current CPU.
  */
-noreturn void cpu_stop(void)
+noreturn void arch_cpu_stop(void)
 {
-	smc32(PSCI_CPU_OFF, 0, 0, 0);
+	smc32(PSCI_CPU_OFF, 0, 0, 0, 0, 0, 0, SMCCC_CALLER_HYPERVISOR);
 	for (;;) {
 		/* This should never be reached. */
 	}
@@ -107,16 +66,19 @@ static_assert(POWER_STATUS_ON_PENDING == PSCI_RETURN_ON_PENDING,
 /**
  * Returns the power status of the given CPU.
  */
-enum power_status cpu_status(cpu_id_t cpu_id)
+enum power_status arch_cpu_status(cpu_id_t cpu_id)
 {
 	uint32_t lowest_affinity_level = 0;
+	smc_res_t smc_res;
 
 	/*
 	 * This works because the power_status enum values happen to be the same
 	 * as the PSCI_RETURN_* values. The static_asserts above validate that
 	 * this is the case.
 	 */
-	return smc32(PSCI_AFFINITY_INFO, cpu_id, lowest_affinity_level, 0);
+	smc_res = smc32(PSCI_AFFINITY_INFO, cpu_id, lowest_affinity_level, 0, 0,
+			0, 0, SMCCC_CALLER_HYPERVISOR);
+	return smc_res.res0;
 }
 
 /**
@@ -124,7 +86,7 @@ enum power_status cpu_status(cpu_id_t cpu_id)
  */
 noreturn void arch_power_off(void)
 {
-	smc32(PSCI_SYSTEM_OFF, 0, 0, 0);
+	smc32(PSCI_SYSTEM_OFF, 0, 0, 0, 0, 0, 0, SMCCC_CALLER_HYPERVISOR);
 	for (;;) {
 		/* This should never be reached. */
 	}

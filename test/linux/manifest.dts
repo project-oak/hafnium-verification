@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,22 +14,21 @@
  * limitations under the License.
  */
 
-#pragma once
+/dts-v1/;
+/plugin/;
 
-/**
- * Ensures all explicit memory accesses before this point are completed before
- * any later memory accesses are performed.
- */
-void dmb(void);
+&{/} {
+	hypervisor {
+		compatible = "hafnium,hafnium";
+		vm1 {
+			debug_name = "primary";
+		};
 
-/**
- * Ensures all explicit memory access and management instructions have completed
- * before continuing.
- */
-void dsb(void);
-
-/**
- * Flushes the instruction pipeline so that instructions are fetched from
- * memory.
- */
-void isb(void);
+		vm2 {
+			debug_name = "socket0";
+			vcpu_count = <1>;
+			mem_size = <0x100000>;
+			kernel_filename = "socket0";
+		};
+	};
+};

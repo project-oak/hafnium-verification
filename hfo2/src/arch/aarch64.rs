@@ -50,7 +50,7 @@ struct float_reg {
     high: u64,
 }
 
-const_assert_eq!(float_reg_size; mem::size_of::<float_reg>(), FLOAT_REG_BYTES);
+const_assert_eq!(mem::size_of::<float_reg>(), FLOAT_REG_BYTES);
 
 /// Arch-specific information about a VM.
 #[repr(C)]
@@ -93,7 +93,7 @@ const CPU_ID: usize = 0;
 const CPU_STACK_BOTTOM: usize = 8;
 const VCPU_REGS: usize = 32;
 const REGS_LAZY: usize = 264;
-const REGS_FREGS: usize = REGS_LAZY + 232;
+const REGS_FREGS: usize = REGS_LAZY + 248;
 //#[cfg(any(feature = "GIC_VERSION=3", feature = "GIC_VERSION=4"))]
 const REGS_GIC: usize = REGS_FREGS + 528;
 
@@ -149,6 +149,7 @@ pub struct ArchSysRegs {
     cptr_el2: uintreg_t,
     cnthctl_el2: uintreg_t,
     vttbr_el2: uintreg_t,
+    mdcr_el2: uintreg_t,
 }
 
 #[repr(C)]

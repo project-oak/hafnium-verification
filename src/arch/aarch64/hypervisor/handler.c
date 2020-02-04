@@ -18,8 +18,10 @@
 
 #include "hf/arch/barriers.h"
 #include "hf/arch/init.h"
+#include "hf/arch/mm.h"
 
 #include "hf/api.h"
+#include "hf/check.h"
 #include "hf/cpu.h"
 #include "hf/dlog.h"
 #include "hf/panic.h"
@@ -28,6 +30,7 @@
 
 #include "vmapi/hf/call.h"
 
+#include "debug_el1.h"
 #include "msr.h"
 #include "psci.h"
 #include "psci_handler.h"
@@ -35,12 +38,25 @@
 
 #define HCR_EL2_VI (1u << 7)
 
+/**
+ * Gets the Exception Class from the ESR.
+ */
+#define GET_EC(esr) ((esr) >> 26)
+
+/**
+ * Gets the value to increment for the next PC.
+ * The ESR encodes whether the instruction is 2 bytes or 4 bytes long.
+ */
+#define GET_NEXT_PC_INC(esr) (((esr) & (1u << 25)) ? 4 : 2)
+
 struct hvc_handler_return {
-	uintreg_t user_ret;
+	smc_res_t user_ret;
 	struct vcpu *new;
 };
 
-/* Gets a reference to the currently executing vCPU. */
+/**
+ * Returns a reference to the currently executing vCPU.
+ */
 static struct vcpu *current(void)
 {
 	return (struct vcpu *)read_msr(tpidr_el2);
@@ -102,15 +118,6 @@ void begin_restoring_state(struct vcpu *vcpu)
 }
 
 /**
- * Ensures all explicit memory access and management instructions for
- * non-shareable normal memory have completed before continuing.
- */
-static void dsb_nsh(void)
-{
-	__asm__ volatile("dsb nsh");
-}
-
-/**
  * Invalidate all stage 1 TLB entries on the current (physical) CPU for the
  * current VMID.
  */
@@ -135,7 +142,7 @@ static void invalidate_vm_tlb(void)
 	 * TLB invalidation has taken effect. Non-sharable is enough because the
 	 * TLB is local to the CPU.
 	 */
-	dsb_nsh();
+	dsb(nsh);
 }
 
 /**
@@ -193,15 +200,15 @@ noreturn void serr_current_exception(uintreg_t elr, uintreg_t spsr)
 noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 {
 	uintreg_t esr = read_msr(esr_el2);
+	uintreg_t ec = GET_EC(esr);
 
 	(void)spsr;
 
-	switch (esr >> 26) {
+	switch (ec) {
 	case 0x25: /* EC = 100101, Data abort. */
-		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", elr, esr,
-		     esr >> 26);
+		dlog("Data abort: pc=%#x, esr=%#x, ec=%#x", elr, esr, ec);
 		if (!(esr & (1u << 10))) { /* Check FnV bit. */
-			dlog(", far=0x%x", read_msr(far_el2));
+			dlog(", far=%#x", read_msr(far_el2));
 		} else {
 			dlog(", far=invalid");
 		}
@@ -210,9 +217,9 @@ noreturn void sync_current_exception(uintreg_t elr, uintreg_t spsr)
 		break;
 
 	default:
-		dlog("Unknown current sync exception pc=0x%x, esr=0x%x, "
-		     "ec=0x%x\n",
-		     elr, esr, esr >> 26);
+		dlog("Unknown current sync exception pc=%#x, esr=%#x, "
+		     "ec=%#x\n",
+		     elr, esr, ec);
 		break;
 	}
 
@@ -247,21 +254,109 @@ static void set_virtual_interrupt_current(bool enable)
 	write_msr(hcr_el2, hcr_el2);
 }
 
-static bool smc_handler(struct vcpu *vcpu, uint32_t func, uintreg_t arg0,
-			uintreg_t arg1, uintreg_t arg2, uintreg_t *ret,
-			struct vcpu **next)
+static bool smc_check_client_privileges(const struct vcpu *vcpu)
 {
-	if (psci_handler(vcpu, func, arg0, arg1, arg2, ret, next)) {
+	(void)vcpu; /*UNUSED*/
+
+	/*
+	 * TODO(b/132421503): Check for privileges based on manifest.
+	 * Currently returns false, which maintains existing behavior.
+	 */
+
+	return false;
+}
+
+/**
+ * Applies SMC access control according to manifest.
+ * Forwards the call if access is granted.
+ * Returns true if call is forwarded.
+ */
+static bool smc_forwarder(const struct vcpu *vcpu_, smc_res_t *ret)
+{
+	struct vcpu *vcpu = (struct vcpu *)vcpu_;
+	uint32_t func = vcpu_get_regs(vcpu)->r[0];
+	/* TODO(b/132421503): obtain vmid according to new scheme. */
+	uint32_t client_id = vm_get_id(vcpu_get_vm(vcpu));
+
+	if (smc_check_client_privileges(vcpu)) {
+		*ret = smc_forward(func, vcpu_get_regs(vcpu)->r[1], vcpu_get_regs(vcpu)->r[2],
+			     vcpu_get_regs(vcpu)->r[3], vcpu_get_regs(vcpu)->r[4], vcpu_get_regs(vcpu)->r[5],
+			     vcpu_get_regs(vcpu)->r[6], client_id);
+		return true;
+	}
+
+	return false;
+}
+
+static bool spci_handler(uintreg_t func, uintreg_t arg1, uintreg_t arg2,
+			 uintreg_t arg3, uintreg_t *ret, struct vcpu **next)
+{
+	(void)arg2;
+	(void)arg3;
+
+	switch (func & ~SMCCC_CONVENTION_MASK) {
+	case SPCI_VERSION_32:
+		*ret = api_spci_version();
+		return true;
+	case SPCI_YIELD_32:
+		*ret = api_spci_yield(current(), next);
+		return true;
+	case SPCI_MSG_SEND_32:
+		*ret = api_spci_msg_send(arg1, current(), next);
+		return true;
+	case SPCI_MSG_RECV_32:
+		*ret = api_spci_msg_recv(arg1, current(), next);
+		return true;
+	}
+
+	return false;
+}
+
+/**
+ * Set or clear VI bit according to pending interrupts.
+ */
+static void update_vi(struct vcpu *next)
+{
+	if (next == NULL) {
+		/*
+		 * Not switching vCPUs, set the bit for the current vCPU
+		 * directly in the register.
+		 */
+		struct vcpu *vcpu = current();
+
+		set_virtual_interrupt_current(vcpu_is_interrupted(vcpu));
+	} else {
+		/*
+		 * About to switch vCPUs, set the bit for the vCPU to which we
+		 * are switching in the saved copy of the register.
+		 */
+		set_virtual_interrupt(
+			vcpu_get_regs(next),
+			vcpu_is_interrupted(next));
+	}
+}
+
+/**
+ * Processes SMC instruction calls.
+ */
+static bool smc_handler(struct vcpu *vcpu, smc_res_t *ret, struct vcpu **next)
+{
+	uint32_t func = vcpu_get_regs(vcpu)->r[0];
+
+	if (psci_handler(vcpu, func, vcpu_get_regs(vcpu)->r[1], vcpu_get_regs(vcpu)->r[2],
+			 vcpu_get_regs(vcpu)->r[3], &ret->res0, next)) {
+		/* SMC PSCI calls are processed by the PSCI handler. */
 		return true;
 	}
 
 	switch (func & ~SMCCC_CONVENTION_MASK) {
 	case HF_DEBUG_LOG:
-		*ret = api_debug_log(arg0, vcpu);
+		api_debug_log(vcpu_get_regs(vcpu)->r[1], vcpu);
 		return true;
 	}
 
-	return false;
+	/* Remaining SMC calls need to be forwarded. */
+	return smc_forwarder(vcpu, ret);
 }
 
 struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
@@ -271,105 +366,79 @@ struct hvc_handler_return hvc_handler(uintreg_t arg0, uintreg_t arg1,
 
 	ret.new = NULL;
 
-	if (psci_handler(current(), arg0, arg1, arg2, arg3, &ret.user_ret,
+	if (psci_handler(current(), arg0, arg1, arg2, arg3, &ret.user_ret.res0,
 			 &ret.new)) {
 		return ret;
 	}
 
-	switch ((uint32_t)arg0) {
-	case SPCI_VERSION_32:
-		ret.user_ret = api_spci_version();
-		break;
+	if (spci_handler(arg0, arg1, arg2, arg3, &ret.user_ret.res0,
+			 &ret.new)) {
+		update_vi(ret.new);
+		return ret;
+	}
 
+	switch ((uint32_t)arg0) {
 	case HF_VM_GET_ID:
-		ret.user_ret = api_vm_get_id(current());
+		ret.user_ret.res0 = api_vm_get_id(current());
 		break;
 
 	case HF_VM_GET_COUNT:
-		ret.user_ret = api_vm_get_count();
+		ret.user_ret.res0 = api_vm_get_count();
 		break;
 
 	case HF_VCPU_GET_COUNT:
-		ret.user_ret = api_vcpu_get_count(arg1, current());
+		ret.user_ret.res0 = api_vcpu_get_count(arg1, current());
 		break;
 
 	case HF_VCPU_RUN:
-		ret.user_ret = api_vcpu_run(arg1, arg2, current(), &ret.new);
-		break;
-
-	case SPCI_YIELD_32:
-		ret.user_ret = api_spci_yield(current(), &ret.new);
+		ret.user_ret.res0 = api_vcpu_run(arg1, arg2, current(), &ret.new);
 		break;
 
 	case HF_VM_CONFIGURE:
-		ret.user_ret = api_vm_configure(ipa_init(arg1), ipa_init(arg2),
-						current(), &ret.new);
-		break;
-
-	case SPCI_MSG_SEND_32:
-		ret.user_ret = api_spci_msg_send(arg1, current(), &ret.new);
-		break;
-
-	case SPCI_MSG_RECV_32:
-		ret.user_ret = api_spci_msg_recv(arg1, current(), &ret.new);
+		ret.user_ret.res0 = api_vm_configure(
+			ipa_init(arg1), ipa_init(arg2), current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_CLEAR:
-		ret.user_ret = api_mailbox_clear(current(), &ret.new);
+		ret.user_ret.res0 = api_mailbox_clear(current(), &ret.new);
 		break;
 
 	case HF_MAILBOX_WRITABLE_GET:
-		ret.user_ret = api_mailbox_writable_get(current());
+		ret.user_ret.res0 = api_mailbox_writable_get(current());
 		break;
 
 	case HF_MAILBOX_WAITER_GET:
-		ret.user_ret = api_mailbox_waiter_get(arg1, current());
+		ret.user_ret.res0 = api_mailbox_waiter_get(arg1, current());
 		break;
 
 	case HF_INTERRUPT_ENABLE:
-		ret.user_ret = api_interrupt_enable(arg1, arg2, current());
+		ret.user_ret.res0 = api_interrupt_enable(arg1, arg2, current());
 		break;
 
 	case HF_INTERRUPT_GET:
-		ret.user_ret = api_interrupt_get(current());
+		ret.user_ret.res0 = api_interrupt_get(current());
 		break;
 
 	case HF_INTERRUPT_INJECT:
-		ret.user_ret = api_interrupt_inject(arg1, arg2, arg3, current(),
-						    &ret.new);
+		ret.user_ret.res0 = api_interrupt_inject(arg1, arg2, arg3,
+							 current(), &ret.new);
 		break;
 
 	case HF_SHARE_MEMORY:
-		ret.user_ret =
+		ret.user_ret.res0 =
 			api_share_memory(arg1 >> 32, ipa_init(arg2), arg3,
 					 arg1 & 0xffffffff, current());
 		break;
 
 	case HF_DEBUG_LOG:
-		ret.user_ret = api_debug_log(arg1, current());
+		ret.user_ret.res0 = api_debug_log(arg1, current());
 		break;
 
 	default:
-		ret.user_ret = -1;
+		ret.user_ret.res0 = -1;
 	}
 
-	/* Set or clear VI bit. */
-	if (ret.new == NULL) {
-		/*
-		 * Not switching vCPUs, set the bit for the current vCPU
-		 * directly in the register.
-		 */
-		set_virtual_interrupt_current(
-			vcpu_get_interrupts(current())->enabled_and_pending_count > 0);
-	} else {
-		/*
-		 * About to switch vCPUs, set the bit for the vCPU to which we
-		 * are switching in the saved copy of the register.
-		 */
-		set_virtual_interrupt(
-			vcpu_get_regs(ret.new),
-			vcpu_get_interrupts(ret.new)->enabled_and_pending_count > 0);
-	}
+	update_vi(ret.new);
 
 	return ret;
 }
@@ -435,11 +504,12 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 	struct vcpu *vcpu = current();
 	struct vcpu_fault_info info;
 	struct vcpu *new_vcpu;
+	uintreg_t ec = GET_EC(esr);
 
-	switch (esr >> 26) {
+	switch (ec) {
 	case 0x01: /* EC = 000001, WFI or WFE. */
 		/* Skip the instruction. */
-		vcpu_get_regs(vcpu)->pc += (esr & (1u << 25)) ? 4 : 2;
+		vcpu_get_regs(vcpu)->pc += GET_NEXT_PC_INC(esr);
 		/* Check TI bit of ISS, 0 = WFI, 1 = WFE. */
 		if (esr & 1) {
 			/* WFE */
@@ -470,29 +540,72 @@ struct vcpu *sync_lower_exception(uintreg_t esr)
 
 	case 0x17: /* EC = 010111, SMC instruction. */ {
 		uintreg_t smc_pc = vcpu_get_regs(vcpu)->pc;
-		uintreg_t ret;
+		smc_res_t ret;
 		struct vcpu *next = NULL;
 
-		if (!smc_handler(vcpu, vcpu_get_regs(vcpu)->r[0], vcpu_get_regs(vcpu)->r[1],
-				 vcpu_get_regs(vcpu)->r[2], vcpu_get_regs(vcpu)->r[3], &ret,
-				 &next)) {
-			dlog("Unsupported SMC call: 0x%x\n", vcpu_get_regs(vcpu)->r[0]);
-			ret = PSCI_ERROR_NOT_SUPPORTED;
+		if (!smc_handler(vcpu, &ret, &next)) {
+			/* TODO(b/132421503): handle SMC forward rejection  */
+			dlog("Unsupported SMC call: %#x\n", vcpu_get_regs(vcpu)->r[0]);
+			ret.res0 = PSCI_ERROR_NOT_SUPPORTED;
 		}
 
 		/* Skip the SMC instruction. */
-		vcpu_get_regs(vcpu)->pc = smc_pc + (esr & (1u << 25) ? 4 : 2);
-		vcpu_get_regs(vcpu)->r[0] = ret;
+		vcpu_get_regs(vcpu)->pc = smc_pc + GET_NEXT_PC_INC(esr);
+		vcpu_get_regs(vcpu)->r[0] = ret.res0;
+		vcpu_get_regs(vcpu)->r[1] = ret.res1;
+		vcpu_get_regs(vcpu)->r[2] = ret.res2;
+		vcpu_get_regs(vcpu)->r[3] = ret.res3;
 		return next;
 	}
 
+	/*
+	 * EC = 011000, MSR, MRS or System instruction execution that is not
+	 * reported using EC 000000, 000001 or 000111.
+	 */
+	case 0x18:
+		/*
+		 * NOTE: This should never be reached because it goes through a
+		 * separate path handled by handle_system_register_access().
+		 */
+		panic("Handled by handle_system_register_access().");
+
 	default:
-		dlog("Unknown lower sync exception pc=0x%x, esr=0x%x, "
-		     "ec=0x%x\n",
-		     vcpu_get_regs(vcpu)->pc, esr, esr >> 26);
+		dlog("Unknown lower sync exception pc=%#x, esr=%#x, "
+		     "ec=%#x\n",
+		     vcpu_get_regs(vcpu)->pc, esr, ec);
 		break;
 	}
 
 	/* The exception wasn't handled so abort the VM. */
 	return api_abort(vcpu);
+}
+
+/**
+ * Handles EC = 011000, msr, mrs instruction traps.
+ * Returns non-null ONLY if the access failed and the vcpu is changing.
+ */
+struct vcpu *handle_system_register_access(uintreg_t esr)
+{
+	struct vcpu *vcpu = current();
+	spci_vm_id_t vm_id = vm_get_id(vcpu_get_vm(vcpu));
+	uintreg_t ec = GET_EC(esr);
+
+	CHECK(ec == 0x18);
+
+	/*
+	 * Handle accesses to other registers that trap with the same EC.
+	 * Abort when encountering unhandled register accesses.
+	 */
+	if (!is_debug_el1_register_access(esr)) {
+		return api_abort(vcpu);
+	}
+
+	/* Abort if unable to fulfill the debug register access. */
+	if (!debug_el1_process_access(vcpu, vm_id, esr)) {
+		return api_abort(vcpu);
+	}
+
+	/* Instruction was fulfilled above. Skip it and run the next one. */
+	vcpu_get_regs(vcpu)->pc += GET_NEXT_PC_INC(esr);
+	return NULL;
 }

@@ -17,8 +17,14 @@
 #pragma once
 
 #include <stdarg.h>
+#include <stddef.h>
 
-#include "vm.h"
+#include "hf/spci.h"
+
+#define DLOG_BUFFER_SIZE 8192
+
+extern size_t dlog_buffer_offset;
+extern char dlog_buffer[];
 
 #if DEBUG
 void dlog_enable_lock(void);
@@ -30,4 +36,4 @@ void vdlog(const char *fmt, va_list args);
 #define vdlog(fmt, args)
 #endif
 
-void dlog_flush_vm_buffer(struct vm_locked vm);
+void dlog_flush_vm_buffer(spci_vm_id_t id, char buffer[], size_t length);

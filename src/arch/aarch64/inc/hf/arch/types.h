@@ -24,7 +24,9 @@
 
 #define PAGE_BITS 12
 #define PAGE_LEVEL_BITS 9
+#define STACK_ALIGN 16
 #define FLOAT_REG_BYTES 16
+#define NUM_GP_REGS 31
 
 /** The type of a page table entry (PTE). */
 typedef uint64_t pte_t;
@@ -68,11 +70,15 @@ struct arch_vm {
 /** Type to represent the register state of a vCPU.  */
 struct arch_regs {
 	/* General purpose registers. */
-	uintreg_t r[31];
+	uintreg_t r[NUM_GP_REGS];
 	uintreg_t pc;
 	uintreg_t spsr;
 
-	/* System registers. */
+	/*
+	 * System registers.
+	 * NOTE: Ordering is important. If adding to or reordering registers
+	 * below, make sure to update src/arch/aarch64/hypervisor/exceptions.S.
+	 */
 	struct {
 		uintreg_t vmpidr_el2;
 		uintreg_t csselr_el1;
@@ -103,6 +109,8 @@ struct arch_regs {
 		uintreg_t cptr_el2;
 		uintreg_t cnthctl_el2;
 		uintreg_t vttbr_el2;
+		uintreg_t mdcr_el2;
+		uintreg_t mdscr_el1;
 	} lazy;
 
 	/* Floating point registers. */
@@ -113,6 +121,7 @@ struct arch_regs {
 #if GIC_VERSION == 3 || GIC_VERSION == 4
 	struct {
 		uintreg_t ich_hcr_el2;
+		uintreg_t icc_sre_el2;
 	} gic;
 #endif
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,14 @@
  * limitations under the License.
  */
 
-.section .text.smc, "ax"
-.global smc32
-.global smc64_internal
-smc32:
-smc64_internal:
-	smc #0
-	ret
+/dts-v1/;
+/plugin/;
+
+&{/} {
+	hypervisor {
+		compatible = "hafnium,hafnium";
+		vm1 {
+			debug_name = "primary";
+		};
+	};
+};
