@@ -1,26 +1,13 @@
-//Data Abstraction && Algorithm Abstraction
+// Merge with SpinLock module (final spec)
+// SPINLOCK + MPOOL3 <= SPINLOCK + MPOOL4
 
-!(UB)¡(NB)
-/*
-Logical Model?
-- private reasoning 쉬워짐
-- OOM 신경 안써도 됨
-- Id: use junk block.
-- NULL: memory model이 시작할 때 junk block 하나 allocate
-  && semantics에서 if(v: Ptr) 정의 추가. (NULL 인지 확인)
-- entry 이어 붙여서 chunk 만드는게 memory model에서 지원되어야 함
-  */
+Id: Type := Int64;
+Page: Type := Int64;
+Mpool: Type := { page_size: size_t, pages: Set<Page>, fallback: Id? }
 
-Page: Type := Int64; // Ptr
-
-Module Mpool {
-  Id: Type := Int64; // Ptr
-  Mpool: Type := { page_size: size_t, pages: Set<Page>, fallback: Id? }
+Module MPOOL4 {
   manager: Id -> mpool?;
-  
-  constructor {
-  }
-  
+
   fun new(page_size: size_t): Id {
     newId := manager.fresh_Id();
     manager[newId] := Some(Mpool { page_size, Set::empty(), None });
@@ -51,11 +38,6 @@ Module Mpool {
     ()
   }
 
-  (* fun alloc_no_fallback(p: Id): Page { *)
-  (*   mpool := manager[p].get!(); *)
-  (*   mpool.pages.pop().get_or_else(NULL); *)
-  (* } *)
-
   fun alloc(p: Id): Page {
     mpool = manager[p].get!();
     match mpool.pages.pop() with
@@ -80,4 +62,3 @@ bool mpool_add_chunk(struct mpool *p, void *begin, size_t size);
 void mpool_enable_locks(void);
 */
 }
-

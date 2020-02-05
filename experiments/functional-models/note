@@ -1,5 +1,0 @@
-- data abstraction 하려면 concurrency abstraction이 되어있는게 좋음.
-왜냐하면 instruction이 lock-step으로 가지 않는 경우들이 있기 때문
-
-- concurrency abstraction 하려면 data abstraction이 되어있는게 좋음.
-왜냐하면 memory-irrelevant가 필요해서

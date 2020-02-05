@@ -1,20 +1,11 @@
-[** EVERY LINE HAS YIELD BUT OMITTED **]
+[** YIELD NOT OMITTED **]
 
-//Memory Abstraction
-//SimRel: ([*SRC*] manager[id] = Some(Mpool { data }) <->
-           [*TGT*] Mem[id] contains "struct mpool" with "data")
-       /\ (위의 Mem[id]로 언급된 영역들 제외하면 SRC/TGT memory 같음)
-
-?: option type
-!: UB
-¡: NB
-MODULENAME
-TypeName
-variable_name
+// Concurrency Abstraction
 
 Id: Type := Int64;
 Page: Type := Int64;
 Mpool: Type := { 
+  is_running: Bool;
   lock: SPINLOCK.Id, entry_size: size_t, chunk_list: List<Page>,
   entry_list: List<(Page, Page)>, fallback: Id?
 }
@@ -24,25 +15,27 @@ Module MPOOL2 {
   lock_enabled: Bool := false;
   
   fun new(entry_size: size_t): Id {
+    // Δ: Removed most of the YIELDs
     new_id := manager.fresh_id();
-    [** YIELD **] * 5;
     lock := [** SPINLOCK.new() **];
-    manager[new_id] := Some(Mpool { false, lock, entry_size, NULL, NULL, NULL }); // <--- Δ
-    [** YIELD **];
+    manager[new_id] := Some(Mpool { false, lock, entry_size, nil, nil, None });
     return new_id
   }
-  //YJ: C에서 malloc하는 부분이랑 맞춰서 malloc_with_undef 같은걸 부를 수도 있는데,
-  //장점: CompCert의 memory extension 같은게 성립하고, 임의의 코드가 self-related 됨
-  //단점: memory-irrelevant 같은 이야기 하기가 힘듦
  
   fun fini(p: Id): Unit {
+    // Δ: Removed most of the YIELDs
+    mpool := manager[p].get!();
+    [** YIELD **]
+	if (mpool.fallback == None) { return; }
+    [** YIELD **]
+    lock(p);
+    assume!(mpool.is_running = false);            // <----- Δ
+    mpool.is_running = true;                      // <----- Δ
+
     List<Page> entry;
     List<(Page, Page)> chunk;
 
-    mpool := manager[p].get!();
-	if (mpool.fallback == None) { return; }
-    lock(p);
-    manager[p] := None;                           // <----- Δ
+    manager[p] := None;
     
     entry := mpool.entry_list;
     while (entry != nil) {
@@ -64,14 +57,19 @@ Module MPOOL2 {
     mpool.entry_list := nil;
     mpool.fallback := None;
 
+    mpool.is_running = false;                     // <----- Δ
     unlock(p);
   }
   
   fun alloc_no_fallback(p: Id): Page {
+    // Δ: Removed most of the YIELDs
     mpool := manager[p].get!();
-    Page ret;
+    [** YIELD **]
 
     lock(p);
+    Page ret;
+    assume!(mpool.is_running = false);            // <----- Δ
+    mpool.is_running = true;                      // <----- Δ
     if let (hd :: tl) := mpool.entry_list {
         ret := hd;
 
@@ -97,31 +95,40 @@ Module MPOOL2 {
     ret := from;
 
 exit:
+    mpool.is_running = false;                     // <----- Δ
     unlock(p);
+    [** YIELD **]
     return ret;
   }
   
   fun alloc(p: Id): Page {
     loop {
+        [** YIELD **]
         Page ret := alloc_no_fallback(p);
+        [** YIELD **]
 
         if (ret != NULL) {
+            [** YIELD **]
             return ret;
         }
 
+        [** YIELD **]
         match manager[p].get!().fallback with
-        | Some id => p := id
-        | None => break
+        | Some id => [** YIELD **] p := id
+        | None => [** YIELD **] break
         end
     }
-
+    [** YIELD **]
     return NULL;
   }
 
   fun free(p: Id, ptr: Page): Unit {
     lock(p);
+    assume!(mpool.is_running = false);            // <----- Δ
+    mpool.is_running = true;                      // <----- Δ
     mpool := manager[p].get!();
     mpool.entry_list := ptr :: mpool.entry_list;
+    mpool.is_running = false;                     // <----- Δ
     unlock(p);
   }
 
