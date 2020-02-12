@@ -1,7 +1,8 @@
+[** ORIGINAL HAFNIUM **]
 [** EVERY LINE HAS YIELD BUT OMITTED **]
 
 struct mpool {
-  struct spinlock *lock;                     // <----- Δ with HAFNIUM
+  struct spinlock lock;
   size_t entry_size;
   struct mpool_chunk *chunk_list;
   struct mpool_entry *entry_list;
@@ -9,17 +10,14 @@ struct mpool {
 };
 
 Module MPOOL0 {
-  struct mpool *new(size_t entry_size) {     // <----- Δ with HAFNIUM
-    struct mpool *p = malloc(sizeof(mpool)); // <----- Δ with HAFNIUM
+  void mpool_init(struct mpool *p, size_t entry_size)
+  {
     p->entry_size = entry_size;
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
-    p->lock = lock_new();                    // <----- Δ with HAFNIUM
-    return p;                                // <----- Δ with HAFNIUM
+    sl_init(&p->lock);
   }
- 
- 
  
   void fini(struct mpool *p) {
 	struct mpool_entry *entry;
@@ -53,8 +51,6 @@ Module MPOOL0 {
     p->fallback = NULL;
 
     unlock(p);
-    lock_fini(p->lock);                      // <----- Δ with HAFNIUM
-    free(p);                                 // <----- Δ with HAFNIUM
   }
 
 
