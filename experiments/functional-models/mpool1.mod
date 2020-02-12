@@ -1,22 +1,46 @@
-[** ORIGINAL HAFNIUM **]
-[** EVERY LINE HAS YIELD BUT OMITTED **]
+[** After Typechecking **]
+[** There are NO Yield/Lock **]
+
+(before) val := undef | nodef | int | .. | ptr(mem_addr: int)
+(now)    val := undef | nodef | int | .. | ptr(mem_contents: list val)
+(not sure)                               | readonly_ptr(mem_contents: list val)
+//YJ: nodef can be encoded as: readonly_ptr([]).
+
+Immutable borrow  : copy
+Move              : make original value to "nodef" and then copy
+Mutable borrow    : No such thing. Just use move 
+//YJ: need to understand more. What is the differente btw. Rust? 
+//We don't need care about compilation/speed?
+
+//Q: Do we need "readonly" tag? 
+//YJ: I don't think we need it.
+//If we need it, I think we should attach it in value, not name.
+//"name = MyStruct { a: T, b: T }" --> immutable borrow a, move b
+
+
+struct mpool_chunk {
+	struct mpool_chunk *next_chunk;
+	struct mpool_chunk *limit;
+};
+
+struct mpool_entry {
+	struct mpool_entry *next;
+};
 
 struct mpool {
-  struct spinlock lock;
   size_t entry_size;
   struct mpool_chunk *chunk_list;
   struct mpool_entry *entry_list;
   struct mpool *fallback;
 };
 
-Module MPOOL0 {
+Module MPOOL {
   void mpool_init(struct mpool *p, size_t entry_size)
   {
     p->entry_size = entry_size;
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
-    sl_init(&p->lock);
   }
  
   void fini(struct mpool *p) {
@@ -27,9 +51,7 @@ Module MPOOL0 {
         return;
     }
 
-    lock(p);
-
-    entry = p->entry_list;
+    entry =[MOVE] p->entry_list;
     while (entry != NULL) {
         void *ptr = entry;
 
@@ -49,8 +71,6 @@ Module MPOOL0 {
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
-
-    unlock(p);
   }
 
 
@@ -60,7 +80,6 @@ Module MPOOL0 {
     struct mpool_chunk *chunk;
     struct mpool_chunk *new_chunk;
 
-    lock(p);
     if (p->entry_list != NULL) {
         struct mpool_entry *entry = p->entry_list;
 
@@ -86,8 +105,6 @@ Module MPOOL0 {
     ret = chunk;
 
 exit:
-    unlock(p);
-
     return ret;
   }
 
@@ -112,27 +129,8 @@ exit:
   void free(struct mpool *p, void *ptr) {
     struct mpool_entry *e = ptr;
 
-    lock(p);
     e->next = p->entry_list;
     p->entry_list = e;
-    unlock(p);
   }
 
-
-
-  static void lock(struct mpool *p)
-  {
-    if (mpool_locks_enabled) {
-        sl_lock(&p->lock);
-    }
-  }
-
-
-
-  static void unlock(struct mpool *p)
-  {
-    if (mpool_locks_enabled) {
-        sl_unlock(&p->lock);
-    }
-  }
 }
