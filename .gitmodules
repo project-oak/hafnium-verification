@@ -17,3 +17,6 @@
 	path = third_party/linux
 	url = https://hafnium.googlesource.com/hafnium/third_party/linux
 	shallow = true
+[submodule "experiments/ownership-inference/hafnium"]
+	path = experiments/ownership-inference/hafnium
+	url = https://hafnium.googlesource.com/hafnium
