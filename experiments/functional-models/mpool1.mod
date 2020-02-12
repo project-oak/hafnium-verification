@@ -4,19 +4,23 @@
 (before) val := undef | nodef | int | .. | ptr(mem_addr: int)
 (now)    val := undef | nodef | int | .. | ptr(mem_contents: list val)
 (not sure)                               | readonly_ptr(mem_contents: list val)
-//YJ: nodef can be encoded as: readonly_ptr([]).
+//YJ: maybe, nodef can be encoded as: readonly_ptr([]).
 
-Immutable borrow  : copy
+Immutable borrow  : make "ptr" to "readonly_ptr" and then copy
 Move              : make original value to "nodef" and then copy
 Mutable borrow    : No such thing. Just use move 
 //YJ: need to understand more. What is the differente btw. Rust? 
 //We don't need care about compilation/speed?
 
-//Q: Do we need "readonly" tag? 
-//YJ: I don't think we need it.
-//If we need it, I think we should attach it in value, not name.
-//"name = MyStruct { a: T, b: T }" --> immutable borrow a, move b
+//Q: Do we need "readonly" tag?
+//Pros: giving more NB (keeping more invariants from type checking)
+//Cons: semantics will be more complex;
+//      esp. because we need to model "readonly_ptr" -> "ptr".
 
+//YJ: I doubt if we need it.
+//If we need it, I suggest to attach it in value (like "readonly_ptr" above), not name.
+//1) Splitting borrows: "name = MyStruct { a: T, b: T }" --> immutable borrow a, move b
+//2) Want to allow this: { let mut a: &i32 = &5; a = &10; }
 
 struct mpool_chunk {
 	struct mpool_chunk *next_chunk;
@@ -35,15 +39,16 @@ struct mpool {
 };
 
 Module MPOOL {
-  void mpool_init(struct mpool *p, size_t entry_size)
+  void mpool_init(struct mpool *[MOVE]p, size_t entry_size)
   {
     p->entry_size = entry_size;
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
+    //[RETURN]p
   }
  
-  void fini(struct mpool *p) {
+  void fini(struct mpool *[MOVE]p) {
 	struct mpool_entry *entry;
 	struct mpool_chunk *chunk;
 
@@ -55,40 +60,41 @@ Module MPOOL {
     while (entry != NULL) {
         void *ptr = entry;
 
-        entry = entry->next;
-        free(p->fallback, ptr);
+        entry =[MOVE] entry->next;
+        free([BORROW]p->fallback, ptr);
     }
 
-    chunk = p->chunk_list;
+    chunk =[MOVE] p->chunk_list;
     while (chunk != NULL) {
         void *ptr = chunk;
         size_t size = (uintptr_t)chunk->limit - (uintptr_t)chunk;
 
         chunk = chunk->next_chunk;
-        add_chunk(p->fallback, ptr, size);
+        add_chunk([BORROW]p->fallback, ptr, size);
     }
 
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
+    //[RETURN]p
   }
 
 
 
-  static void *alloc_no_fallback(struct mpool *p) { 
+  static void *alloc_no_fallback(struct mpool *[MOVE]p) { 
     void *ret;
     struct mpool_chunk *chunk;
     struct mpool_chunk *new_chunk;
 
     if (p->entry_list != NULL) {
-        struct mpool_entry *entry = p->entry_list;
+        struct mpool_entry *entry =[MOVE] p->entry_list;
 
         p->entry_list = entry->next;
         ret = entry;
         goto exit;
     }
 
-    chunk = p->chunk_list;
+    chunk[MOVE] = p->chunk_list;
     if (chunk == NULL) {
         ret = NULL;
         goto exit;
@@ -105,6 +111,7 @@ Module MPOOL {
     ret = chunk;
 
 exit:
+    //[RETURN]p
     return ret;
   }
 
