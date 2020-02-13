@@ -21,7 +21,6 @@
 
 #include "hf/spinlock.h"
 #include "hf/std.h"
-#include "hf/vm.h"
 
 /* Keep macro alignment */
 /* clang-format off */

@@ -43,6 +43,8 @@ pub enum SpciReturn {
 #[repr(u16)]
 #[derive(Clone, Copy, PartialEq)]
 pub enum SpciMemoryShare {
+    Lend = 0x0,
+    Relinquish = 0x1,
     Donate = 0x2,
 }
 
@@ -167,4 +169,47 @@ pub struct SpciMemTransitions {
     pub orig_to_mode: Mode,
     pub from_mode: Mode,
     pub to_mode: Mode,
+}
+
+#[allow(non_camel_case_types)]
+pub enum SpciLendAccess {
+    RO_NX,
+    RO_X,
+    RW_NX,
+    RW_X,
+}
+
+#[repr(C)]
+pub struct SpciMemoryLend {
+    pub flags: u16,
+    pub borrower_attributes: u16,
+
+    _reserved: u32,
+    pub payload: [u8; 0],
+}
+
+const SPCI_LEND_ACCESS_OFFSET: u16 = 0x7;
+const SPCI_LEND_ACCESS_MASK: u16 = 0x3 << SPCI_LEND_ACCESS_OFFSET;
+
+fn spci_get_lend_access_attr(lend_attr: u16) -> SpciLendAccess {
+    let access_attr = (lend_attr & SPCI_LEND_ACCESS_MASK) >> SPCI_LEND_ACCESS_OFFSET;
+
+    match access_attr {
+        0 => SpciLendAccess::RO_NX,
+        1 => SpciLendAccess::RO_X,
+        2 => SpciLendAccess::RW_NX,
+        3 => SpciLendAccess::RW_X,
+        _ => unreachable!(),
+    }
+}
+
+pub fn spci_memory_attrs_to_mode(memory_attributes: u32) -> Mode {
+    let attr_value = spci_get_lend_access_attr(memory_attributes as _);
+
+    match attr_value {
+        SpciLendAccess::RO_NX => Mode::R,
+        SpciLendAccess::RO_X => Mode::R | Mode::X,
+        SpciLendAccess::RW_NX => Mode::R | Mode::W,
+        SpciLendAccess::RW_X => Mode::R | Mode::W | Mode::X,
+    }
 }

@@ -21,8 +21,11 @@
 #![feature(maybe_uninit_ref)]
 #![feature(ptr_offset_from)]
 #![feature(const_raw_ptr_to_usize_cast)]
-#![feature(bind_by_move_pattern_guards)]
 #![feature(ptr_wrapping_offset_from)]
+#![feature(slice_from_raw_parts)]
+#![feature(linkage)]
+#![feature(track_caller)]
+#![feature(try_blocks)]
 
 #[macro_use]
 extern crate bitflags;
@@ -45,6 +48,7 @@ mod abi;
 mod addr;
 mod api;
 mod arch;
+mod boot_flow;
 mod boot_params;
 mod cpu;
 mod fdt;
@@ -53,6 +57,7 @@ mod hypervisor;
 mod init;
 mod layout;
 mod load;
+mod manifest;
 mod memiter;
 mod mm;
 mod mpool;

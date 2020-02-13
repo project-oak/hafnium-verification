@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 The Hafnium Authors.
+ * Copyright 2019 The Hafnium Authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,19 +14,8 @@
  * limitations under the License.
  */
 
-#include "hf/arch/barriers.h"
-
-void dmb(void)
-{
-	__asm__ volatile("dmb sy");
-}
-
-void dsb(void)
-{
-	__asm__ volatile("dsb sy");
-}
-
-void isb(void)
-{
-	__asm__ volatile("isb");
-}
+.section .init.plat_boot_flow_hook, "ax"
+.global plat_boot_flow_hook
+plat_boot_flow_hook:
+	/* Do nothing. */
+	ret

@@ -73,8 +73,10 @@ pub fn parse_cpio(it: &mut MemIter) -> Option<CpioResult> {
 
 /// Looks for a file in the given cpio archive. The filename is not null-terminated, so we use a
 /// memory iterator to represent it. The file, if found, is returned in the `it` argument.
-pub fn find_file_memiter(cpio: &mut MemIter, filename: &MemIter) -> Option<MemIter> {
-    while let Some(result) = parse_cpio(cpio) {
+pub fn find_file_memiter(cpio: &MemIter, filename: &MemIter) -> Option<MemIter> {
+    let mut iter = cpio.clone();
+
+    while let Some(result) = parse_cpio(&mut iter) {
         if unsafe { filename.iseq(result.name) } {
             return Some(unsafe { MemIter::from_raw(result.contents, result.size) });
         }
@@ -85,8 +87,10 @@ pub fn find_file_memiter(cpio: &mut MemIter, filename: &MemIter) -> Option<MemIt
 
 /// Looks for a file in the given cpio archive. The file, if found, is returned in the `it`
 /// argument.
-pub unsafe fn find_file(cpio: &mut MemIter, filename: *const u8) -> Option<MemIter> {
-    while let Some(result) = parse_cpio(cpio) {
+pub unsafe fn find_file(cpio: &MemIter, filename: *const u8) -> Option<MemIter> {
+    let mut iter = cpio.clone();
+
+    while let Some(result) = parse_cpio(&mut iter) {
         if strcmp(filename, result.name) == 0 {
             return Some(MemIter::from_raw(result.contents, result.size));
         }

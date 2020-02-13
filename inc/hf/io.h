@@ -133,7 +133,7 @@ static inline uint8_t io_read8_mb(io8_t io)
 {
 	uint8_t v = io_read8(io);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -141,7 +141,7 @@ static inline uint16_t io_read16_mb(io16_t io)
 {
 	uint16_t v = io_read16(io);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -149,7 +149,7 @@ static inline uint32_t io_read32_mb(io32_t io)
 {
 	uint32_t v = io_read32(io);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -157,7 +157,7 @@ static inline uint64_t io_read64_mb(io64_t io)
 {
 	uint64_t v = io_read64(io);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -165,7 +165,7 @@ static inline uint8_t io_read8_array_mb(io8_array_t io, size_t n)
 {
 	uint8_t v = io_read8_array(io, n);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -173,7 +173,7 @@ static inline uint16_t io_read16_array_mb(io16_array_t io, size_t n)
 {
 	uint16_t v = io_read16_array(io, n);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -181,7 +181,7 @@ static inline uint32_t io_read32_array_mb(io32_array_t io, size_t n)
 {
 	uint32_t v = io_read32_array(io, n);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -189,7 +189,7 @@ static inline uint64_t io_read64_array_mb(io64_array_t io, size_t n)
 {
 	uint64_t v = io_read64_array(io, n);
 
-	dsb();
+	data_sync_barrier();
 	return v;
 }
 
@@ -247,48 +247,48 @@ static inline void io_write64_array(io64_array_t io, size_t n, uint64_t v)
 
 static inline void io_write8_mb(io8_t io, uint8_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write8(io, v);
 }
 
 static inline void io_write16_mb(io16_t io, uint16_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write16(io, v);
 }
 
 static inline void io_write32_mb(io32_t io, uint32_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write32(io, v);
 }
 
 static inline void io_write64_mb(io64_t io, uint64_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write64(io, v);
 }
 
 static inline void io_write8_array_mb(io8_array_t io, size_t n, uint8_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write8_array(io, n, v);
 }
 
 static inline void io_write16_array_mb(io16_array_t io, size_t n, uint16_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write16_array(io, n, v);
 }
 
 static inline void io_write32_array_mb(io32_array_t io, size_t n, uint32_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write32_array(io, n, v);
 }
 
 static inline void io_write64_array_mb(io64_array_t io, size_t n, uint64_t v)
 {
-	dsb();
+	data_sync_barrier();
 	io_write64_array(io, n, v);
 }

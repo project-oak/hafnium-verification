@@ -33,6 +33,7 @@ template("image_binary") {
                              "cflags_c",
                              "defines",
                              "deps",
+                             "libs",
                              "include_dirs",
                              "public_configs",
                              "public_deps",
@@ -84,6 +85,7 @@ template("hypervisor") {
                              "cflags_c",
                              "defines",
                              "deps",
+                             "libs",
                              "public_deps",
                              "sources",
                              "testonly",
@@ -148,38 +150,69 @@ template("linux_initrd") {
   }
 }
 
+template("device_tree") {
+  action_foreach(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "sources",
+                             "deps",
+                           ])
+    script = "//build/image/dtc.py"
+
+    outputs = [
+      invoker.output_pattern,
+    ]
+    args = [
+      "compile",
+      "-i",
+      "{{source}}",
+      "-o",
+      rebase_path(invoker.output_pattern),
+    ]
+  }
+}
+
 # Build the initial RAM disk for the hypervisor.
 template("initrd") {
-  assert(
-      defined(invoker.primary_vm) || defined(invoker.primary_vm_prebuilt),
-      "initrd() must specify a \"primary_vm\" or \"primary_vm_prebuilt\" value")
+  assert(defined(invoker.primary_vm),
+         "initrd() must specify a \"primary_vm\" value")
+
+  manifest_target = "${target_name}__manifest"
+  base_out_dir = "${target_out_dir}/${target_name}"
+
+  # Generate manifest.dtbo
+  device_tree(manifest_target) {
+    sources = [
+      invoker.manifest,
+    ]
+    output_pattern = "${base_out_dir}/{{source_name_part}}.dtbo"
+  }
 
   action(target_name) {
     forward_variables_from(invoker, [ "testonly" ])
     script = "//build/image/generate_initrd.py"
 
-    initrd_base = "${target_out_dir}/${target_name}/initrd"
-    initrd_file = "${initrd_base}.img"
-    initrd_staging = "${initrd_base}"
+    initrd_file = "${base_out_dir}/initrd.img"
+    initrd_staging = "${base_out_dir}/initrd"
 
-    deps = []
+    # Cannot get target outputs here as they are defined in a different file.
+    primary_vm_image = get_label_info(invoker.primary_vm, "target_out_dir") +
+                       "/" + get_label_info(invoker.primary_vm, "name") + ".bin"
 
-    if (defined(invoker.primary_vm_prebuilt)) {
-      primary_vm_output = invoker.primary_vm_prebuilt
-    } else {
-      primary_vm_output =
-          get_label_info(invoker.primary_vm, "target_out_dir") + "/" +
-          get_label_info(invoker.primary_vm, "name") + ".bin"
-      deps += [ invoker.primary_vm ]
-    }
+    deps = [
+      ":${manifest_target}",
+      invoker.primary_vm,
+    ]
     args = [
       "--primary_vm",
-      rebase_path(primary_vm_output),
+      rebase_path(primary_vm_image),
       "--staging",
       rebase_path(initrd_staging),
       "--output",
       rebase_path(initrd_file),
     ]
+
     if (defined(invoker.primary_initrd)) {
       deps += [ invoker.primary_initrd ]
       primary_initrd_outputs = get_target_outputs(invoker.primary_initrd)
@@ -192,27 +225,22 @@ template("initrd") {
     # Add the info about the secondary VMs. The information about the VMs is
     # encoded in lists with the following elements:
     #
-    #    1. Memory in bytes.
-    #    2. Number of cores.
-    #    3. File name for the VM image.
-    #    4. Build target for the VM.
+    #    1. File name for the VM image.
+    #    2. Build target for the VM.
     if (defined(invoker.secondary_vms)) {
       foreach(vm, invoker.secondary_vms) {
-        deps += [ vm[3] ]
+        deps += [ vm[1] ]
         args += [
           "--secondary_vm",
           vm[0],
-          vm[1],
-          vm[2],
-          rebase_path(get_label_info(vm[3], "target_out_dir") + "/" +
-                      get_label_info(vm[3], "name") + ".bin"),
+          rebase_path(get_label_info(vm[1], "target_out_dir") + "/" +
+                      get_label_info(vm[1], "name") + ".bin"),
         ]
       }
     }
 
     outputs = [
       initrd_file,
-      "${initrd_staging}/vms.txt",
     ]
   }
 }

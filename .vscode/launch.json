@@ -21,7 +21,7 @@
                 },
                 {
                     // Update this with whatever VMs you want to debug.
-                    "text": "add-symbol-file ${workspaceRoot}/out/reference/qemu_aarch64_clang/obj/test/vmapi/primary_with_secondaries/services/service_vm2.elf 0x43d00000+0xc4",
+                    "text": "add-symbol-file ${workspaceRoot}/out/reference/qemu_aarch64_vm_clang/obj/test/vmapi/primary_with_secondaries/services/service_vm2.elf 0x43d00000+0xc4",
                 }
             ]
         },

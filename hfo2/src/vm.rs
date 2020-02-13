@@ -457,13 +457,17 @@ impl VmInner {
     }
 
     pub fn debug_log(&mut self, id: spci_vm_id_t, c: c_char) {
-        if c == '\n' as u32 as u8 || c == '\0' as u32 as u8 || self.log_buffer.is_full() {
-            // flush the buffer.
+        let flush = if c == b'\n' || c == b'\0' {
+            true
+        } else {
+            self.log_buffer.push(c);
+            self.log_buffer.is_full()
+        };
+
+        if flush {
             let log = str::from_utf8(&self.log_buffer).unwrap_or("non-UTF8 bytes");
             dlog!("VM {}: {}\n", id, log);
             self.log_buffer.clear();
-        } else {
-            self.log_buffer.push(c);
         }
     }
 }
@@ -547,31 +551,39 @@ impl VmManager {
             return None;
         }
 
-        let id = self.vms.len();
-        let vm = unsafe { self.vms.get_unchecked_mut(id) };
+        let idx = self.vms.len();
+
+        // Generate IDs based on an offset, as low IDs e.g., 0, are reserved
+        let id = idx + HF_VM_ID_OFFSET as usize;
+        let vm = unsafe { self.vms.get_unchecked_mut(idx) };
 
         vm.init(id as u16, vcpu_count, ppool).ok()?;
 
         unsafe {
-            self.vms.set_len(id + 1);
+            self.vms.set_len(idx + 1);
         }
 
-        Some(&mut self.vms[id])
+        Some(&mut self.vms[idx])
+    }
+
+    fn get_vm_index(vm_id: spci_vm_id_t) -> usize {
+        assert!(vm_id >= HF_VM_ID_OFFSET);
+        (vm_id - HF_VM_ID_OFFSET) as _
     }
 
     pub fn get(&self, id: spci_vm_id_t) -> Option<&Vm> {
-        self.vms.get(id as usize)
+        self.vms.get(Self::get_vm_index(id))
     }
 
     pub fn get_mut(&mut self, id: spci_vm_id_t) -> Option<&mut Vm> {
-        self.vms.get_mut(id as usize)
+        self.vms.get_mut(Self::get_vm_index(id))
     }
 
     pub fn get_primary(&self) -> &Vm {
         // # Safety
         //
         // Primary VM always exists.
-        unsafe { self.vms.get_unchecked(HF_PRIMARY_VM_ID as usize) }
+        unsafe { self.vms.get_unchecked(Self::get_vm_index(HF_PRIMARY_VM_ID)) }
     }
 
     pub fn len(&self) -> spci_vm_count_t {

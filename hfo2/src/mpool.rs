@@ -29,15 +29,15 @@ struct Chunk {
     entry: ListEntry,
     size: usize,
 }
+const_assert!(mem::size_of::<Chunk>() <= mem::size_of::<RawPage>());
 
 #[repr(C)]
 struct Entry {
     entry: ListEntry,
 }
+const_assert!(mem::size_of::<Entry>() <= mem::size_of::<RawPage>());
 
 impl Chunk {
-    const_assert!(chunk_size; mem::size_of::<Chunk>() <= mem::size_of::<RawPage>());
-
     pub const fn new(size: usize) -> Self {
         Self {
             entry: ListEntry::new(),
@@ -47,8 +47,6 @@ impl Chunk {
 }
 
 impl Entry {
-    const_assert!(entry_size; mem::size_of::<Entry>() <= mem::size_of::<RawPage>());
-
     pub const fn new() -> Self {
         Self {
             entry: ListEntry::new(),
@@ -94,23 +92,19 @@ impl Pool {
 
     /// Allocates a page.
     pub fn alloc(&mut self) -> Result<Page, ()> {
-        if let Some(entry) = unsafe { self.entry_list.pop() } {
+        if let Some(entry) = self.entry_list.pop() {
             #[allow(clippy::cast_ptr_alignment)]
             return Ok(unsafe { Page::from_raw(entry as *mut RawPage) });
         }
 
-        let chunk = unsafe { self.chunk_list.pop().ok_or(())? };
+        let chunk = self.chunk_list.pop().ok_or(())?;
         let size = unsafe { (*chunk).size };
-        assert_ne!(size, 0);
+        debug_assert_ne!(size, 0);
+
         #[allow(clippy::cast_ptr_alignment)]
         let page = unsafe { Page::from_raw(chunk as *mut RawPage) };
 
-        if size == 2 {
-            let entry = unsafe { &mut *((chunk as usize + PAGE_SIZE) as *mut Entry) };
-            unsafe {
-                self.entry_list.push(entry);
-            }
-        } else if size > 2 {
+        if size > 1 {
             let new_chunk = unsafe { &mut *((chunk as usize + PAGE_SIZE) as *mut Chunk) };
             new_chunk.size = size - 1;
             unsafe { self.chunk_list.push(new_chunk) };

@@ -57,8 +57,8 @@ static void vm_cpu_entry(uintptr_t arg)
 	ASSERT_EQ(arg, ARG_VALUE);
 
 	/* Check that vCPU statuses are as expected. */
-	ASSERT_EQ(cpu_status(0), POWER_STATUS_ON);
-	ASSERT_EQ(cpu_status(1), POWER_STATUS_ON);
+	ASSERT_EQ(arch_cpu_status(0), POWER_STATUS_ON);
+	ASSERT_EQ(arch_cpu_status(1), POWER_STATUS_ON);
 
 	dlog("Secondary second vCPU started.\n");
 	send_message("vCPU 1", sizeof("vCPU 1"));
@@ -68,18 +68,18 @@ static void vm_cpu_entry(uintptr_t arg)
 TEST_SERVICE(smp)
 {
 	/* Check that vCPU statuses are as expected. */
-	ASSERT_EQ(cpu_status(0), POWER_STATUS_ON);
-	ASSERT_EQ(cpu_status(1), POWER_STATUS_OFF);
+	ASSERT_EQ(arch_cpu_status(0), POWER_STATUS_ON);
+	ASSERT_EQ(arch_cpu_status(1), POWER_STATUS_OFF);
 
 	/* Start second vCPU. */
 	dlog("Secondary starting second vCPU.\n");
-	ASSERT_TRUE(
-		cpu_start(1, stack, sizeof(stack), vm_cpu_entry, ARG_VALUE));
+	ASSERT_TRUE(hftest_cpu_start(1, stack, sizeof(stack), vm_cpu_entry,
+				     ARG_VALUE));
 	dlog("Secondary started second vCPU.\n");
 
 	/* Check that vCPU statuses are as expected. */
-	ASSERT_EQ(cpu_status(0), POWER_STATUS_ON);
-	ASSERT_EQ(cpu_status(1), POWER_STATUS_ON);
+	ASSERT_EQ(arch_cpu_status(0), POWER_STATUS_ON);
+	ASSERT_EQ(arch_cpu_status(1), POWER_STATUS_ON);
 
 	send_message("vCPU 0", sizeof("vCPU 0"));
 }

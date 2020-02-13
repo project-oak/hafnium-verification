@@ -35,7 +35,7 @@ use crate::types::*;
 
 // Currently, a page is mapped for the send and receive buffers so the maximum request is the size
 // of a page.
-const_assert_eq!(hf_mailbox_size; HF_MAILBOX_SIZE, PAGE_SIZE);
+const_assert_eq!(HF_MAILBOX_SIZE, PAGE_SIZE);
 
 /// Returns to the primary vm and signals that the vcpu still has work to do so.
 #[no_mangle]

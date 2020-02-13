@@ -68,7 +68,7 @@ extern "C" {
 
     fn arch_mm_stage2_attrs_to_mode(attrs: u64) -> c_int;
 
-    pub fn arch_mm_write_back_dcache(base: usize, size: size_t);
+    pub fn arch_mm_flush_dcache(base: usize, size: size_t);
 
     fn arch_mm_stage1_max_level() -> u8;
     fn arch_mm_stage2_max_level() -> u8;
@@ -76,7 +76,9 @@ extern "C" {
     fn arch_mm_stage1_root_table_count() -> u8;
     fn arch_mm_stage2_root_table_count() -> u8;
 
-    fn arch_mm_init(table: paddr_t, first: bool) -> bool;
+    fn arch_mm_init() -> bool;
+
+    fn arch_mm_enable(table: paddr_t);
 
     fn arch_mm_combine_table_entry_attrs(table_attrs: u64, block_attrs: u64) -> u64;
 
@@ -149,10 +151,14 @@ bitflags! {
     /// Flags for memory management operations.
     struct Flags: u32 {
         /// Commit
-        const COMMIT = 0b01;
+        const COMMIT = 0b001;
 
         /// Unmap
-        const UNMAP  = 0b10;
+        const UNMAP  = 0b010;
+
+        /// Stage 1
+        /// Note(HfO2): This flag is not used in HfO2; only exists for FFI.
+        const STAGE1 = 0b100;
     }
 }
 
@@ -161,7 +167,7 @@ bitflags! {
 type ptable_addr_t = uintvaddr_t;
 
 // For stage 2, the input is an intermediate physical addresses rather than a virtual address so:
-const_assert_eq!(addr_size_eq; mem::size_of::<ptable_addr_t>(), mem::size_of::<uintpaddr_t>());
+assert_eq_size!(ptable_addr_t, uintpaddr_t);
 
 /// Utility functions for address manipulation.
 mod addr {
@@ -222,6 +228,13 @@ pub trait Stage {
 
     /// Converts the attributes back to the corresponding mode.
     fn attrs_to_mode(attrs: u64) -> Mode;
+
+    /// Returns the first address which cannot be encoded in page tables given the stage. It is the
+    /// exclusive end of the address space created by the tables.
+    fn ptable_addr_space_end() -> ptable_addr_t {
+        let root_level = Self::max_level() + 1;
+        Self::root_table_count() as usize * addr::entry_size(root_level)
+    }
 }
 
 /// The page table stage for the hypervisor.
@@ -309,14 +322,13 @@ impl PageTableEntry {
         unsafe { Self::from_raw(arch_mm_block_pte(level, begin, attrs)) }
     }
 
-    /// # Safety
-    ///
-    /// `page` should be a proper page table.
-    unsafe fn table(level: u8, page: Page) -> Self {
-        Self::from_raw(arch_mm_table_pte(
-            level,
-            pa_init(page.into_raw() as uintpaddr_t),
-        ))
+    fn table(level: u8, node: PageTableNode) -> Self {
+        unsafe {
+            Self::from_raw(arch_mm_table_pte(
+                level,
+                pa_init(node.into_page() as uintpaddr_t),
+            ))
+        }
     }
 
     fn is_present(&self, level: u8) -> bool {
@@ -360,30 +372,33 @@ impl PageTableEntry {
     }
 
     fn as_table_mut(&mut self, level: u8) -> Result<&mut RawPageTable, ()> {
-        unsafe {
-            if arch_mm_pte_is_table(self.inner, level) {
-                Ok(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _))
-            } else {
-                Err(())
-            }
+        if self.is_table(level) {
+            unsafe { Ok(&mut *(pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _)) }
+        } else {
+            Err(())
         }
+    }
+
+    fn into_table(self, level: u8) -> Result<PageTableNode, ()> {
+        let ret = if self.is_table(level) {
+            unsafe {
+                Ok(PageTableNode::from_raw(
+                    pa_addr(arch_mm_table_from_pte(self.inner, level)) as *mut _,
+                ))
+            }
+        } else {
+            Err(())
+        };
+
+        mem::forget(self);
+        ret
     }
 
     /// Frees all page-table-related memory associated with the given pte at the given level,
     /// including any subtables recursively.
-    ///
-    /// # Safety
-    ///
-    /// After a page table entry is freed, it's value is undefined.
-    unsafe fn free(&mut self, level: u8, mpool: &MPool) {
-        if let Ok(table) = self.as_table_mut(level) {
-            // Recursively free any subtables.
-            for pte in table.iter_mut() {
-                pte.free(level - 1, mpool);
-            }
-
-            // Free the table itself.
-            mpool.free(Page::from_raw(table as *mut _ as *mut _));
+    fn drop(self, level: u8, mpool: &MPool) {
+        if let Ok(table) = self.into_table(level) {
+            table.drop(level - 1, mpool);
         }
     }
 
@@ -399,8 +414,6 @@ impl PageTableEntry {
         level: u8,
         mpool: &MPool,
     ) {
-        let inner = self.inner;
-
         // We need to do the break-before-make sequence if both values are present and the TLB is
         // being invalidated.
         if self.is_valid(level) && new_pte.is_valid(level) {
@@ -409,16 +422,8 @@ impl PageTableEntry {
         }
 
         // Assign the new pte.
-        unsafe {
-            ptr::write(self, new_pte);
-        }
-
-        // Free pages that aren't in use anymore.
-        unsafe {
-            let mut old_pte = Self::from_raw(inner);
-            old_pte.free(level, mpool);
-            mem::forget(old_pte);
-        }
+        let old_pte = mem::replace(self, new_pte);
+        old_pte.drop(level, mpool);
     }
 
     /// Populates the provided page table entry with a reference to another table if needed, that
@@ -437,35 +442,26 @@ impl PageTableEntry {
         }
 
         // Allocate a new table.
-        let mut page = mpool
+        let page = mpool
             .alloc()
             .map_err(|_| dlog!("Failed to allocate memory for page table\n"))?;
 
-        let table = unsafe { RawPageTable::deref_mut_page(&mut page) };
-
         // Initialise entries in the new table.
         let level_below = level - 1;
-        if self.is_block(level) {
+        let table = if self.is_block(level) {
             let attrs = self.attrs(level);
             let entry_size = addr::entry_size(level_below);
 
-            for (i, pte) in table.iter_mut().enumerate() {
-                unsafe {
-                    ptr::write(
-                        pte,
-                        Self::block(
-                            level_below,
-                            pa_init(self.inner as usize + i * entry_size),
-                            attrs,
-                        ),
-                    );
-                }
-            }
+            PageTableNode::new(page, |i| {
+                Self::block(
+                    level_below,
+                    pa_init(self.inner as usize + i * entry_size),
+                    attrs,
+                )
+            })
         } else {
-            for pte in table.iter_mut() {
-                unsafe { ptr::write(pte, Self::absent(level_below)) };
-            }
-        }
+            PageTableNode::new(page, |_| Self::absent(level_below))
+        };
 
         // Ensure initialisation is visible before updating the pte.
         //
@@ -473,7 +469,7 @@ impl PageTableEntry {
         fence(Ordering::Release);
 
         // Replace the pte entry, doing a break-before-make if needed.
-        let table = unsafe { Self::table(level, page) };
+        let table = Self::table(level, table);
         self.replace::<S>(table, begin, level, mpool);
 
         Ok(())
@@ -573,8 +569,8 @@ struct RawPageTable {
     entries: [PageTableEntry; PTE_PER_PAGE],
 }
 
-const_assert!(raw_page_table_align; mem::align_of::<RawPageTable>() == PAGE_SIZE);
-const_assert!(raw_page_table_size; mem::size_of::<RawPageTable>() == PAGE_SIZE);
+const_assert_eq!(mem::align_of::<RawPageTable>(), PAGE_SIZE);
+const_assert_eq!(mem::size_of::<RawPageTable>(), PAGE_SIZE);
 
 impl Deref for RawPageTable {
     type Target = [PageTableEntry; PTE_PER_PAGE];
@@ -591,22 +587,6 @@ impl DerefMut for RawPageTable {
 }
 
 impl RawPageTable {
-    unsafe fn deref_page(page: &Page) -> &Self {
-        Self::deref_raw_page(page)
-    }
-
-    unsafe fn deref_mut_page(page: &mut Page) -> &mut Self {
-        Self::deref_mut_raw_page(page)
-    }
-
-    unsafe fn deref_raw_page(page: &RawPage) -> &Self {
-        &*(page as *const _ as *const _)
-    }
-
-    unsafe fn deref_mut_raw_page(page: &mut RawPage) -> &mut Self {
-        &mut *(page as *mut _ as *mut _)
-    }
-
     /// Returns whether all entries in this table are absent.
     fn is_empty(&self, level: u8) -> bool {
         self.iter().all(|pte| !pte.is_present(level))
@@ -743,9 +723,89 @@ impl RawPageTable {
             }
         }
     }
+
+    /// Recursively free any subtables.
+    ///
+    /// # Safety
+    ///
+    /// After calling this function, the inner value of the RawPageTable is invalid.
+    ///
+    /// FIXME(HfO2): We currently cannot drop the table by move, because move forwarding is not
+    /// working as well as expected. If possible, fix this consume value, and remove unsafe on the
+    /// function declaration. Note that, we should use by-value iterator if this takes a value,
+    /// which is also a problem. Use by-value iterator for arrays, ever since array::IntoIter
+    /// doesn't require [T; N]: LengthAtMost32. If so, this code will have no unsafe. (See
+    /// https://github.com/rust-lang/rust/issues/25725)
+    unsafe fn drop(&mut self, level: u8, mpool: &MPool) {
+        for pte in self.entries.iter() {
+            ptr::read(pte).drop(level, mpool);
+        }
+
+        mem::forget(self);
+    }
+}
+
+struct PageTableNode {
+    ptr: *mut RawPageTable,
+}
+
+impl PageTableNode {
+    fn new<F>(page: Page, pte_init: F) -> Self
+    where
+        F: Fn(usize) -> PageTableEntry,
+    {
+        let ptes = unsafe { &mut *(page.into_raw() as *mut [PageTableEntry; PTE_PER_PAGE]) };
+        for (i, pte) in ptes.iter_mut().enumerate() {
+            mem::forget(mem::replace(pte, pte_init(i)));
+        }
+
+        Self {
+            ptr: ptes as *mut _ as *mut RawPageTable,
+        }
+    }
+
+    unsafe fn from_raw(ptr: *mut RawPageTable) -> Self {
+        Self { ptr }
+    }
+
+    fn into_page(self) -> *mut RawPageTable {
+        let ret = self.ptr;
+        mem::forget(self);
+        ret
+    }
+
+    fn drop(mut self, level: u8, mpool: &MPool) {
+        unsafe {
+            self.deref_mut().drop(level, mpool);
+        }
+
+        // Free the table itself.
+        mpool.free(unsafe { Page::from_raw(self.ptr as *mut _) });
+        mem::forget(self);
+    }
+}
+
+impl Deref for PageTableNode {
+    type Target = RawPageTable;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.ptr }
+    }
+}
+
+impl DerefMut for PageTableNode {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.ptr }
+    }
+}
+
+impl Drop for PageTableNode {
+    fn drop(&mut self) {
+        panic!("`PageTableNode` should not be dropped.");
+    }
 }
 
 /// Page table.
+#[repr(C)]
 pub struct PageTable<S: Stage> {
     root: paddr_t,
     _marker: PhantomData<S>,
@@ -768,12 +828,11 @@ impl<S: Stage> PageTable<S> {
         let root_table_count = S::root_table_count();
         let mut pages = mpool.alloc_pages(root_table_count as usize, root_table_count as usize)?;
 
-        for page in pages.iter_mut() {
-            let table = unsafe { RawPageTable::deref_mut_raw_page(page) };
+        for raw_page in pages.iter_mut() {
+            let page = unsafe { Page::from_raw(raw_page) };
+            let table = PageTableNode::new(page, |_| PageTableEntry::absent(S::max_level()));
 
-            for pte in table.iter_mut() {
-                unsafe { ptr::write(pte, PageTableEntry::absent(S::max_level())) };
-            }
+            mem::forget(table);
         }
 
         // TODO: halloc could return a virtual or physical address if mm not enabled?
@@ -788,10 +847,8 @@ impl<S: Stage> PageTable<S> {
         let level = S::max_level();
 
         for page_table in self.deref_mut().iter_mut() {
-            for pte in page_table.iter_mut() {
-                unsafe {
-                    pte.free(level, mpool);
-                }
+            unsafe {
+                page_table.drop(level, mpool);
             }
         }
 
@@ -863,7 +920,7 @@ impl<S: Stage> PageTable<S> {
         mpool: &MPool,
     ) -> Result<(), ()> {
         let root_level = S::max_level() + 1;
-        let ptable_end = S::root_table_count() as usize * addr::entry_size(root_level);
+        let ptable_end = S::ptable_addr_space_end();
         let end = cmp::min(addr::round_up_to_page(pa_addr(end)), ptable_end);
         let begin = pa_addr(unsafe { arch_mm_clear_pa(begin) });
 
@@ -1058,7 +1115,7 @@ impl MemoryManager {
         // other similar structures (VmLocked, VCpuExecutionLocked etc.) In that
         // case we can delay creating a SpinLock here, and more directly show
         // the meaning of unlocked but safe exclusive access of the page table.
-        let page_table = SpinLock::new(page_table);
+        let mut page_table = SpinLock::new(page_table);
         let stage1_locked = mm_stage1_locked {
             plock: &page_table as *const _ as usize,
         };
@@ -1068,15 +1125,15 @@ impl MemoryManager {
             plat_console_mm_init(stage1_locked, mpool);
 
             page_table
-                .get_mut_unchecked()
+                .get_mut()
                 .identity_map(layout_text_begin(), layout_text_end(), Mode::X, mpool)
                 .unwrap();
             page_table
-                .get_mut_unchecked()
+                .get_mut()
                 .identity_map(layout_rodata_begin(), layout_rodata_end(), Mode::R, mpool)
                 .unwrap();
             page_table
-                .get_mut_unchecked()
+                .get_mut()
                 .identity_map(
                     layout_data_begin(),
                     layout_data_end(),
@@ -1085,7 +1142,7 @@ impl MemoryManager {
                 )
                 .unwrap();
 
-            if !arch_mm_init(page_table.get_unchecked().root, true) {
+            if !arch_mm_init() {
                 return None;
             }
         }
@@ -1100,16 +1157,12 @@ impl MemoryManager {
     /// `self.inner` because the value of `ptable.as_raw()` doesn't change after `ptable` is
     /// initialized. Of course, actual page table may vary during running. That's why this function
     /// returns `paddr_t` rather than `&[RawPageTable]`.
-    pub fn get_raw_ptable(&self) -> paddr_t {
+    fn get_raw_ptable(&self) -> paddr_t {
         unsafe { self.hypervisor_ptable.get_unchecked().as_raw() }
     }
 
-    pub fn cpu_init(raw_ptable: paddr_t) -> Result<(), ()> {
-        if unsafe { arch_mm_init(raw_ptable, false) } {
-            Ok(())
-        } else {
-            Err(())
-        }
+    pub unsafe fn cpu_init(&self) {
+        arch_mm_enable(self.get_raw_ptable())
     }
 
     pub fn vm_unmap_hypervisor(ptable: &mut PageTable<Stage2>, mpool: &MPool) -> Result<(), ()> {
@@ -1225,6 +1278,28 @@ pub unsafe extern "C" fn mm_vm_get_mode(
 }
 
 #[no_mangle]
+pub extern "C" fn mm_ptable_addr_space_end(flags: u32) -> ptable_addr_t {
+    if Flags::from_bits_truncate(flags).contains(Flags::STAGE1) {
+        Stage1::ptable_addr_space_end()
+    } else {
+        Stage2::ptable_addr_space_end()
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_ptable_init(
+    t: *mut PageTable<Stage1>,
+    flags: u32,
+    ppool: *mut MPool,
+) -> bool {
+    let ppool = &*ppool;
+    assert!(Flags::from_bits_truncate(flags).contains(Flags::STAGE1));
+
+    ptr::write(t, ok_or!(PageTable::<Stage1>::new(ppool), return false));
+    true
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn mm_identity_map(
     mut stage1_locked: mm_stage1_locked,
     begin: paddr_t,
@@ -1234,6 +1309,21 @@ pub unsafe extern "C" fn mm_identity_map(
 ) -> *mut usize {
     let mpool = &*mpool;
     stage1_locked
+        .identity_map(begin, end, mode, mpool)
+        .map(|_| pa_addr(begin) as *mut _)
+        .unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn mm_identity_map_nolock(
+    stage1: *mut PageTable<Stage1>,
+    begin: paddr_t,
+    end: paddr_t,
+    mode: Mode,
+    mpool: *const MPool,
+) -> *mut usize {
+    let mpool = &*mpool;
+    (*stage1)
         .identity_map(begin, end, mode, mpool)
         .map(|_| pa_addr(begin) as *mut _)
         .unwrap_or(ptr::null_mut())

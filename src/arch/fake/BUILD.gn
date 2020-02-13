@@ -19,6 +19,12 @@ source_set("fake") {
   ]
 }
 
+# Empty implementation of platform boot flow.
+# Fake arch targets should not depend on the boot flow functions. Will fail to
+# compile if they do.
+source_set("boot_flow") {
+}
+
 # Fake implementation of putchar logs to the console.
 source_set("console") {
   sources = [

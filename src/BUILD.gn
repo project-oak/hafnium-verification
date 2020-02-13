@@ -17,10 +17,9 @@ import("//build/toolchain/platform.gni")
 
 # The hypervisor image.
 hypervisor("hafnium") {
-  sources = [
-    "layout.c",
-  ]
+  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
   deps = [
+    ":layout",
     ":src_not_testable_yet",
   ]
 }
@@ -29,12 +28,11 @@ hypervisor("hafnium") {
 # src targets will merge!
 source_set("src_not_testable_yet") {
   sources = [
-    "plat.c",
   ]
-  libs = ["//hfo2/target/aarch64-hfo2/release/libhfo2.a"]
   deps = [
     ":src_testable",
     "//project/${project}/${plat_name}",
+    plat_boot_flow,
     plat_console,
   ]
 }
@@ -53,14 +51,25 @@ source_set("src_testable") {
     ":fdt",
     ":fdt_handler",
     ":memiter",
+    ":mm",
     ":std",
     "//src/arch/${plat_arch}/hypervisor",
+    plat_boot_flow,
     plat_console,
   ]
 
   if (is_debug) {
     deps += [ ":dlog" ]
   }
+}
+
+source_set("layout") {
+  sources = [
+    "layout.c",
+  ]
+}
+
+source_set("mm") {
 }
 
 # Standard library functions.
@@ -123,7 +132,6 @@ static_library("fake_arch") {
   complete_static_lib = true
   sources = [
     "layout_fake.c",
-    "plat.c",
   ]
   cflags = [ "-fPIC" ]
   deps = [

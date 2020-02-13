@@ -164,10 +164,10 @@ void sync_current_exception(uintreg_t esr, uintreg_t elr)
 {
 	switch (esr >> 26) {
 	case 0x25: /* EC = 100101, Data abort. */
-		dlog("Data abort: pc=0x%x, esr=0x%x, ec=0x%x", elr, esr,
+		dlog("Data abort: pc=%#x, esr=%#x, ec=%#x", elr, esr,
 		     esr >> 26);
 		if (!(esr & (1u << 10))) { /* Check FnV bit. */
-			dlog(", far=0x%x", read_msr(far_el1));
+			dlog(", far=%#x", read_msr(far_el1));
 		} else {
 			dlog(", far=invalid");
 		}
@@ -176,8 +176,8 @@ void sync_current_exception(uintreg_t esr, uintreg_t elr)
 		break;
 
 	default:
-		dlog("Unknown current sync exception pc=0x%x, esr=0x%x, "
-		     "ec=0x%x\n",
+		dlog("Unknown current sync exception pc=%#x, esr=%#x, "
+		     "ec=%#x\n",
 		     elr, esr, esr >> 26);
 	}
 

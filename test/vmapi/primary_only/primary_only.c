@@ -45,7 +45,7 @@ TEST(hf_vm_get_count, no_secondary_vms)
  */
 TEST(hf_vcpu_get_count, primary_has_at_least_one)
 {
-	EXPECT_GE(hf_vcpu_get_count(0), 0);
+	EXPECT_GE(hf_vcpu_get_count(HF_PRIMARY_VM_ID), 0);
 }
 
 /**
@@ -54,7 +54,7 @@ TEST(hf_vcpu_get_count, primary_has_at_least_one)
  */
 TEST(hf_vcpu_get_count, no_secondary_vms)
 {
-	EXPECT_EQ(hf_vcpu_get_count(1), 0);
+	EXPECT_EQ(hf_vcpu_get_count(HF_VM_ID_OFFSET + 1), 0);
 }
 
 /**
@@ -117,10 +117,10 @@ TEST(cpus, start)
 
 	/* Start secondary while holding lock. */
 	sl_lock(&lock);
-	EXPECT_EQ(
-		cpu_start(hftest_get_cpu_id(1), other_stack,
-			  sizeof(other_stack), vm_cpu_entry, (uintptr_t)&lock),
-		true);
+	EXPECT_EQ(hftest_cpu_start(hftest_get_cpu_id(1), other_stack,
+				   sizeof(other_stack), vm_cpu_entry,
+				   (uintptr_t)&lock),
+		  true);
 
 	/* Wait for CPU to release the lock. */
 	sl_lock(&lock);
@@ -136,4 +136,24 @@ TEST(spci, spci_version)
 		(major_revision << major_revision_offset) | minor_revision;
 
 	EXPECT_EQ(spci_version(), current_version);
+}
+
+/**
+ * Test that floating-point operations work in the primary VM.
+ */
+TEST(fp, fp)
+{
+	/*
+	 * Get some numbers that the compiler can't tell are constants, so it
+	 * can't optimise them away.
+	 */
+	double a = hf_vm_get_count();
+	double b = hf_vcpu_get_count(HF_PRIMARY_VM_ID);
+	double result = a * b;
+	dlog("VM count: %d\n", hf_vm_get_count());
+	dlog("vCPU count: %d\n", hf_vcpu_get_count(HF_PRIMARY_VM_ID));
+	dlog("result: %d\n", (int)result);
+	EXPECT_TRUE(a == 1.0);
+	EXPECT_TRUE(b == 8.0);
+	EXPECT_TRUE(result == 8.0);
 }

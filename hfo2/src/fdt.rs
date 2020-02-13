@@ -20,6 +20,8 @@ use core::ptr;
 use core::slice;
 use core::str;
 
+use crate::std::*;
+
 use scopeguard::guard;
 
 /// TODO(HfO2): port this function into `std.rs` (#48.)
@@ -124,6 +126,37 @@ const FDT_VERSION: u32 = 17;
 const FDT_MAGIC: u32 = 0xd00d_feed;
 const FDT_TOKEN_ALIGNMENT: usize = mem::size_of::<u32>();
 
+/// Helper method for parsing 32/64-bit units from FDT data.
+pub fn fdt_parse_number(data: &[u8]) -> Option<u64> {
+    #[repr(C, align(8))]
+    struct T {
+        a: [u8; 8],
+    }
+
+    // FDT values should be aligned to 32-bit boundary.
+    assert!(is_aligned(data.as_ptr() as _, FDT_TOKEN_ALIGNMENT));
+
+    let ret = match data.len() {
+        4 => {
+            // Assert that `data` is already sufficiently aligned to dereference as u32.
+            const_assert!(mem::align_of::<u32>() <= FDT_TOKEN_ALIGNMENT);
+            unsafe { u32::from_be(*(data.as_ptr() as *const u32)) as u64 }
+        }
+        8 => {
+            // ARMv8 requires `data` to be realigned to 64-bit boundary to dereferences as u64.
+            // May not be needed on other architectures.
+            let mut t = T {
+                a: Default::default(),
+            };
+            t.a.copy_from_slice(data);
+            u64::from_be(unsafe { mem::transmute(t) })
+        }
+        _ => return None,
+    };
+
+    Some(ret)
+}
+
 impl<'a> FdtTokenizer<'a> {
     fn new(cur: &'a [u8], strs: &'a [u8]) -> Self {
         Self { cur, strs }
@@ -149,31 +182,8 @@ impl<'a> FdtTokenizer<'a> {
         Some(first)
     }
 
-    fn bytes_filter<F>(&mut self, size: usize, pred: F) -> Option<&'a [u8]>
-    where
-        F: FnOnce(&'a [u8]) -> bool,
-    {
-        if self.cur.len() < size {
-            return None;
-        }
-
-        let (first, rest) = self.cur.split_at(size);
-        if !pred(first) {
-            return None;
-        }
-        self.cur = rest;
-        self.align();
-
-        Some(first)
-    }
-
     fn u32(&mut self) -> Option<u32> {
         let bytes = self.bytes(mem::size_of::<u32>())?;
-        Some(u32::from_be_bytes(bytes.try_into().unwrap()))
-    }
-
-    fn u32_expect(&mut self, expect: u32) -> Option<u32> {
-        let bytes = self.bytes_filter(mem::size_of::<u32>(), |b| b == expect.to_be_bytes())?;
         Some(u32::from_be_bytes(bytes.try_into().unwrap()))
     }
 
@@ -189,14 +199,23 @@ impl<'a> FdtTokenizer<'a> {
     }
 
     fn token_expect(&mut self, expect: FdtToken) -> Option<FdtToken> {
-        while let Some(v) = self.u32_expect(expect as u32) {
-            let token = v.try_into().unwrap();
-            if token != FdtToken::Nop {
-                return Some(token);
+        let token = self.token()?;
+
+        if token != expect {
+            unsafe {
+                self.rewind();
             }
+            return None;
         }
 
-        None
+        Some(token)
+    }
+
+    unsafe fn rewind(&mut self) {
+        self.cur = slice::from_raw_parts(
+            self.cur.as_ptr().sub(FDT_TOKEN_ALIGNMENT),
+            self.cur.len() + FDT_TOKEN_ALIGNMENT,
+        );
     }
 
     fn str(&mut self) -> Option<&'a [u8]> {
@@ -352,7 +371,7 @@ impl<'a> FdtNode<'a> {
 impl FdtHeader {
     pub fn dump(&self) {
         unsafe fn asciz_to_utf8(ptr: *const u8) -> &'static str {
-            let len = (0..).find(|i| *ptr.add(*i) != 0).unwrap();
+            let len = (0..).find(|i| *ptr.add(*i) == 0).unwrap();
             let bytes = slice::from_raw_parts(ptr, len);
             str::from_utf8_unchecked(bytes)
         }
@@ -383,7 +402,7 @@ impl FdtHeader {
                 }
             }
 
-            if t.token().filter(|t| *t != FdtToken::EndNode).is_none() {
+            if t.token().filter(|t| *t == FdtToken::EndNode).is_none() {
                 return;
             }
 
@@ -405,7 +424,7 @@ impl FdtHeader {
         unsafe {
             while (*entry).address != 0 || (*entry).size != 0 {
                 dlog!(
-                    "Entry: {:p} (0x{:x} bytes)\n",
+                    "Entry: {:p} ({:#x} bytes)\n",
                     u64::from_be((*entry).address) as *const u8,
                     u64::from_be((*entry).size)
                 );

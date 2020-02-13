@@ -25,7 +25,7 @@
 
 #define NANOS_PER_UNIT 1000000000
 
-#define SERVICE_VM0 1
+#define SERVICE_VM0 (HF_VM_ID_OFFSET + 1)
 
 extern alignas(PAGE_SIZE) uint8_t send_page[PAGE_SIZE];
 extern alignas(PAGE_SIZE) uint8_t recv_page[PAGE_SIZE];

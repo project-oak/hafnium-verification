@@ -320,6 +320,7 @@ template("aarch64_common_toolchain") {
     }
 
     toolchain_args = {
+      plat_boot_flow = invoker.boot_flow
       plat_console = invoker.console
       forward_variables_from(invoker.toolchain_args, "*")
     }
@@ -340,6 +341,7 @@ template("aarch64_toolchains") {
     forward_variables_from(invoker,
                            [
                              "origin_address",
+                             "boot_flow",
                              "console",
                              "gic_version",
                              "gicd_base_address",
@@ -350,6 +352,9 @@ template("aarch64_toolchains") {
                              "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+nofp"
+
+    # Add a macro so files can tell whether they are not being built for a VM.
+    extra_defines = " -DVM_TOOLCHAIN=0"
   }
 
   # Toolchain for building test VMs which run under Hafnium.
@@ -364,10 +369,14 @@ template("aarch64_toolchains") {
                              "toolchain_args",
                            ])
     cpu = "${invoker.cpu}+fp"
+    boot_flow = "//src/arch/fake:boot_flow"
     console = "//src/arch/aarch64/hftest:console"
 
     # Nonsense values because they are required but shouldn't be used.
     heap_pages = 0
-    max_vms = 1
+    max_vms = 0
+
+    # Add a macro so files can tell whether they are being built for a VM.
+    extra_defines = " -DVM_TOOLCHAIN=1"
   }
 }

@@ -16,9 +16,9 @@
 
 #pragma once
 
-#define SERVICE_VM0 1
-#define SERVICE_VM1 2
-#define SERVICE_VM2 3
+#define SERVICE_VM0 (HF_VM_ID_OFFSET + 1)
+#define SERVICE_VM1 (HF_VM_ID_OFFSET + 2)
+#define SERVICE_VM2 (HF_VM_ID_OFFSET + 3)
 
 #define SELF_INTERRUPT_ID 5
 #define EXTERNAL_INTERRUPT_ID_A 7

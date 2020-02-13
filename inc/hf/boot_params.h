@@ -20,6 +20,7 @@
 
 #include "hf/arch/cpu.h"
 
+#include "hf/fdt.h"
 #include "hf/mm.h"
 #include "hf/mpool.h"
 
@@ -47,7 +48,6 @@ struct boot_params_update {
 	paddr_t initrd_end;
 };
 
-bool plat_get_boot_params(struct mm_stage1_locked stage1_locked,
-			  struct boot_params *p, struct mpool *ppool);
-bool plat_update_boot_params(struct mm_stage1_locked stage1_locked,
-			     struct boot_params_update *p, struct mpool *ppool);
+bool boot_params_init(struct boot_params *p, const struct fdt_node *fdt_root);
+bool boot_params_patch_fdt(struct mm_stage1_locked stage1_locked,
+			   struct boot_params_update *p, struct mpool *ppool);

@@ -32,7 +32,6 @@
 #define PAGE_SIZE (1 << PAGE_BITS)
 #define MM_PTE_PER_PAGE (PAGE_SIZE / sizeof(pte_t))
 
-
 /* The following are arch-independent page mapping modes. */
 #define MM_MODE_R 0x0001 /* read */
 #define MM_MODE_W 0x0002 /* write */
@@ -71,6 +70,10 @@
 #define MM_MODE_UNOWNED 0x0020
 #define MM_MODE_SHARED  0x0040
 
+#define MM_FLAG_COMMIT  0x01
+#define MM_FLAG_UNMAP   0x02
+#define MM_FLAG_STAGE1  0x04
+
 /* clang-format on */
 
 struct mm_page_table {
@@ -86,10 +89,16 @@ struct mm_ptable {
 	paddr_t root;
 };
 
+/** The type of addresses stored in the page table. */
+typedef uintvaddr_t ptable_addr_t;
+
 /** Represents the currently locked stage-1 page table of the hypervisor. */
 struct mm_stage1_locked {
 	struct mm_ptable *ptable;
 };
+
+bool mm_ptable_init(struct mm_ptable *t, int flags, struct mpool *ppool);
+ptable_addr_t mm_ptable_addr_space_end(int flags);
 
 bool mm_vm_init(struct mm_ptable *t, struct mpool *ppool);
 void mm_vm_fini(struct mm_ptable *t, struct mpool *ppool);
@@ -105,6 +114,8 @@ bool mm_vm_get_mode(struct mm_ptable *t, ipaddr_t begin, ipaddr_t end,
 struct mm_stage1_locked mm_lock_stage1(void);
 void mm_unlock_stage1(struct mm_stage1_locked *lock);
 void *mm_identity_map(struct mm_stage1_locked stage1_locked, paddr_t begin,
+		      paddr_t end, int mode, struct mpool *ppool);
+void *mm_identity_map_nolock(struct mm_stage1_locked stage1_locked, paddr_t begin,
 		      paddr_t end, int mode, struct mpool *ppool);
 void mm_defrag(struct mm_stage1_locked stage1_locked, struct mpool *ppool);
 

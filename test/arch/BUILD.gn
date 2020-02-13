@@ -27,6 +27,7 @@ hypervisor("arch_test") {
   testonly = true
 
   sources = [
+    "dlog_test.c",
     "mm_test.c",
   ]
 

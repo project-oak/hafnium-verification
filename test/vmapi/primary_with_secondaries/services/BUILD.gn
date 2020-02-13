@@ -28,6 +28,16 @@ source_set("check_state") {
   ]
 }
 
+# Service to try to access EL1 debug registers.
+source_set("debug_el1") {
+  testonly = true
+  public_configs = [ "//test/hftest:hftest_config" ]
+
+  sources = [
+    "debug_el1.c",
+  ]
+}
+
 # Service to listen for messages and echo them back to the sender.
 source_set("echo") {
   testonly = true
@@ -189,6 +199,7 @@ vm_kernel("service_vm0") {
     ":abort",
     ":boot",
     ":check_state",
+    ":debug_el1",
     ":echo",
     ":echo_with_notification",
     ":floating_point",
