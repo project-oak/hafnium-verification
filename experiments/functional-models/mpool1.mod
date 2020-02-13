@@ -150,7 +150,7 @@ exit:
 
 
 
-  void *mpool_alloc_contiguous_no_fallback(struct mpool *p, size_t count,
+  void *mpool_alloc_contiguous_no_fallback(struct mpool *[BORROW]p, size_t count,
 					 size_t align)
   {
     struct mpool_chunk **prev;
@@ -158,30 +158,17 @@ exit:
   
     align *= p->entry_size;
   
-    mpool_lock(p);
-  
-    /*
-     * Go through the chunk list in search of one with enough room for the
-     * requested allocation
-     */
     prev = &p->chunk_list;
-    while (*prev != NULL) {
+    while ( *prev != NULL) {
       uintptr_t start;
       struct mpool_chunk *new_chunk;
       struct mpool_chunk *chunk = *prev;
   
-      /* Round start address up to the required alignment. */
       start = (((uintptr_t)chunk + align - 1) / align) * align;
   
-      /*
-       * Calculate where the new chunk would be if we consume the
-       * requested number of entries. Then check if this chunk is big
-       * enough to satisfy the request.
-       */
       new_chunk =
         (struct mpool_chunk *)(start + (count * p->entry_size));
       if (new_chunk <= chunk->limit) {
-        /* Remove the consumed area. */
         if (new_chunk == chunk->limit) {
           *prev = chunk->next_chunk;
         } else {
@@ -189,10 +176,6 @@ exit:
           *prev = new_chunk;
         }
   
-        /*
-         * Add back the space consumed by the alignment
-         * requirement, if it's big enough to fit an entry.
-         */
         if (start - (uintptr_t)chunk >= p->entry_size) {
           chunk->next_chunk = *prev;
           *prev = chunk;
@@ -205,8 +188,6 @@ exit:
   
       prev = &chunk->next_chunk;
     }
-  
-    mpool_unlock(p);
   
     return ret;
   }
