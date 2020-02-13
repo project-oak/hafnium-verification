@@ -8,9 +8,20 @@
 
 Immutable borrow  : make "ptr" to "readonly_ptr" and then copy
 Move              : make original value to "nodef" and then copy
-Mutable borrow    : No such thing. Just use move 
-//YJ: need to understand more. What is the differente btw. Rust? 
-//We don't need care about compilation/speed?
+Mutable borrow    : In semantics, there is no such thing. It is just syntactic sugar.
+
+bool func(int *[BORROW]x, int *[BORROW]y) {
+  *x = 10;
+  return true;
+}
+~~~>
+(bool, int *x, int *y) func(int *[MOVE]x, int *[MOVE]y) {
+  *x = 10;
+  RETURN_PUSH([MOVE]y);
+  RETURN_PUSH([MOVE]x);
+  return true;
+}
+
 
 //Q: Do we need "readonly" tag?
 //Pros: giving more NB (keeping more invariants from type checking)
@@ -39,13 +50,12 @@ struct mpool {
 };
 
 Module MPOOL {
-  void mpool_init(struct mpool *[MOVE]p, size_t entry_size)
+  void mpool_init(struct mpool *[BORROW]p, size_t entry_size)
   {
     p->entry_size = entry_size;
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
-    //[RETURN]p
   }
  
   void fini(struct mpool *[MOVE]p) {
@@ -76,12 +86,11 @@ Module MPOOL {
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
-    //[RETURN]p
   }
 
 
 
-  static void *alloc_no_fallback(struct mpool *[MOVE]p) { 
+  static void *alloc_no_fallback(struct mpool *[BORROW]p) { 
     void *ret;
     struct mpool_chunk *chunk;
     struct mpool_chunk *new_chunk;
@@ -89,37 +98,45 @@ Module MPOOL {
     if (p->entry_list != NULL) {
         struct mpool_entry *entry =[MOVE] p->entry_list;
 
-        p->entry_list = entry->next;
-        ret = entry;
+        p->entry_list =[MOVE] entry->next;
+        ret =[MOVE] entry;
         goto exit;
     }
 
-    chunk[MOVE] = p->chunk_list;
+    chunk =[MOVE] p->chunk_list;
     if (chunk == NULL) {
         ret = NULL;
         goto exit;
     }
 
-    new_chunk = (struct mpool_chunk *)((uintptr_t)chunk + p->entry_size);
+    //YJ: @minki suggested to abstract "ptr" to "struct" in this level, but I am against it.
+    //This code essentially assumes memory structure.
+
+    new_chunk =[MOVE] (struct mpool_chunk *)((uintptr_t)chunk + p->entry_size);
+    //IMPORTANT: We are doing "PTR->INT" cast, and then integer comparison.
+    //Sol 1 --> use (offset: int) instead of (limit: ptr). (is it general?)
+    //Sol 2 --> mem_contents should have address...
+    // which is basically equal to: maintain global memory (to guarantee freshness of addr),
+    // and ptr(from to: int) asserts ownership... This requires each value to have unique id
+
     if (new_chunk >= chunk->limit) {
-        p->chunk_list = chunk->next_chunk;
+        p->chunk_list =[MOVE] chunk->next_chunk;
     } else {
         *new_chunk = *chunk;
-        p->chunk_list = new_chunk;
+        p->chunk_list =[MOVE] new_chunk;
     }
 
-    ret = chunk;
+    ret =[MOVE] chunk;
 
 exit:
-    //[RETURN]p
     return ret;
   }
 
 
 
-  void *alloc(struct mpool *p) {
+  void *alloc(struct mpool *[BORROW]p) {
     do {
-        void *ret = alloc_no_fallback(p);
+        void *ret = alloc_no_fallback([BORROW]p);
 
         if (ret != NULL) {
             return ret;
