@@ -1,25 +1,32 @@
-[** EVERY LINE HAS YIELD BUT OMITTED **]
+[** Original Hafnium **]
+[** Every line has Yield but omitted **]
+
+struct mpool_chunk {
+	struct mpool_chunk *next_chunk;
+	struct mpool_chunk *limit;
+};
+
+struct mpool_entry {
+	struct mpool_entry *next;
+};
 
 struct mpool {
-  struct spinlock *lock;                     // <----- Δ with HAFNIUM
+  struct spinlock lock;
   size_t entry_size;
   struct mpool_chunk *chunk_list;
   struct mpool_entry *entry_list;
   struct mpool *fallback;
 };
 
-Module MPOOL0 {
-  struct mpool *new(size_t entry_size) {     // <----- Δ with HAFNIUM
-    struct mpool *p = malloc(sizeof(mpool)); // <----- Δ with HAFNIUM
+Module MPOOL {
+  void mpool_init(struct mpool *p, size_t entry_size)
+  {
     p->entry_size = entry_size;
     p->chunk_list = NULL;
     p->entry_list = NULL;
     p->fallback = NULL;
-    p->lock = lock_new();                    // <----- Δ with HAFNIUM
-    return p;                                // <----- Δ with HAFNIUM
+    sl_init(&p->lock);
   }
- 
- 
  
   void fini(struct mpool *p) {
 	struct mpool_entry *entry;
@@ -53,8 +60,6 @@ Module MPOOL0 {
     p->fallback = NULL;
 
     unlock(p);
-    lock_fini(p->lock);                      // <----- Δ with HAFNIUM
-    free(p);                                 // <----- Δ with HAFNIUM
   }
 
 
@@ -110,8 +115,67 @@ exit:
 
     return NULL;
   }
- 
- 
+
+  void *mpool_alloc_contiguous_no_fallback(struct mpool *p, size_t count,
+					 size_t align)
+  {
+    struct mpool_chunk **prev;
+    void *ret = NULL;
+  
+    align *= p->entry_size;
+  
+    mpool_lock(p);
+  
+    prev = &p->chunk_list;
+    while ( *prev != NULL) {
+      uintptr_t start;
+      struct mpool_chunk *new_chunk;
+      struct mpool_chunk *chunk = *prev;
+  
+      start = (((uintptr_t)chunk + align - 1) / align) * align;
+  
+      new_chunk =
+        (struct mpool_chunk *)(start + (count * p->entry_size));
+      if (new_chunk <= chunk->limit) {
+        if (new_chunk == chunk->limit) {
+          *prev = chunk->next_chunk;
+        } else {
+          *new_chunk = *chunk;
+          *prev = new_chunk;
+        }
+  
+        if (start - (uintptr_t)chunk >= p->entry_size) {
+          chunk->next_chunk = *prev;
+          *prev = chunk;
+          chunk->limit = (struct mpool_chunk *)start;
+        }
+  
+        ret = (void *)start;
+        break;
+      }
+  
+      prev = &chunk->next_chunk;
+    }
+  
+    mpool_unlock(p);
+  
+    return ret;
+  }
+
+  void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align)
+  {
+    do {
+      void *ret = mpool_alloc_contiguous_no_fallback(p, count, align);
+  
+      if (ret != NULL) {
+        return ret;
+      }
+  
+      p = p->fallback;
+    } while (p != NULL);
+  
+    return NULL;
+  }
  
   void free(struct mpool *p, void *ptr) {
     struct mpool_entry *e = ptr;
