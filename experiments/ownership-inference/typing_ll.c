@@ -15,8 +15,8 @@ ownership := *own                          (* owned reference *)
 stability := stable                        (* stable. we omit "stable" usually. *)
            | unstable { fields }           (* unstable for the fields *)
 f_types   := { (field:o_type)+ }           (* ownership for sub fields *)
-
  */
+
 #include <stdio.h>
 #include <stdlib.h>
 
