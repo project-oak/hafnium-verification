@@ -20,4 +20,3 @@
 [submodule "experiments/ownership-inference/hafnium"]
 	path = experiments/ownership-inference/hafnium
 	url = https://hafnium.googlesource.com/hafnium
-
