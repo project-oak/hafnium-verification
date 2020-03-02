@@ -208,3 +208,32 @@ _coverage
 /experiments/ownership-inference/infer/facebook-clang-plugins/clang/installed.version
 /experiments/ownership-inference/infer/facebook-clang-plugins/libtooling/build/
 
+# HafniumCore
+*.swp
+
+_CoqProject
+Makefile.coq
+Makefile.coq.conf
+.build
+
+*.vo
+*.vio
+*.v.d
+*.glob
+.*.aux
+
+graph.png
+graph.dot
+
+.lia.cache
+.nia.cache
+.coqdeps.d
+
+extract/*.ml
+extract/*.mli
+!extract/main.ml
+extract/main.native
+extract/_build/
+
+main.native
+main.byte
