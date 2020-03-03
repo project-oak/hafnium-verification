@@ -50,10 +50,10 @@ module Nat = struct
   let rec of_int n = assert(n >= 0); if(n == 0) then O else S (of_int (pred n))
 end
 
-let shuffle: 'a list -> 'a list = fun xs ->
-  let xis = List.map (fun x -> (Random.bits (), x)) xs in
-  let yis = List.sort (fun x0 x1 -> Stdlib.compare (fst x0) (fst x1)) xis in
-  List.map snd yis
+(* let shuffle: 'a list -> 'a list = fun xs ->
+ *   let xis = List.map (fun x -> (Random.bits (), x)) xs in
+ *   let yis = List.sort (fun x0 x1 -> Stdlib.compare (fst x0) (fst x1)) xis in
+ *   List.map snd yis *)
 
 let cl2s = fun cl -> String.concat "" (List.map (String.make 1) cl)
 
@@ -73,6 +73,38 @@ let rec string_of_val v =
 let print_val = fun v -> print_endline (string_of_val v)
 
 let string_of_vals vs = List.fold_left (fun s i -> s ^ " " ^ string_of_val i) "" vs
+
+
+
+let string_of_lock l =
+  match l with
+  | Vnat id -> string_of_int (Nat.to_int id)
+  | _ -> failwith "Mpool not well-formed0"
+
+let entry_size = 4
+
+let rec string_of_chunk_list cl =
+  match cl with
+  | Vptr(Some(O), []) -> ""
+  | Vptr(Some paddr, next :: (Vnat limit) :: others) ->
+     (if (entry_size * (Nat.to_int limit)) != Nat.to_int (length (next :: (Vnat limit) :: others))
+      then failwith "Mpool not well-formed4"
+      else ()) ;
+     "[" ^ string_of_int (Nat.to_int paddr) ^ "~" ^ string_of_int ((Nat.to_int paddr) + entry_size * (Nat.to_int limit)) ^ ") " ^
+       string_of_chunk_list next
+  | _ -> failwith "Mpool not well-formed1"
+
+let string_of_mpool p =
+  let rec foo padding p =
+    match p with
+    | Vptr(Some(O), []) -> ""
+    (* | Vptr(_, [ lock ; chunk_list ; fallback ] ) -> *)
+    | Vptr(_, lock :: chunk_list :: fallback :: _ ) ->
+       string_of_lock lock ^ " --> " ^ string_of_chunk_list chunk_list ^ "\n"
+       (* ^ padding ^ (foo (padding ^ "  ") fallback) *)
+    | _ -> failwith "Mpool not well-formed2"
+  in
+  (foo "  " p)
 
 (* let print_val =
  *   let rec go v =
@@ -99,6 +131,11 @@ let handle_Event = fun e k ->
   | ESyscall ('d'::[], msg, vs) ->
      (* print_string "<DEBUG> " ; print_string (cl2s msg) ;
       * print_endline (string_of_vals vs) ; *)
+     k (Obj.magic ())
+  | ESyscall ('m'::'d'::[], msg, p::[]) ->
+     print_endline (cl2s msg) ;
+     print_endline (string_of_mpool p) ;
+     print_endline "" ;
      k (Obj.magic ())
   | ESyscall ('g'::[], _,   []) ->
      let x = read_int() in k (Obj.magic (Vnat (Nat.of_int x)))
@@ -157,7 +194,7 @@ let rec run t =
 
 
 let rec my_rr q =
-  (my_rr_match (fun _ -> shuffle) (fun _ _ _ -> handle_Event)
+  (my_rr_match (fun _ _ _ -> handle_Event)
      (fun q -> match q with
                | [] -> []
                | _ :: _ -> my_rr q)) q
@@ -185,33 +222,42 @@ let main =
    * print_endline "-----------------------------------" ;
    * run (eval_program Control.program) ;
    * print_endline "-----------------------------------" ;
-   * run (round_robin (fun _ -> shuffle) (List.map eval_program MultiCore.programs)) ;
-   * print_endline "-----------------------------------" ;
    * run (MultiModule.isem) ;
    * print_endline "-----------------------------------" ;
    * run (MultiModuleLocalState.isem) ; *)
   (* print_endline "-----------------------------------" ;
    * my_rr (List.map eval_program Concur.programs) ; *)
+  (* print_endline "-----------------------------------------------------------" ;
+   * run (round_robin (fun _ -> shuffle) (List.map eval_program MultiCore.programs)) ; *)
+
+  if true
+  then begin
 
   print_endline "-----------------------------------------------------------" ;
-  run (eval_program DoubleReturn.program) ;
+  run (MultiCore2.sem) ;
+  print_endline "-----------------------------------------------------------" ;
+  run (MultiCoreMPSC.sem) ;
+  print_endline "-----------------------------------------------------------" ;
+  run (MultiModuleMultiCore.sem) ;
+
+  print_endline "-----------------------------------------------------------" ;
+  run (eval_whole_program DoubleReturn.program) ;
 
   print_endline "-----------------------------------------------------------" ;
   run (MultiModuleLocalStateSimple.isem1) ;
   print_endline "-----------------------------------------------------------" ;
   run (MultiModuleLocalStateSimple.isem2) ;
-
-  (* print_endline "-----------------------------------------------------------" ;
-   * run (eval_program MpoolSeq.TEST.TEST1.program) ; *)
+  print_endline "-----------------------------------------------------------" ;
+  run (MultiModuleGenv.isem) ;
 
   print_endline "-----------------------------------------------------------" ;
-  run (eval_program MpoolSeq.TEST.TEST2.program) ;
+  run (eval_whole_program MpoolSeq.TEST.TEST2.program) ;
 
   print_endline "-----------------------------------------------------------" ;
-  run (eval_program MpoolSeq.TEST.TEST3.program) ;
+  run (eval_whole_program MpoolSeq.TEST.TEST3.program) ;
 
   print_endline "-----------------------------------------------------------" ;
-  run (eval_program MpoolSeq.TEST.TEST4.program) ;
+  run (eval_whole_program MpoolSeq.TEST.TEST4.program) ;
 
   print_endline "-----------------------------------------------------------" ;
   run (MpoolConcur.TEST.TEST1.isem) ;
@@ -220,6 +266,15 @@ let main =
   run (MpoolConcur.TEST.TEST2.isem) ;
 
   print_endline "-----------------------------------------------------------" ;
-  run (MpoolConcur.TEST.TEST3.isem) ;
+  run (MpoolConcur.TEST.TEST3.isem1) ;
+  run (MpoolConcur.TEST.TEST3.isem2) ;
+
+  print_endline "-----------------------------------------------------------" ;
+  run (MultiModuleMultiCoreLocalState.isem) ;
+
+  end;
+
+  print_endline "-----------------------------------------------------------" ;
+  run (MpoolConcur.TEST.TEST4.isem) ;
 
   ()
