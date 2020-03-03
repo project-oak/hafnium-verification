@@ -117,10 +117,11 @@ Coercion bool_to_val: bool >-> val.
 (** Expressions are made of variables, constant literals, and arithmetic operations. *)
 Inductive expr : Type :=
 | Var (_ : var)
-| Lit (_ : val)
+| Val (_ : val)
 | Plus  (_ _ : expr)
 | Minus (_ _ : expr)
 | Mult  (_ _ : expr)
+| Mod   (_ _ : expr)
 | Div   (_ _ : expr)
 | Equal (_ _: expr)
 | Neg (_: expr)
@@ -129,6 +130,7 @@ Inductive expr : Type :=
 | CoqCode (_: list expr) (P: list val -> val)
 | Put (msg: string) (e: expr)
 | Debug (msg: string) (e: expr)
+| Syscall (code: string) (msg: string) (e: expr)
 | Get
 | Call (func_name: string) (params: list (var + expr))
 | Ampersand (_: expr)
@@ -158,8 +160,8 @@ Inductive stmt : Type :=
 | If     (i : expr) (t e : stmt) (* if (i) then { t } else { e } *)
 | While  (t : expr) (b : stmt)   (* while (t) { b } *)
 | Skip                           (* ; *)
-| Assume
-| Guarantee
+| AssumeFail
+| GuaranteeFail
 | Store (x: var) (ofs: expr) (e: expr) (* x->ofs := e *)
 (* YJ: I used "var" instead of "var + val". We should "update" retvs into variables. *)
 | Expr (e: expr)
@@ -172,7 +174,8 @@ e.g. See if x has even number --> we need something like "MetaIf (var -> P: Prop
 | Yield
 .
 
-Inductive function: Type := mk_function { params: list var ; body: stmt }.
+Inductive function: Type :=
+  mk_function { params: list var ; locals: list var ; body: stmt }.
 Definition program: Type := list (string * function).
 
 (* ========================================================================== *)
@@ -183,11 +186,11 @@ Module LangNotations.
   (** A few notations for convenience.  *)
   Definition Expr_coerce: expr -> stmt := Expr.
   Definition Var_coerce: string -> expr := Var.
-  Definition Lit_coerce: val -> expr := Lit.
+  Definition Val_coerce: val -> expr := Val.
   Definition nat_coerce: nat -> val := Vnat.
   Coercion Expr_coerce: expr >-> stmt.
   Coercion Var_coerce: string >-> expr.
-  Coercion Lit_coerce: val >-> expr.
+  Coercion Val_coerce: val >-> expr.
   Coercion nat_coerce: nat >-> val.
 
   Bind Scope expr_scope with expr.
@@ -195,17 +198,24 @@ Module LangNotations.
   Infix "+" := Plus : expr_scope.
   Infix "-" := Minus : expr_scope.
   Infix "*" := Mult : expr_scope.
+  Infix "%" := Mod (at level 40, left associativity) : expr_scope.
   Infix "/" := Div : expr_scope.
   Infix "==" := Equal : expr_scope.
   Infix "<=" := LE : expr_scope.
   (* Notation "'NULL'" := (Vptr []) (at level 40): expr_scope. *)
+
+  Notation "#true" :=
+    (Val (Vnat 1)) (at level 50): stmt_scope.
+
+  Notation "#false" :=
+    (Val (Vnat 0)) (at level 50): stmt_scope.
 
   Notation "'!' e" :=
     (Neg e) (at level 40, e at level 50): stmt_scope.
 
   Bind Scope stmt_scope with stmt.
 
-  Notation "x '#:=' e" :=
+  Notation "x '#=' e" :=
     (Assign x e) (at level 60, e at level 50): stmt_scope.
 
   Notation "a '#;' b" :=
@@ -229,14 +239,20 @@ Module LangNotations.
        format
          "'[v  ' '#while'  t  'do' '/' '[v' b  ']' ']'").
 
-  (* Notation "x '#->' ofs '#:=' e" := *)
-  (*   (Store x ofs e) (at level 60, e at level 50): stmt_scope. *)
+  Notation "#assume e" :=
+    (#if e then Skip else AssumeFail) (at level 60, e at level 50): stmt_scope.
 
-  (* Notation "x '#->' ofs" := *)
-  (*   (Load x ofs) (at level 99): expr_scope. *)
+  Notation "#guarantee e" :=
+    (#if e then Skip else GuaranteeFail) (at level 60, e at level 50): stmt_scope.
 
-  Notation "#put e" :=
-    (Put "" e) (at level 60, e at level 50): stmt_scope.
+  Notation "x '@' ofs '#:=' e" :=
+    (Store x ofs e) (at level 60, e at level 50): stmt_scope.
+
+  Notation "x '#@' ofs" :=
+    (Load x ofs) (at level 99): expr_scope.
+
+  (* Notation "#put e" := *)
+  (*   (Put "" e) (at level 60, e at level 50): stmt_scope. *)
 
   (* Notation "x '#:=' '#get' e" := *)
   (*   (Get x e) (at level 60, e at level 50): stmt_scope. *)
@@ -252,11 +268,16 @@ End LangNotations.
 Import LangNotations.
 
 Variant LocalE : Type -> Type :=
-| GetVar (x : var) : LocalE val
-| SetVar (x : var) (v : val) : LocalE unit
+| GetLvar (x : var) : LocalE val
+| SetLvar (x : var) (v : val) : LocalE unit
 | PushEnv: LocalE unit
 | PopEnv: LocalE unit
 (* | StoreVar (x: var) (ofs: nat) (v: val): LocalE bool *)
+.
+
+Variant GlobalE : Type -> Type :=
+| GetGvar (x : var) : GlobalE val
+| SetGvar (x : var) (v : val) : GlobalE unit
 .
 
 Variant Event: Type -> Type :=
@@ -312,6 +333,7 @@ Section Denote.
 
   Context {eff : Type -> Type}.
   Context {HasLocalE: LocalE -< eff}.
+  Context {HasGlobalE: GlobalE -< eff}.
   Context {HasEvent : Event -< eff}.
   Context {HasCallInternalE: CallInternalE -< eff}.
   Context {HasCallExternalE: CallExternalE -< eff}.
@@ -326,14 +348,27 @@ Section Denote.
       recursive computations in the case of operators as one would expect. *)
 
   Variable ctx: program.
+  Variable func: function.
 
   From ExtLib Require Import Structures.Applicative.
   Print Instances Applicative.
 
+  Definition triggerGetVar (n: var): itree eff val :=
+    if existsb (string_dec n) (func.(params) ++ func.(locals))
+    then trigger (GetLvar n)
+    else trigger (GetGvar n)
+  .
+
+  Definition triggerSetVar (n: var) (v: val): itree eff unit :=
+    if existsb (string_dec n) (func.(params) ++ func.(locals))
+    then trigger (SetLvar n v)
+    else trigger (SetGvar n v)
+  .
+
   Fixpoint denote_expr (e : expr) : itree eff val :=
     match e with
-    | Var v     => trigger (GetVar v)
-    | Lit n     => ret n
+    | Var v     => triggerGetVar v
+    | Val n     => ret n
     | Plus a b  => l <- denote_expr a ;; r <- denote_expr b ;;
                      match l, r with
                      | Vnat l, Vnat r => ret (Vnat (l + r))
@@ -349,10 +384,15 @@ Section Denote.
                      | Vnat l, Vnat r => ret (Vnat (l * r))
                      | _, _ => triggerNB "expr-mult"
                      end
+    | Mod a b   => l <- denote_expr a ;; r <- denote_expr b ;;
+                     match l, r with
+                     | Vnat l, Vnat r => ret (Vnat (l mod r))
+                     | _, _ => triggerNB "expr-mod"
+                     end
     | Div a b   => l <- denote_expr a ;; r <- denote_expr b ;;
                      match l, r with
                      | Vnat l, Vnat r => ret (Vnat (l / r))
-                     | _, _ => triggerNB "expr-mult"
+                     | _, _ => triggerNB "expr-div"
                      end
     | Equal a b => l <- denote_expr a ;; r <- denote_expr b ;;
                      Ret (if val_dec l r then Vtrue else Vfalse)
@@ -362,7 +402,7 @@ Section Denote.
                   | Vnat l, Vnat r => Ret (if Nat.leb l r then Vtrue else Vfalse)
                   | _, _ => triggerNB "expr-LE"
                   end
-    | Load x ofs => x <- trigger (GetVar x) ;; ofs <- denote_expr ofs ;;
+    | Load x ofs => x <- triggerGetVar x ;; ofs <- denote_expr ofs ;;
                       match x, ofs with
                       | Vptr _ cts, Vnat ofs =>
                         match nth_error cts ofs with
@@ -376,6 +416,8 @@ Section Denote.
                  triggerSyscall "p" msg [v] ;; Ret (Vnodef)
     | Debug msg e => v <- denote_expr e ;;
                        triggerSyscall "d" msg [v] ;; Ret (Vnodef)
+    | Syscall code msg e => v <- denote_expr e ;;
+                       triggerSyscall code msg [v] ;; Ret (Vnodef)
     | Get => triggerSyscall "g" "" []
     | Call func_name params =>
       (* | Call retv_name func_name arg_names => *)
@@ -390,7 +432,7 @@ Section Denote.
       (* else triggerNB *)
 
       args <- (mapT (case_ (Case:=case_sum)
-                           (fun name => trigger (GetVar name))
+                           (fun name => triggerGetVar name)
                            (fun e => denote_expr e)) params) ;;
       '(retv, args_updated) <- match (find (fun '(n, _) => string_dec func_name n) ctx) with
                                | Some _ => trigger (CallInternal func_name args)
@@ -403,7 +445,7 @@ Section Denote.
                                                   end)
                                                (combine params args_updated))
       in
-      mapT (fun '(n, v) => trigger (SetVar n v)) nvs ;;
+      mapT (fun '(n, v) => triggerSetVar n v) nvs ;;
       ret retv
     | Ampersand e => v <- (denote_expr e) ;; Ret (Vptr None [v])
     | SubPointerFrom p from =>
@@ -502,7 +544,7 @@ Section Denote.
 
   Fixpoint denote_stmt (s : stmt) : itree eff (control * val) :=
     match s with
-    | Assign x e =>  v <- denote_expr e ;; trigger (SetVar x v) ;; ret (CNormal, Vnodef)
+    | Assign x e =>  v <- denote_expr e ;; triggerSetVar x v ;; ret (CNormal, Vnodef)
     | Seq a b    =>  '(c, v) <- denote_stmt a ;; if (is_normal c)
                                                  then denote_stmt b
                                                  else ret (c, v)
@@ -521,14 +563,14 @@ Section Denote.
                       end
                 else ret (inr (CNormal, Vnodef (* YJ: this is temporary *)))))
     | Skip => ret (CNormal, Vnodef)
-    | Assume => triggerUB "stmt-assume"
-    | Guarantee => triggerNB "stmt-grnt"
+    | AssumeFail => triggerUB "stmt-assume"
+    | GuaranteeFail => triggerNB "stmt-grnt"
     | Store x ofs e => ofs <- denote_expr ofs ;; e <- denote_expr e ;;
-                           v <- trigger (GetVar x) ;;
+                           v <- triggerGetVar x ;;
                            match ofs, v with
                            | Vnat ofs, Vptr paddr cts0 =>
                              cts1 <- (unwrapN (update_err cts0 ofs e)) ;;
-                                  trigger (SetVar x (Vptr paddr cts1))
+                                  triggerSetVar x (Vptr paddr cts1)
                            | _, _ => triggerNB "stmt-store"
                            end ;;
                            ret (CNormal, Vnodef)
@@ -548,6 +590,7 @@ Section Denote.
 
   Context {eff : Type -> Type}.
   Context {HasLocalE : LocalE -< eff}.
+  Context {HasGlobalE: GlobalE -< eff}.
   Context {HasEvent : Event -< eff}.
   Context {HasCallExternalE: CallExternalE -< eff}.
 
@@ -560,16 +603,16 @@ Section Denote.
     fun T ei =>
       let '(CallInternal func_name args) := ei in
       nf <- unwrapN (find (fun nf => string_dec func_name (fst nf)) ctx) ;;
-         let f := (snd nf) in
+         let f: function := (snd nf) in
          if (length f.(params) =? length args)%nat
          then
            trigger PushEnv ;;
-           let new_body := fold_left (fun s i => (fst i) #:= (Lit (snd i)) #; s)
+           let new_body := fold_left (fun s i => (fst i) #= (Val (snd i)) #; s)
                                      (* YJ: Why coercion does not work ?? *)
                                      (combine f.(params) args) f.(body) in
-           '(_, retv) <- denote_stmt ctx new_body ;;
+           '(_, retv) <- denote_stmt ctx f new_body ;;
            (* YJ: maybe we can check whether "control" is return (not break/continue) here *)
-           params_updated <- mapT (fun param => trigger (GetVar param)) (f.(params));;
+           params_updated <- mapT (fun param => triggerGetVar f param) (f.(params));;
            trigger PopEnv ;;
            ret (retv, params_updated)
          else triggerNB "denote_function"
@@ -600,11 +643,11 @@ Section Example_Fact.
   Variable output: var.
 
   Definition fact (n:nat): stmt :=
-    input #:= n#;
-    output #:= 1#;
+    input #= n#;
+    output #= 1#;
     #while input
-    do output #:= output * input#;
-       input  #:= input - Vnat 1.
+    do output #= output * input#;
+       input  #= input - Vnat 1.
 
   (** We have given _a_ notion of denotation to [fact 6] via [denote_imp].
       However, this is naturally not actually runnable yet, since it contains
@@ -648,19 +691,19 @@ Qed.
     [M = itree E] for some universe of events [E] required to contain the
     environment events [mapE] provided by the library. It comes with an event
     interpreter [interp_map] that yields a computation in the state monad.  *)
-Definition env := list (alist var val).
+Definition lenv := list (alist var val).
 Definition handle_LocalE {E: Type -> Type}
-  : LocalE ~> stateT env (itree E) :=
-  fun _ e env =>
-    let hd := hd empty env in
+  : LocalE ~> stateT lenv (itree E) :=
+  fun _ e lenv =>
+    let hd := hd empty lenv in
     (** YJ: error handling needed?
 error does not happen by construction for now, but when development changes..?
 How can we add error check here?
      **)
-    let tl := tl env in
+    let tl := tl lenv in
     match e with
-    | GetVar x => Ret (env, (lookup_default x (Vnat 0) hd))
-    | SetVar x v => Ret ((Maps.add x v hd) :: tl, tt)
+    | GetLvar x => Ret (lenv, (lookup_default x (Vnat 0) hd))
+    | SetLvar x v => Ret ((Maps.add x v hd) :: tl, tt)
     | PushEnv => Ret (empty :: hd :: tl, tt)
     | PopEnv => Ret (tl, tt)
     end.
@@ -684,23 +727,53 @@ forall eff, {pf:E -< eff == F[E]} (t : itree eff A)
 *)
 
 (** YJ: copied from interp_map's definition **)
-Definition interp_imp  {E A} (t : itree (LocalE +' E) A) :
-  stateT env (itree E) A :=
+Definition interp_LocalE {E A} (t : itree (LocalE +' E) A) :
+  stateT lenv (itree E) A :=
   let t' := State.interp_state (case_ handle_LocalE State.pure_state) t in
   t'
 .
 
+Definition genv := (alist var val).
+Definition handle_GlobalE {E: Type -> Type}
+  : GlobalE ~> stateT genv (itree E) :=
+  fun _ e env =>
+    match e with
+    | GetGvar x => Ret (env, (lookup_default x (Vnat 0) env))
+    | SetGvar x v => Ret (Maps.add x v env, tt)
+    end.
+
+Definition interp_GlobalE {E A} (t : itree (GlobalE +' E) A) :
+  stateT genv (itree E) A :=
+  let t' := State.interp_state (case_ handle_GlobalE State.pure_state) t in
+  t'
+.
+
 Definition ignore_l {A B}: itree (A +' B) ~> itree B :=
-  interp (fun _ e =>
+  interp (fun _ (e: (A +' B) _) =>
             match e with
-            | inl1 a => ITree.spin
+            | inl1 _ => ITree.spin
             | inr1 b => trigger b
             end)
 .
 
-Definition eval_program (p: program): itree Event unit
-  := @ignore_l CallExternalE Event _ (ITree.ignore (interp_imp (denote_program p) [])).
-  (* := ignore_l (ITree.ignore (interp_imp (denote_program p) [])). *)
+Definition ignore_r {A B}: itree (A +' B) ~> itree A :=
+  interp (fun _ (e: (A +' B) _) =>
+            match e with
+            | inl1 a => trigger a
+            | inr1 _ => ITree.spin
+            end)
+.
+
+Definition eval_whole_program (p: program): itree Event unit :=
+    let i0 := (interp_LocalE (denote_program p) []) in
+    let i1 := (interp_GlobalE i0 []) in
+    @ignore_l CallExternalE _ _ (ITree.ignore i1)
+.
+
+Definition eval_single_program (p: program): itree (GlobalE +' Event) unit :=
+    let i0 := (interp_LocalE (denote_program p) []) in
+    @ignore_l CallExternalE _ _ (ITree.ignore i0)
+.
 
 Print Instances Iter.
 Print Instances MonadIter.
@@ -711,16 +784,16 @@ Variant AnyState: Type -> Type :=
 .
 
 Inductive ModSem: Type :=
-  mk_ModSem { genv: string -> bool ;
+  mk_ModSem { fnames: string -> bool ;
               owned_heap: Type;
               initial_owned_heap: owned_heap;
               customE: Type -> Type ;
-              handler: customE ~> stateT owned_heap (itree Event);
+              handler: customE ~> stateT owned_heap (itree (GlobalE +' Event));
 
               (* handler: forall E, AnyState ~> stateT Any (itree E); *)
               (* sem: CallExternalE ~> itree (CallExternalE +' Event); *)
 
-              sem: CallExternalE ~> itree (CallExternalE +' Event +' customE);
+              sem: CallExternalE ~> itree (CallExternalE +' customE +' GlobalE +' Event);
             }.
 
 Arguments mk_ModSem _ {owned_heap}.
@@ -787,31 +860,30 @@ Defined.
 
 Obligation Tactic := idtac.
 
-Definition eval_multimodule_aux (mss: list ModSem):
-  itree (Event +' (sum_all1 (List.map customE mss))) (val * list val)
+Definition eval_multimodule_aux (mss: list ModSem) (entry: string):
+  itree ((sum_all1 (List.map customE mss)) +' GlobalE +' Event) (val * list val)
   :=
-  let sem: CallExternalE ~> itree (Event +' (sum_all1 (List.map customE mss))) :=
+  let sem: CallExternalE ~> itree ((sum_all1 (List.map customE mss)) +' GlobalE +' Event) :=
       mrec (fun T (c: CallExternalE T) =>
               let '(CallExternal func_name args) := c in
-              match find_informative (fun ms => ms.(genv) func_name) mss with
+              match find_informative (fun ms => ms.(fnames) func_name) mss with
               | Some nms =>
                 let ms := (snd (projT1 nms)) in
-                let t: itree (CallExternalE +' Event +' customE ms) T := (ms.(sem) c) in
+                let t: itree (CallExternalE +' customE ms +' GlobalE +' Event) T :=
+                    (ms.(sem) c) in
                 translate (fun T e =>
                              match e with
                              | inl1 e => inl1 e
-                             | inr1 (inl1 e) => inr1 (inl1 e)
-                             | inr1 (inr1 e) =>
-                               let tmp: (sum_all1 (List.map customE mss)) T :=
+                             (* | inr1 (inl1 e) => inr1 (inl1 e) *)
+                             | inr1 (inl1 e) =>
+                               let e: (sum_all1 (List.map customE mss)) T :=
                                    (@INCL3 mss
                                            nms
                                            T e)
-                                   (* @INCL (List.map customE mss) *)
-                                   (*       (customE ms) *)
-                                   (*       (admit "") *)
-                                   (*       T e *)
                                in
-                               inr1 (inr1 tmp)
+                               inr1 (inl1 e)
+                             | inr1 (inr1 (inl1 e)) => inr1 (inr1 (inl1 e))
+                             | inr1 (inr1 (inr1 e)) => inr1 (inr1 (inr1 e))
                              end) t
                 (* ITree.spin *)
               | _ => triggerUB "eval_multimodule_aux"
@@ -836,7 +908,7 @@ Definition eval_multimodule_aux (mss: list ModSem):
               (* | _ => triggerUB *)
               (* end) *)
   in
-  sem _ (CallExternal "main" [])
+  sem _ (CallExternal entry [])
 .
 
 Inductive hlist (mss: list ModSem): Type :=
@@ -857,7 +929,7 @@ Inductive hvec (n: nat): Type :=
 .
 
 Definition HANDLE: forall mss,
-    (sum_all1 (List.map customE mss)) ~> stateT (list Any) (itree Event)
+    (sum_all1 (List.map customE mss)) ~> stateT (list Any) (itree (GlobalE +' Event))
 .
   intro. induction mss.
   { i; ss. }
@@ -882,7 +954,8 @@ Definition HANDLE: forall mss,
 Defined.
 
 Definition HANDLE2: forall mss,
-    (sum_all1 (List.map customE mss)) ~> stateT (hvec (length mss)) (itree Event)
+    (sum_all1 (List.map customE mss)) ~> stateT (hvec (length mss))
+                                      (itree (GlobalE +' Event))
 .
   intro. induction mss.
   { i; ss. }
@@ -944,15 +1017,155 @@ Definition program_to_ModSem (p: program): ModSem :=
     (fun T e _ => ITree.map (fun t => (tt, t)) (Handler.empty _ e))
     (fun T (c: CallExternalE T) =>
        let '(CallExternal func_name args) := c in
-       ITree.map snd (interp_imp ((denote_program2 p) _ (CallInternal func_name args)) [])
+       ITree.map snd (interp_LocalE ((denote_program2 p) _ (CallInternal func_name args)) [])
     )
 .
 
 Definition eval_multimodule (mss: list ModSem): itree Event unit :=
-  let t := eval_multimodule_aux mss in
-  let st := State.interp_state (case_ State.pure_state (HANDLE2 mss)) t in
-  ITree.ignore (st (INITIAL2 mss))
+  let t: itree (sum_all1 (List.map customE mss) +' GlobalE +' Event) (val * list val)
+      := eval_multimodule_aux mss "main" in
+  let st := State.interp_state (case_ (HANDLE2 mss) State.pure_state) t in
+  let t': itree (GlobalE +' Event) _ := (st (INITIAL2 mss)) in
+  let t'': itree Event _ := interp_GlobalE t' [] in
+  ITree.ignore t''
 .
+
+
+
+
+Variable shuffle: forall A, list A -> list A.
+Extract Constant shuffle =>
+"
+(* let shuffle: 'a list -> 'a list = *)
+  fun xs -> 
+  let xis = List.map (fun x -> (Random.bits (), x)) xs in
+  let yis = List.sort (fun x0 x1 -> Stdlib.compare (fst x0) (fst x1)) xis in
+  List.map snd yis
+"
+.
+
+Section CONCURRENCY.
+
+  (* Variable shuffle: forall A, list A -> list A. *)
+
+  Definition rr_match {E R}
+             (rr : list (itree (E +' Event) R) -> itree (E +' Event) unit)
+             (q:list (itree (E +' Event) R)) : itree (E +' Event) unit
+    :=
+      match q with
+      | [] => Ret tt
+      | t::ts =>
+        match observe t with
+        | RetF _ => Tau (rr ts)
+        | TauF u => Tau (rr (u :: ts))
+        | @VisF _ _ _ X o k =>
+          match o with
+          | inr1 EYield => Vis o (fun x => rr (shuffle (k x :: ts)))
+          | _ => Vis o (fun x => rr (k x :: ts))
+          end
+        end
+      end.
+
+  CoFixpoint round_robin {E R} (q:list (itree (E +' Event) R)) : itree (E +' Event) unit :=
+    rr_match round_robin q.
+
+  Variable handle_Event: forall E R X, Event X -> (X -> itree E R) -> itree E R.
+  (* Extract Constant handle_Event => "handle_Event". *)
+
+  Definition run_till_yield_aux {R} (rr : itree Event R -> (itree Event R))
+             (q: itree Event R) : (itree Event R)
+    :=
+      match observe q with
+      | RetF _ => q
+      | TauF u => Tau (rr u)
+      (* w <- (rr u) ;; (Tau w) *)
+      | @VisF _ _ _ X o k =>
+        (match o in Event Y return X = Y -> itree Event R with
+         | EYield => fun pf => k (eq_rect_r (fun T => T) tt pf)
+         | _ => (* fun _ => Vis o (fun x => rr (k x)) *)
+           fun _ => Tau (rr (handle_Event o k))
+         end) eq_refl
+              (* match o with *)
+              (* | EYield => Vis o (fun x => rr (k x)) *)
+              (* | _ => Vis o (fun x => rr (k x)) *)
+              (* end *)
+              (* Vis o (fun x => rr (shuffle (ts ++ [k x]))) *)
+      end.
+
+  CoFixpoint run_till_yield {R} (q: itree Event R): (itree Event R) :=
+    run_till_yield_aux run_till_yield q
+  .
+
+  Definition is_ret {E R} (q: itree E R): bool := match observe q with RetF _ => true | _ => false end.
+
+  Definition my_rr_match {R} (rr : list (itree Event R) -> list (itree Event R))
+             (q:list (itree Event R)) : list (itree Event R)
+    :=
+      match q with
+      | [] => []
+      | t::ts =>
+        let t2 := run_till_yield t in
+        rr (shuffle (List.filter (negb <*> is_ret) (t2::ts)))
+      end.
+
+  Fail CoFixpoint my_round_robin {R} (q:list (itree Event R)) : list (itree Event R) :=
+    my_rr_match my_round_robin q.
+
+End CONCURRENCY.
+
+Definition eval_multimodule_multicore_REMOVETHIS(mss: list ModSem) (entries: list var)
+  : itree Event unit :=
+  let ts: list (itree (GlobalE +' Event) _) :=
+      List.map
+        (fun entry =>
+           let t := eval_multimodule_aux mss entry in
+           let st := State.interp_state (case_ (HANDLE2 mss) State.pure_state) t in
+           let t := st (INITIAL2 mss) in
+           t)
+        entries
+  in
+  let t: itree (GlobalE +' Event) _ := round_robin ts in
+  let t: itree Event _ := interp_GlobalE t [] in
+  let t: itree Event unit := ITree.ignore t in
+  t
+.
+
+Definition assoc_l {A B C}: itree (A +' B +' C) ~> itree ((A +' B) +' C) :=
+  interp (fun _ (e: (A +' B +' C) _) =>
+            match e with
+            | inl1 a => trigger (inl1 (inl1 a))
+            | inr1 (inl1 b) => trigger (inr1 (inl1 b))
+            | inr1 (inr1 c) => trigger (inr1 c)
+            end)
+.
+(* Arguments assoc_l [A B C]. *)
+
+Definition assoc_r {A B C}: itree ((A +' B) +' C) ~> itree (A +' B +' C) :=
+  interp (fun _ (e: ((A +' B) +' C) _) =>
+            match e with
+            | (inl1 (inl1 a)) => trigger (inl1 a)
+            | (inl1 (inr1 b)) => trigger (inr1 (inl1 b))
+            | (inr1 c) => trigger (inr1 (inr1 c))
+            end)
+.
+
+(*** YJ: TODO: can we add coercion? ***)
+
+Definition eval_multimodule_multicore (mss: list ModSem) (entries: list var)
+  : itree Event unit :=
+  let ts: list (itree (sum_all1 (List.map customE mss) +' GlobalE +' Event) _) :=
+      List.map (eval_multimodule_aux mss) entries in
+  let t: itree (sum_all1 (List.map customE mss) +' GlobalE +' Event) _ :=
+      assoc_r (round_robin (List.map (fun t => assoc_l t) ts)) in
+  (*** TODO: I want to write it in point-free style ***)
+  let t: itree (GlobalE +' Event) _ :=
+      State.interp_state (case_ (HANDLE2 mss) State.pure_state) t (INITIAL2 mss) in
+  let t: itree Event _ := interp_GlobalE t [] in
+  let t: itree Event unit := ITree.ignore t in
+  t
+.
+
+
 
 (** Equipped with this evaluator, we can now compute.
     Naturally since Coq is total, we cannot do it directly inside of it.
@@ -980,23 +1193,23 @@ Section InterpImpProperties.
 
   (** This interpreter is compatible with the equivalence-up-to-tau. *)
   Global Instance eutt_interp_imp {R}:
-    Proper (@eutt E R R eq ==> eq ==> @eutt E' (prod (env) R) (prod _ R) eq)
-           interp_imp.
+    Proper (@eutt E R R eq ==> eq ==> @eutt E' (prod (lenv) R) (prod _ R) eq)
+           interp_LocalE.
   Proof.
     repeat intro.
-    unfold interp_imp.
+    unfold interp_LocalE.
     unfold interp_map.
     rewrite H0. eapply eutt_interp_state_eq; auto.
     (* rewrite H. reflexivity. *)
   Qed.
 
   (** [interp_imp] commutes with [bind]. *)
-  Lemma interp_imp_bind: forall {R S} (t: itree E R) (k: R -> itree E S) (g : env),
-      (interp_imp (ITree.bind t k) g)
-    ≅ (ITree.bind (interp_imp t g) (fun '(g',  x) => interp_imp (k x) g')).
+  Lemma interp_imp_bind: forall {R S} (t: itree E R) (k: R -> itree E S) (g : lenv),
+      (interp_LocalE (ITree.bind t k) g)
+    ≅ (ITree.bind (interp_LocalE t g) (fun '(g',  x) => interp_LocalE (k x) g')).
   Proof.
     intros.
-    unfold interp_imp.
+    unfold interp_LocalE.
     unfold interp_map.
     repeat rewrite interp_bind.
     repeat rewrite interp_state_bind.
@@ -1012,4 +1225,10 @@ End InterpImpProperties.
 
 
 (** We now turn to our target language, in file [Asm].v *)
+
+
+Ltac mk_function_tac f params locals :=
+  eapply (mk_function params locals);
+  (let tmp := (apply_list ltac:(apply_list f params) locals) in pose tmp as x ; apply x)
+.
 

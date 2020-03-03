@@ -79,3 +79,14 @@ Definition is_none X (x: option X): bool :=
   | _ => true
   end
 .
+
+Ltac apply_list f ls :=
+  let rec go f ls :=
+      match ls with
+      | nil => f
+      | ?hd :: ?tl => go (f hd) tl
+      end
+  in
+  go f ls
+.
+

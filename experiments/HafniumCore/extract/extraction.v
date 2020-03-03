@@ -33,7 +33,8 @@ Cd "extract".
 (* Separate Extraction MpoolSeq MpoolConcur Lang LangTest. *)
 
 Separate Extraction
-         Lang.eval_program
+         Lang.eval_whole_program
+         Lang.eval_single_program
          Lang.Vtrue
          Lang.Vfalse
          LangTest.LoadStore.program
@@ -44,10 +45,15 @@ Separate Extraction
          LangTest.Control.program
          LangTest.DoubleReturn.program
          LangTest.MultiCore.programs
+         LangTest.MultiCore2.sem
+         LangTest.MultiCoreMPSC.sem
          LangTest.MultiModule.isem
+         LangTest.MultiModuleGenv.isem
          LangTest.MultiModuleLocalState.isem
          LangTest.MultiModuleLocalStateSimple.isem1
          LangTest.MultiModuleLocalStateSimple.isem2
+         LangTest.MultiModuleMultiCore.sem
+         LangTest.MultiModuleMultiCoreLocalState.isem
          (* LangTest.print_val *)
          (* LangTest.main *)
          (* LangTest.handle_Event *)
@@ -60,11 +66,13 @@ Separate Extraction
 
          MpoolConcur.TEST.TEST1.isem
          MpoolConcur.TEST.TEST2.isem
-         MpoolConcur.TEST.TEST3.isem
+         MpoolConcur.TEST.TEST3.isem1
+         MpoolConcur.TEST.TEST3.isem2
+         MpoolConcur.TEST.TEST4.isem
 
-         LangTest.round_robin
-         LangTest.run_till_yield
-         LangTest.my_rr_match
+         Lang.round_robin
+         Lang.run_till_yield
+         Lang.my_rr_match
 
 ITreeDefinition.observe
 .

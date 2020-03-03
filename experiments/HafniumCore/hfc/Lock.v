@@ -88,24 +88,24 @@ Module LOCK.
   Inductive case: Type :=
   (* | case_init *)
   | case_new
-  | case_unlock
-  | case_lock
+  | case_release
+  | case_acquire
   | case_other
   .
 
   Definition case_analysis (func_name: string): case :=
-    if rel_dec func_name "Lock.unlock"
-    then case_unlock
+    if rel_dec func_name "Lock.release"
+    then case_release
     else
-      if rel_dec func_name "Lock.lock"
-      then case_lock
+      if rel_dec func_name "Lock.acquire"
+      then case_acquire
       else
         if rel_dec func_name "Lock.new"
         then case_new
         else case_other
   .
 
-  Definition sem: CallExternalE ~> itree (CallExternalE +' Event +' LockEvent) :=
+  Definition sem: CallExternalE ~> itree (CallExternalE +' LockEvent +' GlobalE +' Event) :=
     (fun _ '(CallExternal func_name args) =>
        match case_analysis func_name with
        | case_new =>
@@ -114,14 +114,14 @@ Module LOCK.
          (* id <- trigger (InitE v) ;; *)
          id <- trigger (NewE) ;;
          Ret (Vnat id, [])
-       | case_unlock =>
+       | case_release =>
          id <- (unwrapN (nth_error args 0 >>= get_id)) ;;
             v <- (unwrapN (nth_error args 1)) ;;
             triggerSyscall "d" "lock-unlock <--- " [Vnat id ; v] ;;
             trigger (UnlockE id v) ;;
             trigger EYield ;;
             Ret (Vnodef, [])
-       | case_lock =>
+       | case_acquire =>
          (* triggerSyscall "d" "lock-lock" [Vnull] ;; *)
          (* trigger EYield ;; *)
          (* id <- (unwrapN (nth_error args 0) >>= (unwrapN <*> get_id)) ;; *)
@@ -130,6 +130,13 @@ Module LOCK.
             (* (trigger (LockE id)) >>= unwrapN >>= fun v => Ret (v, []) *)
 
             v <- (ITree.iter (fun _ => trigger EYield ;; trigger (TryLockE id)) tt) ;;
+            (* v <- (ITree.iter (fun _ => *)
+            (*                     v <- trigger (TryLockE id) ;; *)
+            (*                       match v: unit + val with *)
+            (*                       | inl _ => trigger EYield ;; Ret (inl tt) *)
+            (*                       | inr v => Ret (inr v) *)
+            (*                       end) tt) ;; *)
+
             triggerSyscall "d" "lock-lock   ---> " [Vnat id ; v] ;;
             Ret (v, [])
             (* v <- trigger (TryLockE id) ;; *)
@@ -204,7 +211,7 @@ Module LOCK.
   (* Goal (Maps.lookup 2 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _)))) = Some 10. ss. Abort. *)
   Local Instance MyMap: (Map nat val (alist nat val)) := Map_alist Nat.RelDec_eq val.
 
-  Definition handler: LockEvent ~> stateT owned_heap (itree Event) :=
+  Definition handler: LockEvent ~> stateT owned_heap (itree (GlobalE +' Event)) :=
     (* State.interp_state  *)
     fun _ e '(ctr, m) =>
       match e with
@@ -238,9 +245,9 @@ Module LOCK.
 
   Definition modsem: ModSem :=
     mk_ModSem
-      (fun s => existsb (string_dec s) ["Lock.unlock" ; "Lock.lock" ; "Lock.new"])
+      (fun s => existsb (string_dec s) ["Lock.release" ; "Lock.acquire" ; "Lock.new"])
       (* in_dec Strings.String.string_dec s ["Lock.unlock" ; "Lock.lock" ; "Lock.init"]) *)
-      (5252, Maps.empty)
+      (0, Maps.empty)
       LockEvent
       handler
       sem
