@@ -1,0 +1,2 @@
+#!/bin/sh
+COQPATH="${PWD}/.." /Applications/Emacs.app/Contents/MacOS/Emacs "$@"
