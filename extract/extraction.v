@@ -72,9 +72,8 @@ Separate Extraction
          MpoolConcur.TEST.TEST3.isem2
          MpoolConcur.TEST.TEST4.isem
 
-
          CPUSeq.CPUTEST.program
-         
+
          Lang.round_robin
          Lang.run_till_yield
          Lang.my_rr_match

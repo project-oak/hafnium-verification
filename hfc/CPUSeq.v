@@ -378,7 +378,8 @@ Module CPUTEST.
              (p0: var): stmt :=
     (Put "CPU_PROGRAM Test" Vnull) #;
            p0 #= Vptr None [0: val ; 0: val; Vtrue: val] #;
-           (Call "cpu_off" [CBR p0])#;
+(*           (Syscall "md" "test:" p0) #; *)
+           (Call "cpu_off" [CBR p0]) #;
     (Put "CPU_PROGRAM Tested" Vnull)
   .
           

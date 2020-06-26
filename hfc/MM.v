@@ -268,7 +268,6 @@ static uint8_t mm_max_level(int flags)
 }
  *)
 
-Definition MM_FLAGE_STAGE1 := 100.
 
 Definition mm_max_level (flags: var) (res : var) : stmt :=
   (#if (And flags MM_FLAGE_STAGE1)

@@ -130,7 +130,7 @@ Definition sizeof_pte_t := 8%nat.
 #define PAGE_SIZE (1 << PAGE_BITS)
 ...
 *)
-
+Definition MM_FLAGE_STAGE1 := 4.
 Definition PAGE_SIZE := shiftl 1 PAGE_BITS.
 
 (*

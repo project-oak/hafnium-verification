@@ -20,7 +20,7 @@ From Coq Require Import
      Morphisms
      Setoid
      RelationClasses.
-
+     
 From ExtLib Require Import
      Data.String
      Structures.Monad
@@ -54,8 +54,10 @@ Require Import ClassicalDescription EquivDec.
 About excluded_middle_informative.
 
 Set Implicit Arguments.
+
 (* Set Typeclasess Depth 4. *)
 (* Typeclasses eauto := debug 4. *)
+
 
 
 
@@ -83,7 +85,7 @@ Module Type WORDSIZE.
 End WORDSIZE.
 
 Module Make(WS: WORDSIZE).
-  
+
   (* JIEUNG: I am only considering natural number *) 
   Definition wordsize: nat := WS.wordsize.
   Definition modulus : nat := pow 2 wordsize.
@@ -603,27 +605,32 @@ Section Denote.
        their validity *)
     | BAnd a b => l <- denote_expr a ;; r <- denote_expr b ;;
                  match l, r with
-                 | Vnat l, Vnat r => Ret (Vnat (land l r))
+                 | Vnat l, Vnat r => Ret (Vnat l)
+                 (* | Vnat l, Vnat r => Ret (Vnat (modulo (land l r) max_unsigned)) *)
                  | _, _ => triggerNB "expr-And"
-                 end
+                 end  
     | BOr a b => l <- denote_expr a ;; r <- denote_expr b ;;
-                match l, r with
-                | Vnat l, Vnat r => Ret (Vnat (lor l r))
-                | _, _ => triggerNB "expr-Or"
-                end
+                 match l, r with
+                 | Vnat l, Vnat r => Ret (Vnat l)
+                 (* | Vnat l, Vnat r => Ret (Vnat (modulo (lor l r) max_unsigned)) *)
+                 | _, _ => triggerNB "expr-Or"
+                 end
     | BNot a => v <- denote_expr a ;;
                  match v with
-                 | Vnat v => Ret (Vnat (lnot v))
+                 | Vnat v => Ret (Vnat v)
+                 (* | Vnat v => Ret (Vnat (modulo (lnot v) max_unsigned)) *)
                  | _ => triggerNB "expr-Not"
                  end
     | ShiftL a b => l <- denote_expr a ;; r <- denote_expr b ;;
                     match l, r with
-                    | Vnat l, Vnat r => Ret (Vnat (shiftl l r))
+                    | Vnat l, Vnat r => Ret (Vnat l)
+                    (* | Vnat l, Vnat r => Ret (Vnat (modulo (shiftl l r) max_unsigned)) *)
                     | _, _ => triggerNB "expr-LShift"
                     end
     | ShiftR a b => l <- denote_expr a ;; r <- denote_expr b ;;
                     match l, r with
-                    | Vnat l, Vnat r => Ret (Vnat (shiftr l r))
+                    | Vnat l, Vnat r => Ret (Vnat l)
+                    (* | Vnat l, Vnat r => Ret (Vnat (modulo (shiftr l r) max_unsigned)) *)
                     | _, _ => triggerNB "expr-RShift"
                     end
 
