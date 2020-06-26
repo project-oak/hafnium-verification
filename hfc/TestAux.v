@@ -79,12 +79,19 @@ Section INSERT_YIELD_DEFINITION.
 End INSERT_YIELD_DEFINITION.
 
 Section PTR_INITIALIZATIONS.
-
+  
   (* JIEUNG: two kinds of definitions *) 
-  Definition big_chunk_flat (paddr: nat) (st_size: nat) (size: nat) : val :=
+  Definition big_mem_flat (paddr: nat) (st_size: nat) (size: nat) : val :=
     Vptr (Some paddr) (repeat (Vnat 0) (st_size * size)).
- 
+  
   Definition big_tree (paddr: nat) (size: nat) : val :=
-    Vptr (Some paddr) (repeat (Vptr None []) size).
+    Vptr (Some paddr) (repeat (Vptr None []) size). 
   
 End PTR_INITIALIZATIONS.
+
+
+Section WF_CONDITIONS.
+
+  (* JIEUNG: TODO - I will add well-formed conditions for memories in here *)
+  
+End WF_CONDITIONS.
