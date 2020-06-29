@@ -131,7 +131,7 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
   (* } *)
 
   (*** DELTA: Use function return value instead of borrowing && Add call to "Lock.release" **)
-  Definition init (p: var): stmt :=
+  Definition mpool_init (p: var): stmt :=
     (p @ chunk_list_ofs #:= Vnull) #;
     (p @ fallback_ofs   #:= Vnull) #;
     (p @ lock_ofs       #:= (Call "Lock.new" [])) #;
@@ -213,7 +213,49 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
     (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
     Skip
   .
+  
+  (*
+   void *mpool_alloc(struct mpool *p)
+   {   
+       do {
+               void *ret = mpool_alloc_no_fallback(p);
+       
+               if (ret != NULL) {
+                       return ret;
+               }
+       
+               p = p->fallback;
+       } while (p != NULL);
+       
+       return NULL;
+   }   
+   *)
+  Definition alloc
+             (p count: var)
+             (ret next nextp: var): stmt :=
+    #guarantee (CoqCode [CBV p] (fun p => (mpool_wf (nth 0 p Vnull): val, nil))) #;
+    Debug "[alloc] locking" Vnull #;
+    p #= (Call "Lock.acquire" [CBV (p #@ lock_ofs)]) #;
+    next #= (p #@ chunk_list_ofs) #;
+    Debug "[alloc] calling alloc_no_fallback" Vnull #;
+    ret #= (Call "alloc_no_fallback" [CBR next ; CBV count]) #;
+    p @ chunk_list_ofs #:= next #;
+    Debug "[alloc] unlocking" Vnull #;
+    (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
+    #if (ret)
+     then (DebugMpool "After alloc: " p #; Return ret)
+     else (
+         nextp #= (p #@ fallback_ofs) #;
+         #if (! nextp) then Return Vnull else Skip #;
+         Debug "[alloc] calling alloc" Vnull #;
+         ret #= (Call "alloc" [CBR nextp ; CBV count]) #;
+         (p @ fallback_ofs #:= nextp) #;
+         DebugMpool "After alloc: " p #; Return ret
+       )
+  .
+  
 
+  (* JIEUNG: I need to add missing statements in  mpool_alloc_contiguous *)  
   (* void *mpool_alloc_contiguous(struct mpool *p, size_t count, size_t align) *)
   (* { *)
   (*   do { *)
@@ -255,6 +297,83 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
        )
   .
 
+   (*
+    static void *mpool_alloc_no_fallback(struct mpool *p)
+    {  
+          void *ret;
+          struct mpool_chunk *chunk;
+          struct mpool_chunk *new_chunk;
+   
+          /* Fetch an entry from the free list if one is available. */
+          mpool_lock(p);
+          if (p->entry_list != NULL) {
+                  struct mpool_entry *entry = p->entry_list;
+   
+                  p->entry_list = entry->next;
+                  ret = entry;
+                  goto exit;
+          }
+   
+          /* There was no free list available. Try a chunk instead. */
+          chunk = p->chunk_list;
+          if (chunk == NULL) {
+                  /* The chunk list is also empty, we're out of entries. */
+                  ret = NULL;
+                  goto exit;
+          }
+   
+          new_chunk = (struct mpool_chunk * )((uintptr_t)chunk + p->entry_size);
+          if (new_chunk >= chunk->limit) {
+                  p->chunk_list = chunk->next_chunk;
+          } else {
+                  *new_chunk = *chunk;
+                  p->chunk_list = new_chunk;
+          }
+   
+          ret = chunk;
+   
+    exit:
+          mpool_unlock(p);
+   
+          return ret;
+    }  
+   *)
+  
+
+  (*** DELTA: while -> recursion && "limit" ptr -> offset "nat" && no alignment ***)
+  Definition alloc_no_fallback
+             (cur count: var)
+             (ret next cur_ofs new_cur: var): stmt :=
+    #if ! cur then Return Vnull else Skip #;
+    cur_ofs #= (cur #@ limit_ofs) #;
+    #if (count <= cur_ofs)
+     then (
+           (Debug "If1-limit: " cur_ofs) #;
+           #if count == cur_ofs
+            then (
+                ret #= (SubPointerTo cur (count * entry_size)) #;
+                cur #= (cur #@ next_chunk_ofs) #;
+                Return ret
+              )
+            else (
+                new_cur #= (SubPointerFrom cur (count * entry_size)) #;
+                new_cur @ next_chunk_ofs #:= (cur #@ next_chunk_ofs) #;
+                new_cur @ limit_ofs #:= (cur_ofs - count) #;
+                ret #= (SubPointerTo cur (count * entry_size)) #;
+                cur #= new_cur #;
+                Return ret
+              )
+          )
+     else (
+         (Debug "Else1-limit: " cur_ofs) #;
+         next #= (cur #@ next_chunk_ofs) #;
+         ret #= (Call "alloc_no_fallback" [CBR next ; CBV count]) #;
+         cur @ next_chunk_ofs #:= next #;
+         Return ret
+         )
+  .
+
+  
   (* void *mpool_alloc_contiguous_no_fallback(struct mpool *p, size_t count, *)
   (*       				 size_t align) *)
   (* { *)
@@ -377,11 +496,18 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
     (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
     Skip
   .
-  Definition initF: function. mk_function_tac init ["p"] ([]: list var). Defined.
+  Definition mpool_initF: function. mk_function_tac mpool_init ["p"] ([]: list var). Defined.
   Definition init_with_fallbackF: function.
     mk_function_tac init_with_fallback ["p" ; "fb"] ([]: list var). Defined.
   Definition finiF: function.
     mk_function_tac fini ["p" ] ["chunk" ; "size"]. Defined.
+
+  Definition allocF: function.
+    mk_function_tac alloc ["p" ; "count"] ["ret" ; "next" ; "nextp"]. Defined.
+  Definition alloc_no_fallbackF: function.
+    mk_function_tac alloc_no_fallback
+                    ["cur" ; "count"] ["ret" ; "next" ; "cur_ofs" ; "new_cur"]. Defined.
+
   Definition alloc_contiguousF: function.
     mk_function_tac alloc_contiguous ["p" ; "count"] ["ret" ; "next" ; "nextp"]. Defined.
   Definition alloc_contiguous_no_fallbackF: function.
@@ -390,31 +516,34 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
   Definition add_chunkF: function.
     mk_function_tac add_chunk ["p" ; "begin" ; "size"] ["chunk"]. Defined.
 
+    Definition mpool_program: program :=
+      [
+        ("MPOOLCONCUR.mpool_init", mpool_initF) ;
+      ("MPOOLCONCUR.init_with_fallback", init_with_fallbackF);
+      ("MPOOLCONCUR.fini", finiF) ;
+      ("alloc", allocF);
+      ("alloc_no_fallback", alloc_no_fallbackF);
+      ("alloc_contiguous", alloc_contiguousF);
+      ("alloc_contiguous_no_fallback", alloc_contiguous_no_fallbackF);
+      ("MPOOLCONCUR.add_chunk", add_chunkF)
+      ].
 
+    Definition mpool_modsem : ModSem := program_to_ModSem mpool_program.
+    
+(*
+  Definition mpool_modsem: ModSem := program_to_ModSem program
+  mk_ModSem
+  (fun s => existsb (string_dec s) ["MPOOLCONCUR.mpool_init" ; "MPOOLCONCUR.init_with_fallback" ;
+  "MPOOLCONCUR.fini" ; "MPOOLCONCUR.alloc_contiguous" ;
+  "MPOOLCONCUR.alloc_contiguous_no_fallback" ;
+  "MPOOLCONCUR.add_chunk"])
+  (0, Maps.empty)
+  LockEvent
+  handler
+  sem.
+ *)
+    
 End MPOOLCONCUR.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 Module TEST.
 
@@ -430,7 +559,7 @@ Module TEST.
       p #= Vptr None [0: val ; 0: val ; 0: val] #;
         (* (Put "before init: " p) #; *)
         Debug "before init: " p #;
-        Call "init" [CBR p] #;
+        Call "mpool_init" [CBR p] #;
         Debug "after init: " p #;
         Call "add_chunk" [CBR p ; CBV (big_chunk 500 10) ; CBV 10] #;
         (* (Put "add_chunk done: " p) #; *)
@@ -466,7 +595,7 @@ Module TEST.
     Definition program: program :=
       [
         ("main", mainF) ;
-          ("init", initF) ;
+          ("mpool_init", mpool_initF) ;
           ("alloc_contiguous", alloc_contiguousF) ;
           ("alloc_contiguous_no_fallback", alloc_contiguous_no_fallbackF) ;
           ("add_chunk", add_chunkF)
@@ -479,19 +608,13 @@ Module TEST.
 
   End TEST1.
 
-
-
-
-
-
-
   Module TEST2.
 
     Definition main
                (p r1 r2 r3: var): stmt :=
       p #= Vptr None [0: val ; 0: val ; 0: val ] #;
         (* (Put "before init: " p) #; *)
-        Call "init" [CBR p] #;
+        Call "mpool_init" [CBR p] #;
         (* (Put "after init: " p) #; *)
         Call "add_chunk" [CBR p ; CBV (big_chunk 500 10) ; CBV 10] #;
         Call "add_chunk" [CBR p ; CBV (big_chunk 1500 10) ; CBV 10] #;
@@ -516,7 +639,7 @@ Module TEST.
     Definition program: program :=
       [
         ("main", mainF) ;
-          ("init", initF) ;
+          ("mpool_init", mpool_initF) ;
           ("alloc_contiguous", alloc_contiguousF) ;
           ("alloc_contiguous_no_fallback", alloc_contiguous_no_fallbackF) ;
           ("add_chunk", add_chunkF)
@@ -527,10 +650,6 @@ Module TEST.
 
   End TEST2.
 
-
-
-
-
   Module TEST3.
 
     (*** two tests with different add_chunk order ***)
@@ -540,7 +659,7 @@ Module TEST.
       p0 #= Vptr None [0: val ; 0: val ; 0: val ] #;
       p1 #= Vptr None [0: val ; 0: val ; 0: val ] #;
       p2 #= Vptr None [0: val ; 0: val ; 0: val ] #;
-      (* Call "init" [CBR p2] #; *)
+      (* Call "mpool_init" [CBR p2] #; *)
       (* Call "add_chunk" [CBR p2 ; CBV (big_chunk 2500 2) ; CBV 2] #; *)
       (* Debug "p2:                    " p2 #; *)
 
@@ -552,7 +671,7 @@ Module TEST.
       (* Call "init_with_fallback" [CBR p0 ; CBV p1] #; *)
       (* Call "add_chunk" [CBR p0 ; CBV (big_chunk 500  1) ; CBV 1] #; *)
       (* Debug "p0:                    " p0 #; *)
-      Call "init" [CBR p2] #;
+      Call "mpool_init" [CBR p2] #;
       Call "init_with_fallback" [CBR p1 ; CBV p2] #;
       Call "init_with_fallback" [CBR p0 ; CBV p1] #;
       Call "add_chunk" [CBR p2 ; CBV (big_chunk 2500 2) ; CBV 2] #;
@@ -597,7 +716,7 @@ Module TEST.
       p0 #= Vptr None [0: val ; 0: val ; 0: val ] #;
       p1 #= Vptr None [0: val ; 0: val ; 0: val ] #;
       p2 #= Vptr None [0: val ; 0: val ; 0: val ] #;
-      Call "init" [CBR p2] #;
+      Call "mpool_init" [CBR p2] #;
       Call "init_with_fallback" [CBR p1 ; CBV p2] #;
       Call "init_with_fallback" [CBR p0 ; CBV p1] #;
       Call "add_chunk" [CBR p0 ; CBV (big_chunk 500  1) ; CBV 1] #;
@@ -606,8 +725,6 @@ Module TEST.
       Debug "p2:                    " p2 #;
       Debug "p1:                    " p1 #;
       Debug "p0:                    " p0 #;
-
-
 
       Debug "" Vnull #;
       Debug "INIT DONE" Vnull #;
@@ -640,7 +757,7 @@ Module TEST.
     Definition program1: program :=
       [
         ("main", main1F) ;
-          ("init", initF) ;
+          ("mpool_init", mpool_initF) ;
           ("init_with_fallback", init_with_fallbackF) ;
           ("alloc_contiguous", alloc_contiguousF) ;
           ("alloc_contiguous_no_fallback", alloc_contiguous_no_fallbackF) ;
@@ -649,7 +766,7 @@ Module TEST.
     Definition program2: program :=
       [
         ("main", main2F) ;
-          ("init", initF) ;
+          ("mpool_init", mpool_initF) ;
           ("init_with_fallback", init_with_fallbackF) ;
           ("alloc_contiguous", alloc_contiguousF) ;
           ("alloc_contiguous_no_fallback", alloc_contiguous_no_fallbackF) ;
@@ -662,8 +779,6 @@ Module TEST.
       eval_multimodule [program_to_ModSem program2 ; LOCK.modsem].
 
   End TEST3.
-
-
 
   (****** TODO: move to Lang *****)
   Fixpoint INSERT_YIELD (s: stmt): stmt :=
@@ -682,7 +797,7 @@ Module TEST.
 
     Definition main (p i r: var): stmt := Eval compute in INSERT_YIELD (
       p #= Vptr None [0: val ; 0: val ; 0: val ] #;
-      Call "init" [CBR p] #;
+      Call "mpool_init" [CBR p] #;
       DebugMpool "(Global Mpool) After initialize" p #;
       Call "add_chunk" [CBR p ; CBV (big_chunk pte_paddr_begin MAX) ; CBV MAX] #;
       "GMPOOL" #= p #;
@@ -749,7 +864,7 @@ Module TEST.
         ("main", mainF) ;
           ("alloc_and_free2", alloc_and_free2F) ;
           ("alloc_and_free3", alloc_and_free3F) ;
-          ("init", initF) ;
+          ("mpool_init", mpool_initF) ;
           ("init_with_fallback", init_with_fallbackF) ;
           ("fini", finiF) ;
           ("alloc_contiguous", alloc_contiguousF) ;
@@ -766,7 +881,4 @@ Module TEST.
   End TEST4.
 
 End TEST.
-
-
-
 

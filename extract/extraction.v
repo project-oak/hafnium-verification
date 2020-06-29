@@ -18,7 +18,7 @@ Require Extraction.
 (* From HafniumCore *)
 (* YJ: Having some makefile problem. (dependency checking) need to solve that !! *)
 Require Import Lang LangTest.
-Require Import MpoolSeq MpoolConcur CPUSeq MM.
+Require Import MpoolSeq MpoolConcur CPUSeq MM MMStageOne.
 
 Require Import ExtrOcamlBasic.
 Require Import ExtrOcamlString.
@@ -74,11 +74,13 @@ Separate Extraction
 
          CPUSeq.CPUTEST.program
 
+         MMStageOne.MMTEST1.isem
+         
          Lang.round_robin
          Lang.run_till_yield
          Lang.my_rr_match
-
-ITreeDefinition.observe
+         
+         ITreeDefinition.observe
 .
 
 Cd "..".

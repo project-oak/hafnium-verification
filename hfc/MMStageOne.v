@@ -57,7 +57,9 @@ Import LangNotations.
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
-Section MMSTAGE1.
+Module MMARCH.
+
+  (* define root_table_count - 1 for all *)
 
   (* dummy *)
   (*
@@ -101,13 +103,15 @@ Section MMSTAGE1.
 
   Definition arch_mm_stage2_root_table_count := Return 1.
 
-
   (* ptable is defined in mm.h file *)
   Definition ptable := "ptable".
+  (* JIEUNG: TODO: define ptable as a big chunk here *)
 
+End MMARCH.
 
   
-  (* JIEUNG: TODO: define ptable as a big chunk here *)
+
+Module MMSTAGE1.
   
   (*
   static struct mm_page_table *mm_alloc_page_tables(size_t count,
@@ -124,18 +128,16 @@ Section MMSTAGE1.
   Definition mm_alloc_page_tables (count ppool: var) (res : var) : stmt :=
     #if (count == 1)
      then
-       res #= (Call "mpool_alloc" [CBR ppool]) #;
+       Debug "[alloc_page] calling mpool_alloc" Vnull #;
+       res #= (Call "alloc" [CBR ppool; CBV 1]) #;
            Return res
      else
-       res #= (Call "mpool_alloc_contiguous" [CBR ppool ; CBV count ; CBV count]) #;
+       Debug "[alloc_page] calling mpool_alloc_contiguous" Vnull #;
+       res #= (Call "alloc_contiguous" [CBR ppool ; CBV count]) #;
            Return res.
   
-  
 
-  (* get_table *)
-  
-  
-  
+  (* JIEUNG: I will work on the following things *)
   (*
   bool mm_ptable_init(struct mm_ptable *t, int flags, struct mpool *ppool)
   {
@@ -165,32 +167,6 @@ Section MMSTAGE1.
           return true;
   }
    *)
-
-  (* define root_table_count - 1 for all *)
-  
-  Definition mm_ptable_init (t flags ppool : var) (i j tables root_count max_l absent_pte i_table new_entry: var) :=
-    (* condition - flag is stage 1 or 2 *)
-    root_count #= (Call "mm_root_table_count" [CBV flags]) #;
-               tables #= (Call "mm_alloc_page_tables" [CBV root_count; CBR ppool]) #;
-               #if (tables == Vnull)
-                then
-                  Return Vfalse
-                else
-                  i #= 0 #;
-                    #while (i  <= root_count - 1)
-                    do (
-                        j #= 0 #;
-                          #while (j  <= MM_PTE_PER_PAGE - 1)
-                          do (max_l #= (Call "mm_max_level" [CBV flags]) #;
-                                    i_table #= (tables #@ i) #;
-                                    absent_pte #= (Call "arch_mm_absent_pte" [CBV max_l]) #;
-                                    i_table @ j #:= absent_pte #;
-                                    tables @ i #:= i_table #;
-                                    j #= (j + 1)                                     
-                             ) #;
-                               i #= (i + 1)                                     
-                      ).
-
 
 
   (* JIEUNG: TODO: ignore several parts *)
@@ -222,10 +198,104 @@ Section MMSTAGE1.
                        
 End MMSTAGE1.
 
-Print MM_PTE_PER_PAGE.
+(* Print MM_PTE_PER_PAGE. => 512 *)
 
-Module TEST.
 
+Module MMTEST1.
+
+  Include MMSTAGE1.
+
+  (* Stack overflow... We may need to change the representation type from nat number to Z number
+  Definition TEST_HEAP_SIZE := 65536%nat. *)
+  Definition TEST_HEAP_SIZE := 4096%nat. 
+  Definition TOP_LEVEL := 3%nat.
+  Definition pte_paddr_begin := 4000%nat.
+
+  Definition entry_size: nat := 4.
+
+  (* Those things will be arguments of our multiple test cases *)
+  Require Import ZArith.
+  Definition VM_MEM_START: Z := 0.
+  Definition VM_MEM_END: Z := 2199023255552. (* (2^16) *)
+
+  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4).
+
+  Definition main (p i r: var): stmt :=
+    Eval compute in INSERT_YIELD (
+      p #= Vptr None [0: val ; 0: val ; 0: val ] #;
+        Call "MPOOLCONCUR.mpool_init" [CBR p] #;
+        (* Need to refine the following definition *)
+        DebugMpool "(Global Mpool) After initialize" p #;
+        Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4); CBV TEST_HEAP_SIZE] #;
+        "GPOOL" #= p #;
+        
+        #while ("SIGNAL" <= 1) do
+          (Debug "waiting for SIGNAL" Vnull) #;
+          (*** JUST FOR PRINTING -- START ***)
+          p #= (Call "Lock.acquire" [CBV (p #@ 0)]) #;
+          DebugMpool "(Global Mpool) Final: " p #;
+          (Call "Lock.release" [CBV (p #@ 0) ; CBV p]) #;
+          (*** JUST FOR PRINTING -- END ***)
+          i #= 2024 #;
+          #while i
+          do (
+              i #= i-1 #;
+                       (Debug "[main] calling mm_alloc_page_tables" Vnull) #;      
+                       r #= Call "mm_alloc_page_tables" [CBV 1 ; CBR p] #;
+                       #assume r
+            ) #; 
+              Put "MMTEST Passed" Vnull).
+  
+    Definition ptable_alloc (count : nat)
+               (p i r0 r1 r2: var): stmt := Eval compute in INSERT_YIELD (
+      #while (!"GPOOL") do (Debug "waiting for GMPOOL" Vnull) #;
+      (* i #= TEST_HEAP_SIZE #; *)
+      p #= Vptr None [0: val ; 0: val ; 0: val ] #;
+      Call "MPOOLCONCUR.init_with_fallback" [CBR p ; CBV "GPOOL"] #;
+      DebugMpool "(Local Mpool) After init-with-fallback" p #;
+      (* #while i *)
+      (* do ( *)
+      Debug "looping, i is: " i #;
+        i #= i - 1 #;
+        r0 #= Call "mm_alloc_page_tables" [CBV count; CBR p] #;
+        r1 #= Call "mm_alloc_page_tables" [CBV (count + 1); CBR p] #;
+        r2 #= Call "mm_alloc_page_tables" [CBV (count + 2); CBR p] #;
+        Skip
+      (* ) #; *)
+      #;
+      DebugMpool "(Local Mpool) After calling fini" p #; 
+      "SIGNAL" #= "SIGNAL" + 1 #; 
+      Skip).
+
+    Definition mm_alloc_page_tablesF : function.
+      mk_function_tac mm_alloc_page_tables ["count" ; "ppool"] ["res"].
+    Defined.
+    Definition mainF: function.
+      mk_function_tac main ([]: list var) ["p" ; "i" ; "r"].
+    Defined.
+    Definition ptable_alloc1F: function.
+      mk_function_tac (ptable_alloc 1) ([]: list var) ["p" ; "i" ; "r0" ; "r1" ; "r2"].
+    Defined.
+    Definition ptable_alloc2F: function.
+      mk_function_tac (ptable_alloc 2) ([]: list var) ["p" ; "i" ; "r0" ; "r1" ; "r2"].
+    Defined.
+                                         
+    Definition program: program :=
+      [
+        ("main", mainF) ;
+      ("alloc1F", ptable_alloc1F) ;
+      ("alloc2F", ptable_alloc2F) ;
+      ("mm_alloc_page_tables", mm_alloc_page_tablesF)
+      ].
+    
+    Definition modsems: list ModSem := [program_to_ModSem program ; LOCK.modsem ; MPOOLCONCUR.mpool_modsem]. 
+    
+    Definition isem: itree Event unit :=
+      eval_multimodule_multicore
+        modsems [ "main" ; "alloc1F" ; "alloc2F" ].
+    
+End MMTEST1.
+  
 (*
 irt,gic_version=3 -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
 NOTICE: Initialising hafnium
@@ -247,19 +317,11 @@ const paddr_t VM_MEM_END = pa_init(0x200'0000'0000);
 PAGE_SIZE = 1 << PAGE_BITS -- 12 :=> 4096
 MM_PTE_PER_PAGE  512
 
-
-/**
- * Calculates the size of the address space represented by a page table entry at
- * the given level.
- */
 size_t mm_entry_size(int level)
 {
         return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS);
 }
 
-/**
- * Checks whether the address is mapped in the address space.
- */
 bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa)
 {
         uint32_t mode;
@@ -268,115 +330,4 @@ bool mm_vm_is_mapped(struct mm_ptable *t, ipaddr_t ipa)
 }
 
 
-*)
-
-
-  Definition TEST_HEAP_SIZE := 65536.
-  Definition TOP_LEVEL := 3.
-
-  (* Those things will be arguments of our multiple test cases *)
-  Definition VM_MEM_START := 0.
-  Definition VM_MEM_END := 2199023255552. (* (2^16) *)
-
-  
-  
-  
-
-End TEST.
-
-
-
-
-(*
-
-  Module TEST4.
-
-    Definition MAX: nat := 20.
-    Definition pte_paddr_begin: nat := 4000.
-
-    Definition main (p i r: var): stmt := Eval compute in INSERT_YIELD (
-      p #= Vptr None [0: val ; 0: val ; 0: val ] #;
-      Call "init" [CBR p] #;
-      DebugMpool "(Global Mpool) After initialize" p #;
-      Call "add_chunk" [CBR p ; CBV (big_chunk pte_paddr_begin MAX) ; CBV MAX] #;
-      "GMPOOL" #= p #;
-      #while ("SIGNAL" <= 1) do (Debug "waiting for SIGNAL" Vnull) #;
-
-      (*** JUST FOR PRINTING -- START ***)
-      p #= (Call "Lock.acquire" [CBV (p #@ lock_ofs)]) #;
-      DebugMpool "(Global Mpool) Final: " p #;
-      (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
-      (*** JUST FOR PRINTING -- END ***)
-
-      i #= MAX #;
-      #while i
-      do (
-        i #= i-1 #;
-        r #= Call "alloc_contiguous" [CBR p ; CBV 1] #;
-        #assume r
-      ) #;
-      Put "Test4 Passed" Vnull
-    )
-    .
-
-    Definition alloc_and_free (sz: nat)
-               (p i r0 r1 r2: var): stmt := Eval compute in INSERT_YIELD (
-      #while (! "GMPOOL") do (Debug "waiting for GMPOOL" Vnull) #;
-      (* i #= MAX #; *)
-      p #= Vptr None [0: val ; 0: val ; 0: val ] #;
-      Call "init_with_fallback" [CBR p ; CBV "GMPOOL"] #;
-      DebugMpool "(Local Mpool) After init-with-fallback" p #;
-      (* #while i *)
-      (* do ( *)
-        Debug "looping, i is: " i #;
-        i #= i - 1 #;
-        r0 #= Call "alloc_contiguous" [CBR p ; CBV sz] #;
-        r1 #= Call "alloc_contiguous" [CBR p ; CBV sz] #;
-        r2 #= Call "alloc_contiguous" [CBR p ; CBV sz] #;
-        #assume r0 #;
-        #assume r1 #;
-        #assume r2 #;
-        Call "add_chunk" [CBR p ; CBV r0 ; CBV sz] #;
-        Call "add_chunk" [CBR p ; CBV r1 ; CBV sz] #;
-        Call "add_chunk" [CBR p ; CBV r2 ; CBV sz] #;
-        Skip
-      (* ) #; *)
-      #;
-      Call "fini" [CBR p] #;
-      DebugMpool "(Local Mpool) After calling fini" p #;
-      "SIGNAL" #= "SIGNAL" + 1 #;
-      Skip
-    )
-    .
-
-    Definition mainF: function.
-      mk_function_tac main ([]: list var) ["p" ; "i" ; "r"]. Defined.
-    Definition alloc_and_free2F: function.
-      mk_function_tac (alloc_and_free 2) ([]: list var) ["p" ; "i" ; "r0" ; "r1" ; "r2"].
-    Defined.
-    Definition alloc_and_free3F: function.
-      mk_function_tac (alloc_and_free 3) ([]: list var) ["p" ; "i" ; "r0" ; "r1" ; "r2"].
-    Defined.
-
-    Definition program: program :=
-      [
-        ("main", mainF) ;
-          ("alloc_and_free2", alloc_and_free2F) ;
-          ("alloc_and_free3", alloc_and_free3F) ;
-          ("init", initF) ;
-          ("init_with_fallback", init_with_fallbackF) ;
-          ("fini", finiF) ;
-          ("alloc_contiguous", alloc_contiguousF) ;
-          ("alloc_contiguous_no_fallback", alloc_contiguous_no_fallbackF) ;
-          ("add_chunk", add_chunkF)
-      ].
-
-    Definition modsems: list ModSem := [program_to_ModSem program ; LOCK.modsem].
-
-    Definition isem: itree Event unit :=
-      eval_multimodule_multicore
-        modsems [ "main" ; "alloc_and_free2" ; "alloc_and_free3" ].
-
-  End TEST4.
-
-*)
+*) 

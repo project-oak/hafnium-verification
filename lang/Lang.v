@@ -859,6 +859,8 @@ Section Denote.
       let '(CallInternal func_name args) := ei in
       nf <- unwrapN (find (fun nf => string_dec func_name (fst nf)) ctx) ;;
          let f: function := (snd nf) in
+	 (* JIEUNG: this one is to check the length of argument. if the argument length is 
+	    not equal to the definition, it will trigger NB *)
          if (length f.(params) =? length args)%nat
          then
            (* JIUENG: create stack? create environment? *) 
@@ -872,7 +874,7 @@ Section Denote.
            (* JIEUNG: destroy stack? destroy environment? *) 
            trigger PopEnv ;;
            ret (retv, params_updated)
-         else triggerNB "denote_function"
+         else triggerNB ("denote_function: " ++ func_name)
   .
 
   (* JIEUNG: What's val and list val in here *)
@@ -1180,7 +1182,7 @@ Definition eval_multimodule_aux (mss: list ModSem) (entry: string):
                              | inr1 (inr1 (inr1 e)) => inr1 (inr1 (inr1 e))
                              end) t
                 (* ITree.spin *)
-              | _ => triggerUB "eval_multimodule_aux"
+              | _ => triggerUB ("eval_multimodule_aux: " ++ func_name)
               end)
               (* match (List.find (fun ms => ms.(genv) func_name) mss) as H with *)
               (* | Some ms => *)
