@@ -61,7 +61,7 @@ Set Implicit Arguments.
 
 
 (* JIEUNG :
-Let's improve "triggerUB" and "triggerNB" or parts that use them to improve debugging messages *)
+Let's improve "triggerUB" and "triggerNB" or parts that use them to improve debugging messages *) 
 
   (* JIEUNG (TODO): We have to define concrete opreations for the following things! I added the following things 
    for the sake of quick testing *)
