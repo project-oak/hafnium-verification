@@ -60,6 +60,8 @@ Set Implicit Arguments.
 
 
 
+(* JIEUNG :
+Let's improve "triggerUB" and "triggerNB" or parts that use them to improve debugging messages *)
 
   (* JIEUNG (TODO): We have to define concrete opreations for the following things! I added the following things 
    for the sake of quick testing *)
@@ -131,7 +133,7 @@ Global Instance bit_ops : BitOps :=
 
 Definition var : Set := string.
 
-(* JIEUNG: What's the meaning of Vabs? - Is this for casting? *)
+(* JIEUNG: to run some big examples with big numbers with Vnat values, we may need to change that one with using Z type instead of nat type *)
 Polymorphic Inductive val: Type :=
 | Vnat (n: nat)
 | Vptr (paddr: option nat) (contents: list val)
