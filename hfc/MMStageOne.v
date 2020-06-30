@@ -229,41 +229,41 @@ Module MMTEST1.
         Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4); CBV TEST_HEAP_SIZE] #;
         "GPOOL" #= p #;
         
-        #while ("SIGNAL" <= 1) do
-          (Debug "waiting for SIGNAL" Vnull) #;
-          (*** JUST FOR PRINTING -- START ***)
-          p #= (Call "Lock.acquire" [CBV (p #@ 0)]) #;
-          DebugMpool "(Global Mpool) Final: " p #;
-          (Call "Lock.release" [CBV (p #@ 0) ; CBV p]) #;
-          (*** JUST FOR PRINTING -- END ***)
-          i #= 2024 #;
-          #while i
-          do (
-              i #= i-1 #;
-                       (Debug "[main] calling mm_alloc_page_tables" Vnull) #;      
-                       r #= Call "mm_alloc_page_tables" [CBV 1 ; CBR p] #;
-                       #assume r
-            ) #; 
-              Put "MMTEST Passed" Vnull).
+        #while ("SIGNAL" <= 1) do (Debug "waiting for SIGNAL" Vnull) #;
+        (*** JUST FOR PRINTING -- START ***)
+        p #= (Call "Lock.acquire" [CBV (p #@ 0)]) #;
+        DebugMpool "(Global Mpool) Final: " p #;
+        (Call "Lock.release" [CBV (p #@ 0) ; CBV p]) #;
+        (*** JUST FOR PRINTING -- END ***)
+        i #= 10 #;
+        #while i
+        do (
+            i #= i-1 #;
+                     (Debug "[main] calling mm_alloc_page_tables" Vnull) #;      
+                     r #= Call "mm_alloc_page_tables" [CBV 1 ; CBR p] #;
+                     #assume r
+          ) #; 
+            Put "main finish" Vnull #;
+            Put "MMTEST Passed" Vnull).
   
     Definition ptable_alloc (count : nat)
                (p i r0 r1 r2: var): stmt := Eval compute in INSERT_YIELD (
       #while (!"GPOOL") do (Debug "waiting for GMPOOL" Vnull) #;
-      (* i #= TEST_HEAP_SIZE #; *)
       p #= Vptr None [0: val ; 0: val ; 0: val ] #;
       Call "MPOOLCONCUR.init_with_fallback" [CBR p ; CBV "GPOOL"] #;
       DebugMpool "(Local Mpool) After init-with-fallback" p #;
       (* #while i *)
       (* do ( *)
       Debug "looping, i is: " i #;
-        i #= i - 1 #;
+      i #= i - 1 #;
+        (Debug "[thread] calling mm_alloc_page_tables" Vnull) #;      
         r0 #= Call "mm_alloc_page_tables" [CBV count; CBR p] #;
         r1 #= Call "mm_alloc_page_tables" [CBV (count + 1); CBR p] #;
         r2 #= Call "mm_alloc_page_tables" [CBV (count + 2); CBR p] #;
         Skip
       (* ) #; *)
       #;
-      DebugMpool "(Local Mpool) After calling fini" p #; 
+      Put "thread finish" Vnull #;
       "SIGNAL" #= "SIGNAL" + 1 #; 
       Skip).
 

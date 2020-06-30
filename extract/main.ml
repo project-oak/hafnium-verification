@@ -13,10 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *)
+
+open Monad
+open OptionMonad
+open Any
 open Lang
+
 open MpoolSeq
 open MpoolConcur
 open CPUSeq
+open MMStageOne
+open MMHighStageOne
 open LangTest
 
 open List
@@ -70,14 +77,15 @@ let rec string_of_val v =
      then paddr ^ ". "
      else paddr ^ "[" ^
             (List.fold_left (fun s i -> s ^ " " ^ string_of_val i) "" cts) ^ "]"
-  | Vabs(a) -> "some abstract value"
+  | Vabs(a) -> " some abstract value"
 
 let print_val = fun v -> print_endline (string_of_val v)
 
 let string_of_vals vs = List.fold_left (fun s i -> s ^ " " ^ string_of_val i) "" vs
 
 
-
+(* JIEUNG: The following things are for mpool. Is there any way that we can provide 
+ * those definitions with more user-friendly way than now? *)
 let string_of_lock l =
   match l with
   | Vnat id -> string_of_int (Nat.to_int id)
@@ -108,6 +116,25 @@ let string_of_mpool p =
   in
   (foo "  " p)
 
+let string_of_hstruct v =
+  match v with
+  | Vabs a ->
+    let x = 
+       pbind (coq_PMonad_Monad (Obj.magic coq_Monad_option))
+       (Obj.magic (fun _ -> true)) (downcast a) (fun pte_v ->
+          match pte_v with
+          | BOOTED -> Some "BOOTED"
+          | PTE (level, addr, perm) ->
+              match perm with
+              | ABSENT -> Some ("PTE: " ^ string_of_int (Nat.to_int level) ^ " " ^ string_of_int (Nat.to_int addr) ^ " ABSENT")
+              | VALID -> Some ("PTE: " ^ string_of_int (Nat.to_int level) ^ " " ^ string_of_int (Nat.to_int addr) ^ " VALID"))
+    in
+    (match x with
+    | Some y -> y
+    | None -> failwith "H struct not well-formed0")
+  | _ -> failwith "H struct not well-formed2"
+
+
 (* let print_val =
  *   let rec go v =
  *     match v with
@@ -124,6 +151,9 @@ let string_of_mpool p =
  *   in
  *   fun v -> go v ; print_endline " " *)
 
+
+
+(* JIEUNG: this is for adding messages using Syscall, NB, and UB *)
 let handle_Event = fun e k ->
   match e with
   | ENB msg -> failwith ("NB:" ^ (cl2s msg))
@@ -132,8 +162,17 @@ let handle_Event = fun e k ->
      print_string (cl2s msg) ; print_val v ; k (Obj.magic ())
   | ESyscall ('d'::[], msg, vs) ->
      (* print_string "<DEBUG> " ; print_string (cl2s msg) ;
-      * print_endline (string_of_vals vs) ; *)
-     k (Obj.magic ())
+      * * print_endline (string_of_vals vs) ; *)
+      k (Obj.magic ())
+  | ESyscall ('h'::'d'::[], msg, v::[]) ->
+     print_endline (cl2s msg) ;
+     print_endline (string_of_hstruct v) ;
+     k (Obj.magic())
+  (*
+  | ESyscall ('d'::'b'::'u'::'g'::[], msg, _) ->
+     print_endline (cl2s msg) ;
+     print_endline "" ;
+     k (Obj.magic ()) *)
   | ESyscall ('m'::'d'::[], msg, p::[]) ->
      print_endline (cl2s msg) ;
      print_endline (string_of_mpool p) ;
@@ -286,7 +325,9 @@ let main =
   run (MpoolConcur.TEST.TEST4.isem) ;
 
   print_endline "-----------------------------------------------------------" ;
-  print_endline "-----------------------------------------------------------" ;
   run (MMStageOne.MMTEST1.isem) ;
+
+  print_endline "-----------------------------------------------------------" ;
+  run (eval_whole_program MMHighStageOne.HighSpecDummyTest.program) ;
 
   ()

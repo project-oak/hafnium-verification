@@ -61,6 +61,8 @@ Local Open Scope stmt_scope.
 
 
 
+Definition DebugHigh := Syscall "hd".
+
 (* In this file, we will add auxiliary definitions for testings. 
 1. INSERT_YIELD
 2. Fake initializations for memory 
