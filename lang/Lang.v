@@ -95,6 +95,9 @@ Module Make(WS: WORDSIZE).
   
 End Make.
 
+
+(* JIEUNG: We cannot use this one due to stack overflow. For the short term, we can use reduced size. But we may need to change
+this value as Z type values to run realistic test cases 
 Module Wordsize_64.
   Definition wordsize := 64%nat.
   Remark wordsize_not_zero: wordsize <> 0%nat.
@@ -107,6 +110,20 @@ Strategy 0 [Wordsize_64.wordsize].
 Strategy opaque [Wordsize_64.wordsize].
 
 Import Int64. 
+*)
+
+Module Wordsize_12.
+  Definition wordsize := 12%nat.
+  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize_12.
+
+Module Int12 := Make(Wordsize_12).
+
+Strategy 0 [Wordsize_12.wordsize].
+Strategy opaque [Wordsize_12.wordsize].
+
+Import Int12. 
 
 Definition lnot (l : nat) := lxor l max_unsigned.
 
@@ -607,32 +624,27 @@ Section Denote.
        their validity *)
     | BAnd a b => l <- denote_expr a ;; r <- denote_expr b ;;
                  match l, r with
-                 | Vnat l, Vnat r => Ret (Vnat l)
-                 (* | Vnat l, Vnat r => Ret (Vnat (modulo (land l r) max_unsigned)) *)
+                 | Vnat l, Vnat r => Ret (Vnat (modulo (land l r) max_unsigned))
                  | _, _ => triggerNB "expr-And"
                  end  
     | BOr a b => l <- denote_expr a ;; r <- denote_expr b ;;
                  match l, r with
-                 | Vnat l, Vnat r => Ret (Vnat l)
-                 (* | Vnat l, Vnat r => Ret (Vnat (modulo (lor l r) max_unsigned)) *)
+                 | Vnat l, Vnat r => Ret (Vnat (modulo (lor l r) max_unsigned))
                  | _, _ => triggerNB "expr-Or"
                  end
     | BNot a => v <- denote_expr a ;;
                  match v with
-                 | Vnat v => Ret (Vnat v)
-                 (* | Vnat v => Ret (Vnat (modulo (lnot v) max_unsigned)) *)
+                 | Vnat v => Ret (Vnat (modulo (lnot v) max_unsigned))
                  | _ => triggerNB "expr-Not"
                  end
     | ShiftL a b => l <- denote_expr a ;; r <- denote_expr b ;;
                     match l, r with
-                    | Vnat l, Vnat r => Ret (Vnat l)
-                    (* | Vnat l, Vnat r => Ret (Vnat (modulo (shiftl l r) max_unsigned)) *)
+                    | Vnat l, Vnat r => Ret (Vnat (modulo (shiftl l r) max_unsigned)) 
                     | _, _ => triggerNB "expr-LShift"
                     end
     | ShiftR a b => l <- denote_expr a ;; r <- denote_expr b ;;
                     match l, r with
-                    | Vnat l, Vnat r => Ret (Vnat l)
-                    (* | Vnat l, Vnat r => Ret (Vnat (modulo (shiftr l r) max_unsigned)) *)
+                    | Vnat l, Vnat r => Ret (Vnat (modulo (shiftr l r) max_unsigned))
                     | _, _ => triggerNB "expr-RShift"
                     end
 
