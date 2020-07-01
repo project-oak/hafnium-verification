@@ -42,8 +42,8 @@ Import Monads.
 Import MonadNotation.
 Local Open Scope monad_scope.
 Local Open Scope string_scope.
-Require Import Coqlib sflib.
-
+Require Import Coqlib sflib Coq.Arith.Peano_dec.
+  
 
 (* From HafniumCore *)
 Require Import TestAux.
@@ -78,99 +78,106 @@ End NOTATIONTEST.
 
 Notation "x <- c1 ;; c2" := (@pbind _ (PMonad_Monad Monad_option) _ _ _ c1 (fun x => c2))
                               (at level 61, c1 at next level, right associativity).
-
-
-
 Require Import Any.
 
+Section AbsData.
+
+  (* common definition *)
+
   Definition ident := nat.
-  
+
   Instance RelDec_ident: RelDec (@eq ident) :=
     { rel_dec := fun n0 n1 => if (Nat.eqb n0 n1) then true else false}.
-  
-  Inductive PERM_TY :=
-  | ABSENT | VALID.
-  
+
+  (* mpool *)
+
+  Record mpool: Type :=
+    mk {
+        chunklist: list (nat * nat); (* paddr, limit *)
+        fallback: option ident; (* mpoolid *)
+      }
+  .
+
+  Definition mp_manager: Type := ident -> option mpool.
+  Definition inital_mp_manager: mp_manager := fun _ => None.
+  Definition mp_update (m: mp_manager) (k0: ident) (v: option mpool): mp_manager :=
+    fun k1 => if rel_dec k0 k1 then v else m k1
+  .
+
+  (* page table *)
+
+  Inductive PERM_TY := | ABSENT | VALID.
+
   Inductive PTE_TY :=
-  | BOOTED
-  | PTE (level : nat) (addr : nat) (perm : PERM_TY).
+  | PTE (owner: option nat) (paddr : nat) (level : nat) (vaddr: option nat) (perm : PERM_TY).
+
+  Record pt_entry: Type := mkPTE {value: list PTE_TY}.
+
+  Definition pt_manager : Type := ident -> option pt_entry.
+  Definition inital_pt_manager: mp_manager := fun _ => None.
+  Definition pt_update (m: pt_manager) (k0: ident) (v: option pt_entry): pt_manager :=
+    fun k1 => if rel_dec k0 k1 then v else m k1
+  .
+
+End AbsData.
+
 
 Module HighSpecDummyTest.
+  
+  Fixpoint pte_init_iter (base_addr: nat) (level : nat) (esize : nat) (length : nat): list PTE_TY :=
+    match length with
+    | O => nil
+    | S O => (PTE None base_addr level None ABSENT)::nil
+    | S n =>
+      let prev := pte_init_iter base_addr level esize n in
+      let len := List.length prev in 
+      prev ++ (PTE None (base_addr + (esize * len)) level None ABSENT)::nil
+    end.
 
-  
-  Record pt_entry: Type := mkPTE {value: PTE_TY}.
-  
-  Definition manager : Type := ident -> option pt_entry.
-
-  Require Import Coq.Arith.Peano_dec.
-  Check dec_eq_nat.
-  
-  Definition pte_init_aux (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
+  (* initialization of the pte entry *)
+  Definition pte_init (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
     let retv := match vs with
-                | [(Vabs a) ; (Vnat dec)] =>
-                  unwrap (pte_v <- downcast a pt_entry ;;
-                          let pte_new_v := 
-                              (match pte_v with
-                               | mkPTE value =>
-                                 match value with 
-                                 | BOOTED => PTE O O ABSENT
-                                 | PTE level addr perm =>
-                                   match dec with
-                                   | O => PTE level addr perm
-                                   | _ => PTE O O ABSENT
-                                   end
-                                 end
-                               end) in
-                          Some (Vabs (upcast pte_new_v))
+                | [(Vnat base_addr) ; (Vnat level) ; (Vnat esize) ;(Vnat len)] =>
+                  unwrap (let new_ptes := pte_init_iter base_addr level esize len in
+                          Some (Vabs (upcast new_ptes))
                          ) Vnodef
                 | _ => Vnodef
                 end
     in (retv, nil).
 
-
+  (*
   Definition pte_init_aux2 (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
     let retv := match vs with
                 | [(Vabs a)] =>
-                  unwrap (pte_v <- downcast a pt_entry ;;
-                          (match pte_v with
-                           | mkPTE value =>
-                             match value with 
-                             | BOOTED => Some (Vabs (upcast BOOTED))
-                             | PTE level addr perm => Some (Vabs (upcast (PTE level addr perm)))
-                             end
-                           end) 
+                  unwrap (ptes <- downcast a pt_entry ;;
+                          let new_ptes := 
+                              (match ptes with
+                               | mkPTE ptes_v =>
+                                 match dec with
+                                 | O => ptes_v (* use as it is *)
+                                 | _ => pte_init ptes_v 
+                                 end
+                               end) in
+                          Some (Vabs (upcast new_ptes))
                          ) Vnodef
                 | _ => Vnodef
                 end
     in (retv, nil).
+    *)
   
-  (*
-    case_sum = fun (A B C : Type) (f : A -> C) (g : B -> C) (x : A + B) => 
-    match x with
-    | inl a => f a
-    | inr b => g b
-    end
-    : Case Fun sum
-   *)
 
-  
-  (*
-    Error:
-    In environment
-    d : var
-    res : var
-    r : var
-    The term "pte_init_aux" has type "list val@{Set} -> val@{Vnull.u0} * list val@{pte_init_aux.u0}" while it is expected to have type
-    "list val@{expr.u1} -> val@{expr.u2} * list val@{expr.u3}" (cannot unify "list val@{expr.u1}" and "list val@{Set}").
-   *)
-                                                    
 
-  (*
-    mapT@{d r} = 
-    fun (T : Type -> Type) (Traversable0 : Traversable T) => let (mapT) := Traversable0 in mapT
-    : forall T : Type -> Type,
-    Traversable T -> forall F : Type -> Type, Applicative.Applicative F -> forall A B : Type, (A -> F B) -> T A -> F (T B)
-    
+  (* JIEUNG: strategy: 
+     MPOOL and PAGE TABLE might have different structures (Is it true?)
+     This prevents us to provide the same abstarct representation. 
+     So, we can duplicate them. 
+     we can initialize two data structures 
+     1. MPOOL 
+     2. PTE  
+     Each one has valid field, which is a logical flag. When we use some parts of memory for page tables, 
+     we will mark that part in MPOOL and PTE together.
+     If it is marked, we can check PTE to see the proper value for page tables. 
+     Diabling them is quite simliar 
    *)
   
   (* JIEUNG: let's make a debugging message for abs types *)
@@ -184,16 +191,11 @@ Module HighSpecDummyTest.
 
   Definition main res : stmt :=
     (Debug "[high-model] Calling" Vnull) #;
-    res #= (CoqCode [CBV (Vabs (upcast (mkPTE (PTE 1 100 ABSENT)))) ; CBV (Vnat 1)] pte_init_aux) #;
+    res #= (CoqCode [CBV (Vnat 4000) ; CBV (Vnat 1) ; CBV (Vnat 4) ; CBV (Vnat 4)] pte_init) #;
     DebugHigh "[high-model] Calling" res #;
-    res #= (CoqCode [CBV  (Vabs (upcast (mkPTE (PTE 1 100 ABSENT)))) ; CBV (Vnat 0)] pte_init_aux) #;
-    DebugHigh "[high-model] Calling" res #;
-    res #= (CoqCode [CBV (Vabs (upcast (mkPTE BOOTED))) ; CBV (Vnat 0)] pte_init_aux) #;
-    DebugHigh "[high-model] Call End" res #;
-    res #= (CoqCode [CBV (Vabs (upcast (mkPTE BOOTED)))] pte_init_aux2) #;
     DebugHigh "[high-model] Call End" res.
     (* Put "high level test end:" res. *)
-  
+
   Definition mainF: function.
       mk_function_tac main ([]: list var) (["res"] : list var).
   Defined.
@@ -213,8 +215,112 @@ Module HighSpecDummyTest.
   
 End HighSpecDummyTest.
 
-(*
-Module MMHighStage1.
+Module MPOOLMMHIGHTest.
 
-End MMHighStage1.
-*)
+  Let mpool_init_aux (vs: list val): (val * list val) :=
+    let retv := match vs with
+                | [(Vabs a) ; (Vptr (Some p_id) _)] =>
+                  match downcast a mp_manager with
+                  | Some mm0 => let mm1 := (mp_update mm0 p_id (Some (mk nil None))) in
+                                Vabs (upcast mm1)
+                  | _ => Vnodef
+                  end
+                | _ => Vnodef
+                end
+    in
+    (retv, nil)
+  .
+  
+  Definition mpool_init (p: var) r: stmt :=
+    r #= GetOwnedHeap #;
+      PutOwnedHeap (CoqCode [CBV r ; CBV p] mpool_init_aux) #;
+      Skip
+  .
+
+
+
+  Let mp_init_with_fallback_aux (vs: list val): (val * list val) :=
+    let retv := match vs with
+                | [(Vabs a) ; (Vptr (Some p_id) _) ; (Vptr (Some fb_id) _)] =>
+                  match downcast a mp_manager with
+                  | Some mm0 => let mm1 := (mp_update mm0 p_id (Some (mk nil (Some fb_id)))) in
+                                Vabs (upcast mm1)
+                  | _ => Vnodef
+                  end
+                | _ => Vnodef
+                end
+    in
+    (retv, nil)
+  .
+  
+  Definition mpool_init_with_fallback (p fallback: var) r: stmt :=
+    r #= GetOwnedHeap #;
+      PutOwnedHeap (CoqCode [CBV r ; CBV p ; CBV fallback] mp_init_with_fallback_aux) #;
+      Skip
+  .
+  
+  Let mpool_check_fallback (vs: list val): (val * list val) :=
+    let retv := match vs with
+                | [(Vabs a) ; (Vptr (Some p_id) _)]=>
+                  unwrap (mm <- downcast a mp_manager ;;
+                          mp <- mm p_id ;;
+                          Some (is_some (mp.(fallback)): val)
+                         ) Vnodef
+                | _ => Vnodef
+                end
+    in
+    (retv, nil)
+  .
+  
+  Let mpool_get_chunk_list (vs: list val): (val * list val) :=
+    let retv := match vs with
+                | [(Vabs a) ; (Vptr (Some p_id) _)]=>
+                  unwrap (mm <- downcast a mp_manager ;;
+                          mp <- mm p_id ;;
+                          Some (Vabs (upcast mp.(chunklist)))
+                         ) Vnodef
+                | _ => Vnodef
+                end
+    in
+    (retv, nil)
+  .
+  
+  Definition mpool_add_chunk (mp: mpool) (chunk: nat * nat): mpool :=
+    mk (chunk :: mp.(chunklist)) mp.(fallback)
+  .
+
+  Let mp_fini_aux (vs: list val): (val * list val) :=
+    match vs with
+    | [(Vabs a0) ; (Vptr (Some p_id) _) ; (Vabs a1)]=>
+      unwrap (mm0 <- downcast a0 mp_manager ;;
+              cl <- downcast a1 (list (nat * nat)) ;;
+              mp <- mm0 p_id ;;
+              fb_id <- mp.(fallback) ;;
+              fb <- mm0 fb_id ;;
+              match cl with
+              | hd :: tl =>
+                let mm1 := (mp_update mm0 fb_id (Some (mpool_add_chunk fb hd))) in
+                Some (Vtrue, [(Vabs (upcast mm1)) ; (Vabs (upcast tl))])
+              | _ => Some (Vfalse, [(Vabs a0) ; (Vabs a1)])
+              (* | _ => (Vfalse, [(Vabs (upcast mm0)) ; (Vabs (upcast nil))]) *)
+              end
+             ) (Vnodef, nil)
+    | _ => (Vnodef, nil)
+    end
+  .
+
+  Let fini_aux2 (vs: list val): (val * list val) :=
+    let retv := match vs with
+                | [(Vabs a) ; (Vptr (Some p_id) _)]=>
+                  unwrap (mm0 <- downcast a mp_manager ;;
+                          mp <- mm0 p_id ;;
+                          let mm1 := (mp_update mm0 p_id None) in
+                          Some (Vabs (upcast mm1))
+                         ) Vnodef
+                | _ => Vnodef
+                end
+    in
+    (retv, nil)
+  .
+
+End MPOOLMMHIGHTest.

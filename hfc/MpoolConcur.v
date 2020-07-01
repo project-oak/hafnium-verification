@@ -238,7 +238,7 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
     p #= (Call "Lock.acquire" [CBV (p #@ lock_ofs)]) #;
     next #= (p #@ chunk_list_ofs) #;
     Debug "[alloc] calling alloc_no_fallback" Vnull #;
-    ret #= (Call "alloc_no_fallback" [CBR next ; CBV count]) #;
+    ret #= (Call "alloc_no_fallback" [CBR next]) #;
     p @ chunk_list_ofs #:= next #;
     Debug "[alloc] unlocking" Vnull #;
     (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
@@ -342,38 +342,17 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
 
   (*** DELTA: while -> recursion && "limit" ptr -> offset "nat" && no alignment ***)
   Definition alloc_no_fallback
-             (cur count: var)
+             (cur: var)
              (ret next cur_ofs new_cur: var): stmt :=
     #if ! cur then Return Vnull else Skip #;
     cur_ofs #= (cur #@ limit_ofs) #;
-    #if (count <= cur_ofs)
-     then (
-           (Debug "If1-limit: " cur_ofs) #;
-           #if count == cur_ofs
-            then (
-                ret #= (SubPointerTo cur (count * entry_size)) #;
-                cur #= (cur #@ next_chunk_ofs) #;
-                Return ret
-              )
-            else (
-                new_cur #= (SubPointerFrom cur (count * entry_size)) #;
-                new_cur @ next_chunk_ofs #:= (cur #@ next_chunk_ofs) #;
-                new_cur @ limit_ofs #:= (cur_ofs - count) #;
-                ret #= (SubPointerTo cur (count * entry_size)) #;
-                cur #= new_cur #;
-                Return ret
-              )
-          )
-     else (
-         (Debug "Else1-limit: " cur_ofs) #;
-         next #= (cur #@ next_chunk_ofs) #;
-         ret #= (Call "alloc_no_fallback" [CBR next ; CBV count]) #;
-         cur @ next_chunk_ofs #:= next #;
-         Return ret
-         )
-  .
+    new_cur #= (SubPointerFrom cur  entry_size) #;
+    new_cur @ next_chunk_ofs #:= (cur #@ next_chunk_ofs) #;
+    new_cur @ limit_ofs #:= (cur_ofs - 1) #;
+    ret #= (SubPointerTo cur entry_size) #;
+    cur #= new_cur #;
+    Return ret.
 
-  
   (* void *mpool_alloc_contiguous_no_fallback(struct mpool *p, size_t count, *)
   (*       				 size_t align) *)
   (* { *)
@@ -506,7 +485,7 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
     mk_function_tac alloc ["p" ; "count"] ["ret" ; "next" ; "nextp"]. Defined.
   Definition alloc_no_fallbackF: function.
     mk_function_tac alloc_no_fallback
-                    ["cur" ; "count"] ["ret" ; "next" ; "cur_ofs" ; "new_cur"]. Defined.
+                    ["cur" ] ["ret" ; "next" ; "cur_ofs" ; "new_cur"]. Defined.
 
   Definition alloc_contiguousF: function.
     mk_function_tac alloc_contiguous ["p" ; "count"] ["ret" ; "next" ; "nextp"]. Defined.

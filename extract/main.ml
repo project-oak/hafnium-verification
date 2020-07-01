@@ -116,18 +116,22 @@ let string_of_mpool p =
   in
   (foo "  " p)
 
+let rec make_hstruct_string ptes =
+  match ptes with
+  | [] -> ""
+  | PTE (owner, addr, level, vaddr, perm)::tl ->
+    match perm with
+    | ABSENT -> "PTE: " ^ string_of_int (Nat.to_int level) ^ " " ^ string_of_int (Nat.to_int addr) ^ " ABSENT ; ;" 
+        ^ make_hstruct_string tl
+    | VALID -> "PTE: " ^ string_of_int (Nat.to_int level) ^ " " ^ string_of_int (Nat.to_int addr) ^ " VALID ; ;"
+        ^ make_hstruct_string tl
+
 let string_of_hstruct v =
   match v with
   | Vabs a ->
     let x = 
        pbind (coq_PMonad_Monad (Obj.magic coq_Monad_option))
-       (Obj.magic (fun _ -> true)) (downcast a) (fun pte_v ->
-          match pte_v with
-          | BOOTED -> Some "BOOTED"
-          | PTE (level, addr, perm) ->
-              match perm with
-              | ABSENT -> Some ("PTE: " ^ string_of_int (Nat.to_int level) ^ " " ^ string_of_int (Nat.to_int addr) ^ " ABSENT")
-              | VALID -> Some ("PTE: " ^ string_of_int (Nat.to_int level) ^ " " ^ string_of_int (Nat.to_int addr) ^ " VALID"))
+       (Obj.magic (fun _ -> true)) (downcast a) (fun ptes -> Some (make_hstruct_string ptes)) 
     in
     (match x with
     | Some y -> y
