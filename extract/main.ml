@@ -65,6 +65,7 @@ end
 
 let cl2s = fun cl -> String.concat "" (List.map (String.make 1) cl)
 
+(*
 let rec string_of_val v =
   match v with
   | Vnat n -> (string_of_int (Nat.to_int n)) ^ " "
@@ -78,6 +79,9 @@ let rec string_of_val v =
      else paddr ^ "[" ^
             (List.fold_left (fun s i -> s ^ " " ^ string_of_val i) "" cts) ^ "]"
   | Vabs(a) -> " some abstract value"
+*)
+
+let string_of_val v = cl2s (show_val v)
 
 let print_val = fun v -> print_endline (string_of_val v)
 
@@ -322,6 +326,10 @@ let main =
 
   print_endline "-----------------------------------------------------------" ;
   run (MultiModuleMultiCoreLocalState.isem) ;
+
+  print_endline "-----------------------------------------------------------" ;
+  run (PrintAny.isem) ;
+
 
   end;
 

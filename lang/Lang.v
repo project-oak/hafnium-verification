@@ -23,6 +23,7 @@ From Coq Require Import
      
 From ExtLib Require Import
      Data.String
+     Data.Option     
      Structures.Monad
      Structures.Traversable
      Structures.Foldable
@@ -159,6 +160,35 @@ Polymorphic Inductive val: Type :=
 (* | Vundef *)
 (* | Vnodef *)
 .
+
+
+Variable show_val: val -> string.
+Extract Constant show_val => "
+  let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
+  let rec nat_of_int n = assert(n >= 0); if(n == 0) then O else S (nat_of_int (pred n)) in
+  let cl2s = fun cl -> String.concat """" (List.map (String.make 1) cl) in
+  let s2cl = fun s -> List.init (String.length s) (String.get s) in
+  let rec string_of_val v =
+  match v with
+  | Vnat n -> (string_of_int (nat_to_int n)) ^ "" ""
+  | Vptr(paddr, cts) ->
+     let paddr = ""("" ^ (match paddr with
+                        | Some paddr -> string_of_int (nat_to_int paddr)
+                        | None -> ""N"") ^ "")""
+     in
+     if length cts == nat_of_int 0
+     then paddr ^ "". ""
+     else paddr ^ ""["" ^
+            (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
+  | Vabs(a) -> cl2s (string_of_Any a) in
+  fun x -> s2cl (string_of_val x)
+".    
+Instance val_Showable: @Showable val := {
+  show := show_val;
+}
+.
+
+
 
 Check (Vabs (upcast (Vabs (upcast 0)))).
 
@@ -1096,6 +1126,7 @@ sem: semantics for the moduel
 Inductive ModSem: Type :=
   mk_ModSem { fnames: string -> bool ;
               owned_heap: Type;
+              owned_heap_Showable: @Showable owned_heap;
               initial_owned_heap: owned_heap;
               customE: Type -> Type ;
               handler: customE ~> stateT owned_heap (itree (GlobalE +' Event));
@@ -1257,7 +1288,9 @@ Definition HANDLE: forall mss,
     eapply c in o. eapply ITree.map; try eapply o.
     intro. destruct X. econs.
     { eapply cons.
-      - apply (upcast o0).
+      - apply (@upcast _ a.(owned_heap_Showable) o0).
+        (*
+      - apply (upcast o0). *)
       - apply tl.
     }
     apply t.
@@ -1283,7 +1316,9 @@ Definition HANDLE2: forall mss,
     intro. destruct X. econs.
     { unshelve econs.
       - eapply cons.
-        { apply (upcast o0). }
+        { apply (@upcast _ a.(owned_heap_Showable) o0). }
+        (*
+        { apply (upcast o0). } *)
         { apply tl. }
       - ss. eauto.
     }
@@ -1307,7 +1342,13 @@ Defined.
 Fixpoint INITIAL (mss: list ModSem): list Any :=
   match mss with
   | [] => []
-  | hd :: tl => (upcast hd.(initial_owned_heap)) :: INITIAL tl
+  | hd :: tl => (@upcast _
+                         hd.(owned_heap_Showable)
+                              hd.(initial_owned_heap)) ::
+                                                       INITIAL tl
+
+  (*
+  | hd :: tl => (upcast hd.(initial_owned_heap)) :: INITIAL tl *)
   end
 .
 
@@ -1315,7 +1356,8 @@ Definition INITIAL2 (mss: list ModSem): hvec (length mss).
   induction mss.
   - ss. econs. instantiate (1:=[]). ss.
   - ss. inv IHmss. econs. instantiate (1:=(upcast a.(initial_owned_heap))::l). ss.
-    eauto.
+  (* - ss. inv IHmss. econs. instantiate (1:=(@upcast _ a.(owned_heap_Showable) a.(initial_owned_heap))::l). ss. *)
+     eauto.
 Defined.
 
 Inductive unit1: Type -> Type :=
@@ -1326,6 +1368,7 @@ Definition program_to_ModSem (p: program): ModSem :=
   mk_ModSem
     (* (fun s => in_dec Strings.String.string_dec s (List.map fst p)) *)
     (fun s => existsb (string_dec s) (List.map fst p))
+    _
     (upcast tt)
     OwnedHeapE
     handle_OwnedHeapE

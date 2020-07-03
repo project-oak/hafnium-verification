@@ -603,6 +603,7 @@ Module MultiModuleLocalState.
   Definition f_ModSem: ModSem :=
     mk_ModSem
       (fun s => string_dec s "f")
+      _
       (fun (_: nat) => None: option nat)
       memoizeE
       f_handler
@@ -689,6 +690,7 @@ Module MultiModuleLocalStateSimple.
   Definition f_ModSem: ModSem :=
     mk_ModSem
       (fun s => string_dec s "f")
+      _
       Vnull
       memoizeE
       f_handler
@@ -867,6 +869,7 @@ Module MultiModuleMultiCoreLocalState.
   Definition f_ModSem: ModSem :=
     mk_ModSem
       (fun s => string_dec s "f")
+      _
       Vnull
       memoizeE
       f_handler
@@ -904,3 +907,24 @@ Module MultiModuleMultiCoreLocalState.
 End MultiModuleMultiCoreLocalState.
 
 
+Module PrintAny.
+ 
+  Inductive my_type: Type := RED | BLUE.
+  Instance my_type_Showable: Showable my_type := { show := fun x => match x with | RED => "RED" | BLUE => "BLUE" end }.
+ 
+    Definition main: stmt :=
+      Put "Red is: " (Vabs (upcast RED)) #;
+      Put "Blue is: " (Vabs (upcast BLUE)) #;
+      Put "Test(PrintAny) passed" Vnull #;
+      Skip
+    .
+    Definition main_function: function. mk_function_tac main ([]: list var) ([]: list var). Defined.
+    Definition program: program := [("main", main_function)].
+ 
+  Definition modsems: list ModSem :=
+    (List.map program_to_ModSem [program])
+  .
+ 
+  Definition isem: itree Event unit := eval_multimodule modsems.
+ 
+End PrintAny.

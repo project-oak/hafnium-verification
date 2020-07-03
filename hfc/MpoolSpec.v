@@ -62,7 +62,7 @@ Set Implicit Arguments.
 
 
 
-
+(*
 Section NOTATIONTEST.
   Local Close Scope itree_scope.
   Local Open Scope monad_scope.
@@ -83,7 +83,7 @@ End NOTATIONTEST.
 
 Notation "x <- c1 ;; c2" := (@pbind _ (PMonad_Monad Monad_option) _ _ _ c1 (fun x => c2))
                               (at level 61, c1 at next level, right associativity).
-
+*)
 
 
 

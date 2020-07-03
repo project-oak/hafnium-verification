@@ -26,7 +26,10 @@ From ExtLib Require Import
      Data.String
      Structures.Monad
      Structures.Traversable
-     Data.List.
+     Data.List
+     Data.Option
+     Data.Monads.OptionMonad.
+
 
 From ITree Require Import
      ITree
@@ -247,6 +250,7 @@ Module LOCK.
     mk_ModSem
       (fun s => existsb (string_dec s) ["Lock.release" ; "Lock.acquire" ; "Lock.new"])
       (* in_dec Strings.String.string_dec s ["Lock.unlock" ; "Lock.lock" ; "Lock.init"]) *)
+      _
       (0, Maps.empty)
       LockEvent
       handler
