@@ -49,8 +49,18 @@ Require Import Coqlib sflib.
 (* From HafniumCore *)
 Require Import Lang Lock.
 Import LangNotations.
+
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
+
+Local Open Scope N_scope.
 
 
 
@@ -73,7 +83,7 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
   Definition next_chunk_ofs := 0.
   Definition limit_ofs := 1.
 
-  Definition entry_size: nat := 4.
+  Definition entry_size: N := 4.
 
   Fixpoint chunk_list_wf (chunk_list: val): bool :=
     match chunk_list with
@@ -85,7 +95,7 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
       | next_chunk :: limit :: _ =>
         match limit with
         | Vnat limit =>
-          if Nat.eq_dec (length cts) (limit * entry_size)
+          if ((N.of_nat (length cts)) =? (limit * entry_size))
           then chunk_list_wf next_chunk 
           else false
         | _ => false
@@ -528,8 +538,8 @@ Module TEST.
 
   Include MPOOLCONCUR.
 
-  Definition big_chunk (paddr: nat) (size: nat): val :=
-    Vptr (Some paddr) (repeat (Vnat 0) (entry_size * size)).
+  Definition big_chunk (paddr: N) (size: nat): val :=
+    Vptr (Some paddr) (repeat (Vnat 0) ((N.to_nat entry_size) * size)).
 
   Module TEST1.
 
@@ -772,13 +782,13 @@ Module TEST.
   Module TEST4.
 
     Definition MAX: nat := 20.
-    Definition pte_paddr_begin: nat := 4000.
+    Definition pte_paddr_begin: N := 4000.
 
     Definition main (p i r: var): stmt := Eval compute in INSERT_YIELD (
       p #= Vptr None [0: val ; 0: val ; 0: val ] #;
       Call "mpool_init" [CBR p] #;
       DebugMpool "(Global Mpool) After initialize" p #;
-      Call "add_chunk" [CBR p ; CBV (big_chunk pte_paddr_begin MAX) ; CBV MAX] #;
+      Call "add_chunk" [CBR p ; CBV (big_chunk pte_paddr_begin MAX) ; CBV (N.of_nat MAX)] #;
       "GMPOOL" #= p #;
       #while ("SIGNAL" <= 1) do (Debug "waiting for SIGNAL" Vnull) #;
 
@@ -788,7 +798,7 @@ Module TEST.
       (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
       (*** JUST FOR PRINTING -- END ***)
 
-      i #= MAX #;
+      i #= (N.of_nat MAX) #;
       #while i
       do (
         i #= i-1 #;
@@ -799,7 +809,7 @@ Module TEST.
     )
     .
 
-    Definition alloc_and_free (sz: nat)
+    Definition alloc_and_free (sz: N)
                (p i r0 r1 r2: var): stmt := Eval compute in INSERT_YIELD (
       #while (! "GMPOOL") do (Debug "waiting for GMPOOL" Vnull) #;
       (* i #= MAX #; *)

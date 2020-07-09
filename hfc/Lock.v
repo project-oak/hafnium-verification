@@ -65,14 +65,17 @@ From ExtLib Require Import
      Structures.Maps
      Data.Map.FMapAList.
 
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
 
-
-
-
+Local Open Scope N_scope.
 
 Module LOCK.
 
-  Definition ident := nat.
+  Definition ident := N.
 
   Inductive LockEvent: Type -> Type :=
   | TryLockE (id: ident): LockEvent (unit + val) (* inl: is already running, inr: not *)
@@ -158,7 +161,7 @@ Module LOCK.
        end)
   .
 
-  Definition owned_heap := (nat * (alist ident val))%type.
+  Definition owned_heap := (N * (alist ident val))%type.
 
   (* Definition extract_to_print (al: alist ident val): unit := tt. *)
   
@@ -200,15 +203,31 @@ Module LOCK.
   "
   .
 
-  Goal (Maps.lookup 1 (Maps.add 1 10 Maps.empty)) = Some 10. ss. Qed.
-  Goal (Maps.lookup 2 (Maps.add 1 10 Maps.empty)) = Some 10. ss. Qed.
-  Goal (Maps.lookup 2 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _)))) = Some 10. ss. Qed.
-  Goal (Maps.lookup (Map:=Map_alist Nat.RelDec_eq nat)
-                    2 (Maps.add (Map:=Map_alist Nat.RelDec_eq nat) 1 10
-                                (Maps.empty
-                (Map:=Map_alist Nat.RelDec_eq nat)))) = Some 10. ss. Abort.
+
+
+  (*
+  Print Nat.RelDec_eq.
+  Print Nat.eqb.
+  Print N.eqb.
+  Print Nat.RelDec_eq.
   Print Map_alist.
   Print Instances RelDec.
+   *)
+
+  
+  (* JIEUNG: TODO : Do we have pre-defined instance for the following one? *)
+  Global Instance RelDec_eq : RelDec (@eq N) :=
+    { rel_dec := N.eqb }.
+  
+  
+  Goal (Maps.lookup (Map:= Map_alist RelDec_eq N) 1 (Maps.add 1 10 Maps.empty)) = Some 10. ss. Qed.
+  Goal (Maps.lookup (Map:= Map_alist RelDec_eq N) 2 (Maps.add 1 10 Maps.empty)) = None. ss. Qed.
+  Goal (Maps.lookup (Map:= Map_alist RelDec_eq N) 1 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _))))
+  = Some 10. ss. Qed.
+  Goal (Maps.lookup (Map:=Map_alist RelDec_eq N)
+                    2 (Maps.add (Map:=Map_alist RelDec_eq N) 1 10
+                                (Maps.empty
+                (Map:=Map_alist RelDec_eq N)))) = Some 10. ss. Abort.
 
   (* Local Instance MyMap {V}: (Map nat V (alist nat V)) := Map_alist Nat.RelDec_eq V. *)
   (* Goal (Maps.lookup 2 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _)))) = Some 10. ss. Abort. *)
@@ -242,7 +261,7 @@ Module LOCK.
       (*   Ret ((S ctr, m'), ctr) *)
       | NewE =>
         let m := debug_print alist_printer m in
-        Ret ((S ctr, m), ctr)
+        Ret ((ctr + 1, m), ctr)
       end
   .
 
