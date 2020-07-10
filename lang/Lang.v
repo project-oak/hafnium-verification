@@ -54,6 +54,7 @@ Require Import Coq.Arith.PeanoNat.
 Require Import Coq.NArith.BinNat.
 Require Import Coq.NArith.Nnat.
 Require Import BitNat.
+Require Import BinaryString.
 
 Require Import ClassicalDescription EquivDec.
 About excluded_middle_informative.
@@ -183,8 +184,30 @@ Polymorphic Inductive val: Type :=
 (* | Vnodef *)
 .
 
-
 Variable show_val: val -> string.
+Extract Constant show_val =>
+"
+  let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
+  let rec nat_of_int n = assert(n >= 0); if(n == 0) then O else S (nat_of_int (pred n)) in
+  let cl2s = fun cl -> String.concat """" (List.map (String.make 1) cl) in
+  let s2cl = fun s -> List.init (String.length s) (String.get s) in
+  let rec string_of_val v =
+  match v with
+  | Vnat n -> cl2s (of_N n) ^ "" ""
+  | Vptr(paddr, cts) ->
+     let paddr = ""("" ^ (match paddr with
+                        | Some paddr -> cl2s (of_N paddr)
+                        | None -> ""N"") ^ "")""
+     in
+     if length cts == nat_of_int 0
+     then paddr ^ "". ""
+     else paddr ^ ""["" ^
+            (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
+  | Vabs(a) -> cl2s (string_of_Any a) in
+  fun x -> s2cl (string_of_val x)
+".
+
+(*
 Extract Constant show_val => "
   let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
   let rec nat_of_int n = assert(n >= 0); if(n == 0) then O else S (nat_of_int (pred n)) in
@@ -204,7 +227,8 @@ Extract Constant show_val => "
             (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
   | Vabs(a) -> cl2s (string_of_Any a) in
   fun x -> s2cl (string_of_val x)
-".    
+".
+*)    
 Instance val_Showable: @Showable val := {
   show := show_val;
 }

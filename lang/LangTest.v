@@ -931,3 +931,15 @@ Module PrintAny.
   Definition isem: itree Event unit := eval_multimodule modsems.
  
 End PrintAny.
+
+
+Module PrintTest.
+
+
+Require Import BinaryString.
+
+Include Raw.
+Definition string_gen (n: N): string :=
+  of_N n.
+
+End PrintTest.
