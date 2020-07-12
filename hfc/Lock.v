@@ -55,7 +55,6 @@ Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
 
-
 Set Implicit Arguments.
 
 
@@ -172,16 +171,23 @@ Module LOCK.
   "fun printer content -> content"
   .
 
-  
   Variable alist_printer: alist ident val -> unit.
   (* Variable dummy_client: unit -> unit. *)
   (* Extract Constant dummy_client => "fun x -> x". *)
   Extract Constant alist_printer =>
   "
   let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
-  fun al -> print_string ""<LOCKSTATE> "" ; print_int (nat_to_int (length al)) ; print_string "" "" ; (List.iter (fun kv -> print_int (nat_to_int (fst kv)) ; print_string "" "") al) ; print_endline "" "" "
+  let cl2s = fun cl -> String.concat """" (List.map (String.make 1) cl) in
+  fun al -> print_string ""<LOCKSTATE> "" ; print_int (nat_to_int (length al)) ; print_string "" "" ; (List.iter (fun kv -> print_string (cl2s (BinaryString.of_N (fst kv))) ; print_string "" "") al) ; print_endline "" "" "
   .
 
+  (*
+  Extract Constant alist_printer =>
+  "
+  let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
+  fun al -> print_string ""<LOCKSTATE> "" ; print_int (nat_to_int (length al)) ; print_string "" "" ; (List.iter (fun kv -> print_int (nat_to_int (fst kv)) ; print_string "" "") al) ; print_endline "" "" "
+  .
+  *)
   (************* TODO: SEPARATE COAMLCOQ.ML ************************)
   (************* TODO: SEPARATE COAMLCOQ.ML ************************)
   (************* TODO: SEPARATE COAMLCOQ.ML ************************)
