@@ -90,6 +90,7 @@ let string_of_vals vs = List.fold_left (fun s i -> s ^ " " ^ string_of_val i) ""
 
 (* JIEUNG: The following things are for mpool. Is there any way that we can provide 
  * those definitions with more user-friendly way than now? *)
+(*
 let string_of_lock l =
   match l with
   | Vnat id -> string_of_int (Nat.to_int id)
@@ -141,7 +142,7 @@ let string_of_hstruct v =
     | Some y -> y
     | None -> failwith "H struct not well-formed0")
   | _ -> failwith "H struct not well-formed2"
-
+*)
 
 (* let print_val =
  *   let rec go v =
@@ -172,22 +173,25 @@ let handle_Event = fun e k ->
      (* print_string "<DEBUG> " ; print_string (cl2s msg) ;
       * * print_endline (string_of_vals vs) ; *)
       k (Obj.magic ())
+      (*
   | ESyscall ('h'::'d'::[], msg, v::[]) ->
      print_endline (cl2s msg) ;
      print_endline (string_of_hstruct v) ;
-     k (Obj.magic())
+     k (Obj.magic()) *)
   (*
   | ESyscall ('d'::'b'::'u'::'g'::[], msg, _) ->
      print_endline (cl2s msg) ;
      print_endline "" ;
      k (Obj.magic ()) *)
+      (*
   | ESyscall ('m'::'d'::[], msg, p::[]) ->
      print_endline (cl2s msg) ;
      print_endline (string_of_mpool p) ;
      print_endline "" ;
-     k (Obj.magic ())
+     k (Obj.magic ()) *)
+(*
   | ESyscall ('g'::[], _,   []) ->
-     let x = read_int() in k (Obj.magic (Vnat (Nat.of_int x)))
+     let x = read_int() in k (Obj.magic (Vnat (Nat.of_int x))) *)
   | ESyscall (cl,      msg, vs) ->
      print_string (cl2s msg) ; print_endline (cl2s cl) ;
      failwith "UNSUPPORTED SYSCALL"

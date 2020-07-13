@@ -47,18 +47,21 @@ From ITree Require Import
 
 Import ITreeNotations.
 Import Monads.
-Import MonadNotation.
-Local Open Scope monad_scope.
-Local Open Scope string_scope.
-Require Import Coqlib sflib.
 
-
-(* From HafniumCore *)
 Require Import Lang.
+
 Import LangNotations.
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
+Local Open Scope N_scope.
 
 
 
@@ -84,10 +87,10 @@ Definition UINT32_C (val : expr) := val.
  *)
 
 (* XXX: I first set them as dummy values *)
-Definition HEAP_PAGES := 100000%nat.
-Definition MAX_CPUS := 32%nat.
-Definition MAX_VMS := 32%nat.
-Definition LOG_LEVEL := 10000%nat.
+Definition HEAP_PAGES := 100000%N.
+Definition MAX_CPUS := 32%N.
+Definition MAX_VMS := 32%N.
+Definition LOG_LEVEL := 10000%N.
 
 (* From the definition in [inc/vmapi/hf/types.h:#define] 
 #define HF_HYPERVISOR_VM_ID 0
@@ -109,9 +112,9 @@ Definition LOG_LEVEL := 10000%nat.
 ...
 *)
 
-Definition HF_VM_ID_OFFSET := 1%nat.
-Definition HF_PRIMARY_VM_INDEX := 0%nat.
-Definition HF_PRIMARY_VM_ID := HF_VM_ID_OFFSET + HF_PRIMARY_VM_INDEX.
+Definition HF_VM_ID_OFFSET := 1%N.
+Definition HF_PRIMARY_VM_INDEX := 0%N.
+Definition HF_PRIMARY_VM_ID := (HF_VM_ID_OFFSET + HF_PRIMARY_VM_INDEX)%N.
 
 (* From the definition in [src/arch/aarch64/inc/hf/arch/types.h] 
 #define PAGE_LEVEL_BITS 9 
@@ -119,19 +122,19 @@ Definition HF_PRIMARY_VM_ID := HF_VM_ID_OFFSET + HF_PRIMARY_VM_INDEX.
 ...
 *)
 
-Definition PAGE_LEVEL_BITS := 9%nat.
-Definition PAGE_BITS := 12%nat.
+Definition PAGE_LEVEL_BITS := 9%N.
+Definition PAGE_BITS := 12%N.
 
 (* typedef uint64_t pte_t; *)
 
-Definition sizeof_pte_t := 8%nat.
+Definition sizeof_pte_t := 8%N.
 
 (* From the definition in [inc/hf/mm.h]
 #define PAGE_SIZE (1 << PAGE_BITS)
 ...
 *)
 Definition MM_FLAGE_STAGE1 := 4.
-Definition PAGE_SIZE := shiftl 1 PAGE_BITS.
+Definition PAGE_SIZE := N.shiftl 1 PAGE_BITS.
 
 (*
 /* The following are arch-independent page mapping modes. */
@@ -140,16 +143,16 @@ Definition PAGE_SIZE := shiftl 1 PAGE_BITS.
 #define MM_MODE_X UINT32_C(0x0004) /* execute */
 #define MM_MODE_D UINT32_C(0x0008) /* device */
  *)
-Definition MM_MODE_R := 1%nat.
-Definition MM_MODE_W := 2%nat. 
-Definition MM_MODE_X := 4%nat.
-Definition MM_MODE_D := 8%nat.
+Definition MM_MODE_R := 1%N.
+Definition MM_MODE_W := 2%N. 
+Definition MM_MODE_X := 4%N.
+Definition MM_MODE_D := 8%N.
 
 (*
 #define MM_PTE_PER_PAGE (PAGE_SIZE / sizeof(pte_t))
 *)
 
-Definition MM_PTE_PER_PAGE := PAGE_SIZE / 8.
+Definition MM_PTE_PER_PAGE := (PAGE_SIZE / 8)%N.
 
 (* From the definition in [inc/hf/mm.h]
 #define MM_MODE_INVALID UINT32_C(0x0010)
@@ -164,16 +167,17 @@ Definition MM_PTE_PER_PAGE := PAGE_SIZE / 8.
 
 *)
 
+(* JIEUNG: FIXED -- coercion is not working very well in here. We need to fix that *)
 Definition MM_MODE_UNOWNED := UINT32_C 16.
 Definition MM_MODE_INVALID := UINT32_C 32.
 Definition MM_MODE_SHARED := UINT32_C 64.
 
-Definition MM_MODE_UNMAPPED_MASK := 48.
+Definition MM_MODE_UNMAPPED_MASK := 48%N.
 
 
-Definition MM_FLAG_COMMIT := 1.
-Definition MM_FLAG_UNMAP := 2.
-Definition MM_FLAG_STAGE1 := 4.
+Definition MM_FLAG_COMMIT := 1%N.
+Definition MM_FLAG_UNMAP := 2%N.
+Definition MM_FLAG_STAGE1 := 4%N.
 
 (* I manually calculate the result. I may need some way? *)
 
