@@ -107,6 +107,9 @@ Module MMARCH.
   Definition ptable := "ptable".
   (* JIEUNG: TODO: define ptable as a big chunk here *)
 
+  
+  
+  
 End MMARCH.
 
   
@@ -267,6 +270,52 @@ Module MMTEST1.
       "SIGNAL" #= "SIGNAL" + 1 #; 
       Skip).
 
+
+    (*
+static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
+{
+        struct mm_page_table *table;
+        uint64_t i;
+
+        if (!arch_mm_pte_is_table(pte, level)) {
+                return;
+        }
+
+        /* Recursively free any subtables. */
+        table = mm_page_table_from_pa(arch_mm_table_from_pte(pte, level));
+        for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+                mm_free_page_pte(table->entries[i], level - 1, ppool);
+        }
+
+        /* Free the table itself. */
+        mpool_free(ppool, table);
+}
+     *)
+
+    
+    (* JIEUNG: If it is easy, I hope to add different binary operators, such as LT *)
+    Definition mm_free_page_pte (pte level ppool : var)
+               (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
+      is_table_v #= (Call "arch_mm_pte_is_table" [CBV pte ; CBV level]) #;
+                 #if (Not is_table_v)
+                  then
+                    Skip
+                  else
+                    arch_mm_v #= (Call "arch_mm_table_from_pte" [CBV pte; CBV level]) #;
+                              table #= (Call "mm_page_table_from_pa" [CBV arch_mm_v]) #;
+                              i #= 0 #;
+                              #while (i <= (MM_PTE_PER_PAGE - 1))
+                              do (
+                                entry_loc #= (table #@ 0) #;
+                                          entry_i #= (entry_loc #@ i) #;
+                                          l_arg #= (level - 1) #; 
+                                          (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ;
+                                                                      CBV ppool]) #;
+                                          i #= (i + 1)
+                              ).
+
+
+    
     Definition mm_alloc_page_tablesF : function.
       mk_function_tac mm_alloc_page_tables ["count" ; "ppool"] ["res"].
     Defined.
@@ -293,6 +342,9 @@ Module MMTEST1.
     Definition isem: itree Event unit :=
       eval_multimodule_multicore
         modsems [ "main" ; "alloc1F" ; "alloc2F" ].
+
+
+
     
 End MMTEST1.
   
