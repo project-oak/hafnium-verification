@@ -812,6 +812,8 @@ Section Denote.
         (* | _ => triggerNB "expr-subpointer2" *)
         (* end *)
     | GetLen e => e <- denote_expr e ;;
+                   (* JIEUNG: to avoid overflow, we need to avoid any [nat] representation. 
+                      So, we may need to change the following representation [length] in the below *) 
                     match e with
                     | Vptr _ cts => Ret (N.of_nat (length cts): val)
                     | _ => triggerNB "expr-getlen"

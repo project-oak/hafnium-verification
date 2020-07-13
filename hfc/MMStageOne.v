@@ -125,9 +125,6 @@ Module MMARCH.
    }
    *)
 
-   
-  
-
 End MMARCH.
 
 Module MMSTAGE1.
@@ -176,6 +173,22 @@ Module MMSTAGE1.
   }
   *)
 
+
+  (* JIEUNG: we may be able to remove follownig conditions *)
+  Definition mm_free_page_pte (pte level ppool : var) (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
+                  arch_mm_v #= (Call "arch_mm_table_from_pte" [CBV pte; CBV level]) #;
+                            table #= (Call "mm_page_table_from_pa" [CBV arch_mm_v]) #;
+                            i #= 0 #;
+                            #while (i <= (MM_PTE_PER_PAGE - 1))
+                            do (
+                              entry_loc #= (table #@ 0) #;
+                                        entry_i #= (entry_loc #@ i) #;
+                                        l_arg #= (level - 1) #; 
+                                        (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ; CBV ppool]) #;
+                                        i #= (i + 1)
+                            ).  
+
+  
   Definition mm_free_page_pte (pte level ppool : var) (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
     is_table_v #= (Call "arch_mm_pte_is_table" [CBV pte ; CBV level]) #;
                #if (Not is_table_v)
@@ -229,12 +242,7 @@ Module MMSTAGE1.
                              j #= (j + 1)                        
                     ) #;
                  i #= (i + 1) 
-              ).
-  
-  
-
-
-  
+              ).  
 
   (* JIEUNG: I will work on the following things *)
   (*

@@ -89,7 +89,11 @@ Section INSERT_YIELD_DEFINITION.
 End INSERT_YIELD_DEFINITION.
 
 Section PTR_INITIALIZATIONS.
-  
+
+
+  (* JIEUNG: to avoid overflow, we need to avoid any [nat] related recursion.
+     We can add a new (special) case in our language to handle this initializations *)
+   
   (* JIEUNG: two kinds of definitions *) 
   Definition big_mem_flat (paddr: N) (st_size: nat) (size: nat) : val :=
     Vptr (Some paddr) (repeat (Vnat 0) (st_size * size)).
