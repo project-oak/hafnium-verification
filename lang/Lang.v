@@ -80,9 +80,14 @@ Class BitOps :=
   }.
 *)
 
+
+Local Open Scope N.
+
+
+
 (* assuming 64 bits - we can easily change this definition *)
 Module Type WORDSIZE.
-  Parameter wordsize: nat.
+  Parameter wordsize: .
   Axiom wordsize_not_zero: wordsize <> 0%nat.
 End WORDSIZE.
 
@@ -634,7 +639,7 @@ Section Denote.
                  end
     | BNot a => v <- denote_expr a ;;
                  match v with
-                 | Vnat v => Ret (Vnat (modulo (lnot v) max_unsigned))
+                 | Vnat v => Ret (Vnat (lnot v))
                  | _ => triggerNB "expr-Not"
                  end
     | ShiftL a b => l <- denote_expr a ;; r <- denote_expr b ;;

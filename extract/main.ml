@@ -332,6 +332,9 @@ let main =
   run (MMStageOne.MMTEST1.isem) ;
 
   print_endline "-----------------------------------------------------------" ;
+  run (eval_whole_program MMStageOne.MMTESTAUX.program) ;
+
+  print_endline "-----------------------------------------------------------" ;
   run (eval_whole_program MMHighStageOne.HighSpecDummyTest.program) ;
 
   ()

@@ -107,10 +107,13 @@ Section AbsData.
   (* page table *)
 
   Inductive PERM_TY := | ABSENT | VALID.
+  Inductive OWN_TY := | OWNED | UNOWNED.
+  Inductive SHARED_TY := | EXCLUSIVE | SHARED.
 
-  Inductive PTE_TY :=
+  
+  Inductive PTE_TY := 
   | PTE (owner: option nat) (paddr : nat) (level : nat) (vaddr: option nat) (perm : PERM_TY).
-
+  
   Record pt_entry: Type := mkPTE {value: list PTE_TY}.
 
   Definition pt_manager : Type := ident -> option pt_entry.
@@ -215,6 +218,9 @@ Module HighSpecDummyTest.
   
 End HighSpecDummyTest.
 
+
+
+(*
 Module MPOOLMMHIGHTest.
 
   Let mpool_init_aux (vs: list val): (val * list val) :=
@@ -324,3 +330,4 @@ Module MPOOLMMHIGHTest.
   .
 
 End MPOOLMMHIGHTest.
+*)

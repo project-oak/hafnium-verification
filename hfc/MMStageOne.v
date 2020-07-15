@@ -112,6 +112,113 @@ End MMARCH.
   
 
 Module MMSTAGE1.
+
+  (***** SOME auxiliary definitions ******) 
+  (*
+   static struct mm_page_table *mm_page_table_from_pa(paddr_t pa)
+   {
+        return ptr_from_va(va_from_pa(pa));
+   }
+   *)
+
+  (* TODO: ptr_from_va has to be defined *)
+  (*
+  Definition mm_page_table_from_pa (pa : var) (tmp res : var): stmt :=
+    tmp #= (Call "va_from_pa" [CBV pa]) #;
+        res #= (Call "ptr_from_va" [CBV tmp]) #;
+        Return res.
+   *)
+
+  (*
+  static paddr_t mm_pa_start_of_next_block(paddr_t pa, size_t block_size)
+  {
+        return pa_init((pa_addr(pa) + block_size) & ~(block_size - 1));
+  }
+  *)
+
+  (* TODO: pa_addr and pa_init has to be defined *)
+  (*
+  Definition mm_pa_start_of_next_block (pa block_size : var) (pa_addr_res pa_init_arg pa_init_res res: var): stmt :=
+    pa_addr_res #= (Call "pa_addr" [CBV pa]) #;
+                pa_init_arg #= (pa_addr_res + block_size) #;
+                pa_init_res #= (Call "pa_init" [CBV pa_init_arg]) #;
+                res #= And pa_init_res (Not (block_size - 1)) #;
+                Return res.
+  *)
+  
+  (***** SOME auxiliary definitions ******) 
+
+  (*
+    static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr)  
+    {
+        return addr & ~((ptable_addr_t)(PAGE_SIZE - 1));
+    }
+   *)
+  
+  Definition mm_round_down_to_page (addr: var) : stmt :=
+    Return (And addr (Not (PAGE_SIZE - 1))).
+
+  (*  
+  static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
+  {
+        return mm_round_down_to_page(addr + PAGE_SIZE - 1);
+  }
+   *)
+  
+  Definition mm_round_up_to_page (addr: var) : stmt :=
+    Return (Call "mm_round_down_to_page" [CBV (addr + (PAGE_SIZE - 1))]).
+
+  (*
+    static size_t mm_entry_size(uint8_t level)
+    {
+        return UINT64_C(1) << (PAGE_BITS + level * PAGE_LEVEL_BITS);
+    }
+   *)
+
+  (* JIEUNG: We may be able to ignore UINT64_C *)
+  Definition mm_entry_size (level: var) :=
+    Return (ShiftL (UINT64_C 1) (PAGE_BITS + (level * PAGE_LEVEL_BITS))).
+
+  (*
+  static ptable_addr_t mm_start_of_next_block(ptable_addr_t addr,
+                                              size_t block_size)
+  {
+        return (addr + block_size) & ~(block_size - 1);
+  }
+   *)
+
+  Definition mm_start_of_next_block (addr block_size : var): stmt :=
+    Return (And (addr + block_size) (Not (PAGE_SIZE - 1))).
+
+  
+
+  (*
+  static ptable_addr_t mm_level_end(ptable_addr_t addr, uint8_t level)
+  {
+        size_t offset = PAGE_BITS + (level + 1) * PAGE_LEVEL_BITS;
+
+        return ((addr >> offset) + 1) << offset;
+  }
+   *)
+
+  (* JIEUNG: I used some nested operations, but I think we can divide that into multiple statements in our auto-generation *)
+  Definition mm_level_end (addr level : var) (offset: var): stmt :=
+    offset #= (PAGE_BITS + ((level + 1) * PAGE_LEVEL_BITS)) #;
+           Return (ShiftL ((ShiftR addr offset) + 1) offset).
+
+  (*
+static size_t mm_index(ptable_addr_t addr, uint8_t level)
+{
+        ptable_addr_t v = addr >> (PAGE_BITS + level * PAGE_LEVEL_BITS);
+
+        return v & ((UINT64_C(1) << PAGE_LEVEL_BITS) - 1);
+}
+   *)
+
+  Definition mm_index (addr level: var) (v  : var) : stmt :=
+    v #= ShiftR addr (PAGE_BITS + (level * PAGE_LEVEL_BITS)) #;
+      Return (And v ((ShiftL (UINT64_C(1)) PAGE_LEVEL_BITS) - 1)).
+
   
   (*
   static struct mm_page_table *mm_alloc_page_tables(size_t count,
@@ -168,7 +275,7 @@ Module MMSTAGE1.
   }
    *)
 
-
+  
   (* JIEUNG: TODO: ignore several parts *)
 
   (* 
@@ -199,6 +306,72 @@ Module MMSTAGE1.
 End MMSTAGE1.
 
 (* Print MM_PTE_PER_PAGE. => 512 *)
+
+
+
+Module MMTESTAUX.
+
+  (* Test auxiliary functions in mm module *)
+  Include MMSTAGE1.
+
+  Definition mm_round_down_to_pageF : function.
+    mk_function_tac mm_round_down_to_page ["addr"] ([]: list var).
+  Defined.
+  
+  Definition mm_round_up_to_pageF : function.
+    mk_function_tac mm_round_up_to_page ["addr"] ([]: list var).
+  Defined.
+
+  Definition mm_entry_sizeF : function.
+    mk_function_tac mm_entry_size ["level"] ([]: list var).
+  Defined.
+
+  Definition mm_start_of_next_blockF : function.
+    mk_function_tac mm_start_of_next_block ["addr"; "block_size"] ([]: list var).
+  Defined.
+
+  Definition mm_level_endF : function.
+    mk_function_tac mm_level_end ["addr"; "level"] ["offset"].
+  Defined.
+
+  Definition mm_indexF : function.
+    mk_function_tac mm_index ["addr"; "level"] ["v"].
+  Defined.
+
+  Import Int12.
+  Print max_unsigned.
+  Print modulo.
+  Eval compute in (Nat.lxor 1 max_unsigned).
+  
+  Definition main (res: var): stmt := 
+    (Put "before Start Test: " Vnull) #;
+       (Put "test res " (Vnat 1000)) #;
+       (Put "test res" (PAGE_SIZE - 1)) #;
+       (Put "test res" (Not 1)) #;
+
+       res #= Call "mm_round_down_to_page" [CBV 4852234] #;
+       (Put "1st res " res) #;
+       res #= Call "mm_index" [CBV 100; CBV 2] #;
+       (Put "2st res " res) #;
+       Skip.
+
+
+  Definition mainF: function.
+    mk_function_tac main ([]: list var) (["res"]: list var).
+  Defined.
+  
+  Definition program: program :=
+    [
+      ("main", mainF) ;
+    ("mm_round_down_to_page", mm_round_down_to_pageF) ;
+    ("mm_round_up_to_page", mm_round_up_to_pageF) ;
+    ("mm_entry_size", mm_entry_sizeF) ;
+    ("mm_start_of_next_block", mm_start_of_next_blockF) ;
+    ("mm_level_end", mm_level_endF) ;
+    ("mm_index", mm_indexF) 
+    ].
+
+End MMTESTAUX.
 
 
 Module MMTEST1.
