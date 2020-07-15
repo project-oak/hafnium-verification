@@ -935,7 +935,6 @@ End PrintAny.
 
 Module PrintTest.
 
-
 Require Import BinaryString.
 
 Include Raw.

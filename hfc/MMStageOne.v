@@ -125,11 +125,14 @@ Module MMARCH.
    }
    *)
 
+
+  Definition arch_mm_table_from_pte := Return Vtrue.
+
 End MMARCH.
 
 Module MMSTAGE1.
 
-  (***** SOME auxiliary definitions ******) 
+  (***** simple functions in the module that rely on arch mm ******) 
   (*
    static struct mm_page_table *mm_page_table_from_pa(paddr_t pa)
    {
@@ -137,7 +140,7 @@ Module MMSTAGE1.
    }
    *)
 
-  (* TODO: ptr_from_va has to be defined *)
+  (* JIEUNG: TODO: ptr_from_va has to be defined *)
   (*
   Definition mm_page_table_from_pa (pa : var) (tmp res : var): stmt :=
     tmp #= (Call "va_from_pa" [CBV pa]) #;
@@ -152,7 +155,7 @@ Module MMSTAGE1.
   }
   *)
 
-  (* TODO: pa_addr and pa_init has to be defined *)
+  (* JIEUNG: TODO: pa_addr and pa_init has to be defined *)
   (*
   Definition mm_pa_start_of_next_block (pa block_size : var) (pa_addr_res pa_init_arg pa_init_res res: var): stmt :=
     pa_addr_res #= (Call "pa_addr" [CBV pa]) #;
@@ -162,7 +165,7 @@ Module MMSTAGE1.
                 Return res.
   *)
   
-  (***** SOME auxiliary definitions ******) 
+  (***** simple functions in the module that do not rely on arch mm ******) 
 
   (*
     static ptable_addr_t mm_round_down_to_page(ptable_addr_t addr)  
@@ -172,7 +175,7 @@ Module MMSTAGE1.
    *)
   
   Definition mm_round_down_to_page (addr: var) : stmt :=
-    Return (And addr (Not (PAGE_SIZE - 1))).
+    Return (addr #& (#~ (PAGE_SIZE - 1))).
 
   (*  
   static ptable_addr_t mm_round_up_to_page(ptable_addr_t addr)
@@ -193,7 +196,7 @@ Module MMSTAGE1.
 
   (* JIEUNG: We may be able to ignore UINT64_C *)
   Definition mm_entry_size (level: var) :=
-    Return (ShiftL (UINT64_C 1) (PAGE_BITS + (level * PAGE_LEVEL_BITS))).
+    Return ((UINT64_C 1) #<< (PAGE_BITS + (level * PAGE_LEVEL_BITS))).
 
   (*
   static ptable_addr_t mm_start_of_next_block(ptable_addr_t addr,
@@ -204,7 +207,7 @@ Module MMSTAGE1.
    *)
 
   Definition mm_start_of_next_block (addr block_size : var): stmt :=
-    Return (And (addr + block_size) (Not (PAGE_SIZE - 1))).
+    Return ((addr + block_size) #& (#~ (PAGE_SIZE - 1))).
 
   
 
@@ -220,7 +223,7 @@ Module MMSTAGE1.
   (* JIEUNG: I used some nested operations, but I think we can divide that into multiple statements in our auto-generation *)
   Definition mm_level_end (addr level : var) (offset: var): stmt :=
     offset #= (PAGE_BITS + ((level + 1) * PAGE_LEVEL_BITS)) #;
-           Return (ShiftL ((ShiftR addr offset) + 1) offset).
+           Return (((addr #>> offset) + 1) #<< offset).
 
   (*
 static size_t mm_index(ptable_addr_t addr, uint8_t level)
@@ -232,8 +235,8 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
    *)
 
   Definition mm_index (addr level: var) (v  : var) : stmt :=
-    v #= ShiftR addr (PAGE_BITS + (level * PAGE_LEVEL_BITS)) #;
-      Return (And v ((ShiftL (UINT64_C(1)) PAGE_LEVEL_BITS) - 1)).
+    v #= addr #>> (PAGE_BITS + (level * PAGE_LEVEL_BITS)) #;
+      Return (v #& ((UINT64_C(1) #<< PAGE_LEVEL_BITS) - 1)).
 
   
   (*
@@ -257,7 +260,39 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
      else
        Debug "[alloc_page] calling mpool_alloc_contiguous" Vnull #;
        res #= (Call "alloc_contiguous" [CBR ppool ; CBV count]) #;
-           Return res.
+       Return res.
+
+
+  (*
+  static uint8_t mm_max_level(int flags)
+  {
+        return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_max_level()
+                                        : arch_mm_stage2_max_level();
+  }
+   *)
+
+  
+  Definition mm_max_level (flags: var) : stmt :=
+    (#if (flags #& MM_FLAGE_STAGE1)
+      then
+        Return (Call "arch_mm_stage1_max_level" [])
+      else
+        Return (Call "arch_mm_stage2_max_level" [])).
+
+  (*
+  static uint8_t mm_root_table_count(int flags)
+  {
+        return (flags & MM_FLAG_STAGE1) ? arch_mm_stage1_root_table_count()
+                                        : arch_mm_stage2_root_table_count();
+  }
+   *)
+
+  Definition mm_root_table_count (flags: var) : stmt :=
+    (#if (flags #& MM_FLAGE_STAGE1)
+      then
+        Return (Call "arch_mm_stage1_root_table_count" [])
+      else
+        Return (Call "arch_mm_stage2_root_table_count" [])).
 
   (*
   static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
@@ -278,24 +313,24 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
         /* Free the table itself. */
         mpool_free(ppool, table);
   }
-  *)
-
+   *)
+    
 
   (* JIEUNG: we may be able to remove follownig conditions *)
   Definition mm_free_page_pte (pte level ppool : var) (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
-                  arch_mm_v #= (Call "arch_mm_table_from_pte" [CBV pte; CBV level]) #;
-                            table #= (Call "mm_page_table_from_pa" [CBV arch_mm_v]) #;
-                            i #= 0 #;
-                            #while (i <= (MM_PTE_PER_PAGE - 1))
-                            do (
-                              entry_loc #= (table #@ 0) #;
-                                        entry_i #= (entry_loc #@ i) #;
-                                        l_arg #= (level - 1) #; 
-                                        (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ; CBV ppool]) #;
-                                        i #= (i + 1)
-                            ).  
+    arch_mm_v #= (Call "arch_mm_table_from_pte" [CBV pte; CBV level]) #;
+              table #= (Call "mm_page_table_from_pa" [CBV arch_mm_v]) #;
+              i #= 0 #;
+              #while (i <= (MM_PTE_PER_PAGE - 1))
+              do (
+                  entry_loc #= (table #@ 0) #;
+                            entry_i #= (entry_loc #@ i) #;
+                            l_arg #= (level - 1) #; 
+                            (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ; CBV ppool]) #;
+                            i #= (i + 1)
+                ).
 
-  
+  (*
   Definition mm_free_page_pte (pte level ppool : var) (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
     is_table_v #= (Call "arch_mm_pte_is_table" [CBV pte ; CBV level]) #;
                #if (Not is_table_v)
@@ -313,7 +348,8 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
                                         (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ; CBV ppool]) #;
                                         i #= (i + 1)
                             ).  
-  
+   *)
+                 
   (*
   static void mm_ptable_fini(struct mm_ptable *t, int flags, struct mpool *ppool)
   {
@@ -447,23 +483,24 @@ Module MMTESTAUX.
     mk_function_tac mm_index ["addr"; "level"] ["v"].
   Defined.
 
-  Import Int12.
-  Print max_unsigned.
-  Print modulo.
-  Eval compute in (Nat.lxor 1 max_unsigned).
   
   Definition main (res: var): stmt := 
     (Put "before Start Test: " Vnull) #;
-       (Put "test res " (Vnat 1000)) #;
-       (Put "test res" (PAGE_SIZE - 1)) #;
-       (Put "test res" (Not 1)) #;
-
+       (Put "test Vnat " (Vnat 1000)) #;
+       (Put "test Page Size " (PAGE_SIZE)) #;
+       (Put "test Page Size - 1 " (PAGE_SIZE - 1)) #;
+       (Put "test ShiftL " (ShiftL 1 12)) #;
+       (Put "test ShiftR " (ShiftR 4096 10)) #;
+       (Put "test BAnd " (BAnd 3 2)) #;
+       (Put "test BOr " (BOr 1 2)) #;
+       (Put "test BNot " (BNot 10)) #;
+       (Put "test Not " (BNot (PAGE_SIZE - 1))) #;
+       
        res #= Call "mm_round_down_to_page" [CBV 4852234] #;
        (Put "1st res " res) #;
-       res #= Call "mm_index" [CBV 100; CBV 2] #;
+       res #= Call "mm_index" [CBV 111111111111111111; CBV 2] #;
        (Put "2st res " res) #;
        Skip.
-
 
   Definition mainF: function.
     mk_function_tac main ([]: list var) (["res"]: list var).
@@ -479,9 +516,8 @@ Module MMTESTAUX.
     ("mm_level_end", mm_level_endF) ;
     ("mm_index", mm_indexF) 
     ].
-
+  
 End MMTESTAUX.
-
 
 Module MMTEST1.
 
@@ -574,28 +610,6 @@ static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
 
     
     (* JIEUNG: If it is easy, I hope to add different binary operators, such as LT *)
-    Definition mm_free_page_pte (pte level ppool : var)
-               (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
-      is_table_v #= (Call "arch_mm_pte_is_table" [CBV pte ; CBV level]) #;
-                 #if (Not is_table_v)
-                  then
-                    Skip
-                  else
-                    arch_mm_v #= (Call "arch_mm_table_from_pte" [CBV pte; CBV level]) #;
-                              table #= (Call "mm_page_table_from_pa" [CBV arch_mm_v]) #;
-                              i #= 0 #;
-                              #while (i <= (MM_PTE_PER_PAGE - 1))
-                              do (
-                                entry_loc #= (table #@ 0) #;
-                                          entry_i #= (entry_loc #@ i) #;
-                                          l_arg #= (level - 1) #; 
-                                          (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ;
-                                                                      CBV ppool]) #;
-                                          i #= (i + 1)
-                              ).
-
-
-    
     Definition mm_alloc_page_tablesF : function.
       mk_function_tac mm_alloc_page_tables ["count" ; "ppool"] ["res"].
     Defined.
@@ -623,9 +637,6 @@ static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
       eval_multimodule_multicore
         modsems [ "main" ; "alloc1F" ; "alloc2F" ].
 
-
-
-    
 End MMTEST1.
   
 (*
