@@ -26,7 +26,10 @@ From ExtLib Require Import
      Data.String
      Structures.Monad
      Structures.Traversable
-     Data.List.
+     Data.List
+     Data.Option
+     Data.Monads.OptionMonad.
+
 
 From ITree Require Import
      ITree
@@ -52,7 +55,6 @@ Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
 
-
 Set Implicit Arguments.
 
 
@@ -62,14 +64,17 @@ From ExtLib Require Import
      Structures.Maps
      Data.Map.FMapAList.
 
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
 
-
-
-
+Local Open Scope N_scope.
 
 Module LOCK.
 
-  Definition ident := nat.
+  Definition ident := N.
 
   Inductive LockEvent: Type -> Type :=
   | TryLockE (id: ident): LockEvent (unit + val) (* inl: is already running, inr: not *)
@@ -155,7 +160,7 @@ Module LOCK.
        end)
   .
 
-  Definition owned_heap := (nat * (alist ident val))%type.
+  Definition owned_heap := (N * (alist ident val))%type.
 
   (* Definition extract_to_print (al: alist ident val): unit := tt. *)
   
@@ -165,15 +170,24 @@ Module LOCK.
   (* "fun printer content -> printer content ; content" *)
   "fun printer content -> content"
   .
+
   Variable alist_printer: alist ident val -> unit.
   (* Variable dummy_client: unit -> unit. *)
   (* Extract Constant dummy_client => "fun x -> x". *)
   Extract Constant alist_printer =>
   "
   let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
-  fun al -> print_string ""<LOCKSTATE> "" ; print_int (nat_to_int (length al)) ; print_string "" "" ; (List.iter (fun kv -> print_int (nat_to_int (fst kv)) ; print_string "" "") al) ; print_endline "" "" "
+  let cl2s = fun cl -> String.concat """" (List.map (String.make 1) cl) in
+  fun al -> print_string ""<LOCKSTATE> "" ; print_int (nat_to_int (length al)) ; print_string "" "" ; (List.iter (fun kv -> print_string (cl2s (BinaryString.of_N (fst kv))) ; print_string "" "") al) ; print_endline "" "" "
   .
 
+  (*
+  Extract Constant alist_printer =>
+  "
+  let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
+  fun al -> print_string ""<LOCKSTATE> "" ; print_int (nat_to_int (length al)) ; print_string "" "" ; (List.iter (fun kv -> print_int (nat_to_int (fst kv)) ; print_string "" "") al) ; print_endline "" "" "
+  .
+  *)
   (************* TODO: SEPARATE COAMLCOQ.ML ************************)
   (************* TODO: SEPARATE COAMLCOQ.ML ************************)
   (************* TODO: SEPARATE COAMLCOQ.ML ************************)
@@ -197,15 +211,31 @@ Module LOCK.
   "
   .
 
-  Goal (Maps.lookup 1 (Maps.add 1 10 Maps.empty)) = Some 10. ss. Qed.
-  Goal (Maps.lookup 2 (Maps.add 1 10 Maps.empty)) = Some 10. ss. Qed.
-  Goal (Maps.lookup 2 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _)))) = Some 10. ss. Qed.
-  Goal (Maps.lookup (Map:=Map_alist Nat.RelDec_eq nat)
-                    2 (Maps.add (Map:=Map_alist Nat.RelDec_eq nat) 1 10
-                                (Maps.empty
-                (Map:=Map_alist Nat.RelDec_eq nat)))) = Some 10. ss. Abort.
+
+
+  (*
+  Print Nat.RelDec_eq.
+  Print Nat.eqb.
+  Print N.eqb.
+  Print Nat.RelDec_eq.
   Print Map_alist.
   Print Instances RelDec.
+   *)
+
+  
+  (* JIEUNG: TODO : Do we have pre-defined instance for the following one? *)
+  Global Instance RelDec_eq : RelDec (@eq N) :=
+    { rel_dec := N.eqb }.
+  
+  
+  Goal (Maps.lookup (Map:= Map_alist RelDec_eq N) 1 (Maps.add 1 10 Maps.empty)) = Some 10. ss. Qed.
+  Goal (Maps.lookup (Map:= Map_alist RelDec_eq N) 2 (Maps.add 1 10 Maps.empty)) = None. ss. Qed.
+  Goal (Maps.lookup (Map:= Map_alist RelDec_eq N) 1 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _))))
+  = Some 10. ss. Qed.
+  Goal (Maps.lookup (Map:=Map_alist RelDec_eq N)
+                    2 (Maps.add (Map:=Map_alist RelDec_eq N) 1 10
+                                (Maps.empty
+                (Map:=Map_alist RelDec_eq N)))) = Some 10. ss. Abort.
 
   (* Local Instance MyMap {V}: (Map nat V (alist nat V)) := Map_alist Nat.RelDec_eq V. *)
   (* Goal (Maps.lookup 2 (Maps.add 1 10 (Maps.empty (Map:=Map_alist _ _)))) = Some 10. ss. Abort. *)
@@ -239,7 +269,7 @@ Module LOCK.
       (*   Ret ((S ctr, m'), ctr) *)
       | NewE =>
         let m := debug_print alist_printer m in
-        Ret ((S ctr, m), ctr)
+        Ret ((ctr + 1, m), ctr)
       end
   .
 
@@ -247,6 +277,7 @@ Module LOCK.
     mk_ModSem
       (fun s => existsb (string_dec s) ["Lock.release" ; "Lock.acquire" ; "Lock.new"])
       (* in_dec Strings.String.string_dec s ["Lock.unlock" ; "Lock.lock" ; "Lock.init"]) *)
+      _
       (0, Maps.empty)
       LockEvent
       handler

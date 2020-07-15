@@ -50,8 +50,19 @@ Require Import Lang.
 Require Import Types.
 
 Import LangNotations.
+
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
+
+Local Open Scope N_scope.
+
 
 Set Implicit Arguments.
 

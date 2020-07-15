@@ -51,6 +51,17 @@ Import LangNotations.
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
+Local Open Scope expr_scope.
+Local Open Scope stmt_scope.
+
+Local Open Scope N_scope.
+
 Set Implicit Arguments.
 
 
@@ -143,7 +154,7 @@ struct cpu cpus[MAX_CPUS] = {
   Definition stack_bottom := 1.
   Definition is_on := 2.
 
-  Definition cpu_struct_size: nat := 3.
+  Definition cpu_struct_size : N := 3.
 
   Definition TRUE := Vnat 1.
   Definition FALSE := Vnat 0.
@@ -156,7 +167,7 @@ struct cpu cpus[MAX_CPUS] = {
       | [cpu_id ; stack_bot ;ison] =>
         match cpu_id, stack_bot, ison with
         | Vnat cpu_id', Vptr _ stack_bot', Vnat ison' =>
-          if orb (Nat.eq_dec ison' 0) (Nat.eq_dec ison' 1) then true 
+          if orb (N.eq_dec ison' 0) (N.eq_dec ison' 1) then true 
           else false
         | _, _, _ => false
         end

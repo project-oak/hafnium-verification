@@ -52,14 +52,17 @@ About excluded_middle_informative.
 Require Import Lang Any.
 Import LangNotations.
 
+
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
+Local Open Scope N_scope.
+
 Set Implicit Arguments.
-
-
-
-
-
-
-
 
 
 
@@ -352,7 +355,7 @@ End DoubleReturn.
 
 Module MultiCore.
 
-  Definition main (n: nat): stmt :=
+  Definition main (n: N): stmt :=
     Put "" (n + 1) #;
     Put "" (n + 2) #;
     Yield #;
@@ -364,7 +367,7 @@ Module MultiCore.
     Skip
   .
 
-  Definition main_function (n: nat): function.
+  Definition main_function (n: N): function.
     mk_function_tac (main n) ([]: list var) ([]: list var). Defined.
 
   Definition program n: program := [("main", main_function n) ].
@@ -560,8 +563,8 @@ End MultiModuleGenv.
 Module MultiModuleLocalState.
 
   Inductive memoizeE: Type -> Type :=
-  | GetM (k: nat): memoizeE (option nat)
-  | SetM (k: nat) (v: nat): memoizeE unit
+  | GetM (k: N): memoizeE (option N)
+  | SetM (k: N) (v: N): memoizeE unit
   .
   Definition f_sem: CallExternalE ~> itree (CallExternalE +' memoizeE +' GlobalE +' Event) :=
     (fun _ '(CallExternal func_name args) =>
@@ -571,12 +574,12 @@ Module MultiModuleLocalState.
            match v with
            | Some v => triggerSyscall "p" "HIT" [Vnull] ;; Ret (Vnat v, [])
            | None => triggerSyscall "p" "MISS" [Vnull] ;;
-             match k with
-             | O => Ret (Vnat O, [])
-             | _ => '(prev, _) <- trigger (CallExternal "g" [Vnat (Nat.pred k)]);;
+             match (k =? 0) with
+             | true => Ret (Vnat 0, [])
+             | _ => '(prev, _) <- trigger (CallExternal "g" [Vnat (N.pred k)]);;
                                 match prev with
                                 | Vnat prev =>
-                                  let v := (prev + k)%nat in
+                                  let v := (prev + k)%N in
                                   trigger (SetM k v) ;; Ret (Vnat v, [])
                                 | _ => triggerUB "memoizing_f"
                                 end
@@ -586,10 +589,10 @@ Module MultiModuleLocalState.
        end
     )
   .
-  Definition f_owned_heap: Type := nat -> option nat.
-  Definition update (oh: f_owned_heap) (k v: nat): f_owned_heap :=
+  Definition f_owned_heap: Type := N -> option N.
+  Definition update (oh: f_owned_heap) (k v: N): f_owned_heap :=
     fun x =>
-      if Nat.eq_dec x k
+      if N.eq_dec x k
       then Some v
       else oh x
   .
@@ -603,7 +606,8 @@ Module MultiModuleLocalState.
   Definition f_ModSem: ModSem :=
     mk_ModSem
       (fun s => string_dec s "f")
-      (fun (_: nat) => None: option nat)
+      _
+      (fun (_: N) => None: option N)
       memoizeE
       f_handler
       f_sem
@@ -689,6 +693,7 @@ Module MultiModuleLocalStateSimple.
   Definition f_ModSem: ModSem :=
     mk_ModSem
       (fun s => string_dec s "f")
+      _
       Vnull
       memoizeE
       f_handler
@@ -867,6 +872,7 @@ Module MultiModuleMultiCoreLocalState.
   Definition f_ModSem: ModSem :=
     mk_ModSem
       (fun s => string_dec s "f")
+      _
       Vnull
       memoizeE
       f_handler
@@ -904,3 +910,36 @@ Module MultiModuleMultiCoreLocalState.
 End MultiModuleMultiCoreLocalState.
 
 
+Module PrintAny.
+ 
+  Inductive my_type: Type := RED | BLUE.
+  Instance my_type_Showable: Showable my_type := { show := fun x => match x with | RED => "RED" | BLUE => "BLUE" end }.
+ 
+    Definition main: stmt :=
+      Put "Red is: " (Vabs (upcast RED)) #;
+      Put "Blue is: " (Vabs (upcast BLUE)) #;
+      Put "Test(PrintAny) passed" Vnull #;
+      Skip
+    .
+    Definition main_function: function. mk_function_tac main ([]: list var) ([]: list var). Defined.
+    Definition program: program := [("main", main_function)].
+ 
+  Definition modsems: list ModSem :=
+    (List.map program_to_ModSem [program])
+  .
+ 
+  Definition isem: itree Event unit := eval_multimodule modsems.
+ 
+End PrintAny.
+
+
+Module PrintTest.
+
+
+Require Import BinaryString.
+
+Include Raw.
+Definition string_gen (n: N): string :=
+  of_N n.
+
+End PrintTest.

@@ -23,6 +23,7 @@ From Coq Require Import
      
 From ExtLib Require Import
      Data.String
+     Data.Option     
      Structures.Monad
      Structures.Traversable
      Structures.Foldable
@@ -49,12 +50,17 @@ Require Import sflib.
 Require Import Coqlib.
 
 Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
 
 Require Import ClassicalDescription EquivDec.
 About excluded_middle_informative.
 
-Set Implicit Arguments.
+Local Open Scope N_scope.
 
+Set Implicit Arguments.
 (* Set Typeclasess Depth 4. *)
 (* Typeclasses eauto := debug 4. *)
 
@@ -78,7 +84,8 @@ Class BitOps :=
   BSHIFTL : nat -> nat -> nat;
   BSHIFTR : nat -> nat -> nat
   }.
-*)
+   *)
+
 
 
 Local Open Scope N.
@@ -87,16 +94,16 @@ Local Open Scope N.
 
 (* assuming 64 bits - we can easily change this definition *)
 Module Type WORDSIZE.
-  Parameter wordsize: .
-  Axiom wordsize_not_zero: wordsize <> 0%nat.
+  Parameter wordsize: N.
+  Axiom wordsize_not_zero: wordsize <> 0%N.
 End WORDSIZE.
 
 Module Make(WS: WORDSIZE).
 
   (* JIEUNG: I am only considering natural number *) 
-  Definition wordsize: nat := WS.wordsize.
-  Definition modulus : nat := pow 2 wordsize.
-  Definition max_unsigned : nat := modulus - 1.
+  Definition wordsize: N := WS.wordsize.
+  Definition modulus : N := N.pow 2 wordsize.
+  Definition max_unsigned : N := modulus - 1.
   
 End Make.
 
@@ -117,9 +124,11 @@ Strategy opaque [Wordsize_64.wordsize].
 Import Int64. 
 *)
 
+
+(*
 Module Wordsize_12.
-  Definition wordsize := 12%nat.
-  Remark wordsize_not_zero: wordsize <> 0%nat.
+  Definition wordsize := 12%N.
+  Remark wordsize_not_zero: wordsize <> 0%N.
   Proof. unfold wordsize; congruence. Qed.
 End Wordsize_12.
 
@@ -129,8 +138,22 @@ Strategy 0 [Wordsize_12.wordsize].
 Strategy opaque [Wordsize_12.wordsize].
 
 Import Int12. 
+*)
 
-Definition lnot (l : nat) := lxor l max_unsigned.
+Module Wordsize_64.
+  Definition wordsize := 64%N.
+  Remark wordsize_not_zero: wordsize <> 0%N.
+  Proof. unfold wordsize; congruence. Qed.
+End Wordsize_64.
+
+Module Int64 := Make(Wordsize_64).
+
+Strategy 0 [Wordsize_64.wordsize].
+Strategy opaque [Wordsize_64.wordsize].
+
+Import Int64.
+
+Definition llnot (l : N) := N.lxor l max_unsigned.
 
   
 (*
@@ -157,13 +180,64 @@ Definition var : Set := string.
 
 (* JIEUNG: to run some big examples with big numbers with Vnat values, we may need to change that one with using Z type instead of nat type *)
 Polymorphic Inductive val: Type :=
-| Vnat (n: nat)
-| Vptr (paddr: option nat) (contents: list val)
+| Vnat (n: N)
+| Vptr (paddr: option N) (contents: list val)
 (* Is this Vabs for more abstracted data types? Such as gmap? *) 
 | Vabs (a: Any)
 (* | Vundef *)
 (* | Vnodef *)
 .
+
+Variable show_val: val -> string.
+Extract Constant show_val =>
+"
+  let rec nat_of_int n = assert(n >= 0); if(n == 0) then O else S (nat_of_int (pred n)) in
+  let cl2s = fun cl -> String.concat """" (List.map (String.make 1) cl) in
+  let s2cl = fun s -> List.init (String.length s) (String.get s) in
+  let rec string_of_val v =
+  match v with
+  | Vnat n -> cl2s (BinaryString.of_N n) ^ "" ""
+  | Vptr(paddr, cts) ->
+     let paddr = ""("" ^ (match paddr with
+                        | Some paddr -> cl2s (BinaryString.of_N paddr)
+                        | None -> ""N"") ^ "")""
+     in
+     if length cts == nat_of_int 0
+     then paddr ^ "". ""
+     else paddr ^ ""["" ^
+            (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
+  | Vabs(a) -> cl2s (string_of_Any a) in
+  fun x -> s2cl (string_of_val x)
+".
+
+(*
+Extract Constant show_val => "
+  let rec nat_to_int = function | O -> 0 | S n -> succ (nat_to_int n) in
+  let rec nat_of_int n = assert(n >= 0); if(n == 0) then O else S (nat_of_int (pred n)) in
+  let cl2s = fun cl -> String.concat """" (List.map (String.make 1) cl) in
+  let s2cl = fun s -> List.init (String.length s) (String.get s) in
+  let rec string_of_val v =
+  match v with
+  | Vnat n -> (string_of_int (nat_to_int n)) ^ "" ""
+  | Vptr(paddr, cts) ->
+     let paddr = ""("" ^ (match paddr with
+                        | Some paddr -> string_of_int (nat_to_int paddr)
+                        | None -> ""N"") ^ "")""
+     in
+     if length cts == nat_of_int 0
+     then paddr ^ "". ""
+     else paddr ^ ""["" ^
+            (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
+  | Vabs(a) -> cl2s (string_of_Any a) in
+  fun x -> s2cl (string_of_val x)
+".
+*)    
+Instance val_Showable: @Showable val := {
+  show := show_val;
+}
+.
+
+
 
 Check (Vabs (upcast (Vabs (upcast 0)))).
 
@@ -172,9 +246,9 @@ Definition val_dec (v1 v2: val): {v1 = v2} + {v1 <> v2}.
   fix H 1.
   intros.
   decide equality.
-  - apply (Nat.eq_dec n n0).
+  - apply (N.eq_dec n n0).
   - apply (list_eq_dec H contents contents0).
-  - destruct paddr, paddr0; decide equality; try apply Nat.eq_dec.
+  - destruct paddr, paddr0; decide equality; try apply N.eq_dec.
   - eapply Any_dec; eauto.
 Defined.
 
@@ -191,13 +265,13 @@ Definition Vfalse := Vnat 0.
       val corresponds to [true].  *)
 Definition is_true (v : val) : bool :=
   match v with
-  | Vnat n => if (n =? 0)%nat then false else true
+  | Vnat n => if (n =? 0)%N then false else true
   (* YJ: THIS IS TEMPORARY HACKING *)
   (* | Vptr _ (_ :: _) => true (* nonnull pointer *) *)
   (* | Vptr _ _ => false (* null pointer *) *)
   | Vptr paddr _ =>
     match paddr with
-    | Some O => false
+    | Some v => if (v =? 0)%N then false else true
     | _ => true
     end
   | _ => false
@@ -212,8 +286,6 @@ Definition bool_to_val (b: bool): val :=
 .
 
 Coercion bool_to_val: bool >-> val.
-
-
 
 Module PLAYGROUND.
   Inductive my_expr: Type :=
@@ -338,11 +410,11 @@ Module LangNotations.
   Definition Expr_coerce: expr -> stmt := Expr.
   Definition Var_coerce: string -> expr := Var.
   Definition Val_coerce: val -> expr := Val.
-  Definition nat_coerce: nat -> val := Vnat.
+  Definition nat_coerce: N -> val := Vnat.
   Coercion Expr_coerce: expr >-> stmt.
   Coercion Var_coerce: string >-> expr.
   Coercion Val_coerce: val >-> expr.
-  Coercion nat_coerce: nat >-> val.
+  Coercion nat_coerce: N >-> val.
 
   Bind Scope expr_scope with expr.
 
@@ -549,8 +621,6 @@ Section Denote.
     else trigger (SetGvar n v)
   .
 
-          
-  
   Check @mapT.
   Fixpoint denote_expr (e : expr) : itree eff val :=
     match e with
@@ -586,41 +656,37 @@ Section Denote.
     | Neg a => v <- denote_expr a ;; Ret (if is_true v then Vfalse else Vtrue)
     | LE a b => l <- denote_expr a ;; r <- denote_expr b ;;
                   match l, r with
-                  | Vnat l, Vnat r => Ret (if Nat.leb l r then Vtrue else Vfalse)
+                  | Vnat l, Vnat r => Ret (if N.leb l r then Vtrue else Vfalse)
                   | _, _ => triggerNB "expr-LE"
                   end
     | LT a b => l <- denote_expr a ;; r <- denote_expr b ;;
                   match l, r with
-                  | Vnat l, Vnat r => Ret (if Nat.ltb l r then Vtrue else Vfalse)
+                  | Vnat l, Vnat r => Ret (if N.ltb l r then Vtrue else Vfalse)
                   | _, _ => triggerNB "expr-LE"
                   end
 
     | And a b => l <- denote_expr a ;; r <- denote_expr b ;;
                  match l, r with
                  | Vnat l, Vnat r =>
-                   match l, r with
-                   | O, _ => Ret (Vfalse)
-                   | _, O => Ret (Vfalse)
-                   | _, _ => Ret (Vtrue)
+                   match (l =? 0)%N, (r =? 0)%N with
+                   | false, false => Ret (Vtrue)
+                   | _, _ => Ret (Vfalse)
                    end
                  | _, _ => triggerNB "expr-And"
                  end
     | Or a b => l <- denote_expr a ;; r <- denote_expr b ;;
                 match l, r with
                 | Vnat l, Vnat r =>
-                  match l, r with
-                  | O, O => Ret (Vfalse)
+                  match (l =? 0)%N, (r =? 0)%N with
+                  | true, true => Ret (Vfalse)
                   | _, _ => Ret (Vtrue)
-                  end
+                  end                  
                 | _, _ => triggerNB "expr-Or"
                 end
     | Not a => v <- denote_expr a ;;
                  match v with
                  | Vnat v =>
-                   match v with
-                   | O => Ret (Vtrue)
-                   | _ => Ret (Vfalse)
-                   end
+                   if (v =? 0)%N then Ret (Vtrue) else Ret (Vfalse)
                  | _ => triggerNB "expr-Not"
                  end
     (* JIEUNG: In here, we define those following bitwise operations without and bound (except not). 
@@ -629,34 +695,34 @@ Section Denote.
        their validity *)
     | BAnd a b => l <- denote_expr a ;; r <- denote_expr b ;;
                  match l, r with
-                 | Vnat l, Vnat r => Ret (Vnat (modulo (land l r) max_unsigned))
+                 | Vnat l, Vnat r => Ret (Vnat (N.modulo (N.land l r) max_unsigned))
                  | _, _ => triggerNB "expr-And"
                  end  
     | BOr a b => l <- denote_expr a ;; r <- denote_expr b ;;
                  match l, r with
-                 | Vnat l, Vnat r => Ret (Vnat (modulo (lor l r) max_unsigned))
+                 | Vnat l, Vnat r => Ret (Vnat (N.modulo (N.lor l r) max_unsigned))
                  | _, _ => triggerNB "expr-Or"
                  end
     | BNot a => v <- denote_expr a ;;
                  match v with
-                 | Vnat v => Ret (Vnat (lnot v))
+                 | Vnat v => Ret (Vnat (N.modulo (llnot v) max_unsigned))
                  | _ => triggerNB "expr-Not"
                  end
     | ShiftL a b => l <- denote_expr a ;; r <- denote_expr b ;;
                     match l, r with
-                    | Vnat l, Vnat r => Ret (Vnat (modulo (shiftl l r) max_unsigned)) 
+                    | Vnat l, Vnat r => Ret (Vnat (N.modulo (N.shiftl l r) max_unsigned)) 
                     | _, _ => triggerNB "expr-LShift"
                     end
     | ShiftR a b => l <- denote_expr a ;; r <- denote_expr b ;;
                     match l, r with
-                    | Vnat l, Vnat r => Ret (Vnat (modulo (shiftr l r) max_unsigned))
+                    | Vnat l, Vnat r => Ret (Vnat (N.modulo (N.shiftr l r) max_unsigned))
                     | _, _ => triggerNB "expr-RShift"
                     end
 
     | Load x ofs => x <- triggerGetVar x ;; ofs <- denote_expr ofs ;;
                       match x, ofs with
                       | Vptr _ cts, Vnat ofs =>
-                        match nth_error cts ofs with
+                        match nth_error cts (N.to_nat ofs) with
                         | Some v => ret v
                         | _ => triggerNB "expr-load1"
                         end
@@ -717,7 +783,7 @@ Section Denote.
         match p with
         | Vptr paddr cts =>
           match from with
-          | Vnat from => Ret (Vptr (liftA (Nat.add from) paddr) (skipn from cts))
+          | Vnat from => Ret (Vptr (liftA (N.add from) paddr) (skipn (N.to_nat from) cts))
           | _ => triggerNB "expr-subpointer1"
           end
         | _ => triggerNB "expr-subpointer2"
@@ -727,7 +793,7 @@ Section Denote.
         match p with
         | Vptr paddr cts =>
           match to with
-          | Vnat to => Ret (Vptr paddr (firstn to cts))
+          | Vnat to => Ret (Vptr paddr (firstn (N.to_nat to) cts))
           | _ => triggerNB "expr-subpointer1"
           end
         | _ => triggerNB "expr-subpointer2"
@@ -751,8 +817,10 @@ Section Denote.
         (* | _ => triggerNB "expr-subpointer2" *)
         (* end *)
     | GetLen e => e <- denote_expr e ;;
+                   (* JIEUNG: to avoid overflow, we need to avoid any [nat] representation. 
+                      So, we may need to change the following representation [length] in the below *) 
                     match e with
-                    | Vptr _ cts => Ret ((length cts): val)
+                    | Vptr _ cts => Ret (N.of_nat (length cts): val)
                     | _ => triggerNB "expr-getlen"
                     end
     | GetOwnedHeap => trigger EGetOwnedHeap
@@ -842,7 +910,7 @@ Section Denote.
                            v <- triggerGetVar x ;;
                            match ofs, v with
                            | Vnat ofs, Vptr paddr cts0 =>
-                             cts1 <- (unwrapN (update_err cts0 ofs e)) ;;
+                             cts1 <- (unwrapN (update_err cts0 (N.to_nat ofs) e)) ;;
                                   triggerSetVar x (Vptr paddr cts1)
                            | _, _ => triggerNB "stmt-store"
                            end ;;
@@ -921,7 +989,7 @@ Section Example_Fact.
   Variable input: var.
   Variable output: var.
 
-  Definition fact (n:nat): stmt :=
+  Definition fact (n:N): stmt :=
     input #= n#;
     output #= 1#;
     #while input
@@ -1101,6 +1169,7 @@ sem: semantics for the moduel
 Inductive ModSem: Type :=
   mk_ModSem { fnames: string -> bool ;
               owned_heap: Type;
+              owned_heap_Showable: @Showable owned_heap;
               initial_owned_heap: owned_heap;
               customE: Type -> Type ;
               handler: customE ~> stateT owned_heap (itree (GlobalE +' Event));
@@ -1156,7 +1225,7 @@ Definition FINDN: forall A (a: A) l cond (FIND: List.find cond l = Some a),
     { n & nth_error l n = Some a}.
   i. ginduction l; ii; ss.
   des_ifs.
-  - exists 0. ss.
+  - exists (N.to_nat 0). ss.
   - exploit IHl; eauto. i. destruct x. exists (S x). ss.
 Defined.
 
@@ -1166,7 +1235,7 @@ Fixpoint find_informative A (cond: A -> bool) (l: list A):
   - apply None.
   - destruct (cond a) eqn:T.
     + apply Some.
-      exists (0, a).
+      exists ((N.to_nat 0), a).
       ss.
     + hexploit (@find_informative _ cond l). intro. destruct X.
       * destruct s. destruct x. ss. apply Some. exists (S n, a0). ss.
@@ -1262,7 +1331,9 @@ Definition HANDLE: forall mss,
     eapply c in o. eapply ITree.map; try eapply o.
     intro. destruct X. econs.
     { eapply cons.
-      - apply (upcast o0).
+      - apply (@upcast _ a.(owned_heap_Showable) o0).
+        (*
+      - apply (upcast o0). *)
       - apply tl.
     }
     apply t.
@@ -1288,7 +1359,9 @@ Definition HANDLE2: forall mss,
     intro. destruct X. econs.
     { unshelve econs.
       - eapply cons.
-        { apply (upcast o0). }
+        { apply (@upcast _ a.(owned_heap_Showable) o0). }
+        (*
+        { apply (upcast o0). } *)
         { apply tl. }
       - ss. eauto.
     }
@@ -1312,7 +1385,13 @@ Defined.
 Fixpoint INITIAL (mss: list ModSem): list Any :=
   match mss with
   | [] => []
-  | hd :: tl => (upcast hd.(initial_owned_heap)) :: INITIAL tl
+  | hd :: tl => (@upcast _
+                         hd.(owned_heap_Showable)
+                              hd.(initial_owned_heap)) ::
+                                                       INITIAL tl
+
+  (*
+  | hd :: tl => (upcast hd.(initial_owned_heap)) :: INITIAL tl *)
   end
 .
 
@@ -1320,7 +1399,8 @@ Definition INITIAL2 (mss: list ModSem): hvec (length mss).
   induction mss.
   - ss. econs. instantiate (1:=[]). ss.
   - ss. inv IHmss. econs. instantiate (1:=(upcast a.(initial_owned_heap))::l). ss.
-    eauto.
+  (* - ss. inv IHmss. econs. instantiate (1:=(@upcast _ a.(owned_heap_Showable) a.(initial_owned_heap))::l). ss. *)
+     eauto.
 Defined.
 
 Inductive unit1: Type -> Type :=
@@ -1331,6 +1411,7 @@ Definition program_to_ModSem (p: program): ModSem :=
   mk_ModSem
     (* (fun s => in_dec Strings.String.string_dec s (List.map fst p)) *)
     (fun s => existsb (string_dec s) (List.map fst p))
+    _
     (upcast tt)
     OwnedHeapE
     handle_OwnedHeapE

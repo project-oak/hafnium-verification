@@ -16,6 +16,10 @@
 Require Import sflib.
 Require Import Program.
 Require Import ClassicalDescription EquivDec.
+Require Import String.
+Generalizable Variables A T.
+ 
+
 
 Set Implicit Arguments.
 
@@ -23,9 +27,16 @@ Definition excluded_middle_informative_extract_true := excluded_middle_informati
 Extract Constant excluded_middle_informative_extract_true => "true".
 
 
+Class Showable (A: Type) := {
+  show: A -> string;
+}
+.
 
 Polymorphic Inductive Any: Type :=
-  Any_intro : forall {A:Type} {x:A}, Any.
+  (* Any_intro : forall {A:Type} {x:A}, Any. *)
+  Any_intro : forall `{Showable A} {x:A}, Any.
+ 
+
 
 (* Arguments Any [A P]. *)
 
@@ -36,9 +47,22 @@ destruct (excluded_middle_informative_extract_true (A = T)).
 - apply None.
 Defined.
 
-Polymorphic Definition upcast {T} (a: T): Any := @Any_intro _ a.
+(* Polymorphic Definition upcast {T} (a: T): Any := @Any_intro _ a. *)
+Polymorphic Definition upcast `{Showable T} (a: T): Any := @Any_intro _ _ a.
 
-Arguments Any_intro {A} x.
+Arguments Any_intro {A} {H} x.
+
+Instance unit_Showable: Showable unit := { show := fun _ => "()" }.
+Program Instance Any_Showable: Showable Any.
+Next Obligation.
+  destruct X.
+  exact (show x).
+Defined.
+Instance default_Showable {A}: Showable A | 50000 := { show := fun _ => "" }.
+ 
+(* Arguments Any_intro {A} x. *)
+Definition string_of_Any: Any -> string := show.
+ 
 
 
 
@@ -79,8 +103,10 @@ Definition Any_dec (a0 a1: Any): {a0=a1} + {a0<>a1}.
   simpl_depind.
   destruct (excluded_middle_informative_extract_true (A = A0)).
   - clarify.
-    destruct (excluded_middle_informative_extract_true (x = x0)).
-    + clarify. left. ss.
+    destruct (excluded_middle_informative_extract_true (H = H0)).
+    + destruct (excluded_middle_informative_extract_true (x = x0)).
+      * clarify. left. ss.
+      * right. ii. simpl_depind. clarify.
     + right. ii. simpl_depind. clarify.
   - right. ii. simpl_depind.
 Defined.

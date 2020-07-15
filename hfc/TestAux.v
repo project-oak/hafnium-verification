@@ -60,6 +60,14 @@ Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
 
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
+Local Open Scope N_scope.
+
 
 Definition DebugHigh := Syscall "hd".
 
@@ -81,12 +89,16 @@ Section INSERT_YIELD_DEFINITION.
 End INSERT_YIELD_DEFINITION.
 
 Section PTR_INITIALIZATIONS.
-  
+
+
+  (* JIEUNG: to avoid overflow, we need to avoid any [nat] related recursion.
+     We can add a new (special) case in our language to handle this initializations *)
+   
   (* JIEUNG: two kinds of definitions *) 
-  Definition big_mem_flat (paddr: nat) (st_size: nat) (size: nat) : val :=
+  Definition big_mem_flat (paddr: N) (st_size: nat) (size: nat) : val :=
     Vptr (Some paddr) (repeat (Vnat 0) (st_size * size)).
   
-  Definition big_tree (paddr: nat) (size: nat) : val :=
+  Definition big_tree (paddr: N) (size: nat) : val :=
     Vptr (Some paddr) (repeat (Vptr None []) size). 
   
 End PTR_INITIALIZATIONS.

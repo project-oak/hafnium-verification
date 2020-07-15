@@ -48,10 +48,17 @@ Require Import Coqlib sflib.
 (* From HafniumCore *)
 Require Import Lang.
 Import LangNotations.
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
-
+Local Open Scope N_scope.
 
 Set Implicit Arguments.
 
@@ -81,7 +88,7 @@ Simplified Mpool := Vptr [Vptr//chunk_list ; Vptr//fallback]
   Definition next_chunk_ofs := 0.
   Definition limit_ofs := 1.
 
-  Definition entry_size: nat := 4.
+  Definition entry_size: N := 4.
 
   Fixpoint chunk_list_wf (chunk_list: val): bool :=
     match chunk_list with
@@ -93,7 +100,7 @@ Simplified Mpool := Vptr [Vptr//chunk_list ; Vptr//fallback]
       | next_chunk :: limit :: _ =>
         match limit with
         | Vnat limit =>
-          if Nat.eq_dec (length cts) (limit * entry_size)
+          if ((N.of_nat (length cts)) =? (limit * entry_size))
           then chunk_list_wf next_chunk 
           else false
         | _ => false
@@ -392,8 +399,8 @@ Module TEST.
 
   Include MPOOLSEQ.
 
-  Definition big_chunk (paddr: nat) (size: nat): val :=
-    Vptr (Some paddr) (repeat (Vnat 0) (entry_size * size)).
+  Definition big_chunk (paddr: N) (size: nat): val :=
+    Vptr (Some paddr) (repeat (Vnat 0) ((N.to_nat entry_size) * size)).
 
   Module TEST1.
 
@@ -612,24 +619,24 @@ Module TEST.
 
   Module PROPSINGLE.
     Module MATH.
-      Definition mpool := list (list nat).
-      Definition add_chunk (p: mpool) (c: nat): mpool :=
+      Definition mpool := list (list N).
+      Definition add_chunk (p: mpool) (c: N): mpool :=
         match p with
         | hd :: tl => (cons c hd) :: tl
         | _ => [] (** SHOULD NOT HAPPEN *)
         end
       .
-      Fixpoint alloc_contiguous_no_fallback (p: list nat) (c: nat): option (list nat) :=
+      Fixpoint alloc_contiguous_no_fallback (p: list N) (c: N): option (list N) :=
         match p with
         | [] => None
         | hd :: tl => if c <? hd
-                      then Some ((hd - c)%nat :: tl)
-                      else if (c =? hd)%nat
+                      then Some ((hd - c)%N :: tl)
+                      else if (c =? hd)%N
                            then Some tl
                            else alloc_contiguous_no_fallback tl c
         end
       .
-      Fixpoint alloc_contiguous (p: mpool) (c: nat): option mpool :=
+      Fixpoint alloc_contiguous (p: mpool) (c: N): option mpool :=
         match p with
         | [] => None
         | hd :: tl =>
@@ -645,8 +652,8 @@ Module TEST.
       .
     End MATH.
 
-    Definition random_range (n: nat): nat := 0.
-    Definition random_latest: nat := 0.
+    Definition random_range (n: N): N := 0.
+    Definition random_latest: N := 0.
 
     Definition main
                (p0 p1 p2 q tmp0 tmp1: var): stmt :=
@@ -665,13 +672,13 @@ Module TEST.
            tmp0 #= (CoqCode [] (fun _ => (random_range 3: val, nil))) #;
            tmp1 #= (CoqCode [] (fun _ => (random_range 10: val, nil))) #;
            (#if (tmp0 == 0)
-             then Call "add_chunk" [CBR p0 ; CBV (big_chunk 0 random_latest) ; CBV tmp1]
+             then Call "add_chunk" [CBR p0 ; CBV (big_chunk 0 (N.to_nat random_latest)) ; CBV tmp1]
              else
            (#if (tmp0 == 1)
-             then Call "add_chunk" [CBR p1 ; CBV (big_chunk 0 random_latest) ; CBV tmp1]
+             then Call "add_chunk" [CBR p1 ; CBV (big_chunk 0 (N.to_nat random_latest)) ; CBV tmp1]
              else
            (#if (tmp0 == 2)
-             then Call "add_chunk" [CBR p2 ; CBV (big_chunk 0 random_latest) ; CBV tmp1]
+             then Call "add_chunk" [CBR p2 ; CBV (big_chunk 0 (N.to_nat random_latest)) ; CBV tmp1]
              else #guarantee #false)))
          else
            (* alloc_continuous *)

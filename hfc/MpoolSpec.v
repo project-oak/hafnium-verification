@@ -53,16 +53,25 @@ Require Import Coqlib sflib.
 Require Import Lang Lock.
 Import LangNotations.
 Require Import Any.
+
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
 
+Local Open Scope N_scope.
 
 
 Set Implicit Arguments.
 
 
 
-
+(*
 Section NOTATIONTEST.
   Local Close Scope itree_scope.
   Local Open Scope monad_scope.
@@ -83,17 +92,17 @@ End NOTATIONTEST.
 
 Notation "x <- c1 ;; c2" := (@pbind _ (PMonad_Monad Monad_option) _ _ _ c1 (fun x => c2))
                               (at level 61, c1 at next level, right associativity).
-
+*)
 
 
 
 (** Note: Lock is internalized **)
 Module MPOOLSPEC.
 
-  Definition ident := nat.
+  Definition ident := N.
 
   Instance RelDec_ident: RelDec (@eq ident) :=
-    { rel_dec := fun n0 n1 => if (Nat.eqb n0 n1) then true else false}.
+    { rel_dec := fun n0 n1 => if (N.eqb n0 n1) then true else false}.
 
   Record mpool: Type := mk {
     chunklist: list (nat * nat); (* paddr, limit *)

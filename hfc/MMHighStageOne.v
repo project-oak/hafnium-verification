@@ -54,8 +54,18 @@ Require Import ArchMM.
 Require Import Lock.
 
 Import LangNotations.
+
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
+
+Local Open Scope N_scope.
 
 
 Section NOTATIONTEST.
@@ -84,10 +94,10 @@ Section AbsData.
 
   (* common definition *)
 
-  Definition ident := nat.
+  Definition ident := N.
 
   Instance RelDec_ident: RelDec (@eq ident) :=
-    { rel_dec := fun n0 n1 => if (Nat.eqb n0 n1) then true else false}.
+    { rel_dec := fun n0 n1 => if (N.eqb n0 n1) then true else false}.
 
   (* mpool *)
 
@@ -110,10 +120,9 @@ Section AbsData.
   Inductive OWN_TY := | OWNED | UNOWNED.
   Inductive SHARED_TY := | EXCLUSIVE | SHARED.
 
-  
-  Inductive PTE_TY := 
-  | PTE (owner: option nat) (paddr : nat) (level : nat) (vaddr: option nat) (perm : PERM_TY).
-  
+  Inductive PTE_TY :=
+  | PTE (owner: option N) (paddr : N) (level : N) (vaddr: option N) (perm : PERM_TY).
+
   Record pt_entry: Type := mkPTE {value: list PTE_TY}.
 
   Definition pt_manager : Type := ident -> option pt_entry.
@@ -127,21 +136,21 @@ End AbsData.
 
 Module HighSpecDummyTest.
   
-  Fixpoint pte_init_iter (base_addr: nat) (level : nat) (esize : nat) (length : nat): list PTE_TY :=
+  Fixpoint pte_init_iter (base_addr: N) (level : N) (esize : N) (length : nat): list PTE_TY :=
     match length with
     | O => nil
     | S O => (PTE None base_addr level None ABSENT)::nil
     | S n =>
       let prev := pte_init_iter base_addr level esize n in
       let len := List.length prev in 
-      prev ++ (PTE None (base_addr + (esize * len)) level None ABSENT)::nil
+      prev ++ (PTE None (base_addr + (esize * (N.of_nat len))) level None ABSENT)::nil
     end.
 
   (* initialization of the pte entry *)
   Definition pte_init (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
     let retv := match vs with
                 | [(Vnat base_addr) ; (Vnat level) ; (Vnat esize) ;(Vnat len)] =>
-                  unwrap (let new_ptes := pte_init_iter base_addr level esize len in
+                  unwrap (let new_ptes := pte_init_iter base_addr level esize (N.to_nat len) in
                           Some (Vabs (upcast new_ptes))
                          ) Vnodef
                 | _ => Vnodef

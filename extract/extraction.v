@@ -33,6 +33,7 @@ Cd "extract".
 (* Separate Extraction MpoolSeq MpoolConcur Lang LangTest. *)
 
 Separate Extraction
+         Any.string_of_Any
          Lang.eval_whole_program
          Lang.eval_single_program
          Lang.Vtrue
@@ -56,6 +57,8 @@ Separate Extraction
          LangTest.MultiModuleLocalStateSimpleLang.isem
          LangTest.MultiModuleMultiCore.sem
          LangTest.MultiModuleMultiCoreLocalState.isem
+         LangTest.PrintAny.isem
+         LangTest.PrintTest.string_gen 
          (* LangTest.print_val *)
          (* LangTest.main *)
          (* LangTest.handle_Event *)

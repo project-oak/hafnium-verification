@@ -52,8 +52,18 @@ Require Import MpoolConcur.
 Require Import ArchMM.
 
 Import LangNotations.
+
+Require Import Nat.
+Require Import Coq.Arith.PeanoNat.
+Require Import Coq.NArith.BinNat.
+Require Import Coq.NArith.Nnat.
+Require Import BitNat.
+
 Local Open Scope expr_scope.
 Local Open Scope stmt_scope.
+
+Local Open Scope N_scope.
+
 
 Section MM.
 
@@ -986,7 +996,7 @@ Definition mm_ptable_dump (t flags: var) (root_v tables max_level root_count i t
          tables #= (Call "mm_page_table_from_pa" [CBV root_v]) #;
          max_level #= (Call "mm_max_level" [CBV flags]) #;
          root_count #= (Call "mm_root_table_count" [CBV flags]) #;
-         i #=  O #;
+         i #=  0 #;
          #while (i <= root_count - 1)
          do (table_i #= (tables #@ i) #;
                      (Call "mm_dump_table_recursive" [CBV table_i ; CBV max_level ; CBV max_level]) #;
