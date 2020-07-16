@@ -67,107 +67,6 @@ Local Open Scope stmt_scope.
 
 Local Open Scope N_scope.
 
-Module MMARCH.
-
-  (* define root_table_count - 1 for all *)
-
-  (* dummy *)
-  (*
-  uint8_t arch_mm_stage1_max_level(void)
-  {
-      /*
-       * For stage 1 we hard-code this to 2 for now so that we can
-       * save one page table level at the expense of limiting the
-       * physical memory to 512GB.
-       */
-      return 2;
-  }
- *)
-  
-  Definition arch_mm_stage1_max_level := Return 2.
-
-  (*
-  uint8_t arch_mm_stage2_max_level(void)
-  {
-      return mm_s2_max_level;
-  }
- *)
-  
-  Definition arch_mm_stage2_max_level := Return 3.
-
-  (*
-  uint8_t arch_mm_stage1_root_table_count(void)
-  {
-      /* Stage 1 doesn't concatenate tables. */
-      return 1;
-  }
-  *)
-  Definition arch_mm_stage1_root_table_count := Return 1.
-
-  (*
-  uint8_t arch_mm_stage2_root_table_count(void)
-  {
-      return mm_s2_root_table_count;
-  }
-  *)
-
-  Definition arch_mm_stage2_root_table_count := Return 1.
-
-  (* ptable is defined in mm.h file *)
-  Definition ptable := "ptable".
-  (* JIEUNG: TODO: define ptable as a big chunk here *)
-
-
-  (*
-   static uint64_t pte_addr(pte_t pte)
-   {
-       return pte & PTE_ADDR_MASK;
-   }
-   *)
-
-  (* dummy *)
-  Definition arch_mm_table_from_pte (pte level : var) := Return Vtrue.
-
-End MMARCH.
-
-Module MMARCHMODULE.
-
-  (* Test auxiliary functions in mm module *)
-  Include MMARCH.
-
-  Definition arch_mm_stage1_max_levelF : function.
-    mk_function_tac arch_mm_stage1_max_level ([]: list var) ([]: list var).
-  Defined.
-
-  Definition arch_mm_stage2_max_levelF : function.
-    mk_function_tac arch_mm_stage2_max_level ([]: list var) ([]: list var).
-  Defined.
-
-  Definition arch_mm_stage1_root_table_countF : function.
-    mk_function_tac arch_mm_stage1_root_table_count ([]: list var) ([]: list var).
-  Defined.
-  
-  Definition arch_mm_stage2_root_table_countF : function.
-    mk_function_tac arch_mm_stage2_root_table_count ([]: list var) ([]: list var).
-  Defined.
-
-  Definition arch_mm_table_from_pteF : function.
-    mk_function_tac arch_mm_table_from_pte ["pte"; "level"]  ([]: list var).
-  Defined.
-  
-  Definition arch_mm_program: program :=
-    [
-    ("arch_mm_stage1_max_level", arch_mm_stage1_max_levelF) ;
-    ("arch_mm_stage2_max_level", arch_mm_stage2_max_levelF) ;
-    ("arch_mm_stage1_root_table_count", arch_mm_stage1_root_table_countF) ;
-    ("arch_mm_stage2_root_table_count", arch_mm_stage2_root_table_countF) ;
-    ("arch_mm_table_from_pte", arch_mm_table_from_pteF) 
-    ].
-
-  Definition arch_mm_modsem := program_to_ModSem arch_mm_program.
-  
-End MMARCHMODULE.
-
 Module MMSTAGE1.
 
   (***** simple functions in the module that rely on arch mm ******) 
@@ -285,7 +184,7 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
                   return mpool_alloc(ppool);
           }
 
-          return mpool_alloc_contiguous(ppool, count, count);
+          return mpool_alloc_contiguous(ppool, count, coun t);
   }
   *)
   
@@ -355,22 +254,8 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
   }
    *)
     
+  (* JIEUNG: If it is easy, I hope to add different binary operators, such as LT *)
 
-  (* JIEUNG: we may be able to remove follownig conditions *)
-  Definition mm_free_page_pte (pte level ppool : var) (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
-    arch_mm_v #= (Call "arch_mm_table_from_pte" [CBV pte; CBV level]) #;
-              table #= (Call "mm_page_table_from_pa" [CBV arch_mm_v]) #;
-              i #= 0 #;
-              #while (i <= (MM_PTE_PER_PAGE - 1))
-              do (
-                  entry_loc #= (table #@ 0) #;
-                            entry_i #= (entry_loc #@ i) #;
-                            l_arg #= (level - 1) #; 
-                            (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ; CBV ppool]) #;
-                            i #= (i + 1)
-                ).
-
-  (*
   Definition mm_free_page_pte (pte level ppool : var) (table is_table_v arch_mm_v i entry_loc entry_i l_arg : var) :=
     is_table_v #= (Call "arch_mm_pte_is_table" [CBV pte ; CBV level]) #;
                #if (Not is_table_v)
@@ -388,7 +273,6 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
                                         (Call "mm_free_page_pte" [CBV entry_i; CBV l_arg ; CBV ppool]) #;
                                         i #= (i + 1)
                             ).  
-   *)
                  
   (*
   static void mm_ptable_fini(struct mm_ptable *t, int flags, struct mpool *ppool)
@@ -498,7 +382,7 @@ Module MMTESTAUX.
 
   (* Test auxiliary functions in mm module *)
   Include MMSTAGE1.
-  Include MMARCHMODULE.
+  Include ArchMM.
 
   Definition mm_round_down_to_pageF : function.
     mk_function_tac mm_round_down_to_page ["addr"] ([]: list var).
@@ -579,7 +463,7 @@ Module MMTESTAUX.
     ("mm_root_table_count", mm_root_table_countF) 
     ].
 
-  Definition modsems := [ program_to_ModSem mm_program ; MMARCHMODULE.arch_mm_modsem].
+  Definition modsems := [ program_to_ModSem mm_program ; ArchMM.arch_mm_modsem].
 
   Definition isem: itree Event unit :=
     eval_multimodule_multicore
@@ -706,6 +590,130 @@ static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
         modsems [ "main" ; "alloc1F" ; "alloc2F" ].
 
 End MMTEST1.
+
+
+(* Make a test for pte_free *)
+Module MMTEST2.
+    
+  
+
+
+End MMTEST2.
+
+
+
+
+
+
+
+
+
+
+
+
+(**************************************
+ ARCHIVED - DEFINED IN DIFFERENT FILES 
+Module MMARCH.
+
+  (* define root_table_count - 1 for all *)
+
+  (* dummy *)
+  (*
+  uint8_t arch_mm_stage1_max_level(void)
+  {
+      /*
+       * For stage 1 we hard-code this to 2 for now so that we can
+       * save one page table level at the expense of limiting the
+       * physical memory to 512GB.
+       */
+      return 2;
+  }
+ *)
+  
+  Definition arch_mm_stage1_max_level := Return 2.
+
+  (*
+  uint8_t arch_mm_stage2_max_level(void)
+  {
+      return mm_s2_max_level;
+  }
+ *)
+  
+  Definition arch_mm_stage2_max_level := Return 3.
+
+  (*
+  uint8_t arch_mm_stage1_root_table_count(void)
+  {
+      /* Stage 1 doesn't concatenate tables. */
+      return 1;
+  }
+  *)
+  Definition arch_mm_stage1_root_table_count := Return 1.
+
+  (*
+  uint8_t arch_mm_stage2_root_table_count(void)
+  {
+      return mm_s2_root_table_count;
+  }
+  *)
+
+  Definition arch_mm_stage2_root_table_count := Return 1.
+
+  (* ptable is defined in mm.h file *)
+  Definition ptable := "ptable".
+  (* JIEUNG: TODO: define ptable as a big chunk here *)
+
+
+  (*
+   static uint64_t pte_addr(pte_t pte)
+   {
+       return pte & PTE_ADDR_MASK;
+   }
+   *)
+
+  (* dummy *)
+  Definition arch_mm_table_from_pte (pte level : var) := Return Vtrue.
+
+End MMARCH.
+
+Module MMARCHMODULE.
+
+  (* Test auxiliary functions in mm module *)
+  Include MMARCH.
+
+  Definition arch_mm_stage1_max_levelF : function.
+    mk_function_tac arch_mm_stage1_max_level ([]: list var) ([]: list var).
+  Defined.
+
+  Definition arch_mm_stage2_max_levelF : function.
+    mk_function_tac arch_mm_stage2_max_level ([]: list var) ([]: list var).
+  Defined.
+
+  Definition arch_mm_stage1_root_table_countF : function.
+    mk_function_tac arch_mm_stage1_root_table_count ([]: list var) ([]: list var).
+  Defined.
+  
+  Definition arch_mm_stage2_root_table_countF : function.
+    mk_function_tac arch_mm_stage2_root_table_count ([]: list var) ([]: list var).
+  Defined.
+
+  Definition arch_mm_table_from_pteF : function.
+    mk_function_tac arch_mm_table_from_pte ["pte"; "level"]  ([]: list var).
+  Defined.
+  
+  Definition arch_mm_program: program :=
+    [
+    ("arch_mm_stage1_max_level", arch_mm_stage1_max_levelF) ;
+    ("arch_mm_stage2_max_level", arch_mm_stage2_max_levelF) ;
+    ("arch_mm_stage1_root_table_count", arch_mm_stage1_root_table_countF) ;
+    ("arch_mm_stage2_root_table_count", arch_mm_stage2_root_table_countF) ;
+    ("arch_mm_table_from_pte", arch_mm_table_from_pteF) 
+    ].
+
+  Definition arch_mm_modsem := program_to_ModSem arch_mm_program.
+  
+End MMARCHMODULE.
+******************************************************)
   
 (*
 irt,gic_version=3 -cpu cortex-a57 -nographic -machine virtualization=true -kernel out/reference/qemu_aarch64_clang/hafnium.bin -initrd initrd.img -append "rdinit=/sbin/init"
