@@ -280,7 +280,7 @@ static uint8_t mm_max_level(int flags)
 
 
 Definition mm_max_level (flags: var) (res : var) : stmt :=
-  (#if (And flags MM_FLAGE_STAGE1)
+  (#if (And flags MM_FLAG_STAGE1)
     then
       res #= (Call "arch_mm_stage1_max_level" [])
     else
@@ -296,7 +296,7 @@ static uint8_t mm_root_table_count(int flags)
  *)
 
 Definition mm_root_table_count (flags: var) (res : var) : stmt :=
-  (#if (And flags MM_FLAGE_STAGE1)
+  (#if (And flags MM_FLAG_STAGE1)
     then
       res #= (Call "arch_mm_stage1_root_table_count" [])
     else
@@ -1637,7 +1637,7 @@ Definition mm_init (ppool : var) (stage1_locked mm_ptable_init_res
                                                 ltb_res lte_res lrb_res lre_res ldb_res lde_res root_v res: var) : stmt :=
   stage1_locked #= (Call "mm_stage1_lock_unsafe" []) #;
                 (* JIEUNG: Am I correct for this function call? *)
-                mm_ptable_init_res #= (Call "mm_ptable_init" [CBR ptable; CBV MM_FLAGE_STAGE1; CBR ppool]) #;
+                mm_ptable_init_res #= (Call "mm_ptable_init" [CBR ptable; CBV MM_FLAG_STAGE1; CBR ppool]) #;
                 #if mm_ptable_init_res
                  then (Call "plat_console_mm_init" [CBV stage1_locked; CBR ppool]) #;
                     (* Map each section. *)

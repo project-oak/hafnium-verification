@@ -125,10 +125,48 @@ Module MMARCH.
    }
    *)
 
-
-  Definition arch_mm_table_from_pte := Return Vtrue.
+  (* dummy *)
+  Definition arch_mm_table_from_pte (pte level : var) := Return Vtrue.
 
 End MMARCH.
+
+Module MMARCHMODULE.
+
+  (* Test auxiliary functions in mm module *)
+  Include MMARCH.
+
+  Definition arch_mm_stage1_max_levelF : function.
+    mk_function_tac arch_mm_stage1_max_level ([]: list var) ([]: list var).
+  Defined.
+
+  Definition arch_mm_stage2_max_levelF : function.
+    mk_function_tac arch_mm_stage2_max_level ([]: list var) ([]: list var).
+  Defined.
+
+  Definition arch_mm_stage1_root_table_countF : function.
+    mk_function_tac arch_mm_stage1_root_table_count ([]: list var) ([]: list var).
+  Defined.
+  
+  Definition arch_mm_stage2_root_table_countF : function.
+    mk_function_tac arch_mm_stage2_root_table_count ([]: list var) ([]: list var).
+  Defined.
+
+  Definition arch_mm_table_from_pteF : function.
+    mk_function_tac arch_mm_table_from_pte ["pte"; "level"]  ([]: list var).
+  Defined.
+  
+  Definition arch_mm_program: program :=
+    [
+    ("arch_mm_stage1_max_level", arch_mm_stage1_max_levelF) ;
+    ("arch_mm_stage2_max_level", arch_mm_stage2_max_levelF) ;
+    ("arch_mm_stage1_root_table_count", arch_mm_stage1_root_table_countF) ;
+    ("arch_mm_stage2_root_table_count", arch_mm_stage2_root_table_countF) ;
+    ("arch_mm_table_from_pte", arch_mm_table_from_pteF) 
+    ].
+
+  Definition arch_mm_modsem := program_to_ModSem arch_mm_program.
+  
+End MMARCHMODULE.
 
 Module MMSTAGE1.
 
@@ -271,9 +309,10 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
   }
    *)
 
-  
+
   Definition mm_max_level (flags: var) : stmt :=
-    (#if (flags #& MM_FLAGE_STAGE1)
+    #assume (Or (flags #& MM_FLAG_STAGE1 == 4) (flags #& MM_FLAG_STAGE1 == 0)) #;
+    (#if (flags #& MM_FLAG_STAGE1)
       then
         Return (Call "arch_mm_stage1_max_level" [])
       else
@@ -288,12 +327,13 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
    *)
 
   Definition mm_root_table_count (flags: var) : stmt :=
-    (#if (flags #& MM_FLAGE_STAGE1)
-      then
+    #assume (Or (flags #& MM_FLAG_STAGE1 == 4) (flags #& MM_FLAG_STAGE1 == 0)) #;
+     (#if (flags #& MM_FLAG_STAGE1)
+       then
         Return (Call "arch_mm_stage1_root_table_count" [])
-      else
-        Return (Call "arch_mm_stage2_root_table_count" [])).
-
+       else
+         Return (Call "arch_mm_stage2_root_table_count" [])).
+  
   (*
   static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
   {
@@ -385,7 +425,7 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
                              j #= (j + 1)                        
                     ) #;
                  i #= (i + 1) 
-              ).  
+              ).
 
   (* JIEUNG: I will work on the following things *)
   (*
@@ -458,6 +498,7 @@ Module MMTESTAUX.
 
   (* Test auxiliary functions in mm module *)
   Include MMSTAGE1.
+  Include MMARCHMODULE.
 
   Definition mm_round_down_to_pageF : function.
     mk_function_tac mm_round_down_to_page ["addr"] ([]: list var).
@@ -483,6 +524,13 @@ Module MMTESTAUX.
     mk_function_tac mm_index ["addr"; "level"] ["v"].
   Defined.
 
+  Definition mm_max_levelF : function.
+    mk_function_tac mm_max_level ["flag"] ([]: list var).
+  Defined.
+
+  Definition mm_root_table_countF : function.
+    mk_function_tac mm_root_table_count ["flag"] ([]: list var).
+  Defined.
   
   Definition main (res: var): stmt := 
     (Put "before Start Test: " Vnull) #;
@@ -497,16 +545,28 @@ Module MMTESTAUX.
        (Put "test Not " (BNot (PAGE_SIZE - 1))) #;
        
        res #= Call "mm_round_down_to_page" [CBV 4852234] #;
-       (Put "1st res " res) #;
-       res #= Call "mm_index" [CBV 111111111111111111; CBV 2] #;
-       (Put "2st res " res) #;
+       (Put "mm_round_down_to_page res " res) #;
+       res #= Call "mm_round_up_to_page" [CBV 4852234] #;
+       (Put "mm_round_up_to_page res " res) #;
+       res #= Call "mm_entry_size" [CBV 2] #;
+       (Put "mm_entry_size res " res) #;
+       res #= Call "mm_start_of_next_block" [CBV 4852234; CBV 4096] #;
+       (Put "mm_start_of_next_block res " res) #;
+       res #= Call "mm_level_end" [CBV 4852234; CBV 2] #;
+       (Put "mm_level_end res " res) #;
+       res #= Call "mm_index" [CBV 4852234; CBV 2] #;
+       (Put "mm_index res " res) #;
+       res #= Call "mm_max_level" [CBV 6] #;
+       (Put "mm_max_level res " res) #;       
+       res #= Call "mm_root_table_count" [CBV 7] #;
+       (Put "mm_root_table_count res " res) #;       
        Skip.
 
   Definition mainF: function.
     mk_function_tac main ([]: list var) (["res"]: list var).
   Defined.
   
-  Definition program: program :=
+  Definition mm_program: program :=
     [
       ("main", mainF) ;
     ("mm_round_down_to_page", mm_round_down_to_pageF) ;
@@ -514,8 +574,16 @@ Module MMTESTAUX.
     ("mm_entry_size", mm_entry_sizeF) ;
     ("mm_start_of_next_block", mm_start_of_next_blockF) ;
     ("mm_level_end", mm_level_endF) ;
-    ("mm_index", mm_indexF) 
+    ("mm_index", mm_indexF); 
+    ("mm_max_level", mm_max_levelF); 
+    ("mm_root_table_count", mm_root_table_countF) 
     ].
+
+  Definition modsems := [ program_to_ModSem mm_program ; MMARCHMODULE.arch_mm_modsem].
+
+  Definition isem: itree Event unit :=
+    eval_multimodule_multicore
+      modsems [ "main" ].
   
 End MMTESTAUX.
 

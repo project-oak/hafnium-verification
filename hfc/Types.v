@@ -133,7 +133,7 @@ Definition sizeof_pte_t := 8%N.
 #define PAGE_SIZE (1 << PAGE_BITS)
 ...
 *)
-Definition MM_FLAGE_STAGE1 := 4.
+Definition MM_FLAG_STAGE1 := 4.
 Definition PAGE_SIZE := N.shiftl 1 PAGE_BITS.
 
 (*
@@ -177,7 +177,6 @@ Definition MM_MODE_UNMAPPED_MASK := 48%N.
 
 Definition MM_FLAG_COMMIT := 1%N.
 Definition MM_FLAG_UNMAP := 2%N.
-Definition MM_FLAG_STAGE1 := 4%N.
 
 (* I manually calculate the result. I may need some way? *)
 

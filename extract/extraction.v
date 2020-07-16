@@ -78,7 +78,7 @@ Separate Extraction
          CPUSeq.CPUTEST.program
 
          MMStageOne.MMTEST1.isem
-         MMStageOne.MMTESTAUX.program
+         MMStageOne.MMTESTAUX.isem
 
          MMHighStageOne.HighSpecDummyTest.program
          
