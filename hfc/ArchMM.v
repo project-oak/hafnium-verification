@@ -55,7 +55,6 @@ Local Open Scope stmt_scope.
 
 Section ArchMM.
 
-  
 (*
 
 /* Keep macro alignment */
@@ -112,6 +111,7 @@ Section ArchMM.
 /* The following are stage-2 software defined attributes. */
 #define STAGE2_SW_OWNED     (UINT64_C(1) << 55)
 #define STAGE2_SW_EXCLUSIVE (UINT64_C(1) << 56)
+
 
 /* The following are stage-2 memory attributes for normal memory. */
 #define STAGE2_DEVICE_MEMORY UINT64_C(0)
@@ -194,6 +194,94 @@ struct arch_mm_config {
 static uint8_t mm_s2_max_level;
 static uint8_t mm_s2_root_table_count;
 
+ *)
+
+Definition mm_s2_max_level : var := "mm_s2_max_level".
+Definition mm_s2_root_table_count : var := " mm_s2_root_table_count".
+
+Definition UINT64_C_1 := UINT64_C 1.
+
+Definition PTE_ADDR_MASK :=
+  (BAnd (Minus (ShiftL UINT64_C_1 48) 1) (BNot (Minus (ShiftL UINT64_C_1 PAGE_BITS) 1))).
+Definition PTE_ATTR_MASK :=
+  (BNot (BOr PTE_ADDR_MASK (ShiftL UINT64_C_1 1))). 
+
+Definition MAX_TLBI_OPS := MM_PTE_PER_PAGE.
+
+Definition CACHE_WORD_SIZE :expr := 4.
+Definition UINT16_C (val : expr) := val.
+Definition UINT16_C_1 := UINT16_C 1.
+
+Definition NON_SHAREABLE := UINT64_C 0.
+Definition OUTER_SHAREABLE := UINT64_C 2.
+Definition INNER_SHAREABLE := UINT64_C 3.
+
+Definition PTE_VALID := ShiftL UINT64_C_1 0.
+Definition PTE_LEVEL0_BLOCK := ShiftL UINT64_C_1 1.
+Definition PTE_TABLE := ShiftL UINT64_C_1 1.
+
+Definition STAGE2_SW_OWNED := ShiftL UINT64_C_1 55.
+Definition STAGE2_SW_EXCLUSIVE := ShiftL UINT64_C_1 56.
+
+Definition STAGE1_XN := ShiftL UINT64_C_1 54.
+Definition STAGE1_PXN := ShiftL UINT64_C_1 53.
+Definition STAGE1_CONTIGUOUS := ShiftL UINT64_C_1 52.
+Definition STAGE1_DBM := ShiftL UINT64_C_1 51.
+Definition STAGE1_NG := ShiftL UINT64_C_1 11.
+Definition STAGE1_AF := ShiftL UINT64_C_1 10.
+Definition STAGE1_SH := fun x => ShiftL x 8.
+Definition STAGE1_AP2 := ShiftL UINT64_C_1 7.
+Definition STAGE1_AP1 := ShiftL UINT64_C_1 6.
+Definition STAGE1_AP := fun x => ShiftL x 6.
+Definition STAGE1_NS := ShiftL UINT64_C_1 5.
+Definition STAGE1_ATTRINDX := fun x => ShiftL x 2.
+
+Definition STAGE1_READONLY := UINT64_C 2.
+Definition STAGE1_READWRITE := UINT64_C 0.
+
+Definition STAGE1_DEVICEINDX := UINT64_C 0.
+Definition STAGE1_NORMALINDX := UINT64_C 1.
+
+Definition STAGE2_XN := fun x => ShiftL x 53.
+Definition STAGE2_CONTIGUOUS := ShiftL UINT64_C_1 52.
+Definition STAGE2_DBM := ShiftL UINT64_C_1 51.
+Definition STAGE2_AF := ShiftL UINT64_C_1 10.
+Definition STAGE2_SH := fun x => ShiftL x 8.
+Definition STAGE2_S2AP := fun x => ShiftL x 6.
+
+Definition STAGE2_EXECUTE_ALL := UINT64_C 0.
+Definition STAGE2_EXECUTE_EL0 := UINT64_C 1.
+Definition STAGE2_EXECUTE_NONE := UINT64_C 2.
+Definition STAGE2_EXECUTE_EL1 := UINT64_C 3.
+Definition STAGE2_EXECUTE_MASK := UINT64_C 3.
+
+Definition STAGE2_ACCESS_READ := UINT64_C 1.
+Definition STAGE2_ACCESS_WRITE := UINT64_C 2.
+
+Definition STAGE2_DEVICE_MEMORY := UINT64_C 0.
+Definition STAGE2_NONCACHEABLE := UINT64_C 1.
+Definition STAGE2_WRITETHROUGH := UINT64_C 2.
+Definition STAGE2_WRITEBACK := UINT64_C 3.
+
+Definition STAGE2_MEMATTR_DEVICE_nGnRnE := UINT64_C 0.
+Definition STAGE2_MEMATTR_DEVICE_nGnRE := UINT64_C 1.
+Definition STAGE2_MEMATTR_DEVICE_nGRE := UINT64_C 2.
+Definition STAGE2_MEMATTR_DEVICE_GRE := UINT64_C 3.
+
+Definition STAGE2_MEMATTR (outer inner: expr) := (Or (ShiftL outer 2) (ShiftL inner 2)).
+Definition STAGE2_MEMATTR_TYPE_MASK := UINT64_C (ShiftL 3 4).
+
+Definition TABLE_NSTABLE := ShiftL UINT64_C_1 63.
+Definition TABLE_APTABLE1 := ShiftL UINT64_C_1 62.
+Definition TABLE_APTABLE0 := ShiftL UINT64_C_1 61.
+Definition TABLE_XNTABLE := ShiftL UINT64_C_1 60.
+Definition TABLE_PXNTABLE := ShiftL UINT64_C_1 59.
+
+(* /** Mask for the address bits of the pte. */ *)
+(* #define PTE_ADDR_MASK \ *)
+(*     (((UINT64_C(1) << 48) - 1) & ~((UINT64_C(1) << PAGE_BITS) - 1)) *)
+
+  (*
 /**
  * Returns the encoding of a page table entry that isn't present.
  */
@@ -205,6 +293,7 @@ pte_t arch_mm_absent_pte(uint8_t level)
 
 *)
 
+Definition arch_mm_absent_pte (level:var) : stmt := Return 0.
 
 (*
 /**
@@ -219,6 +308,17 @@ pte_t arch_mm_table_pte(uint8_t level, paddr_t pa)
     (void)level;
     return pa_addr(pa) | PTE_TABLE | PTE_VALID;
 }
+ *)
+
+Definition arch_mm_table_pte (level pa:var)
+           (pa_addr_res pte_table_res res :var) : stmt :=
+  (* (void)level; : just Compiler warning suppress *)
+  pa_addr_res #= (Call "pa_addr" [CBV pa]) #;
+              pte_table_res #= pa_addr_res #| PTE_TABLE #;
+              res #= pte_table_res #| PTE_VALID #;
+              Return res.
+
+(*
 
 /**
  * Converts a physical address to a block PTE.
@@ -236,6 +336,18 @@ pte_t arch_mm_block_pte(uint8_t level, paddr_t pa, uint64_t attrs)
     return pte;
 }
 
+*)
+
+Definition arch_mm_block_pte (level pa attrs:var) (pa_addr_res pte:var) :=
+  pa_addr_res #= (Call "pa_addr" [CBV pa]) #;
+              pte #= pa_addr_res #| attrs #;
+              (#if (level == 0)
+                then pte #= pte #| PTE_LEVEL0_BLOCK
+                else Skip) #;
+    Return pte.
+
+
+(*
 /**
  * Specifies whether block mappings are acceptable at the given level.
  *
@@ -246,6 +358,12 @@ bool arch_mm_is_block_allowed(uint8_t level)
     return level <= 2;
 }
 
+ *)
+
+Definition arch_mm_is_block_allowed (level:var) :=
+  Return (level <= 2).
+
+(*
 /**
  * Determines if the given pte is present, i.e., if it is valid or it is invalid
  * but still holds state about the memory so needs to be present in the table.
@@ -255,6 +373,17 @@ bool arch_mm_pte_is_present(pte_t pte, uint8_t level)
     return arch_mm_pte_is_valid(pte, level) || (pte & STAGE2_SW_OWNED) != 0;
 }
 
+ *)
+
+Definition arch_mm_pte_is_present (pte level:var) (pte_valid sw_owned res:var) :=
+  pte_valid #= (Call "arch_mm_pte_is_valid" [CBV pte; CBV level]) #;
+            sw_owned #= BAnd pte STAGE2_SW_OWNED #;
+            res #= pte_valid #|| sw_owned #;
+            #if (res == 0)
+             then Return Vfalse
+             else Return Vtrue.
+
+(*
 /**
  * Determines if the given pte is valid, i.e., if it points to another table,
  * to a page, or a block of pages that can be accessed.
@@ -265,6 +394,15 @@ bool arch_mm_pte_is_valid(pte_t pte, uint8_t level)
     return (pte & PTE_VALID) != 0;
 }
 
+ *)
+
+Definition arch_mm_pte_is_valid (pte level:var) (pte_valid:var) :=
+  pte_valid #= BAnd pte PTE_VALID #;
+            #if (pte_valid == 0)
+             then Return Vfalse
+             else Return Vtrue.
+
+(*
 /**
  * Determines if the given pte references a block of pages.
  */
@@ -277,6 +415,20 @@ bool arch_mm_pte_is_block(pte_t pte, uint8_t level)
                      !arch_mm_pte_is_table(pte, level));
 }
 
+ *)
+
+Definition arch_mm_pte_is_block (pte level:var) (blk_allowed ret is_blk is_present is_table:var) :=
+  blk_allowed #= (Call "arch_mm_is_block_allowed" [CBV level]) #;
+              (#if (level == 0)
+                then (#if (pte #& PTE_LEVEL0_BLOCK)
+                       then (ret #= Val Vfalse)
+                       else (ret #= Val Vtrue))
+                else (is_present #= (Call "arch_mm_pte_is_present" [CBV pte; CBV level]) #;
+                                 is_table #= (Call "arch_mm_pte_is_present" [CBV pte; CBV level]) #;
+                                 ret #= (is_present #&& (#! is_table)))) #;
+                       Return (blk_allowed #&& ret).
+
+(*
 /**
  * Determines if the given pte references another table.
  */
@@ -286,11 +438,24 @@ bool arch_mm_pte_is_table(pte_t pte, uint8_t level)
            (pte & PTE_TABLE) != 0;
 }
 
+ *)
+
+Definition arch_mm_pte_is_table (pte level:var) (is_valid :var) :=
+  is_valid #= (Call "arch_mm_pte_is_valid" [CBV pte; CBV level]) #;
+           Return ((#! (level == 0)) #&& is_valid #&& (#! (pte #& PTE_TABLE) == 0)).
+  
+(*
 static uint64_t pte_addr(pte_t pte)
 {
     return pte & PTE_ADDR_MASK;
 }
 
+ *)
+
+Definition pte_addr (pte:var) :=
+  Return (pte #& PTE_ADDR_MASK).
+
+(*
 /**
  * Clears the given physical address, i.e., clears the bits of the address that
  * are not used in the pte.
@@ -300,6 +465,15 @@ paddr_t arch_mm_clear_pa(paddr_t pa)
     return pa_init(pte_addr(pa_addr(pa)));
 }
 
+ *)
+
+Definition arch_mm_clear_pa (pa:var) (addr1 addr2 res:var) :=
+  addr1 #= (Call "pa_addr" [CBV pa]) #;
+        addr2 #= (Call "pte_addr" [CBV addr1]) #;
+        res #= (Call "pa_init" [CBV addr2]) #;
+        Return res.
+
+(*
 /**
  * Extracts the physical address of the block referred to by the given page
  * table entry.
@@ -310,6 +484,14 @@ paddr_t arch_mm_block_from_pte(pte_t pte, uint8_t level)
     return pa_init(pte_addr(pte));
 }
 
+ *)
+
+Definition arch_mm_block_from_pte (pte level:var) (addr res:var) :=
+  addr #= (Call "pte_addr" [CBV pte]) #;
+       res #= (Call "pa_init" [CBV addr]) #;
+       Return res.
+
+(*
 /**
  * Extracts the physical address of the page table referred to by the given page
  * table entry.
@@ -320,6 +502,14 @@ paddr_t arch_mm_table_from_pte(pte_t pte, uint8_t level)
     return pa_init(pte_addr(pte));
 }
 
+ *)
+
+Definition arch_mm_table_from_pte (pte level:var) (addr res:var) :=
+  addr #= (Call "pte_addr" [CBV pte]) #;
+       res #= (Call "pa_init" [CBV addr]) #;
+       Return res.
+
+(*
 /**
  * Extracts the architecture-specific attributes applies to the given page table
  * entry.
@@ -330,6 +520,11 @@ uint64_t arch_mm_pte_attrs(pte_t pte, uint8_t level)
     return pte & PTE_ATTR_MASK;
 }
 
+ *)
+Definition arch_mm_pte_attrs (pte:var) (res:var) :=
+  Return (pte #& PTE_ATTR_MASK).
+
+(*
 /**
  * Invalidates stage-1 TLB entries referring to the given virtual address range.
  */
@@ -374,6 +569,13 @@ void arch_mm_invalidate_stage1_range(vaddr_t va_begin, vaddr_t va_end)
     isb();
 }
 
+ *)
+
+Definition arch_mm_invalidate_stage1_range (va_begin va_end:var) (begin_v end_v:var) :=
+  begin_v #= (Call "va_addr" [CBV va_begin]) #;
+          end_v #= (Call "va_addr" [CBV va_end]).
+
+(*
 /**
  * Invalidates stage-2 TLB entries referring to the given intermediate physical
  * address range.
@@ -436,6 +638,13 @@ void arch_mm_invalidate_stage2_range(ipaddr_t va_begin, ipaddr_t va_end)
     isb();
 }
 
+ *)
+
+Definition arch_mm_invalidate_stage2_range (va_begin va_end:var) (begin_v end_v:var) :=
+  begin_v #= (Call "ipa_addr" [CBV va_begin]) #;
+        end_v #= (Call "ipa_addr" [CBV va_end]).
+
+(*
 /**
  * Returns the smallest cache line size of all the caches for this core.
  */
@@ -445,6 +654,9 @@ static uint16_t arch_mm_dcache_line_size(void)
            (UINT16_C(1) << ((read_msr(CTR_EL0) >> 16) & 0xf));
 }
 
+ *)
+
+(*
 void arch_mm_flush_dcache(void *base, size_t size)
 {
     /* Clean and invalidate each data cache line in the range. */
@@ -459,6 +671,9 @@ void arch_mm_flush_dcache(void *base, size_t size)
     dsb(sy);
 }
 
+ *)
+
+(*
 uint64_t arch_mm_mode_to_stage1_attrs(uint32_t mode)
 {
     uint64_t attrs = 0;
@@ -492,6 +707,26 @@ uint64_t arch_mm_mode_to_stage1_attrs(uint32_t mode)
     return attrs;
 }
 
+ *)
+
+Definition arch_mm_mode_to_stage1_attrs (mode:var) (attrs:var) :=
+  attrs #= 0 #;
+        attrs #= attrs #| (STAGE1_AF #| (STAGE1_SH OUTER_SHAREABLE)) #;
+        (#if (#! (mode #& MM_MODE_X))
+          then (attrs #= attrs #| STAGE1_XN)
+          else Skip) #;
+        (#if (mode #& MM_MODE_W)
+          then (attrs #= attrs #| (STAGE1_AP STAGE1_READWRITE))
+          else (attrs #= attrs #| (STAGE1_AP STAGE1_READONLY))) #;
+        (#if (mode #& MM_MODE_D)
+          then (attrs #= attrs #| (STAGE1_ATTRINDX STAGE1_DEVICEINDX))
+          else (attrs #= attrs #| (STAGE1_ATTRINDX STAGE1_NORMALINDX))) #;
+        (#if (#! (mode #& MM_MODE_INVALID))
+          then (attrs #= attrs #| PTE_VALID)
+          else Skip) #;
+        Return attrs.
+
+(*
 uint64_t arch_mm_mode_to_stage2_attrs(uint32_t mode)
 {
     uint64_t attrs = 0;
@@ -550,6 +785,37 @@ uint64_t arch_mm_mode_to_stage2_attrs(uint32_t mode)
     return attrs;
 }
 
+ *)
+
+Definition arch_mm_mode_to_stage2_attrs (mode:var) (attrs access:var) :=
+  attrs #= 0 #;
+        access #= 0 #;
+        attrs #= attrs #| (STAGE2_AF #| (STAGE2_SH NON_SHAREABLE)) #;
+        (#if (mode #& MM_MODE_R)
+          then (access #= access #| STAGE2_ACCESS_READ)
+          else Skip) #;
+        (#if (mode #& MM_MODE_W)
+          then (access #= access #| STAGE2_ACCESS_WRITE)
+          else Skip) #;
+        attrs #= attrs #| (STAGE2_S2AP access) #;
+        (#if (mode #& MM_MODE_X)
+          then (attrs #= attrs #| (STAGE2_XN STAGE2_EXECUTE_ALL))
+          else (attrs #= attrs #| (STAGE2_XN STAGE2_EXECUTE_NONE))) #;
+        (#if (mode #& MM_MODE_D)
+          then (attrs #= attrs #| (STAGE2_MEMATTR STAGE2_DEVICE_MEMORY STAGE2_MEMATTR_DEVICE_GRE))
+          else (attrs #= attrs #| (STAGE2_MEMATTR STAGE2_WRITEBACK STAGE2_WRITEBACK))) #;
+        (#if (#! (mode #& MM_MODE_UNOWNED))
+          then (attrs #= attrs #| STAGE2_SW_OWNED)
+          else Skip) #;
+        (#if (#! (mode #& MM_MODE_SHARED))
+          then (attrs #= attrs #| STAGE2_SW_EXCLUSIVE)
+          else Skip) #;
+        (#if (#! (mode #& MM_MODE_INVALID))
+          then (attrs #= attrs #| PTE_VALID)
+          else Skip) #;
+        Return attrs.
+
+(*
 uint32_t arch_mm_stage2_attrs_to_mode(uint64_t attrs)
 {
     uint32_t mode = 0;
@@ -586,6 +852,34 @@ uint32_t arch_mm_stage2_attrs_to_mode(uint64_t attrs)
     return mode;
 }
 
+ *)
+
+Definition arch_mm_stage2_attrs_to_mode (attrs:var) (mode:var) :=
+  mode #= 0 #;
+       (#if (attrs #& (STAGE2_S2AP STAGE2_ACCESS_READ))
+         then (mode #= mode #| MM_MODE_R)
+         else Skip) #;
+       (#if (attrs #& (STAGE2_S2AP STAGE2_ACCESS_WRITE))
+         then (mode #= mode #| MM_MODE_W)
+         else Skip) #;
+       (#if ((attrs #& (STAGE2_XN STAGE2_EXECUTE_MASK)) == (STAGE2_XN STAGE2_EXECUTE_ALL))
+         then (mode #= mode #| MM_MODE_X)
+         else Skip) #;
+       (#if ((attrs #& STAGE2_MEMATTR_TYPE_MASK) == STAGE2_DEVICE_MEMORY)
+         then (mode #= mode #| MM_MODE_D)
+         else Skip) #;
+       (#if (#! (attrs #& STAGE2_SW_OWNED))
+         then (mode #= mode #| MM_MODE_UNOWNED)
+         else Skip) #;
+       (#if (#! (attrs #& STAGE2_SW_EXCLUSIVE))
+         then (mode #= mode #| MM_MODE_SHARED)
+         else Skip) #;
+       (#if (#! (attrs #& PTE_VALID))
+         then (mode #= mode #| MM_MODE_INVALID)
+         else Skip) #;
+       Return mode.
+
+(*
 uint8_t arch_mm_stage1_max_level(void)
 {
     /*
@@ -596,22 +890,39 @@ uint8_t arch_mm_stage1_max_level(void)
     return 2;
 }
 
+ *)
+Definition arch_mm_stage1_max_level := Return 2.
+
+(*
 uint8_t arch_mm_stage2_max_level(void)
 {
     return mm_s2_max_level;
-}
+)
+ *)
 
+Definition arch_mm_stage2_max_level := Return mm_s2_max_level.
+
+(*
 uint8_t arch_mm_stage1_root_table_count(void)
 {
     /* Stage 1 doesn't concatenate tables. */
     return 1;
 }
 
+ *)
+Definition arch_mm_stage1_root_table_count := Return 1.
+
+(*
 uint8_t arch_mm_stage2_root_table_count(void)
 {
     return mm_s2_root_table_count;
 }
 
+ *)
+
+Definition arch_mm_stage2_root_table_count := Return mm_s2_root_table_count.
+
+(*
 /**
  * Given the attrs from a table at some level and the attrs from all the blocks
  * in that table, returns equivalent attrs to use for a block which will replace
@@ -642,6 +953,27 @@ uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
     return block_attrs;
 }
 
+ *)
+
+Definition arch_mm_combine_table_entry_attrs (table_attrs block_attrs:var) :=
+  (#if (table_attrs #& TABLE_NSTABLE)
+    then (block_attrs #= block_attrs #| STAGE1_NS)
+    else Skip) #;       
+               (#if (table_attrs #& TABLE_APTABLE1)
+                 then (block_attrs #= block_attrs #| STAGE1_AP2)
+                 else Skip) #;
+               (#if (table_attrs #& TABLE_APTABLE0)
+                 then (block_attrs #= block_attrs #& (Not STAGE1_AP1))
+                 else Skip) #;
+               (#if (table_attrs #& TABLE_XNTABLE)
+                 then (block_attrs #= block_attrs #| STAGE1_XN)
+                 else Skip) #;
+               (#if (table_attrs #& TABLE_PXNTABLE)
+                 then (block_attrs #= block_attrs #| STAGE1_PXN)
+                 else Skip) #;
+               Return block_attrs.
+
+(*
 
 /**
  * This is called early in initialization without MMU or caches enabled.
@@ -748,9 +1080,6 @@ bool arch_mm_init(paddr_t table)
 }
 
 *)  
-  
-  
-
 
 End ArchMM.
 
