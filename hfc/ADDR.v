@@ -82,7 +82,6 @@ typedef struct {
 } vaddr_t;
 *)
 
-
 (*
 /**
  * Initializes a physical address.
@@ -93,6 +92,8 @@ static inline paddr_t pa_init(uintpaddr_t p)
 }
 *)
 
+Definition pa_init(p : var) : stmt :=
+  Return p.
   
 (*
 /**
@@ -104,6 +105,9 @@ static inline uintpaddr_t pa_addr(paddr_t pa)
 }
  *)
 
+Definition pa_addr(pa : var) : stmt :=
+  Return pa.
+
 (*  
 /**
  * Advances a physical address.
@@ -114,6 +118,9 @@ static inline paddr_t pa_add(paddr_t pa, size_t n)
 }
 *)
 
+Definition pa_add(pa n : var) (res: var) : stmt :=
+  res #= (pa + n) #;
+      Return res.
 
 (*
 /**
@@ -125,6 +132,10 @@ static inline size_t pa_difference(paddr_t start, paddr_t end)
 }
 *)
 
+Definition pa_difference(pa_start pa_end : var) (res: var) : stmt :=
+  res #= (pa_end - pa_start) #;
+      Return res.
+
 (*
 /**
  * Initializes an intermeditate physical address.
@@ -134,6 +145,9 @@ static inline ipaddr_t ipa_init(uintpaddr_t ipa)
         return (ipaddr_t){.ipa = ipa};
 }
 *)
+
+Definition ipa_init(ipa : var) : stmt :=
+  Return ipa.
 
 (*  
 /**
@@ -145,6 +159,9 @@ static inline uintpaddr_t ipa_addr(ipaddr_t ipa)
 }
 *)
 
+Definition ipa_addr(ipa : var) : stmt :=
+  Return ipa.
+
 (*
 /**
  * Advances an intermediate physical address.
@@ -155,6 +172,9 @@ static inline ipaddr_t ipa_add(ipaddr_t ipa, size_t n)
 }
 *)
 
+Definition ipa_add(ipa n : var) (res: var) : stmt :=
+  res #= (ipa + n) #;
+      Return res.
   
 (*
 /**
@@ -166,7 +186,9 @@ static inline vaddr_t va_init(uintvaddr_t v)
 }
 *)
 
-
+Definition va_init(v : var) : stmt :=
+  Return v.
+  
 (*  
 /**
  * Extracts the absolute virtual address.
@@ -177,6 +199,8 @@ static inline uintvaddr_t va_addr(vaddr_t va)
 }
 *)
 
+Definition va_addrt(va : var) : stmt :=
+  Return va.
 
 (*  
 /**
@@ -188,6 +212,8 @@ static inline vaddr_t va_from_pa(paddr_t pa)
 }
 *)
 
+Definition va_from_pa(pa : var) : stmt :=
+  Return pa.
 
 (*  
 /**
@@ -199,6 +225,9 @@ static inline ipaddr_t ipa_from_pa(paddr_t pa)
 }
 *)
 
+Definition ipa_from_pa(pa : var) : stmt :=
+  Return pa.
+
 (*  
 /**
  * Casts a virtual address to a physical address.
@@ -208,6 +237,9 @@ static inline paddr_t pa_from_va(vaddr_t va)
         return pa_init(va_addr(va));
 }
 *)
+
+Definition pa_from_va(va : var) : stmt :=
+  Return va.
 
 (*  
 /**
@@ -219,6 +251,8 @@ static inline paddr_t pa_from_ipa(ipaddr_t ipa)
 }
 *)
 
+Definition pa_from_ipa(ipa : var) : stmt :=
+  Return ipa.
 
 (*  
 /**
@@ -230,6 +264,21 @@ static inline vaddr_t va_from_ptr(const void *p)
 }
 *)
 
+(* Dongjoo: I'm not sure how to convert ptr to int and reverse with dsl language. 
+This code is temporary *)
+
+Let va_from_ptr_aux (vs: list val): (val * list val) :=
+  let retv := match vs with
+              | [(Vptr (Some p_id) _)]=> Vnat (p_id)
+              | _ => Vnodef
+              end
+  in
+  (retv, nil)
+.
+
+Definition va_from_ptr(p : var) (res: var) : stmt :=
+  res #= (CoqCode [CBV p] va_from_ptr_aux) #;
+      Return res.
 
 (*
 /**
@@ -241,9 +290,21 @@ static inline void *ptr_from_va(vaddr_t va)
 {
         return (void * )va_addr(va);
 }
-*)                                                        
+*)
 
-  
+Let ptr_from_va_aux (vs: list val): (val * list val) :=
+  let retv := match vs with
+              | [(Vnat p_id)]=> Vptr (Some p_id) nil
+              | _ => Vnull
+              end
+  in
+  (retv, nil)
+.
+
+Definition ptr_from_va(va : var) (res: var) : stmt :=
+  res #= (CoqCode [CBV va] ptr_from_va_aux) #;
+      Return res.
+
 End ADDR.
 
 
