@@ -121,6 +121,7 @@ Section AbsData.
   Inductive SHARED_TY := | EXCLUSIVE | SHARED.
 
   Inductive PTE_TY :=
+  | PTENONE
   | PTE (owner: option N) (paddr : N) (level : N) (vaddr: option N) (perm : PERM_TY).
 
   Record pt_entry: Type := mkPTE {value: list PTE_TY}.
