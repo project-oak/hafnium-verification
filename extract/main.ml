@@ -50,6 +50,7 @@ open String0
 open Subevent
 open Sum
 open Traversable
+open BinaryString
 open Sflib
 
 module Nat = struct
@@ -90,6 +91,41 @@ let string_of_vals vs = List.fold_left (fun s i -> s ^ " " ^ string_of_val i) ""
 
 (* JIEUNG: The following things are for mpool. Is there any way that we can provide 
  * those definitions with more user-friendly way than now? *)
+let string_of_lock l =
+  match l with
+  | Vnat id -> (cl2s (BinaryString.of_N id))
+  | _ -> failwith "Mpool not well-formed0"
+
+let entry_size = 4
+
+let rec string_of_chunk_list cl =
+  match cl with
+  | Vptr(Some(v), []) -> ""
+  | Vptr(Some paddr, next :: (Vnat limit) :: others) ->
+      (*
+     (if (entry_size * (Nat.to_int limit)) != Nat.to_int (length (next :: (Vnat limit) :: others))
+      then failwith "Mpool not well-formed4"
+      else ()) ; *)
+     "[" ^ (cl2s (BinaryString.of_N paddr)) ^ "~" ^  "(" ^ (cl2s (BinaryString.of_N paddr)) ^
+     " + " ^ (string_of_int entry_size) ^ " * " ^ (cl2s (BinaryString.of_N limit)) ^ ") " ^
+       string_of_chunk_list next
+  | _ -> failwith "Mpool not well-formed1"
+
+let string_of_mpool p =
+  let rec foo padding p =
+    match p with
+    (*
+    | Vptr(Some(O), []) -> "" *)
+    (* | Vptr(_, [ lock ; chunk_list ; fallback ] ) -> *)
+    | Vptr(_, lock :: chunk_list :: fallback :: _ ) ->
+       string_of_lock lock ^ " --> " ^ string_of_chunk_list chunk_list ^ "\n"
+       (* ^ padding ^ (foo (padding ^ "  ") fallback) *)
+    | _ -> failwith "Mpool not well-formed2"
+  in
+  (foo "  " p)
+
+
+
 (*
 let string_of_lock l =
   match l with
@@ -184,7 +220,7 @@ let handle_Event = fun e k ->
      k (Obj.magic ()) *)
   | ESyscall ('m'::'d'::[], msg, p::[]) ->
      print_endline (cl2s msg) ;
-     (* print_endline (string_of_mpool p) ; *)
+     print_endline (string_of_mpool p) ; 
      print_endline "" ;
      k (Obj.magic ()) 
   (*
@@ -194,7 +230,7 @@ let handle_Event = fun e k ->
      print_string (cl2s msg) ; print_endline (cl2s cl) ;
      failwith "UNSUPPORTED SYSCALL"
   | EYield ->
-     (* print_endline "yielding" ; *)
+     print_endline "yielding" ; 
      k (Obj.magic ())
   | _ -> failwith "NO MATCH"
 

@@ -20,8 +20,10 @@ Require Extraction.
 Require Import Lang LangTest.
 Require Import MpoolSeq MpoolConcur CPUSeq MM MMStageOne MMHighStageOne.
 
-Require Import ExtrOcamlBasic.
-Require Import ExtrOcamlString.
+Require Import
+        ExtrOcamlBasic
+        ExtrOcamlString
+        ExtrOcamlZInt.
 (* Require Import ExtrOcamlNatInt. *)
 
 (* Avoid name clashes *)
@@ -59,6 +61,8 @@ Separate Extraction
          LangTest.MultiModuleMultiCoreLocalState.isem
          LangTest.PrintAny.isem
          LangTest.PrintTest.string_gen 
+         LangTest.PrintTest.z_gen  
+         LangTest.PrintTest.Z_to_string_gen 
          (* LangTest.print_val *)
          (* LangTest.main *)
          (* LangTest.handle_Event *)
