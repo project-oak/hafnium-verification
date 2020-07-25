@@ -39,7 +39,7 @@ From ITree Require Import
 
 Import ITreeNotations.
 Import Monads.
-Import MonadNotation.
+Import MonadNotation. 
 Local Open Scope monad_scope.
 Local Open Scope string_scope.
 Require Import Coqlib sflib Coq.Arith.Peano_dec.
@@ -52,6 +52,7 @@ Require Import Types.
 Require Import MpoolConcur.
 Require Import ArchMM.
 Require Import Lock.
+        
 
 Import LangNotations.
 
@@ -114,15 +115,312 @@ Section AbsData.
     fun k1 => if rel_dec k0 k1 then v else m k1
   .
 
-  (* page table *)
+  (* The following are arch-independent page mapping modes. *)
+  Inductive ModeFlag :=
+  | MM_UNDEF1 (* nothing *)
+  | MM_MODE_R (* read *)
+  | MM_MODE_W (* write *)
+  | MM_MODE_X (* execute *)
+  | MM_MODE_D (* device *)
+  .
 
-  Inductive PERM_TY := | ABSENT | VALID.
-  Inductive OWN_TY := | OWNED | UNOWNED.
-  Inductive SHARED_TY := | EXCLUSIVE | SHARED.
+  
+  Inductive OwnModeFlag :=
+  | MM_UNDEF2
+  | MM_MODE_INVALID
+  | MM_MODE_UNOWNED
+  | MM_MODE_SHARED.
+  
+  
+  (* I do not know whether this one is necessary or not 
+  Inductive AccessFlag :=
+  | AF_USED
+  | AF_NON.
+  *)
 
+  (* This is the wrapper definition for va_addr to distinguish it with normal natural numbers *)
+  Inductive va_addr :=
+  | VA_ADDR (va: N).
+
+  Inductive ipa_addr :=
+  | IPA_ADDR (ipa: N).
+
+  (* Low level functional model for mm_index *)
+  (*
+  Definition mm_index (addr level: var) (v  : var) : stmt :=
+    v #= addr #>> (PAGE_BITS + (level * PAGE_LEVEL_BITS)) #;
+      Return (v #& ((UINT64_C(1) #<< PAGE_LEVEL_BITS) - 1)).
+   *)
+  
+  (* high-level functional model for mm_index - It is quite same. we just change the definition as a normal Coq definition  *)
+  Definition h_mm_index  (va : va_addr) (level : N) : N :=
+    match va with
+    | VA_ADDR va' =>
+      let v := (N.shiftr va' ((level * PAGE_LEVEL_BITS)%N + PAGE_BITS)%N) in
+      let mask := (N.shiftl 1 PAGE_LEVEL_BITS) - 1 in
+      (N.land v mask) 
+    end.
+
+  Definition va_page_bits (va: va_addr) : N :=
+    match va with
+    | VA_ADDR va' =>
+      let mask := (N.shiftl 1 PAGE_BITS) - 1 in
+      (N.land va' mask)
+    end.
+
+  Definition ipa_block_idx (level : N) (ipa : ipa_addr) : N :=
+    match ipa with
+    | IPA_ADDR ipa' =>
+      let mask := (N.shiftl 1 PAGE_LEVEL_BITS) - 1 in
+      (N.land (N.shiftr ipa' ((level * PAGE_LEVEL_BITS)%N + PAGE_BITS)%N) mask) 
+    end.
+
+  
+
+  
+
+  
+  (*
+  MM_FLAG_STAGE1
+    MM_FLAG_COMMIT
+    MM_FLAG_UNMAP
+    MM_MODE_UNMAPPED_MASK
+   *)
+  
+  Inductive ValidFlag :=
+  | MM_VALID
+  | MM_ABSENT.
+
+  Inductive OwnedFlag :=
+  | OWNED
+  | UNOWEND.
+
+  Inductive SharedFlag :=
+  | EXCLUSIVE
+  | SHARED.
+  
+  Inductive SG1Flag :=
+  | SG1_STATUS (val: ValidFlag).
+
+  Inductive SG2Flag :=
+  | SG2_STATUS (val: ValidFlag) (owned: OwnedFlag) (sh: SharedFlag).
+
+
+(*  in ptable_init
+  tables = mm_alloc_page_tables(root_table_count, ppool);
+  if (tables == NULL) {
+    return false;
+  }
+
+  for (i = 0; i < root_table_count; i++) {
+    for (j = 0; j < MM_PTE_PER_PAGE; j++) {
+      tables[i].entries[j] =
+        arch_mm_absent_pte(mm_max_level(flags));
+    }
+  }
+ *)
+  
+(*
+uint64_t arch_mm_mode_to_stage2_attrs(uint32_t mode)
+{
+  uint64_t attrs = 0;
+  uint64_t access = 0;
+
+  /*
+   * Non-shareable is the "neutral" share mode, i.e., the shareability
+   * attribute of stage 1 will determine the actual attribute.
+   */
+  attrs |= STAGE2_AF | STAGE2_SH(NON_SHAREABLE);
+
+  /* Define the read/write bits. */
+  if (mode & MM_MODE_R) {
+    access |= STAGE2_ACCESS_READ;
+  }
+
+  if (mode & MM_MODE_W) {
+    access |= STAGE2_ACCESS_WRITE;
+  }
+
+  attrs |= STAGE2_S2AP(access);
+
+  /* Define the execute bits. */
+  if (mode & MM_MODE_X) {
+    attrs |= STAGE2_XN(STAGE2_EXECUTE_ALL);
+  } else {
+    attrs |= STAGE2_XN(STAGE2_EXECUTE_NONE);
+  }
+
+  /*
+   * Define the memory attribute bits, using the "neutral" values which
+   * give the stage-1 attributes full control of the attributes.
+   */
+  if (mode & MM_MODE_D) {
+    attrs |= STAGE2_MEMATTR(STAGE2_DEVICE_MEMORY,
+          STAGE2_MEMATTR_DEVICE_GRE);
+  } else {
+    attrs |= STAGE2_MEMATTR(STAGE2_WRITEBACK, STAGE2_WRITEBACK);
+  }
+
+  /* Define the ownership bit. */
+  if (!(mode & MM_MODE_UNOWNED)) {
+    attrs |= STAGE2_SW_OWNED;
+  }
+
+  /* Define the exclusivity bit. */
+  if (!(mode & MM_MODE_SHARED)) {
+    attrs |= STAGE2_SW_EXCLUSIVE;
+  }
+
+  /* Define the valid bit. */
+  if (!(mode & MM_MODE_INVALID)) {
+    attrs |= PTE_VALID;
+  }
+
+  return attrs;
+}
+*)
+ 
+ 
+(*  in mm_populate_table_pte
+  /* Allocate a new table. */
+  ntable = mm_alloc_page_tables(1, ppool);
+  if (ntable == NULL) {
+    dlog_error("Failed to allocate memory for page table\n");
+    return NULL;
+  }
+
+  /* Determine template for new pte and its increment. */
+  if (arch_mm_pte_is_block(v, level)) {
+    inc = mm_entry_size(level_below);
+    new_pte = arch_mm_block_pte(level_below,
+              arch_mm_block_from_pte(v, level),
+              arch_mm_pte_attrs(v, level));
+  } else {
+    inc = 0;
+    new_pte = arch_mm_absent_pte(level_below);
+  }
+
+  /* Initialise entries in the new table. */
+  for (i = 0; i < MM_PTE_PER_PAGE; i++) {
+    ntable->entries[i] = new_pte;
+    new_pte += inc;
+  }
+ *)
+
+ (*
+
+uint32_t arch_mm_stage2_attrs_to_mode(uint64_t attrs)
+{
+  uint32_t mode = 0;
+
+  if (attrs & STAGE2_S2AP(STAGE2_ACCESS_READ)) {
+    mode |= MM_MODE_R;
+  }
+
+  if (attrs & STAGE2_S2AP(STAGE2_ACCESS_WRITE)) {
+    mode |= MM_MODE_W;
+  }
+
+  if ((attrs & STAGE2_XN(STAGE2_EXECUTE_MASK)) ==
+      STAGE2_XN(STAGE2_EXECUTE_ALL)) {
+    mode |= MM_MODE_X;
+  }
+
+  if ((attrs & STAGE2_MEMATTR_TYPE_MASK) == STAGE2_DEVICE_MEMORY) {
+    mode |= MM_MODE_D;
+  }
+
+  if (!(attrs & STAGE2_SW_OWNED)) {
+    mode |= MM_MODE_UNOWNED;
+  }
+
+  if (!(attrs & STAGE2_SW_EXCLUSIVE)) {
+    mode |= MM_MODE_SHARED;
+  }
+
+  if (!(attrs & PTE_VALID)) {
+    mode |= MM_MODE_INVALID;
+  }
+
+  return mode;
+}
+*)
+
+
+(*
+uint64_t arch_mm_mode_to_stage1_attrs(uint32_t mode)
+{
+  uint64_t attrs = 0;
+
+  attrs |= STAGE1_AF | STAGE1_SH(OUTER_SHAREABLE);
+
+  /* Define the execute bits. */
+  if (!(mode & MM_MODE_X)) {
+    attrs |= STAGE1_XN;
+  }
+
+  /* Define the read/write bits. */
+  if (mode & MM_MODE_W) {
+    attrs |= STAGE1_AP(STAGE1_READWRITE);
+  } else {
+    attrs |= STAGE1_AP(STAGE1_READONLY);
+  }
+
+  /* Define the memory attribute bits. */
+  if (mode & MM_MODE_D) {
+    attrs |= STAGE1_ATTRINDX(STAGE1_DEVICEINDX);
+  } else {
+    attrs |= STAGE1_ATTRINDX(STAGE1_NORMALINDX);
+  }
+
+  /* Define the valid bit. */
+  if (!(mode & MM_MODE_INVALID)) {
+    attrs |= PTE_VALID;
+  }
+
+  return attrs;
+}
+*)
+
+
+(*
+uint64_t arch_mm_combine_table_entry_attrs(uint64_t table_attrs,
+             uint64_t block_attrs)
+{
+  /*
+   * Only stage 1 table descriptors have attributes, but the bits are res0
+   * for stage 2 table descriptors so this code is safe for both.
+   */
+  if (table_attrs & TABLE_NSTABLE) {
+    block_attrs |= STAGE1_NS;
+  }
+  if (table_attrs & TABLE_APTABLE1) {
+    block_attrs |= STAGE1_AP2;
+  }
+  if (table_attrs & TABLE_APTABLE0) {
+    block_attrs &= ~STAGE1_AP1;
+  }
+  if (table_attrs & TABLE_XNTABLE) {
+    block_attrs |= STAGE1_XN;
+  }
+  if (table_attrs & TABLE_PXNTABLE) {
+    block_attrs |= STAGE1_PXN;
+  }
+  return block_attrs;
+}
+*)
+
+ 
+  
+  (* Do we need them? - those two things - I will skip them at this moment
+  Polymorphic Inductive upper_attrs := | up_attr (val: Type).
+  Polymorphic Inductive low_attrs := | lo_attr (val : Type). *)
+
+  
+  
   Inductive PTE_TY :=
   | PTENONE
-  | PTE (owner: option N) (paddr : N) (level : N) (vaddr: option N) (perm : PERM_TY).
+  | PTE (owner: option N) (paddr : N) (level : N) (vaddr: option N).
 
   Record pt_entry: Type := mkPTE {value: list PTE_TY}.
 
@@ -140,11 +438,11 @@ Module HighSpecDummyTest.
   Fixpoint pte_init_iter (base_addr: N) (level : N) (esize : N) (length : nat): list PTE_TY :=
     match length with
     | O => nil
-    | S O => (PTE None base_addr level None ABSENT)::nil
+    | S O => (PTE None base_addr level None)::nil
     | S n =>
       let prev := pte_init_iter base_addr level esize n in
       let len := List.length prev in 
-      prev ++ (PTE None (base_addr + (esize * (N.of_nat len))) level None ABSENT)::nil
+      prev ++ (PTE None (base_addr + (esize * (N.of_nat len))) level None)::nil
     end.
 
   (* initialization of the pte entry *)

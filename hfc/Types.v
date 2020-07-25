@@ -72,9 +72,9 @@ Local Open Scope N_scope.
 (* JIEUNG (TODO): It requires check that the value is in the range. and the value is well-typed. *)
 (* JIEUNG (TODO): I also hope to use quantifiers in assume and guarantee. Otherwise, I think we need 
    another method to express invariants? *) 
-Definition UINT64_C (val : expr) := val.
+Definition UINT64_C (val : N) := val.
 
-Definition UINT32_C (val : expr) := val.
+Definition UINT32_C (val : N) := val.
 
 (* XXX: There are some platform related constat values in the system. which are defined in [build/BUILD.dn].
    How can we define them in our system? 
@@ -119,11 +119,18 @@ Definition HF_PRIMARY_VM_ID := (HF_VM_ID_OFFSET + HF_PRIMARY_VM_INDEX)%N.
 (* From the definition in [src/arch/aarch64/inc/hf/arch/types.h] 
 #define PAGE_LEVEL_BITS 9 
 #define PAGE_BITS 12
+#define STACK_ALIGN 16
+#define FLOAT_REG_BYTES 16
+#define NUM_GP_REGS 31
 ...
 *)
 
 Definition PAGE_LEVEL_BITS := 9%N.
 Definition PAGE_BITS := 12%N.
+Definition STACK_ALIGN := 16%N.
+Definition FLOAT_REG_BYTES := 16%N.
+Definition NUM_GP_REGS := 31%N.
+
 
 (* typedef uint64_t pte_t; *)
 
@@ -152,8 +159,8 @@ Definition MM_MODE_D := 8%N.
 #define MM_PTE_PER_PAGE (PAGE_SIZE / sizeof(pte_t))
 *)
 
-Definition MM_PTE_PER_PAGE := (PAGE_SIZE / 8)%N.
-
+Definition MM_PTE_PER_PAGE := (PAGE_SIZE / sizeof_pte_t)%N. (* 512 *)
+ 
 (* From the definition in [inc/hf/mm.h]
 #define MM_MODE_INVALID UINT32_C(0x0010)
 #define MM_MODE_UNOWNED UINT32_C(0x0020)
@@ -179,5 +186,8 @@ Definition MM_FLAG_COMMIT := 1%N.
 Definition MM_FLAG_UNMAP := 2%N.
 
 (* I manually calculate the result. I may need some way? *)
+
+
+
 
 

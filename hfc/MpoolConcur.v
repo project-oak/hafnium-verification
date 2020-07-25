@@ -253,14 +253,18 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
     Debug "[alloc] unlocking" Vnull #;
     (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
     #if (ret)
-     then (DebugMpool "After alloc: " p #; Return ret)
+     then (DebugMpool "After alloc: " p #;
+                      DebugShow "alloced: " ret #;
+                      Return ret)
      else (
          nextp #= (p #@ fallback_ofs) #;
          #if (! nextp) then Return Vnull else Skip #;
          Debug "[alloc] calling alloc" Vnull #;
          ret #= (Call "alloc" [CBR nextp ; CBV count]) #;
          (p @ fallback_ofs #:= nextp) #;
-         DebugMpool "After alloc: " p #; Return ret
+         DebugMpool "After alloc: " p #;
+         DebugShow "alloced: " ret #;
+         Return ret
        )
   .
   
@@ -296,14 +300,18 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
     Debug "[alloc_contiguous] unlocking" Vnull #;
     (Call "Lock.release" [CBV (p #@ lock_ofs) ; CBV p]) #;
     #if (ret)
-     then (DebugMpool "After alloc_contiguous: " p #; Return ret)
+     then (DebugMpool "After alloc_contiguous: " p #;
+                      DebugShow "alloced: " ret #;
+                      Return ret)
      else (
          nextp #= (p #@ fallback_ofs) #;
          #if (! nextp) then Return Vnull else Skip #;
          Debug "[alloc_contiguous] calling alloc_contiguous" Vnull #;
          ret #= (Call "alloc_contiguous" [CBR nextp ; CBV count]) #;
          (p @ fallback_ofs #:= nextp) #;
-         DebugMpool "After alloc_contiguous: " p #; Return ret
+         DebugMpool "After alloc_contiguous: " p #;
+         DebugShow "alloced: " ret #;
+         Return ret
        )
   .
 

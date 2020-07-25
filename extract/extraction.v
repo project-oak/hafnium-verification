@@ -83,7 +83,8 @@ Separate Extraction
 
          MMStageOne.MMTEST1.isem
          MMStageOne.MMTESTAUX.isem
-
+         MMStageOne.MMTEST3.isem
+         
          MMHighStageOne.HighSpecDummyTest.program
          
          Lang.round_robin

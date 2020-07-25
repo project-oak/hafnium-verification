@@ -187,16 +187,20 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
           return mpool_alloc_contiguous(ppool, count, coun t);
   }
   *)
+
+  
   
   Definition mm_alloc_page_tables (count ppool: var) (res : var) : stmt :=
     #if (count == 1)
      then
        Debug "[alloc_page] calling mpool_alloc" Vnull #;
-       res #= (Call "alloc" [CBR ppool; CBV 1]) #;
+             res #= (Call "alloc" [CBR ppool; CBV 1]) #;
+             Debug "[alloc_page] retunr value is" res #;
            Return res
      else
        Debug "[alloc_page] calling mpool_alloc_contiguous" Vnull #;
        res #= (Call "alloc_contiguous" [CBR ppool ; CBV count]) #;
+       Debug "[alloc_page] retunr value is" res #;
        Return res.
 
 
@@ -342,6 +346,79 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
   }
    *)
 
+   Definition DUMMY_MM_PTE_PER_PAGE := 3.
+              
+   Definition mm_ptable_init (ppool : var) (i tables: var) :=
+     (Debug "[mm_ptable_init] start mm_ptable_init function" Vnull) #;
+      tables #= (Call "MMSTAGE1.mm_alloc_page_tables" [CBV 1; CBR ppool]) #; 
+      i #= 0 #;
+      (Debug "[mm_ptable_init] initialize all values in the table as 0" MM_PTE_PER_PAGE) #;
+      #while (i  <= DUMMY_MM_PTE_PER_PAGE)
+      do (
+          tables @ i #:= 0 #;  
+                 i #= (i + 1)
+        ) #;
+          DebugShow "[mm_ptable_init] initialized" tables.
+
+
+      (*
+      #while (i  <= MM_PTE_PER_PAGE - 1)
+      do (
+               r_table #= (tables #@ 0) #;
+                       r_table @ i #:= 0 #;
+                       tables @ i #:= r_table #;  
+                       i #= (i + 1)                                     
+        ).*) (* #;
+                (* This is a dummy return value, which we need to change later *)
+                Return tables. *)
+
+  Definition ptable_initF: function.
+    mk_function_tac mm_ptable_init ["ppool"] ["i"; "tables"].
+  Defined.
+  Definition alloc_page_tablesF : function.
+    mk_function_tac mm_alloc_page_tables ["count" ; "ppool"] ["res"].
+  Defined.
+  
+  Definition mm_stage_one_program: program :=
+    [
+    ("MMSTAGE1.mm_alloc_page_tables", alloc_page_tablesF);
+    ("MMSTAGE1.mm_ptable_init", ptable_initF)
+    ].
+  
+  Definition mm_stage_one_modsem : ModSem := program_to_ModSem mm_stage_one_program. 
+  
+              
+  (*
+  Definition mm_ptable_init (t flags ppool : var) (i j tables root_count max_l absent_pte i_table new_entry: var) :=
+    (* root_count is always 1 *)
+    root_count #= (Call "mm_root_table_count" [CBV flags]) #;
+               #assume (root_count == 1) #;
+               tables #= (Call "mm_alloc_page_tables" [CBV root_count; CBR ppool]) #;
+               #if (tables == Vnull)
+                then
+                  Return Vfalse
+                else
+                  i #= 0 #;
+                    #while (i  <= root_count - 1)
+                    do (
+                        j #= 0 #;
+                          #assume (MM_PTE_PER_PAGE == 512) #;
+                          #while (j  <= MM_PTE_PER_PAGE - 1)
+                          do (max_l #= (Call "mm_max_level" [CBV flags]) #;
+                                    (* we set the stage as 2 in here *) 
+                                    #assume (max_l == 3) #;
+                                    i_table #= (tables #@ i) #;
+                                    absent_pte #= (Call "arch_mm_absent_pte" [CBV max_l]) #;
+                                    i_table @ j #:= absent_pte #;
+                                    tables @ i #:= i_table #;
+                                    j #= (j + 1)                                     
+                             ) #;
+                               i #= (i + 1)                                     
+                      ).
+  *)
+  (* the following one is ignored at this moment. *)
+  (* t->root = pa_init((uintpaddr_t)tables); *)
+              
   
   (* JIEUNG: TODO: ignore several parts *)
 
@@ -603,6 +680,107 @@ End MMTEST2.
 
 
 
+
+
+(* example for ptable_init *)
+Module MMTEST3.
+ 
+  Include MMSTAGE1.
+  
+  (* Stack overflow... We may need to change the representation type from nat number to Z number
+  Definition TEST_HEAP_SIZE := 65536%nat. *)
+  Definition TEST_HEAP_SIZE := 4096%nat. 
+  Definition TOP_LEVEL := 3%N.
+  Definition pte_paddr_begin := 4000%N.
+
+  Definition entry_size: nat := 4.
+  
+  (* Those things will be arguments of our multiple test cases *)
+  Require Import ZArith.
+  Definition VM_MEM_START: Z := 0.
+  Definition VM_MEM_END: Z := 2199023255552. (* (2^16) *)
+
+  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4).
+  
+  Definition main (p r: var): stmt :=
+    Eval compute in INSERT_YIELD (
+      p #= Vptr None [0: val ; 0: val ; 0: val ] #;
+        Call "MPOOLCONCUR.mpool_init" [CBR p] #;
+        (* Need to refine the following definition *)
+        DebugMpool "ptable_init: (Global Mpool) After initialize" p #;
+        Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4);
+                                        CBV (N.of_nat TEST_HEAP_SIZE)] #;
+        "GPOOL" #= p #;
+        
+        #while ("SIGNAL" <= 1) do (Debug "ptable_init:  waiting for SIGNAL" Vnull) #;
+        (*** JUST FOR PRINTING -- START ***)
+        p #= (Call "Lock.acquire" [CBV (p #@ 0)]) #;
+        DebugMpool "(Global Mpool) Final: " p #;
+        (Call "Lock.release" [CBV (p #@ 0) ; CBV p]) #;
+        (*** JUST FOR PRINTING -- END ***)
+        (Debug "[main] calling mm_ptable_init" Vnull) #;      
+        (Call "MMSTAGE1.mm_ptable_init" [CBR p]) #;
+        (* #assume r #; *) 
+        Put "ptable_init: main finish" Vnull #;
+        Put "ptable_init: MMTEST Passed" Vnull).
+  
+    Definition ptable_init (count : N)
+               (p i r: var): stmt := Eval compute in INSERT_YIELD (
+      #while (!"GPOOL") do (Debug "ptable_init:  waiting for GMPOOL" Vnull) #;
+      p #= Vptr None [0: val ; 0: val ; 0: val ] #;
+      Call "MPOOLCONCUR.init_with_fallback" [CBR p ; CBV "GPOOL"] #;
+      DebugMpool "ptable_init: (Local Mpool) After init-with-fallback" p #;
+      (Call "MMSTAGE1.mm_ptable_init" [CBR p]) #;
+      Put "ptable_init: thread finish" Vnull #;
+      "SIGNAL" #= "SIGNAL" + 1 #;
+      Skip).
+
+
+    (*
+static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
+{
+        struct mm_page_table *table;
+        uint64_t i;
+
+        if (!arch_mm_pte_is_table(pte, level)) {
+                return;
+        }
+
+        /* Recursively free any subtables. */
+        table = mm_page_table_from_pa(arch_mm_table_from_pte(pte, level));
+        for (i = 0; i < MM_PTE_PER_PAGE; ++i) {
+                mm_free_page_pte(table->entries[i], level - 1, ppool);
+        }
+
+        /* Free the table itself. */
+        mpool_free(ppool, table);
+}
+     *)
+    Definition mainF: function.
+      mk_function_tac main ([]: list var) ["p" ; "r"].
+    Defined.
+    Definition ptable_init1F: function.
+      mk_function_tac (ptable_init 1) ([]: list var) ["p" ; "i" ; "r"].
+    Defined.
+    Definition ptable_init2F: function.
+      mk_function_tac (ptable_init 2) ([]: list var) ["p" ; "i" ; "r"].
+    Defined.
+                                         
+    Definition program: program :=
+      [
+        ("main", mainF) ;
+      ("init1F", ptable_init1F) ;
+      ("init2F", ptable_init2F) 
+      ].
+    
+    Definition modsems: list ModSem := [program_to_ModSem program ; MMSTAGE1.mm_stage_one_modsem;
+                                       LOCK.modsem ; MPOOLCONCUR.mpool_modsem]. 
+    
+    Definition isem: itree Event unit :=
+      eval_multimodule_multicore
+        modsems [ "main" ; "init1F" ; "init2F" ].
+
+End MMTEST3.
 
 
 

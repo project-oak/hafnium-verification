@@ -175,7 +175,6 @@ Global Instance bit_ops : BitOps :=
   }.
 *)
 
-
 Definition var : Set := string.
 
 (* JIEUNG: to run some big examples with big numbers with Vnat values, we may need to change that one with using Z type instead of nat type *)
@@ -196,17 +195,17 @@ Extract Constant show_val =>
   let s2cl = fun s -> List.init (String.length s) (String.get s) in
   let rec string_of_val v =
   match v with
-  | Vnat n -> cl2s (BinaryString.of_N n) ^ "" ""
+  | Vnat n -> ""Vnat "" ^ cl2s (BinaryString.of_N n) ^ "" ""
   | Vptr(paddr, cts) ->
      let paddr = ""("" ^ (match paddr with
                         | Some paddr -> cl2s (BinaryString.of_N paddr)
                         | None -> ""N"") ^ "")""
      in
      if length cts == nat_of_int 0
-     then paddr ^ "". ""
-     else paddr ^ ""["" ^
+     then ""Vptr "" ^ paddr ^ "". ""
+     else ""Vptr "" ^ paddr ^ ""["" ^
             (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
-  | Vabs(a) -> cl2s (string_of_Any a) in
+  | Vabs(a) -> ""Vabs "" ^ cl2s (string_of_Any a) in
   fun x -> s2cl (string_of_val x)
 ".
 
@@ -365,6 +364,10 @@ int getindex (struct cpu c) {
 | GetOwnedHeap
 .
 
+Definition DebugShow := Syscall "show".
+
+
+
 (* JIEUNG: It is really using expression or variable name. Do we need to distinguish them? And the definition of our 
    expression also contains Var. Why do we need CBR then? *)
 Definition CBV: expr -> var + expr := inr.
@@ -393,6 +396,9 @@ e.g. See if x has even number --> we need something like "MetaIf (var -> P: Prop
 (* JIEUNG: the following two are for program evalution related information *) 
 | Continue
 | Yield
+
+(* JIEUNG: This one if for initialization of the test *)
+| InitPtrs (x: var) (v: expr) (size: expr)    
 .
 
 Inductive function: Type :=
@@ -826,7 +832,7 @@ Section Denote.
     | GetOwnedHeap => trigger EGetOwnedHeap
     | PutOwnedHeap e => v <- (denote_expr e) ;; trigger (EPutOwnedHeap v) ;; ret Vnodef
     end.
-
+  
   (* JIEUNG (comments): Can I know a little bit more about this control? *) 
   Inductive control: Type :=
   | CNormal
@@ -920,8 +926,26 @@ Section Denote.
     | Break => Ret (CBreak, Vnodef)
     | Continue => Ret (CContinue, Vnodef)
     | Yield => trigger EYield ;; Ret (CNormal, Vnodef)
-    end.
 
+    (* JIEUNG: for initialization -  I will add this part later *)
+    | InitPtrs ptrvar v size =>
+      ptr <- triggerGetVar ptrvar ;;
+      match ptr, v, size with
+      | Vptr paddr cts0, Vnat init_v, Vnat sz =>
+        match  paddr with
+        | Some paddr' =>
+          if is_true paddr'
+          then
+            if is_true sz
+            then triggerNB "expr-initptr"
+            else triggerNB "expr-initptr"
+          else triggerNB "expr-initptr"  
+        | _ => triggerNB "expr-initptr"
+        end
+      | _, _, _ => triggerNB "expr-initptr"
+      end                                                                                 
+    end.
+    
 End Denote.
 
 Section Denote.

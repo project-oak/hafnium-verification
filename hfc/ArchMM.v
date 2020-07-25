@@ -280,7 +280,7 @@ static uint8_t mm_s2_root_table_count;
   Definition STAGE2_MEMATTR_DEVICE_GRE := UINT64_C 3.
 
   Definition STAGE2_MEMATTR (outer inner: expr) := (Or (ShiftL outer 2) (ShiftL inner 2)).
-  Definition STAGE2_MEMATTR_TYPE_MASK := UINT64_C (ShiftL 3 4).
+  Definition STAGE2_MEMATTR_TYPE_MASK := UINT64_C (N.shiftl 3 4).
 
   Definition TABLE_NSTABLE := ShiftL UINT64_C_1 63.
   Definition TABLE_APTABLE1 := ShiftL UINT64_C_1 62.
