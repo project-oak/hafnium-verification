@@ -554,18 +554,18 @@ Module MMTEST1.
 
   (* Stack overflow... We may need to change the representation type from nat number to Z number
   Definition TEST_HEAP_SIZE := 65536%nat. *)
-  Definition TEST_HEAP_SIZE := 4096%nat. 
+  Definition TEST_HEAP_SIZE := 1024%nat. 
   Definition TOP_LEVEL := 3%N.
   Definition pte_paddr_begin := 4000%N.
 
-  Definition entry_size: nat := 4.
+  Definition entry_size: nat := 16.
 
   (* Those things will be arguments of our multiple test cases *)
   Require Import ZArith.
   Definition VM_MEM_START: Z := 0.
   Definition VM_MEM_END: Z := 2199023255552. (* (2^16) *)
 
-  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4).
+  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE entry_size).
 
   Definition main (p i r: var): stmt :=
     Eval compute in INSERT_YIELD (
@@ -573,7 +573,7 @@ Module MMTEST1.
         Call "MPOOLCONCUR.mpool_init" [CBR p] #;
         (* Need to refine the following definition *)
         DebugMpool "(Global Mpool) After initialize" p #;
-        Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4);
+        Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE entry_size);
                                         CBV (N.of_nat TEST_HEAP_SIZE)] #;
         "GPOOL" #= p #;
         
@@ -689,18 +689,18 @@ Module MMTEST3.
   
   (* Stack overflow... We may need to change the representation type from nat number to Z number
   Definition TEST_HEAP_SIZE := 65536%nat. *)
-  Definition TEST_HEAP_SIZE := 4096%nat. 
+  Definition TEST_HEAP_SIZE := 1024%nat. 
   Definition TOP_LEVEL := 3%N.
   Definition pte_paddr_begin := 4000%N.
 
-  Definition entry_size: nat := 4.
+  Definition entry_size: nat := 16.
   
   (* Those things will be arguments of our multiple test cases *)
   Require Import ZArith.
   Definition VM_MEM_START: Z := 0.
   Definition VM_MEM_END: Z := 2199023255552. (* (2^16) *)
 
-  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4).
+  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE entry_size).
   
   Definition main (p r: var): stmt :=
     Eval compute in INSERT_YIELD (
@@ -708,7 +708,7 @@ Module MMTEST3.
         Call "MPOOLCONCUR.mpool_init" [CBR p] #;
         (* Need to refine the following definition *)
         DebugMpool "ptable_init: (Global Mpool) After initialize" p #;
-        Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE 4);
+        Call "MPOOLCONCUR.add_chunk" [CBR p ; CBV (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE entry_size);
                                         CBV (N.of_nat TEST_HEAP_SIZE)] #;
         "GPOOL" #= p #;
         

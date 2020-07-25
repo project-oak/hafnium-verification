@@ -391,7 +391,7 @@ Module CPUTEST.
            p0 #= Vptr None [0: val ; 0: val; Vtrue: val] #;
 (*           (Syscall "md" "test:" p0) #; *)
            (Call "cpu_off" [CBR p0]) #;
-    (Put "CPU_PROGRAM Tested" Vnull)
+           (Put "CPU_PROGRAM Tested" Vnull)
   .
           
     Definition mainF: function.

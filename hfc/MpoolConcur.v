@@ -83,7 +83,7 @@ Simplified Mpool := Vptr [Vnat//lock ; Vptr//chunk_list ; Vptr//fallback]
   Definition next_chunk_ofs := 0.
   Definition limit_ofs := 1.
 
-  Definition entry_size: N := 4.
+  Definition entry_size: N := 16.
 
   Fixpoint chunk_list_wf (chunk_list: val): bool :=
     match chunk_list with
@@ -813,7 +813,7 @@ Module TEST.
         r #= Call "alloc_contiguous" [CBR p ; CBV 1] #;
         #assume r
       ) #;
-      Put "Test4 Passed" Vnull
+      Put "Test4 Passed " Vnull
     )
     .
 
