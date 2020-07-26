@@ -44,7 +44,6 @@ Local Open Scope monad_scope.
 Local Open Scope string_scope.
 Require Import Coqlib sflib.
 
-
 (* From HafniumCore *)
 Require Import TestAux.
 Require Import Lang.

@@ -235,7 +235,7 @@ let handle_Event = fun e k ->
      print_string (cl2s msg) ; print_endline (cl2s cl) ;
      failwith "UNSUPPORTED SYSCALL"
   | EYield ->
-     print_endline "yielding" ; 
+     (* print_endline "yielding" ; *) 
      k (Obj.magic ())
   | _ -> failwith "NO MATCH"
 
@@ -391,4 +391,6 @@ let main =
   print_endline "-----------------------------------------------------------" ;
   run (eval_whole_program MMHighStageOne.HighSpecDummyTest.program) ;
 
+  print_endline "-----------------------------------------------------------" ;
+  run (MMHighStageOne.PTHIGHTEST.isem) ;
   ()

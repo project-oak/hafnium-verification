@@ -195,17 +195,17 @@ Extract Constant show_val =>
   let s2cl = fun s -> List.init (String.length s) (String.get s) in
   let rec string_of_val v =
   match v with
-  | Vnat n -> ""Vnat "" ^ cl2s (BinaryString.of_N n) ^ "" ""
+  | Vnat n ->  cl2s (BinaryString.of_N n) ^ "" ""
   | Vptr(paddr, cts) ->
      let paddr = ""("" ^ (match paddr with
                         | Some paddr -> cl2s (BinaryString.of_N paddr)
                         | None -> ""N"") ^ "")""
      in
      if length cts == nat_of_int 0
-     then ""Vptr "" ^ paddr ^ "". ""
-     else ""Vptr "" ^ paddr ^ ""["" ^
+     then ""(*) "" ^ paddr ^ "". ""
+     else ""(*) "" ^ paddr ^ ""["" ^
             (List.fold_left (fun s i -> s ^ "" "" ^ string_of_val i) """" cts) ^ ""]""
-  | Vabs(a) -> ""Vabs "" ^ cl2s (string_of_Any a) in
+  | Vabs(a) -> ""(A) "" ^ cl2s (string_of_Any a) in
   fun x -> s2cl (string_of_val x)
 ".
 
