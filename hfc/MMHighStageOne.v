@@ -95,8 +95,6 @@ Notation "x <- c1 ;; c2" := (@pbind _ (PMonad_Monad Monad_option) _ _ _ c1 (fun 
 Require Import Any.
 
 
-
-
 Module DummyAbsData.
   
   Inductive PTE_TY :=
@@ -165,12 +163,11 @@ End HighSpecDummyTest.
 Module AbsData.
 
   (* MPOOL_DEFINITION *)
-
   Definition ident := N.
 
   Instance RelDec_ident: RelDec (@eq ident) :=
     { rel_dec := fun n0 n1 => if (N.eqb n0 n1) then true else false}.
-
+  
   (* mpool *)
 
   Record mpool: Type :=
@@ -183,13 +180,6 @@ Module AbsData.
   
 
   Definition GMPOOL := (Map mpool).
-    
-  Definition mp_manager: Type := ident -> option GMPOOL.
-  Definition inital_mp_manager: mp_manager := fun _ => None.
-  Definition mp_update (m: mp_manager) (k0: ident) (v: option GMPOOL): mp_manager :=
-    fun k1 => if rel_dec k0 k1 then v else m k1
-  .
-
 
 
   (* PTE Definition *)
@@ -253,7 +243,6 @@ Module AbsData.
   Definition ADDR_VAL :=  N. (* we may need an invariant to figure out the range of the address *)
 
   Inductive PTE_TY :=
-  | PTE_UNDEF
   | PTE_ABSENT (addr: N)
   | PTE_VALID (addr: N) (block_addr: N) (mf: ModeFlag) (omf: OwnModeFlag).
   (* addr is the base address of the PTE *)
@@ -280,14 +269,18 @@ Module AbsData.
   | PTP_ST2 (ptp_st2: ST2PTP).
 
  
-  Definition GPTP := (Map PTP_TY).
+  Definition GPTPOOL := (Map PTP_TY).
 
-  Definition pt_manager : Type := ident -> option GPTP.
-  Definition inital_pt_manager: mp_manager := fun _ => None.
-  Definition pt_update (m: pt_manager) (k0: ident) (v: option GPTP): pt_manager :=
+  Record AbstractData := mkAD {gmp: GMPOOL; gptp: GPTPOOL}.
+
+  Definition manager : Type := ident -> option AbstractData.
+  Definition inital_manager: manager := fun _ => None.
+  Definition update (m: manager) (k0: ident) (v: option AbstractData): manager :=
     fun k1 => if rel_dec k0 k1 then v else m k1
-  .
+  . 
 
+  Instance AbstractData_Showable: Showable AbstractData := { show := fun x => match x with | _ => "TEST" end }.
+  
 End AbsData.
 
 Module PTHIGH.
@@ -303,7 +296,7 @@ Module PTHIGH.
   Definition init_mpool (base_addr: option N) (curid : ident) (pid: ident) (limit: N) : mpool :=
     {| chunk_addr := base_addr;
        chunk_limit := (entry_size * limit)%N;
-       fallback := if (eq_dec root_id curid) then None else Some pid |}.
+       fallback := if (N.eq_dec root_id curid) then None else Some pid |}.
 
   Definition init_ST1PTP (addr: N) :=
     {| st1_root_table := PTE_ABSENT addr;
@@ -317,7 +310,7 @@ Module PTHIGH.
        st2l0pt := (newMap PTE_TY) |}.                    
   
   Definition init_ptp (nid: ident) (stage: N) (addr: N) :=
-    if (eq_dec stage 1)
+    if (N.eq_dec stage 1)
     then (PTP_ST1 (init_ST1PTP addr))
     else (PTP_ST2 (init_ST2PTP addr)).
 
@@ -332,6 +325,9 @@ Module PTHIGH.
                 
   Definition init_mp := initialize_mpool thread_set root_map.
 
+  Definition init_abs := {|gmp := init_mp; gptp := newMap PTP_TY |}.
+  
+  (*
   Let mpool_init  (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
     let retv := match vs with
                 | nil =>
@@ -351,49 +347,117 @@ Module PTHIGH.
                 end
     in
     (retv, nil).
+   *)
   
+  Let abs_init  (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
+    let retv := match vs with
+                | nil =>
+                  unwrap (let new_mp := init_mp in
+                          Some (Vabs (upcast init_abs))) Vnodef
+                | _ => Vnodef
+                end
+    in
+    (retv, nil).
+
+  (* JIEUNG: disallow nested mpool alloc in here - it is quite simplified. 
+     We need to change them later. This one is quite simplified one, so we have to fixt this one later
+   *)
+  Let mp_alloc_spec (pid : N) (cur_gmp : GMPOOL) : option (N * GMPOOL) :=
+    match ((MapGet mpool) cur_gmp pid) with
+    | None =>
+      (* make a new chunk from root - need to generalize this one *)
+      match ((MapGet mpool) cur_gmp root_id) with
+      | Some root_map =>
+        match root_map with
+        | mkMPOOL (Some addr) limit fallback =>
+          Some (addr, ((MapPut mpool)
+                         ((MapPut mpool) cur_gmp pid (mkMPOOL (Some addr) entry_size (Some root_id)))
+                         root_id (mkMPOOL (Some (addr + entry_size)) (limit - entry_size) None)))
+        | _ => None
+        end        
+      | None => None
+      end
+    | Some mp => None
+    end.
+  
+  Let mm_ptable_init_spec (abs: AbstractData) (pid: N) (stage : N) : option AbstractData :=
+    let cur_gmp := abs.(gmp) in
+    let cur_gptp := abs.(gptp) in
+    match ((MapGet PTP_TY) cur_gptp pid) with
+    | None => Some (mkAD cur_gmp cur_gptp)
+    | _ => None
+    end.
+
+  Let mm_ptable_init (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
+    let retv := match vs with
+                | [Vabs abs ; Vnat pid; Vnat stage] =>
+                  match downcast abs AbstractData with
+                  | Some abs' => 
+                    match mm_ptable_init_spec abs' pid stage with
+                    | Some abs'' => unwrap (Some (Vabs (upcast abs''))) Vnodef
+                    | _ => Vnodef
+                    end 
+                  | _ => Vnodef
+                  end
+                | _ => Vnodef
+                end
+    in
+    (retv, nil).   
+
 End PTHIGH.
 
 Module PTHIGHTEST.
 
   Include PTHIGH.
    
-  Definition main mp ptp : stmt :=
+  Definition main (abs : var) : stmt :=
     Eval compute in INSERT_YIELD (    
-      (DebugHigh "[high-model] Calling ptable_init" Vnull) #;
-      mp #= (CoqCode [] mpool_init) #;
-      ptp #= (CoqCode [] ptp_init) #;
-      (DebugHigh "[high-model] End ptable_init" Vnull)).
-
-
-  Definition ptable_init : stmt :=
-    Eval compute in INSERT_YIELD (Skip).    
-
+      (DebugHigh "[high-model] main: ptable_init start" Vnull) #;
+       abs #= (CoqCode [] abs_init) #;
+       "ABS" #=  abs #;
+       (* abs #= (CoqCode [CBV abs; CBV 0; CBV 2] mm_ptable_init) #;  *)
+       "GMINIT" #= Vtrue #;
+       (DebugHigh "[high-model] main: ptable_init end" Vnull)).
+  
+  Definition ptable_init  (count : N) (abs : var) : stmt :=
+    Eval compute in INSERT_YIELD (
+      #while (! "GMINIT") do (Debug "waiting for GMPOOL" Vnull) #;
+      (DebugHigh "[high-model] thread: ptable_init start" count) #;
+      abs #= "ABS" #;
+      (* abs #= (CoqCode [CBV abs; CBV count; CBV 2] mm_ptable_init) #;   *)
+      (DebugHigh "[high-model] thread: ptable_init end" count)).
 
   Definition mainF: function.
-    mk_function_tac main ([]: list var) (["mp" ; "ptp"] : list var).
+    mk_function_tac main ([]: list var) (["abs"] : list var).
   Defined.
 
-  Definition ptable_initF: function.
-    mk_function_tac ptable_init ([]: list var) ([] : list var).
+  Definition ptable_init1F: function.
+    mk_function_tac (ptable_init 1) ([]: list var) (["abs"] : list var).
   Defined.
 
+  Definition ptable_init2F: function.
+    mk_function_tac (ptable_init 2) ([]: list var) (["abs"] : list var).
+  Defined.
   
   Definition program: program :=
     [
       ("main", mainF) ;
-    ("ptable_init", ptable_initF)
+    ("ptable_init1", ptable_init1F) ;
+    ("ptable_init2", ptable_init2F)
     ].
   
+  Definition modsems: list ModSem :=
+    [program_to_ModSem program].
+
   Definition isem: itree Event unit :=
-    eval_multimodule [program_to_ModSem program]
-      (* eval_multimodule [LOCK.modsem ; program_to_ModSem program] *)
-  .
+      eval_multimodule_multicore
+        modsems [ "main" ; "ptable_init1" ; "ptable_init2" ].
 
 End PTHIGHTEST.
 
 
-Section ADDR_TRANSLATION.
+(* TODO: Will work on the following things later *)
+Module ADDR_TRANSLATION.
     
   (* This one is for later implementation *)
   
