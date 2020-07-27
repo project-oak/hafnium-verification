@@ -51,6 +51,7 @@ Require Import Types.
 Require Import MpoolConcur.
 Require Import ArchMM.
 Require Import Lock.
+Require Import ADDR.
 
 Import LangNotations.
 
@@ -357,20 +358,20 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
           tables @ i #:= 0 #;  
                  i #= (i + 1)
         ) #;
-          DebugShow "[mm_ptable_init] initialized" tables.
+          DebugShow "[mm_ptable_init] initialized" tables
+         .
 
+  Definition mm_populate_table_pte (pte level : var) (level_below pa attrs new_pte: var) :=
+      (Debug "[mm_populate_table_pte] start mm_populate_table_pte function" Vnull) #;
+      level_below #= level - 1 #;
+      pa #= (Call "arch_mm_block_from_pte" [CBV pte; CBV level]) #;
+      attrs #= (Call "arch_mm_pte_attrs" [CBV pte; CBV level]) #;
+      new_pte #= (Call "arch_mm_block_pte" [CBV level_below; CBV pa; CBV attrs]) #;
+      Return new_pte.
 
-      (*
-      #while (i  <= MM_PTE_PER_PAGE - 1)
-      do (
-               r_table #= (tables #@ 0) #;
-                       r_table @ i #:= 0 #;
-                       tables @ i #:= r_table #;  
-                       i #= (i + 1)                                     
-        ).*) (* #;
-                (* This is a dummy return value, which we need to change later *)
-                Return tables. *)
-
+  Definition mm_populate_table_pteF: function.
+    mk_function_tac mm_populate_table_pte ["pte" ; "level"] ["level_below" ; "pa" ; "attrs" ; "new_pte"].
+  Defined.
   Definition ptable_initF: function.
     mk_function_tac mm_ptable_init ["ppool"] ["i"; "tables"].
   Defined.
@@ -381,11 +382,14 @@ static size_t mm_index(ptable_addr_t addr, uint8_t level)
   Definition mm_stage_one_program: program :=
     [
     ("MMSTAGE1.mm_alloc_page_tables", alloc_page_tablesF);
-    ("MMSTAGE1.mm_ptable_init", ptable_initF)
+    ("MMSTAGE1.mm_ptable_init", ptable_initF);
+    ("MMSTAGE1.mm_populate_table_pte", mm_populate_table_pteF)
     ].
   
   Definition mm_stage_one_modsem : ModSem := program_to_ModSem mm_stage_one_program. 
-  
+
+
+
               
   (*
   Definition mm_ptable_init (t flags ppool : var) (i j tables root_count max_l absent_pte i_table new_entry: var) :=
@@ -781,6 +785,49 @@ static void mm_free_page_pte(pte_t pte, uint8_t level, struct mpool *ppool)
 
 End MMTEST3.
 
+Module POPULATE.
+ 
+  Include MMSTAGE1.
+  Include ArchMM.
+  Include ADDR.
+
+  (* Stack overflow... We may need to change the representation type from nat number to Z number
+  Definition TEST_HEAP_SIZE := 65536%nat. *)
+  Definition TEST_HEAP_SIZE := 1024%nat. 
+  Definition TOP_LEVEL := 3%N.
+  Definition pte_paddr_begin := 4000%N.
+
+  Definition entry_size: nat := 16.
+  
+  (* Those things will be arguments of our multiple test cases *)
+  Require Import ZArith.
+  Definition VM_MEM_START: Z := 0.
+  Definition VM_MEM_END: Z := 2199023255552. (* (2^16) *)
+
+  Check (big_mem_flat pte_paddr_begin TEST_HEAP_SIZE entry_size).
+  
+  Definition main (res:var) : stmt :=
+    res #= (Call "MMSTAGE1.mm_populate_table_pte" [CBV 4852234; CBV 2]) #;
+        Put "new_pte :" res #;
+        Return res.
+
+    Definition mainF: function.
+      mk_function_tac main ([]: list var) (["res"]: list var).
+    Defined.
+                                         
+    Definition program: program :=
+      [
+        ("main", mainF) 
+      ].
+    
+    Definition modsems: list ModSem := [program_to_ModSem program ; MMSTAGE1.mm_stage_one_modsem;
+                                       LOCK.modsem ; MPOOLCONCUR.mpool_modsem ; arch_mm_modsem ; addr_modsem]. 
+    
+    Definition isem: itree Event unit :=
+      eval_multimodule_multicore
+        modsems [ "main" ].
+
+End POPULATE.
 
 
 

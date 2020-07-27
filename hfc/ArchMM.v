@@ -532,7 +532,7 @@ uint64_t arch_mm_pte_attrs(pte_t pte, uint8_t level)
 }
 
    *)
-  Definition arch_mm_pte_attrs (pte:var) (res:var) :=
+  Definition arch_mm_pte_attrs (pte level:var) :=
     Return (pte #& PTE_ATTR_MASK).
 
   (*
@@ -1145,7 +1145,7 @@ bool arch_mm_init(paddr_t table)
   Defined.
   
   Definition arch_mm_pte_attrsF : function.
-    mk_function_tac arch_mm_pte_attrs ["pte"] ["res"].
+    mk_function_tac arch_mm_pte_attrs ["pte" ; "level"] ([] : list var).
   Defined.
 
   Definition arch_mm_invalidate_stage1_rangeF : function.
