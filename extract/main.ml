@@ -389,8 +389,11 @@ let main =
   run (MMStageOne.MMTEST3.isem) ;
 
   print_endline "-----------------------------------------------------------" ;
+  run (MMStageOne.POPULATE.isem) ;
+
+  (*print_endline "-----------------------------------------------------------" ;
   run (eval_whole_program MMHighStageOne.HighSpecDummyTest.program) ;
 
   print_endline "-----------------------------------------------------------" ;
-  run (MMHighStageOne.PTHIGHTEST.isem) ;
+  run (MMHighStageOne.PTHIGHTEST.isem) ;*)
   ()
