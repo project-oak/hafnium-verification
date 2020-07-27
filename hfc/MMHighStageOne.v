@@ -172,8 +172,7 @@ Module AbsData.
 
   Record mpool: Type :=
     mkMPOOL {
-        chunk_addr: option N;
-        chunk_limit: N;
+        chunks: (list (N * N));
         fallback: option ident; (* mpoolid *)
       }
   .
@@ -292,10 +291,13 @@ Module PTHIGH.
   Definition entry_size := 16.
   Definition root_id := 0.
   Definition thread_set := [1; 2].
+
+  Definition init_mpool' (curid : ident) : mpool :=
+    {| chunks := [];
+       fallback := None |}.
   
-  Definition init_mpool (base_addr: option N) (curid : ident) (pid: ident) (limit: N) : mpool :=
-    {| chunk_addr := base_addr;
-       chunk_limit := (entry_size * limit)%N;
+  Definition init_mpool (base_addr: N) (curid : ident) (pid: ident) (limit: N) : mpool :=
+    {| chunks := [(base_addr, (entry_size * limit)%N)];
        fallback := if (N.eq_dec root_id curid) then None else Some pid |}.
 
   Definition init_ST1PTP (addr: N) :=
@@ -314,13 +316,14 @@ Module PTHIGH.
     then (PTP_ST1 (init_ST1PTP addr))
     else (PTP_ST2 (init_ST2PTP addr)).
 
-  Definition root_map := (MapPut mpool) (newMap mpool) root_id (init_mpool (Some  pte_paddr_begin) root_id root_id TEST_HEAP_SIZE).
+  Definition root_map := (MapPut mpool) (newMap mpool) root_id (init_mpool (pte_paddr_begin)
+                                                                           root_id root_id TEST_HEAP_SIZE).
 
   Fixpoint initialize_mpool (l: list N) (init_map : (Map mpool)) :=
     match l with
     | nil => init_map
     | hd::tl => let res := initialize_mpool tl init_map in
-                (MapPut mpool) res hd (init_mpool None hd root_id 0)
+                (MapPut mpool) res hd (init_mpool' hd)
     end.
                 
   Definition init_mp := initialize_mpool thread_set root_map.
@@ -362,6 +365,18 @@ Module PTHIGH.
   (* JIEUNG: disallow nested mpool alloc in here - it is quite simplified. 
      We need to change them later. This one is quite simplified one, so we have to fixt this one later
    *)
+
+  Fixpoint alloc_chunk (lst : list (N * N)) (size : N) (ret_lst : list (N * N)): option (N * list (N * N)) :=
+    match lst with
+    | nil => None
+    | (addr, limit)::tl =>
+      if N.leb size limit
+      then let ret_lst' := ret_lst ++ ((addr + size), (limit - size))::tl in
+           Some (addr, ret_lst')
+      else alloc_chunk tl size (ret_lst++(addr, limit)::nil)
+    end.
+
+  
   Let mp_alloc_spec (pid : N) (cur_gmp : GMPOOL) : option (N * GMPOOL) :=
     match ((MapGet mpool) cur_gmp pid) with
     | None =>
@@ -369,11 +384,16 @@ Module PTHIGH.
       match ((MapGet mpool) cur_gmp root_id) with
       | Some root_map =>
         match root_map with
-        | mkMPOOL (Some addr) limit fallback =>
-          Some (addr, ((MapPut mpool)
-                         ((MapPut mpool) cur_gmp pid (mkMPOOL (Some addr) entry_size (Some root_id)))
-                         root_id (mkMPOOL (Some (addr + entry_size)) (limit - entry_size) None)))
-        | _ => None
+        | mkMPOOL lst fallback =>
+          let res := alloc_chunk lst entry_size nil in
+          match res with 
+          | Some (addr, new_lst) =>
+            Some (addr, 
+                  ((MapPut mpool)
+                     ((MapPut mpool) cur_gmp pid (mkMPOOL [(addr, entry_size)] (Some root_id)))
+                     root_id (mkMPOOL new_lst None)))
+          | _ => None
+          end
         end        
       | None => None
       end
@@ -385,9 +405,21 @@ Module PTHIGH.
     let cur_gptp := abs.(gptp) in
     match ((MapGet PTP_TY) cur_gptp pid) with
     | None =>
-      None
+      let res := mp_alloc_spec pid cur_gmp in
+      match res with
+      | Some (addr, new_gmp) =>
+        let new_gptp_entry := if (N.eq_dec stage 1)
+                              then PTP_ST1 (mkST1PTP (PTE_ABSENT addr) (newMap PTE_TY) (newMap PTE_TY))
+                              else PTP_ST2 (mkST2PTP (PTE_ABSENT addr) (newMap PTE_TY) (newMap PTE_TY)
+                                                     (newMap PTE_TY))
+        in
+        let new_gptp := ((MapPut PTP_TY) cur_gptp pid new_gptp_entry) in
+        Some (mkAD new_gmp new_gptp)
+      | _ => None
+      end
     | _ => None
     end.
+
 
   Let mm_ptable_init (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
     let retv := match vs with
