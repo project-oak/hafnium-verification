@@ -384,7 +384,8 @@ Module PTHIGH.
     let cur_gmp := abs.(gmp) in
     let cur_gptp := abs.(gptp) in
     match ((MapGet PTP_TY) cur_gptp pid) with
-    | None => Some (mkAD cur_gmp cur_gptp)
+    | None =>
+      None
     | _ => None
     end.
 
@@ -402,8 +403,8 @@ Module PTHIGH.
                 | _ => Vnodef
                 end
     in
-    (retv, nil).   
-
+    (retv, nil).
+      
 End PTHIGH.
 
 Module PTHIGHTEST.
@@ -415,7 +416,7 @@ Module PTHIGHTEST.
       (DebugHigh "[high-model] main: ptable_init start" Vnull) #;
        abs #= (CoqCode [] abs_init) #;
        "ABS" #=  abs #;
-       (* abs #= (CoqCode [CBV abs; CBV 0; CBV 2] mm_ptable_init) #;  *)
+       (* abs #= (CoqCode [CBV abs; CBV 0; CBV 2] mm_ptable_init) #;   *)
        "GMINIT" #= Vtrue #;
        (DebugHigh "[high-model] main: ptable_init end" Vnull)).
   
@@ -424,7 +425,7 @@ Module PTHIGHTEST.
       #while (! "GMINIT") do (Debug "waiting for GMPOOL" Vnull) #;
       (DebugHigh "[high-model] thread: ptable_init start" count) #;
       abs #= "ABS" #;
-      (* abs #= (CoqCode [CBV abs; CBV count; CBV 2] mm_ptable_init) #;   *)
+      (* abs #= (CoqCode [CBV abs; CBV count; CBV 2] mm_ptable_init) #; *)
       (DebugHigh "[high-model] thread: ptable_init end" count)).
 
   Definition mainF: function.
