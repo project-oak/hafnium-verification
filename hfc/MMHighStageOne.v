@@ -71,27 +71,6 @@ Local Open Scope stmt_scope.
 
 Local Open Scope N_scope.
 
-
-Section NOTATIONTEST.
-  Local Close Scope itree_scope.
-  Local Open Scope monad_scope.
-  From ExtLib Require Import OptionMonad.
-  Print Instances Monad.
-  Print Instances PMonad.
-  Variable oa: option nat.
-  Fail Check (a <- oa ;; a).
-  Local Existing Instance Monad_option | 100.
-  Local Existing Instance Monad_option | 0.
-  Notation "x ?? c1 !! c2" := (@pbind _ _ _ _ _ c1 (fun x => c2))
-                                (at level 61, c1 at next level, right associativity).
-  Fail Check ((a ?? oa !! a): option nat).
-  Notation "x <- c1 ;; c2" := (@pbind _ (PMonad_Monad Monad_option) _ _ _ c1 (fun x => c2))
-                                (at level 61, c1 at next level, right associativity).
-  Check ((a <- oa ;; Some a): option nat).
-End NOTATIONTEST.
-
-Notation "x <- c1 ;; c2" := (@pbind _ (PMonad_Monad Monad_option) _ _ _ c1 (fun x => c2))
-                              (at level 61, c1 at next level, right associativity).
 Require Import Any.
 
 
@@ -316,14 +295,15 @@ Module PTHIGH.
     then (PTP_ST1 (init_ST1PTP addr))
     else (PTP_ST2 (init_ST2PTP addr)).
 
-  Definition root_map := (MapPut mpool) (newMap mpool) root_id (init_mpool (pte_paddr_begin)
+  
+  Definition root_map := (MapPut _) (newMap _) root_id (init_mpool (pte_paddr_begin)
                                                                            root_id root_id TEST_HEAP_SIZE).
 
   Fixpoint initialize_mpool (l: list N) (init_map : (Map mpool)) :=
     match l with
     | nil => init_map
     | hd::tl => let res := initialize_mpool tl init_map in
-                (MapPut mpool) res hd (init_mpool' hd)
+                (MapPut _) res hd (init_mpool' hd)
     end.
                 
   Definition init_mp := initialize_mpool thread_set root_map.
@@ -352,7 +332,7 @@ Module PTHIGH.
     (retv, nil).
    *)
   
-  Let abs_init  (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
+  Let abs_init  (vs : list val): (val * list val) :=
     let retv := match vs with
                 | nil =>
                   unwrap (let new_mp := init_mp in
@@ -378,10 +358,10 @@ Module PTHIGH.
 
   
   Let mp_alloc_spec (pid : N) (cur_gmp : GMPOOL) : option (N * GMPOOL) :=
-    match ((MapGet mpool) cur_gmp pid) with
+    match ((MapGet _) cur_gmp pid) with
     | None =>
       (* make a new chunk from root - need to generalize this one *)
-      match ((MapGet mpool) cur_gmp root_id) with
+      match ((MapGet _) cur_gmp root_id) with
       | Some root_map =>
         match root_map with
         | mkMPOOL lst fallback =>
@@ -389,8 +369,8 @@ Module PTHIGH.
           match res with 
           | Some (addr, new_lst) =>
             Some (addr, 
-                  ((MapPut mpool)
-                     ((MapPut mpool) cur_gmp pid (mkMPOOL [(addr, entry_size)] (Some root_id)))
+                  ((MapPut _)
+                     ((MapPut _) cur_gmp pid (mkMPOOL [(addr, entry_size)] (Some root_id)))
                      root_id (mkMPOOL new_lst None)))
           | _ => None
           end
@@ -403,17 +383,16 @@ Module PTHIGH.
   Let mm_ptable_init_spec (abs: AbstractData) (pid: N) (stage : N) : option AbstractData :=
     let cur_gmp := abs.(gmp) in
     let cur_gptp := abs.(gptp) in
-    match ((MapGet PTP_TY) cur_gptp pid) with
+    match ((MapGet _) cur_gptp pid) with
     | None =>
       let res := mp_alloc_spec pid cur_gmp in
       match res with
       | Some (addr, new_gmp) =>
         let new_gptp_entry := if (N.eq_dec stage 1)
-                              then PTP_ST1 (mkST1PTP (PTE_ABSENT addr) (newMap PTE_TY) (newMap PTE_TY))
-                              else PTP_ST2 (mkST2PTP (PTE_ABSENT addr) (newMap PTE_TY) (newMap PTE_TY)
-                                                     (newMap PTE_TY))
+                              then PTP_ST1 (mkST1PTP (PTE_ABSENT addr) (newMap _) (newMap _))
+                              else PTP_ST2 (mkST2PTP (PTE_ABSENT addr) (newMap _) (newMap _) (newMap _))
         in
-        let new_gptp := ((MapPut PTP_TY) cur_gptp pid new_gptp_entry) in
+        let new_gptp := ((MapPut _) cur_gptp pid new_gptp_entry) in
         Some (mkAD new_gmp new_gptp)
       | _ => None
       end
@@ -421,7 +400,7 @@ Module PTHIGH.
     end.
 
 
-  Let mm_ptable_init (vs : list val@{expr.u1}): (val@{expr.u2} * list val@{expr.u3}) :=
+  Let mm_ptable_init (vs : list val): (val * list val) :=
     let retv := match vs with
                 | [Vabs abs ; Vnat pid; Vnat stage] =>
                   match downcast abs AbstractData with
