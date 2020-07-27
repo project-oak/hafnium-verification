@@ -400,7 +400,7 @@ Module PTHIGH.
     end.
 
 
-  Let mm_ptable_init (vs : list val): (val * list val) :=
+  Definition mm_ptable_init (vs : list val): (val * list val) :=
     let retv := match vs with
                 | [Vabs abs ; Vnat pid; Vnat stage] =>
                   match downcast abs AbstractData with
